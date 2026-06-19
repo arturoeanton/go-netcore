@@ -30,3 +30,16 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# .NET build artifacts
+bin/
+obj/
+[Bb]in/
+[Oo]bj/
+
+# goclr working dirs
+.goclr/
+.goclr-cache/
+
+# AI/agent local files
+.claude/

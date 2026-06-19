@@ -1,0 +1,80 @@
+namespace GoCLR.Runtime;
+
+/// <summary>
+/// GoSlice is the non-generic slice header the M1 backend emits: an object[]
+/// backing array plus offset/len/cap. Elements are stored boxed, which lets the
+/// compiler use one slice representation for every element type without .NET
+/// generics. (A future increment can specialize hot element types to avoid the
+/// per-element boxing.) The backing array is shared, so a write through a copy of
+/// the header is still visible — matching Go's slice aliasing.
+/// </summary>
+public struct GoSlice
+{
+    public object?[] Data;
+    public int Off;
+    public int Len;
+    public int Cap;
+}
+
+/// <summary>
+/// GoSlices holds the slice operations the compiler calls into, taking and
+/// returning <see cref="GoSlice"/> by value (its backing array is shared).
+/// </summary>
+public static class GoSlices
+{
+    /// <summary>make([]T, len, cap) with each live element set to the boxed zero value.</summary>
+    public static GoSlice Make(long len, long cap, object? zero)
+    {
+        int n = (int)len, c = (int)cap;
+        if (n < 0 || c < n)
+            throw new GoPanicException(GoString.FromDotNetString("runtime error: makeslice: len out of range"));
+        var data = c == 0 ? System.Array.Empty<object?>() : new object?[c];
+        for (int i = 0; i < n; i++) data[i] = zero;
+        return new GoSlice { Data = data, Off = 0, Len = n, Cap = c };
+    }
+
+    public static long Len(GoSlice s) => s.Len;
+    public static long Cap(GoSlice s) => s.Cap;
+
+    /// <summary>s[i] — boxed element (the compiler unboxes to the element type).</summary>
+    public static object? Get(GoSlice s, long i)
+    {
+        if ((ulong)i >= (ulong)s.Len) throw IndexPanic(i, s.Len);
+        return s.Data[s.Off + (int)i];
+    }
+
+    /// <summary>s[i] = v (v already boxed). Writes through the shared backing array.</summary>
+    public static void Set(GoSlice s, long i, object? v)
+    {
+        if ((ulong)i >= (ulong)s.Len) throw IndexPanic(i, s.Len);
+        s.Data[s.Off + (int)i] = v;
+    }
+
+    /// <summary>append(s, v) for a single element (the compiler chains for more).</summary>
+    public static GoSlice AppendOne(GoSlice s, object? v)
+    {
+        int need = s.Len + 1;
+        if (s.Data != null && need <= s.Cap)
+        {
+            s.Data[s.Off + s.Len] = v;
+            return new GoSlice { Data = s.Data, Off = s.Off, Len = need, Cap = s.Cap };
+        }
+        int newCap = s.Cap == 0 ? 1 : s.Cap;
+        while (newCap < need) newCap = newCap < 1024 ? newCap * 2 : newCap + newCap / 4;
+        var data = new object?[newCap];
+        if (s.Data != null) System.Array.Copy(s.Data, s.Off, data, 0, s.Len);
+        data[s.Len] = v;
+        return new GoSlice { Data = data, Off = 0, Len = need, Cap = newCap };
+    }
+
+    /// <summary>s[lo:hi].</summary>
+    public static GoSlice Slice(GoSlice s, long lo, long hi)
+    {
+        if (lo < 0 || hi < lo || hi > s.Cap)
+            throw new GoPanicException(GoString.FromDotNetString("runtime error: slice bounds out of range"));
+        return new GoSlice { Data = s.Data, Off = s.Off + (int)lo, Len = (int)(hi - lo), Cap = s.Cap - (int)lo };
+    }
+
+    private static GoPanicException IndexPanic(long i, int len) =>
+        new(GoString.FromDotNetString($"runtime error: index out of range [{i}] with length {len}"));
+}
