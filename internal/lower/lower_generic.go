@@ -137,7 +137,7 @@ func (l *funcLowerer) genericCallee(fun *ast.Ident) (*goir.Method, bool) {
 	}
 	l.monoInsts[k] = m
 	l.prog.Methods = append(l.prog.Methods, m)
-	l.monoTodo = append(l.monoTodo, monoJob{decl: decl, method: m, subst: subst})
+	l.monoTodo = append(l.monoTodo, monoJob{decl: decl, method: m, subst: subst, pkg: l.pkg})
 	return m, true
 }
 
@@ -185,7 +185,7 @@ func (l *funcLowerer) instantiateMethod(fn *types.Func, seln *types.Selection) (
 	}
 	l.monoInsts[key] = m
 	l.prog.Methods = append(l.prog.Methods, m)
-	l.monoTodo = append(l.monoTodo, monoJob{decl: decl, method: m, subst: subst})
+	l.monoTodo = append(l.monoTodo, monoJob{decl: decl, method: m, subst: subst, pkg: l.pkg})
 	return m, true
 }
 

@@ -29,6 +29,13 @@ func Link(dllPath string) error {
 	if err := copyFile(runtimeDLL, filepath.Join(outDir, "GoCLR.Runtime.dll")); err != nil {
 		return fmt.Errorf("copying runtime: %w", err)
 	}
+	// Copy the stdlib shim assembly if available (only needed when the program
+	// uses shimmed stdlib packages, but harmless otherwise).
+	if stdlibDLL, err := locateStdlibDLL(); err == nil {
+		if err := copyFile(stdlibDLL, filepath.Join(outDir, "GoCLR.Stdlib.dll")); err != nil {
+			return fmt.Errorf("copying stdlib: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -36,31 +43,39 @@ func Link(dllPath string) error {
 // searching upward from the cwd for the runtime project's build output, building
 // it on demand if necessary.
 func locateRuntimeDLL() (string, error) {
-	if p := os.Getenv("GOCLR_RUNTIME_DLL"); p != "" {
+	return locateDLL("GoCLR.Runtime", "GOCLR_RUNTIME_DLL", "runtime/dotnet/GoCLR.Runtime.csproj")
+}
+
+// locateStdlibDLL finds GoCLR.Stdlib.dll, honoring GOCLR_STDLIB_DLL.
+func locateStdlibDLL() (string, error) {
+	return locateDLL("GoCLR.Stdlib", "GOCLR_STDLIB_DLL", "runtime/stdlib/GoCLR.Stdlib.csproj")
+}
+
+// locateDLL finds a managed assembly by name, honoring its env override, then
+// searching upward for its project's build output, building on demand.
+func locateDLL(name, envVar, csprojRel string) (string, error) {
+	if p := os.Getenv(envVar); p != "" {
 		if _, err := os.Stat(p); err == nil {
 			return p, nil
 		}
 	}
-
-	csproj := findUp("runtime/dotnet/GoCLR.Runtime.csproj")
+	csproj := findUp(csprojRel)
 	if csproj == "" {
-		return "", fmt.Errorf("could not locate runtime/dotnet/GoCLR.Runtime.csproj (set GOCLR_RUNTIME_DLL)")
+		return "", fmt.Errorf("could not locate %s (set %s)", csprojRel, envVar)
 	}
 	projDir := filepath.Dir(csproj)
-
-	if dll := newestDLL(filepath.Join(projDir, "bin")); dll != "" {
+	dllName := name + ".dll"
+	if dll := newestNamedDLL(filepath.Join(projDir, "bin"), dllName); dll != "" {
 		return dll, nil
 	}
-	// Build it once. Capture output and surface it only on failure, so it never
-	// pollutes the stdout/stderr of a program run via `goclr run`.
 	cmd := exec.Command("dotnet", "build", "-c", "Release", "-v", "q", "--nologo", csproj)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("building GoCLR.Runtime: %w\n%s", err, out)
+		return "", fmt.Errorf("building %s: %w\n%s", name, err, out)
 	}
-	if dll := newestDLL(filepath.Join(projDir, "bin")); dll != "" {
+	if dll := newestNamedDLL(filepath.Join(projDir, "bin"), dllName); dll != "" {
 		return dll, nil
 	}
-	return "", fmt.Errorf("GoCLR.Runtime.dll not found after build under %s/bin", projDir)
+	return "", fmt.Errorf("%s not found after build under %s/bin", dllName, projDir)
 }
 
 // findUp walks up from the cwd looking for a relative path, returning its
@@ -83,15 +98,15 @@ func findUp(rel string) string {
 	}
 }
 
-// newestDLL returns the most recently modified GoCLR.Runtime.dll under root.
-func newestDLL(root string) string {
+// newestNamedDLL returns the most recently modified DLL of the given name under root.
+func newestNamedDLL(root, name string) string {
 	var best string
 	var bestMod int64
 	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		if filepath.Base(path) == "GoCLR.Runtime.dll" && info.ModTime().UnixNano() > bestMod {
+		if filepath.Base(path) == name && info.ModTime().UnixNano() > bestMod {
 			best = path
 			bestMod = info.ModTime().UnixNano()
 		}

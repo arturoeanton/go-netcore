@@ -103,6 +103,21 @@ func (l *funcLowerer) assign(s *ast.AssignStmt) {
 		return
 	}
 
+	// Package-level variable write (x = v / x op= v / pkg.Var = v).
+	if gi, ok := l.globalRef(s.Lhs[0]); ok && s.Tok != token.DEFINE {
+		gt := l.prog.Globals[gi].Type
+		if s.Tok == token.ASSIGN {
+			l.exprCoerced(s.Rhs[0], gt)
+		} else {
+			binTok, _ := compoundBinToken(s.Tok)
+			l.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
+			l.expr(s.Rhs[0])
+			l.emitArith(binTok, gt)
+		}
+		l.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(gi)})
+		return
+	}
+
 	// Field assignment: p.f = v.
 	if sel, ok := s.Lhs[0].(*ast.SelectorExpr); ok && s.Tok == token.ASSIGN {
 		l.fieldAssign(sel, s.Rhs[0])
@@ -674,6 +689,14 @@ func (l *funcLowerer) incDec(s *ast.IncDecStmt) {
 	binTok := token.ADD
 	if s.Tok == token.DEC {
 		binTok = token.SUB
+	}
+	if gi, ok := l.globalRef(s.X); ok {
+		gt := l.prog.Globals[gi].Type
+		l.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
+		l.emitInt(1, gt)
+		l.emitArith(binTok, gt)
+		l.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(gi)})
+		return
 	}
 	switch lhs := s.X.(type) {
 	case *ast.Ident:

@@ -20,6 +20,11 @@ func (l *funcLowerer) expr(e ast.Expr) {
 		l.emitConst(e, tv.Type, tv.Value)
 		return
 	}
+	// Package-level variable read (ident or pkg.Var selector).
+	if gi, ok := l.globalRef(e); ok {
+		l.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
+		return
+	}
 	switch e := e.(type) {
 	case *ast.Ident:
 		if e.Name == "nil" {
@@ -348,6 +353,31 @@ func (l *funcLowerer) unaryExpr(e *ast.UnaryExpr) {
 	}
 }
 
+// namedFuncCall lowers a call to a free function (same-package ident or
+// cross-package pkg.Func), resolving the callee through the global byFunc table,
+// or monomorphizing a generic function.
+func (l *funcLowerer) namedFuncCall(e *ast.CallExpr, ident *ast.Ident, fn *types.Func) goir.Type {
+	// Shimmed stdlib function -> external (GoCLR.Stdlib) call.
+	if ext, ok := l.shimExtern(fn); ok {
+		return l.shimCall(e, ext)
+	}
+	callee, ok := l.byFunc[fn]
+	if !ok {
+		callee, ok = l.genericCallee(ident)
+		if !ok {
+			l.fail(e.Pos(), "call to "+ident.Name)
+			return goir.TVoid
+		}
+	}
+	variadic := false
+	if sig, ok := fn.Type().(*types.Signature); ok {
+		variadic = sig.Variadic()
+	}
+	l.emitCallArgs(e.Args, callee.Params, variadic, e.Ellipsis.IsValid())
+	l.emit(goir.Op{Code: goir.OpCallMethod, Callee: callee})
+	return callee.Ret
+}
+
 // callExpr lowers a call and returns its result type (TVoid for none).
 func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 	// Type conversions: T(x), including []byte(s) / []rune(s) where the call
@@ -359,6 +389,12 @@ func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 	if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
 		if seln := l.pkg.TypesInfo.Selections[sel]; seln != nil && seln.Kind() == types.MethodVal {
 			return l.methodCall(e, sel, seln)
+		}
+		// Package-qualified free function call: pkg.Func(args).
+		if fn, ok := l.pkg.TypesInfo.Uses[sel.Sel].(*types.Func); ok {
+			if sig, ok := fn.Type().(*types.Signature); ok && sig.Recv() == nil {
+				return l.namedFuncCall(e, sel.Sel, fn)
+			}
 		}
 	}
 	// Calling a function value (closure / func variable).
@@ -423,18 +459,7 @@ func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 		// Type conversion, e.g. int64(x), int32(x), rune(x).
 		return l.conversion(e)
 	case *types.Func:
-		callee, ok := l.byName[fun.Name]
-		if !ok {
-			// A generic function is monomorphized per concrete instantiation.
-			callee, ok = l.genericCallee(fun)
-			if !ok {
-				l.fail(e.Pos(), "call to "+fun.Name)
-				return goir.TVoid
-			}
-		}
-		l.emitCallArgs(e.Args, callee.Params, o.Type().(*types.Signature).Variadic(), e.Ellipsis.IsValid())
-		l.emit(goir.Op{Code: goir.OpCallMethod, Callee: callee})
-		return callee.Ret
+		return l.namedFuncCall(e, fun, o)
 	default:
 		l.fail(e.Pos(), "call to "+fun.Name)
 		return goir.TVoid

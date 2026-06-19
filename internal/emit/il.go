@@ -20,7 +20,9 @@ type tokenSet struct {
 	us         map[string]uint16 // #US offsets for ldstr
 	structType func(*goir.Struct) uint32
 	field      func(*goir.Struct, int) uint32
-	invoke     *goir.Method // the closure dispatcher, for ldftn (goroutine setup)
+	global     func(int) uint32          // static-field token for a global index
+	extern     func(*goir.Extern) uint32 // MemberRef token for a shim call
+	invoke     *goir.Method              // the closure dispatcher, for ldftn (goroutine setup)
 }
 
 type ilBuilder struct{ buf []byte }
@@ -387,6 +389,15 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 			b.u32(tokInvokerCtor)
 			b.u8(0x28) // call
 			b.u32(tokSetInvoker)
+		case goir.OpCallExtern:
+			b.u8(0x28) // call
+			b.u32(tok.extern(op.Extern))
+		case goir.OpLdGlobal:
+			b.u8(0x7E) // ldsfld
+			b.u32(tok.global(int(op.Int)))
+		case goir.OpStGlobal:
+			b.u8(0x80) // stsfld
+			b.u32(tok.global(int(op.Int)))
 		case goir.OpLabel:
 			labelPos[op.Label] = len(b.buf)
 		case goir.OpBr:
@@ -528,7 +539,7 @@ func maxStack(m *goir.Method) int {
 		switch op.Code {
 		case goir.OpLdcI8, goir.OpLdcI4, goir.OpLdcR8, goir.OpLdcR4, goir.OpLdStr, goir.OpLdLoc,
 			goir.OpLdArg, goir.OpDup, goir.OpStrConst, goir.OpLdLocA, goir.OpMapMake, goir.OpLdNull,
-			goir.OpCallRecover, goir.OpCallPanicHandled, goir.OpDeferMark:
+			goir.OpCallRecover, goir.OpCallPanicHandled, goir.OpDeferMark, goir.OpLdGlobal:
 			bump(+1)
 		case goir.OpStLoc, goir.OpPop, goir.OpAdd, goir.OpSub, goir.OpMul, goir.OpDiv,
 			goir.OpRem, goir.OpAnd, goir.OpOr, goir.OpXor, goir.OpShl, goir.OpShr,
@@ -536,6 +547,7 @@ func maxStack(m *goir.Method) int {
 			goir.OpStrIndex, goir.OpStrConcat, goir.OpStrEqual, goir.OpStrCompare,
 			goir.OpStrRuneAt, goir.OpStrRuneSize, goir.OpInitObj,
 			goir.OpSliceGet, goir.OpSliceAppend, goir.OpMapContains, goir.OpLdElemRef,
+			goir.OpStGlobal,
 			goir.OpDivUn, goir.OpRemUn, goir.OpShrUn, goir.OpCltUn, goir.OpCgtUn,
 			goir.OpChanClose, goir.OpGoStart, goir.OpDeferPush, goir.OpDeferRun,
 			goir.OpComplexMake, goir.OpComplexAdd, goir.OpComplexSub, goir.OpComplexMul,
@@ -561,6 +573,12 @@ func maxStack(m *goir.Method) int {
 		case goir.OpCallMethod:
 			d := -len(op.Callee.Params)
 			if op.Callee.Ret != goir.TVoid {
+				d++
+			}
+			bump(d)
+		case goir.OpCallExtern:
+			d := -len(op.Extern.Params)
+			if op.Extern.Ret != goir.TVoid {
 				d++
 			}
 			bump(d)

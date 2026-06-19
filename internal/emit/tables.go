@@ -142,7 +142,7 @@ var (
 // buildTables serializes the #~ stream for a whole program. methodRVAs is
 // parallel to prog.Methods; sigBlobOffsets holds the #Blob offset of each
 // StandAloneSig row (one per method that declares locals, in method order).
-func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffsets []uint16) []byte {
+func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffsets []uint16, ext *externCollection) []byte {
 	moduleName := prog.AssemblyName + ".dll"
 
 	// Strings.
@@ -186,12 +186,24 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	sGoclrRuntime := h.addString(runtimeAssembly)
 	sValueType := h.addString("ValueType")
 
-	// Struct names, field names and field signatures. structFieldStart[i] is the
-	// 1-based Field-table row of struct i's first field (its TypeDef.FieldList).
+	// Field rows: package-level globals first (static fields on Program), then
+	// each struct's instance fields. structFieldStart[i] is the 1-based Field-table
+	// row of struct i's first field (its TypeDef.FieldList).
+	type fieldRow struct {
+		name, sig uint16
+		static    bool
+	}
+	var fieldRows []fieldRow
+	for _, g := range prog.Globals {
+		fieldSig := append([]byte{0x06}, appendTypeSig(nil, g.Type)...) // FIELD sig
+		fieldRows = append(fieldRows, fieldRow{
+			name:   h.addString(g.Name),
+			sig:    h.addBlob(fieldSig),
+			static: true,
+		})
+	}
 	structNameIdx := make([]uint16, len(prog.Structs))
 	structFieldStart := make([]int, len(prog.Structs))
-	type fieldRow struct{ name, sig uint16 }
-	var fieldRows []fieldRow
 	for i, s := range prog.Structs {
 		structNameIdx[i] = h.addString(s.Name)
 		structFieldStart[i] = len(fieldRows) + 1
@@ -335,22 +347,45 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u64(valid)
 	w.u64(0) // sorted
 
+	// Pre-add the heap entries for the dynamic shim rows so their offsets are set.
+	type extTypeRow struct{ scope, name, ns uint16 }
+	extTypes := make([]extTypeRow, len(ext.types))
+	for i, et := range ext.types {
+		extTypes[i] = extTypeRow{
+			scope: uint16(et.asmRow<<2 | 2), // ResolutionScope -> AssemblyRef[asmRow]
+			name:  h.addString(et.name),
+			ns:    h.addString(et.namespace),
+		}
+	}
+	type extMemberRow struct{ parent, name, sig uint16 }
+	extMembers := make([]extMemberRow, len(ext.methods))
+	for i, em := range ext.methods {
+		extMembers[i] = extMemberRow{
+			parent: uint16(ext.typeRowOf[em.TypeKey()]<<3 | 1), // MemberRefParent -> TypeRef
+			name:   h.addString(em.Method),
+			sig:    h.addBlob(methodSigBlob(em.Params, em.Ret)),
+		}
+	}
+	extAsmName := make([]uint16, len(ext.assemblies))
+	for i, a := range ext.assemblies {
+		extAsmName[i] = h.addString(a)
+	}
+
 	// Row counts, ascending table id.
-	w.u32(1)                                  // Module
-	w.u32(29)                                 // TypeRef (+ GoChan/.../GoComplex/GoComplexs/GoDefers)
-	w.u32(uint32(2 + len(prog.Structs)))      // TypeDef (<Module>, Program, structs)
+	w.u32(1)                                            // Module
+	w.u32(uint32(29 + len(ext.types)))                  // TypeRef (fixed + shim types)
+	w.u32(uint32(2 + len(prog.Structs)))                // TypeDef (<Module>, Program, structs)
 	if hasFields {
 		w.u32(uint32(len(fieldRows))) // Field
 	}
 	w.u32(uint32(len(prog.Methods))) // MethodDef
-	// MemberRef: Println, Print + GoStrings/GoSlices/GoMaps/GoPtrs + 4 Builtins
-	// panic helpers + 3 GoClosures + 7 GoChans + GoRuntime.Go/SetInvoker + GoInvoker.ctor + GoSelect.Select.
-	w.u32(uint32(2 + len(strMembers) + len(sliceMembers) + len(mapMembers) + len(ptrMembers) + 4 + 3 + len(chanMembers) + 3 + 1 + 1 + 9 + 3))
+	// MemberRef: 60 fixed (Println/Print + runtime helpers) + shim methods.
+	w.u32(uint32(2 + len(strMembers) + len(sliceMembers) + len(mapMembers) + len(ptrMembers) + 4 + 3 + len(chanMembers) + 3 + 1 + 1 + 9 + 3 + len(ext.methods)))
 	if hasLocals {
 		w.u32(uint32(len(sigBlobOffsets))) // StandAloneSig
 	}
-	w.u32(1) // Assembly
-	w.u32(2) // AssemblyRef
+	w.u32(1)                              // Assembly
+	w.u32(uint32(2 + len(ext.assemblies))) // AssemblyRef (System.Runtime, GoCLR.Runtime, shims)
 
 	// --- Module (0x00) ---
 	w.u16(0)
@@ -390,6 +425,9 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	typeRef(scopeGoclrRuntime, sGoComplex, sRuntimeNS)   // [27] GoComplex
 	typeRef(scopeGoclrRuntime, sGoComplexs, sRuntimeNS)  // [28] GoComplexs
 	typeRef(scopeGoclrRuntime, sGoDefers, sRuntimeNS)    // [29] GoDefers
+	for _, et := range extTypes {                        // [30+] shim types
+		typeRef(et.scope, et.name, et.ns)
+	}
 
 	// --- TypeDef (0x02) ---
 	// [1] <Module>.
@@ -420,7 +458,11 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 
 	// --- Field (0x04) ---
 	for _, fr := range fieldRows {
-		w.u16(0x0006) // Public
+		flags := uint16(0x0006) // Public
+		if fr.static {
+			flags = 0x0016 // Public | Static
+		}
+		w.u16(flags)
 		w.u16(fr.name)
 		w.u16(fr.sig)
 	}
@@ -545,6 +587,11 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u16(parentGoDefers)
 	w.u16(h.addString("Run"))
 	w.u16(h.addBlob([]byte{0x00, 0x01, 0x01, 0x0A})) // void(i8)
+	for _, em := range extMembers { // [61+] shim methods
+		w.u16(em.parent)
+		w.u16(em.name)
+		w.u16(em.sig)
+	}
 
 	// --- StandAloneSig (0x11) ---
 	if hasLocals {
@@ -585,6 +632,18 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u16(sGoclrRuntime)
 	w.u16(0)
 	w.u16(0)
+	// [3+] shim assemblies (GoCLR.Stdlib, ...) 1.0.0.0.
+	for _, name := range extAsmName {
+		w.u16(1)
+		w.u16(0)
+		w.u16(0)
+		w.u16(0)
+		w.u32(0)
+		w.u16(0)
+		w.u16(name)
+		w.u16(0)
+		w.u16(0)
+	}
 
 	return out
 }

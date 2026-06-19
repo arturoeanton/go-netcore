@@ -132,8 +132,10 @@ func Emit(prog *goir.Program, outPath string) error {
 
 	// Assign struct TypeDef rows (after <Module>=1, Program=2) and field rows.
 	// s.TypeDefRow is read back by appendTypeSig when encoding struct signatures.
+	// Globals occupy the first Field rows (static fields on Program); struct
+	// fields follow.
 	fieldBase := map[*goir.Struct]int{}
-	nextField := 1
+	nextField := 1 + len(prog.Globals)
 	for i, s := range prog.Structs {
 		s.TypeDefRow = 3 + i
 		fieldBase[s] = nextField
@@ -158,6 +160,9 @@ func Emit(prog *goir.Program, outPath string) error {
 		localSigTok[m] = sigBase + uint32(len(sigBlobOffsets))
 	}
 
+	// Collect external (shim) references and assign their dynamic tokens.
+	externs := collectExterns(prog)
+
 	tok := tokenSet{
 		object:   tokObject,
 		int64Box: tokInt64,
@@ -173,6 +178,10 @@ func Emit(prog *goir.Program, outPath string) error {
 		field: func(s *goir.Struct, idx int) uint32 {
 			return fieldTableBase | uint32(fieldBase[s]+idx)
 		},
+		global: func(idx int) uint32 {
+			return fieldTableBase | uint32(1+idx) // globals are the first Field rows
+		},
+		extern: externs.token,
 		invoke: prog.Invoke,
 	}
 
@@ -193,7 +202,7 @@ func Emit(prog *goir.Program, outPath string) error {
 	metadataOffset := roundUp(off, 4)
 	metadataRVA := uint32(textRVA + metadataOffset)
 
-	tables := buildTables(prog, h, methodRVAs, sigBlobOffsets)
+	tables := buildTables(prog, h, methodRVAs, sigBlobOffsets, externs)
 	meta := buildMetadata(tables, h)
 
 	entryToken := methodTok[prog.Entry]

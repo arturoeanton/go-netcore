@@ -11,6 +11,8 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"sort"
+	"strings"
 
 	"github.com/arturoeanton/go-netcore/internal/diagnostics"
 	"github.com/arturoeanton/go-netcore/internal/frontend"
@@ -39,80 +41,123 @@ type lowerCtx struct {
 	genericMethodDecls map[*types.Func]*ast.FuncDecl // generic method templates, by origin *types.Func
 	monoInsts          map[string]*goir.Method
 	monoTodo           []monoJob
+	// Multi-package: prefixOf maps each lowered package's *types.Package to the
+	// CLR-name prefix that keeps cross-package symbols unique (empty for the root).
+	prefixOf map[*types.Package]string
+	// Package-level variables become static fields (globals); init runs their
+	// initializers and the package init() functions before main.
+	globals   map[*types.Var]int
+	varInits  []varInit       // package-var initializers, in init order
+	initFuncs []*goir.Method  // package init() functions, in order
+}
+
+// varInit is a package-level variable initializer to run during program startup.
+type varInit struct {
+	pkg   *frontend.Package
+	idx   int      // global index
+	gtype goir.Type
+	value ast.Expr // nil => zero-initialize
 }
 
 // monoJob is a queued generic-function instantiation whose body is lowered after
-// the main pass, with subst mapping its type parameters to concrete types.
+// the main pass, with subst mapping its type parameters to concrete types. pkg is
+// the package owning the template (for TypesInfo during body lowering).
 type monoJob struct {
 	decl   *ast.FuncDecl
 	method *goir.Method
 	subst  map[*types.TypeParam]types.Type
+	pkg    *frontend.Package
 }
 
-// Lower lowers package main to a goir.Program.
+// Lower lowers the main package and its non-stdlib dependency closure into one
+// goir.Program (one CLR assembly). Symbols from non-root packages are CLR-name
+// prefixed so they stay unique; cross-package calls resolve through the global
+// byFunc table keyed by *types.Func.
 func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	c := &lowerCtx{
-		pkg:          pkg,
-		byName:       map[string]*goir.Method{},
-		byFunc:       map[*types.Func]*goir.Method{},
-		structReg:     map[*types.Named]*goir.Struct{},
-		anonStructReg: map[string]*goir.Struct{},
-		structByName:  map[string]*goir.Struct{},
+		byName:             map[string]*goir.Method{},
+		byFunc:             map[*types.Func]*goir.Method{},
+		structReg:          map[*types.Named]*goir.Struct{},
+		anonStructReg:      map[string]*goir.Struct{},
+		structByName:       map[string]*goir.Struct{},
 		genericDecls:       map[string]*ast.FuncDecl{},
 		genericMethodDecls: map[*types.Func]*ast.FuncDecl{},
 		monoInsts:          map[string]*goir.Method{},
+		prefixOf:           map[*types.Package]string{},
+		globals:            map[*types.Var]int{},
 		bag:                bag,
 	}
-
-	var decls []*ast.FuncDecl
-	for _, f := range pkg.Syntax {
-		for _, d := range f.Decls {
-			if fd, ok := d.(*ast.FuncDecl); ok {
-				decls = append(decls, fd)
-			}
-		}
-	}
-
 	prog := &goir.Program{}
 	c.prog = prog
 
-	// First pass: method shells (signatures) so calls can resolve forward refs.
+	// Collect the package set in dependency order (deps first, root last).
+	pkgs := collectPackages(pkg)
+	for _, p := range pkgs {
+		prefix := ""
+		if p != pkg {
+			prefix = manglePkgPath(p.PkgPath) + "_"
+		}
+		if p.Types != nil {
+			c.prefixOf[p.Types] = prefix
+		}
+	}
+
+	// Global pass: register package-level variables as static fields (deps first).
+	for _, p := range pkgs {
+		c.pkg = p
+		c.collectGlobals(p)
+	}
+
+	// Shell pass: every package's function/method signatures, so calls resolve.
 	type pending struct {
-		decl   *ast.FuncDecl
-		method *goir.Method
+		decl *ast.FuncDecl
+		m    *goir.Method
+		pkg  *frontend.Package
 	}
 	var todo []pending
-	for _, fd := range decls {
-		// Generic functions are templates: skip the shell and instantiate them
-		// per concrete type-argument set as call sites are discovered.
-		if fd.Recv == nil && fd.Type.TypeParams != nil && fd.Type.TypeParams.NumFields() > 0 {
-			c.genericDecls[fd.Name.Name] = fd
-			continue
-		}
-		// Generic methods (receiver has type parameters, e.g. (*Stack[T]).Push) are
-		// likewise templates, instantiated per receiver type-argument set.
-		if fd.Recv != nil {
-			if fn, ok := c.pkg.TypesInfo.Defs[fd.Name].(*types.Func); ok {
-				if sig, ok := fn.Type().(*types.Signature); ok && sig.RecvTypeParams().Len() > 0 {
-					c.genericMethodDecls[fn] = fd
-					continue
+	for _, p := range pkgs {
+		c.pkg = p
+		initN := 0
+		for _, fd := range funcDecls(p) {
+			if fd.Recv == nil && fd.Type.TypeParams != nil && fd.Type.TypeParams.NumFields() > 0 {
+				c.genericDecls[fd.Name.Name] = fd
+				continue
+			}
+			if fd.Recv != nil {
+				if fn, ok := p.TypesInfo.Defs[fd.Name].(*types.Func); ok {
+					if sig, ok := fn.Type().(*types.Signature); ok && sig.RecvTypeParams().Len() > 0 {
+						c.genericMethodDecls[fn] = fd
+						continue
+					}
 				}
 			}
-		}
-		m, ok := c.methodShell(fd)
-		if !ok {
-			return nil, false
-		}
-		prog.Methods = append(prog.Methods, m)
-		if fd.Recv == nil {
-			c.byName[fd.Name.Name] = m
-			if fd.Name.Name == "main" {
-				prog.Entry = m
+			m, ok := c.methodShell(fd)
+			if !ok {
+				return nil, false
 			}
-		} else if fn, ok := c.pkg.TypesInfo.Defs[fd.Name].(*types.Func); ok {
-			c.byFunc[fn] = m
+			// init() functions: each gets a unique name and runs during startup,
+			// not via the normal call path.
+			if fd.Recv == nil && fd.Name.Name == "init" {
+				m.Name = c.curPrefix() + "init__" + itoa(initN)
+				m.GoName = m.Name
+				initN++
+				prog.Methods = append(prog.Methods, m)
+				c.initFuncs = append(c.initFuncs, m)
+				todo = append(todo, pending{fd, m, p})
+				continue
+			}
+			prog.Methods = append(prog.Methods, m)
+			if fn, ok := p.TypesInfo.Defs[fd.Name].(*types.Func); ok {
+				c.byFunc[fn] = m
+			}
+			if fd.Recv == nil {
+				c.byName[fd.Name.Name] = m
+				if p == pkg && fd.Name.Name == "main" {
+					prog.Entry = m
+				}
+			}
+			todo = append(todo, pending{fd, m, p})
 		}
-		todo = append(todo, pending{fd, m})
 	}
 	if prog.Entry == nil {
 		bag.Add(diagnostics.New(diagnostics.SeverityError, diagnostics.CodeNoMainPackage,
@@ -120,21 +165,21 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		return nil, false
 	}
 
-	// Second pass: bodies.
-	for _, p := range todo {
-		l := &funcLowerer{lowerCtx: c, m: p.method, ok: true}
-		l.build(p.decl)
+	// Body pass.
+	for _, t := range todo {
+		c.pkg = t.pkg
+		l := &funcLowerer{lowerCtx: c, m: t.m, ok: true}
+		l.build(t.decl)
 		if !l.ok {
 			return nil, false
 		}
 	}
 
-	// Drain the monomorphization worklist: each generic instantiation's body is
-	// lowered with its type-parameter substitution. Lowering one may discover
-	// further instantiations, so loop until the worklist is empty.
+	// Drain the monomorphization worklist (each job carries its owning package).
 	for len(c.monoTodo) > 0 {
 		job := c.monoTodo[0]
 		c.monoTodo = c.monoTodo[1:]
+		c.pkg = job.pkg
 		l := &funcLowerer{lowerCtx: c, m: job.method, ok: true, typeSubst: job.subst}
 		l.build(job.decl)
 		if !l.ok {
@@ -142,9 +187,15 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		}
 	}
 
+	// Startup: run package-var initializers and init() functions before main.
+	if init, ok := c.buildInit(); !ok {
+		return nil, false
+	} else if init != nil {
+		prog.Methods = append(prog.Methods, init)
+		prog.Entry.Code = append([]goir.Op{{Code: goir.OpCallMethod, Callee: init}}, prog.Entry.Code...)
+	}
+
 	c.finishInvoke()
-	// If goroutines or deferred thunks use the closure dispatcher, register it with
-	// the runtime at the very start of main (GoRuntime.Go / GoDefers.Run need it).
 	if c.needsInvoker && prog.Entry != nil {
 		prog.Entry.Code = append([]goir.Op{{Code: goir.OpRegisterInvoker}}, prog.Entry.Code...)
 	}
@@ -152,10 +203,171 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	return prog, true
 }
 
+// collectGlobals registers a package's file-level variables as static-field
+// globals and records their initializers (in source order) for startup.
+func (c *lowerCtx) collectGlobals(p *frontend.Package) {
+	prefix := c.curPrefix()
+	for _, f := range p.Syntax {
+		for _, d := range f.Decls {
+			gd, ok := d.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for i, name := range vs.Names {
+					if name.Name == "_" {
+						continue
+					}
+					obj, ok := p.TypesInfo.Defs[name].(*types.Var)
+					if !ok {
+						continue
+					}
+					gt, ok := c.goType(obj.Type())
+					if !ok {
+						c.unsupported(name.Pos(), "global variable type "+name.Name)
+						continue
+					}
+					idx := len(c.prog.Globals)
+					c.prog.Globals = append(c.prog.Globals, &goir.Global{Name: prefix + name.Name, Type: gt})
+					c.globals[obj] = idx
+					var val ast.Expr
+					if len(vs.Values) == len(vs.Names) {
+						val = vs.Values[i]
+					}
+					c.varInits = append(c.varInits, varInit{pkg: p, idx: idx, gtype: gt, value: val})
+				}
+			}
+		}
+	}
+}
+
+// buildInit generates the startup method that runs package-var initializers (in
+// dependency/source order) and then each init() function. Returns nil if the
+// program has no globals or init functions.
+func (c *lowerCtx) buildInit() (*goir.Method, bool) {
+	if len(c.varInits) == 0 && len(c.initFuncs) == 0 {
+		return nil, true
+	}
+	m := &goir.Method{Name: "__goclr_init", GoName: "__goclr_init", Ret: goir.TVoid}
+	l := &funcLowerer{lowerCtx: c, m: m, ok: true}
+	l.locals = map[types.Object]int{}
+	l.cells = map[int]goir.Type{}
+	for _, vi := range c.varInits {
+		c.pkg = vi.pkg
+		if vi.value != nil {
+			l.exprCoerced(vi.value, vi.gtype)
+		} else {
+			l.emitZeroValue(vi.gtype)
+		}
+		l.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(vi.idx)})
+	}
+	for _, fn := range c.initFuncs {
+		l.emit(goir.Op{Code: goir.OpCallMethod, Callee: fn})
+	}
+	l.emit(goir.Op{Code: goir.OpRet})
+	return m, l.ok
+}
+
+// funcDecls returns the function declarations of a package.
+func funcDecls(p *frontend.Package) []*ast.FuncDecl {
+	var out []*ast.FuncDecl
+	for _, f := range p.Syntax {
+		for _, d := range f.Decls {
+			if fd, ok := d.(*ast.FuncDecl); ok {
+				out = append(out, fd)
+			}
+		}
+	}
+	return out
+}
+
+// collectPackages returns root plus its transitive non-stdlib dependencies that
+// have Go source, in dependency order (a package appears after its imports).
+func collectPackages(root *frontend.Package) []*frontend.Package {
+	var order []*frontend.Package
+	seen := map[*frontend.Package]bool{}
+	var visit func(p *frontend.Package)
+	visit = func(p *frontend.Package) {
+		if p == nil || seen[p] {
+			return
+		}
+		seen[p] = true
+		// Deterministic import order.
+		names := make([]string, 0, len(p.Imports))
+		for ip := range p.Imports {
+			names = append(names, ip)
+		}
+		sort.Strings(names)
+		for _, ip := range names {
+			dep := p.Imports[ip]
+			if dep == nil || dep.IsStdlib || len(dep.Syntax) == 0 {
+				continue // stdlib needs overlays/shims; handled separately
+			}
+			visit(dep)
+		}
+		order = append(order, p)
+	}
+	visit(root)
+	return order
+}
+
+// curPrefix is the CLR-name prefix for the package currently being lowered.
+func (c *lowerCtx) curPrefix() string { return c.prefixOf[c.pkg.Types] }
+
+// funcObj returns the *types.Func an identifier refers to (nil if it is not a
+// function reference).
+func (l *funcLowerer) funcObj(id *ast.Ident) *types.Func {
+	fn, _ := l.pkg.TypesInfo.Uses[id].(*types.Func)
+	return fn
+}
+
+// globalRef reports whether e references a package-level variable (an ident or a
+// pkg.Var selector), returning its global index.
+func (l *funcLowerer) globalRef(e ast.Expr) (int, bool) {
+	var id *ast.Ident
+	switch x := e.(type) {
+	case *ast.Ident:
+		id = x
+	case *ast.SelectorExpr:
+		id = x.Sel
+	default:
+		return 0, false
+	}
+	if v, ok := l.pkg.TypesInfo.Uses[id].(*types.Var); ok {
+		if gi, ok := l.globals[v]; ok {
+			return gi, true
+		}
+	}
+	return 0, false
+}
+
+// prefixForPkg returns the CLR-name prefix for a (possibly imported) types
+// package, falling back to a mangled path for packages not in the lowered set.
+func (c *lowerCtx) prefixForPkg(p *types.Package) string {
+	if p == nil {
+		return ""
+	}
+	if pre, ok := c.prefixOf[p]; ok {
+		return pre
+	}
+	return manglePkgPath(p.Path()) + "_"
+}
+
+// manglePkgPath turns an import path into a CLR-safe identifier prefix.
+func manglePkgPath(path string) string {
+	r := strings.NewReplacer("/", "_", ".", "_", "-", "_", "@", "_")
+	return r.Replace(path)
+}
+
 // methodShell builds a method signature from a func decl. A method becomes a
 // static method named TypeName_Method with the receiver as its first parameter.
 func (c *lowerCtx) methodShell(fd *ast.FuncDecl) (*goir.Method, bool) {
-	m := &goir.Method{Name: fd.Name.Name, GoName: fd.Name.Name, Ret: goir.TVoid}
+	prefix := c.curPrefix()
+	m := &goir.Method{Name: prefix + fd.Name.Name, GoName: fd.Name.Name, Ret: goir.TVoid}
 
 	if fd.Recv != nil {
 		rt, ok := c.goType(c.pkg.TypesInfo.TypeOf(fd.Recv.List[0].Type))
@@ -163,7 +375,7 @@ func (c *lowerCtx) methodShell(fd *ast.FuncDecl) (*goir.Method, bool) {
 			return nil, c.unsupported(fd.Recv.Pos(), "receiver type")
 		}
 		m.Params = append(m.Params, rt)
-		m.Name = c.recvTypeName(fd) + "_" + fd.Name.Name
+		m.Name = prefix + c.recvTypeName(fd) + "_" + fd.Name.Name
 		m.GoName = m.Name
 	}
 
@@ -318,7 +530,7 @@ func (c *lowerCtx) structFor(named *types.Named) *goir.Struct {
 		return s
 	}
 	st := named.Underlying().(*types.Struct)
-	name := named.Obj().Name()
+	name := c.prefixForPkg(named.Obj().Pkg()) + named.Obj().Name()
 	// Instantiated generic structs (List[int], List[string]) share a base name;
 	// mangle the type arguments in so each instantiation is a distinct TypeDef.
 	if ta := named.TypeArgs(); ta != nil && ta.Len() > 0 {
@@ -385,7 +597,10 @@ func (c *lowerCtx) unsupported(pos token.Pos, what string) bool {
 	return false
 }
 
-// funcLowerer lowers a single function body.
+// funcLowerer lowers a single function body. It reads the current package's
+// TypesInfo through the embedded lowerCtx (c.pkg), which the driver sets before
+// each package's shell/body pass (lowering is sequential, so c.pkg is stable for
+// the duration of one function and its inline closures).
 type funcLowerer struct {
 	*lowerCtx
 	m         *goir.Method

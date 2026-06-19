@@ -192,7 +192,7 @@ func (l *funcLowerer) deferStmt(s *ast.DeferStmt) {
 			l.deferBuiltin(call, b.Name())
 			return
 		}
-		if callee, ok := l.byName[fun.Name]; ok {
+		if callee, ok := l.byFunc[l.funcObj(fun)]; ok {
 			l.deferNamed(call, callee)
 			return
 		}

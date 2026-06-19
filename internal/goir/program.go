@@ -110,8 +110,16 @@ type Program struct {
 	AssemblyName string
 	Structs      []*Struct // user-defined struct types (TypeDef order)
 	Methods      []*Method // static methods of the Program type
+	Globals      []*Global // package-level variables -> static fields on Program
 	Entry        *Method   // the lowered main.main
 	Invoke       *Method   // the closure dispatcher (__invoke), if any closures/goroutines exist
+}
+
+// Global is a package-level variable, emitted as a static field on the Program
+// type. Its 0-based index is the order in Program.Globals.
+type Global struct {
+	Name string
+	Type Type
 }
 
 // Method is a lowered Go function emitted as a static CLR method.
@@ -276,6 +284,11 @@ const (
 	OpComplexReal // GoComplex -> r8
 	OpComplexImag // GoComplex -> r8
 
+	OpCallExtern // call an external (shim) static method described by Op.Extern
+
+	OpLdGlobal // -> value of global Op.Int (ldsfld)
+	OpStGlobal // value -> ; store into global Op.Int (stsfld)
+
 	OpLabel
 	OpBr
 	OpBrTrue
@@ -300,4 +313,29 @@ type Op struct {
 	// Struct field access (OpLdFld/OpStFld/OpInitObj).
 	Struct *Struct
 	Field  int
+
+	// External shim call (OpCallExtern).
+	Extern *Extern
+}
+
+// Extern describes a static method in a shim assembly (e.g. GoCLR.Stdlib) that a
+// Go stdlib call lowers to. Params/Ret are the IR types used to build its
+// signature and stack effect.
+type Extern struct {
+	Assembly  string // e.g. "GoCLR.Stdlib"
+	Namespace string // e.g. "GoCLR.Stdlib"
+	Type      string // e.g. "Math"
+	Method    string // e.g. "Sqrt"
+	Params    []Type
+	Ret       Type
+}
+
+// Key uniquely identifies an extern for dedup in the emitter.
+func (e *Extern) Key() string {
+	return e.Assembly + " " + e.Namespace + "." + e.Type + "." + e.Method
+}
+
+// TypeKey identifies the extern's declaring type (for TypeRef dedup).
+func (e *Extern) TypeKey() string {
+	return e.Assembly + " " + e.Namespace + "." + e.Type
 }

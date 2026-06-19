@@ -285,7 +285,7 @@ func (l *funcLowerer) goStmt(s *ast.GoStmt) {
 		l.fail(s.Pos(), "go statement (only named functions and func literals)")
 		return
 	}
-	callee, ok := l.byName[fun.Name]
+	callee, ok := l.byFunc[l.funcObj(fun)]
 	if !ok {
 		l.fail(s.Pos(), "go call to "+fun.Name)
 		return
