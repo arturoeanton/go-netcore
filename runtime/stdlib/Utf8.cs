@@ -95,6 +95,9 @@ public static class Utf8
         if ((b0 & 0xF8) == 0xF0) return 4;
         return 1; // invalid lead byte: a single (error) rune
     }
+    // RuneStart reports whether b is the first byte of an encoded rune.
+    public static bool RuneStart(int b) => (b & 0xC0) != 0x80;
+
     public static bool FullRune(GoSlice p)
     {
         if (p.Len == 0) return false;
