@@ -25,6 +25,11 @@ func (l *funcLowerer) expr(e ast.Expr) {
 		l.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
 		return
 	}
+	// Shimmed stdlib package variable (os.Stdout, …) -> accessor extern.
+	if ext, ok := l.shimVarExtern(e); ok {
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+		return
+	}
 	switch e := e.(type) {
 	case *ast.Ident:
 		if e.Name == "nil" {

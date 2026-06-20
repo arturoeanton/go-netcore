@@ -43,7 +43,7 @@ public static class Bytes
     public static bool HasPrefix(GoSlice s, GoSlice p) => B(s).AsSpan().StartsWith(B(p));
     public static bool HasSuffix(GoSlice s, GoSlice p) => B(s).AsSpan().EndsWith(B(p));
     public static long Index(GoSlice s, GoSlice sub) => Idx(B(s), B(sub));
-    public static long IndexByte(GoSlice s, long c)
+    public static long IndexByte(GoSlice s, int c)
     {
         var b = B(s);
         for (int i = 0; i < b.Length; i++) if (b[i] == (byte)c) return i;

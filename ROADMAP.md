@@ -188,12 +188,51 @@ just those two libs). Remaining LANGUAGE work — ALL required to close M2:
 
 **M2 language is effectively complete** for the echo/goja target. The only known
 gaps are a few stdlib-format niceties (float/complex println exact formatting,
-handled once fmt is overlaid). Next: **stdlib overlay** (errors/fmt/strconv/strings/sync) → M3 goja.
-Then the stdlib pivot: reflect (25 goja files — runtime-heavy), errors/fmt/strconv/strings/sync overlay.
+handled once fmt is overlaid). Next: **M2.5 stdlib overlay** → M3 goja.
 
-Then the stdlib pivot:
-- 🚧 errors, fmt, strconv, strings, sync, sync/atomic overlay
-- 🚧 (then M3 goja, M4 net/http+Kestrel, M5 Echo)
+### M2.5 — stdlib overlay 🟡 (in progress)
+Full plan in `ROADMAP-M2.5.md` (overlay mechanism, missing core pkgs, reflect
+keystone, semantic-parity hazards, priority matrix). Delivery mechanism done; P0
+packages landing incrementally, each verified byte-exact vs `go run` via the
+conformance harness. **82 conformance fixtures pass.**
+
+Foundations (the "how"):
+- ✅ **multi-package lowering** — compiles main + its transitive non-stdlib
+  dependency closure into one assembly (CLR-name prefixes per package; cross-package
+  calls resolve through a global `*types.Func`→method map).
+- ✅ **package-level vars + `init()`** — globals as static fields (ldsfld/stsfld);
+  var initializers + `init()` run in a generated `__goclr_init` before `main`.
+- ✅ **C# shim / extern-ref mechanism** — dynamic external method references beyond
+  the fixed token spine; `GoCLR.Stdlib.dll` (2nd managed assembly) holds shims that
+  work on the runtime types; linker copies it. Supports variadic + multi-result
+  (`object[]` tuples) shims.
+- ✅ **opaque value-type pattern** — stdlib value types with methods (sync.\*,
+  time.Time, strings.Builder, bytes.Buffer) map to runtime handles; zero value calls
+  a registered constructor; `&v` shares the one handle.
+- ✅ **shim variables** — `os.Stdout`/`os.Stderr`/`time.UTC` resolve to accessor
+  externs.
+- ✅ **reflect keystone** — reflection done in C# over the boxed values + a
+  compiler-emitted struct-tag registry (read-path); gates fmt-%v / json / template.
+
+P0 packages shimmed (byte-exact): `math`, `strings` (+`strings.Builder`), `bytes`
+(+`bytes.Buffer`), `errors`, `unicode`, `unicode/utf8`, `strconv`, `math/bits`,
+`os`, `reflect`, `encoding/json` (Marshal), `fmt` (+`Fprint*`), `io`
+(`WriteString`), `sort`, `sync` (Mutex/RWMutex/WaitGroup/Once/Map), `time`
+(Duration + `time.Time` incl. `Format`). String conversions
+(`string(rune)`/`[]byte`/`[]rune`) and the `error` model (IGoError fallback) done.
+
+P0 remaining:
+- 🚧 `math/rand` (port Go's deterministic seeded generator for byte-match)
+- 🚧 `context` (Background/TODO/WithValue + Done/Err/Value; CancelFunc variants need func-value work)
+- 🚧 **write-path**: `json.Unmarshal` + `reflect.Value.Set*`/`New`/`Elem`
+- 🚧 float shortest-round-trip (`strconv` ftoa) parity for exact `%g`/`%v`
+
+Known documented limitations:
+- `time.Time` operates in **UTC** (Go uses Local in `time.Unix`/`Now`); use `.UTC()`
+  for cross-runtime determinism.
+- a named numeric type with a `String()` method (e.g. `time.Duration`) passed to
+  `fmt` as `any` prints the raw value, not the Stringer output — call `.String()`
+  explicitly (general boxed-Stringer support is pending).
 
 ### M3 — goja
 - 🟡 compatibility analysis runs; `analyze` flags goja's `unsafe.Pointer` use in

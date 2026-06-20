@@ -54,6 +54,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Sprint": {"Fmt", "Sprint"}, "Sprintln": {"Fmt", "Sprintln"}, "Sprintf": {"Fmt", "Sprintf"},
 		"Print": {"Fmt", "Print"}, "Println": {"Fmt", "Println"}, "Printf": {"Fmt", "Printf"},
 		"Errorf": {"Fmt", "Errorf"},
+		"Fprint": {"Fmt", "Fprint"}, "Fprintln": {"Fmt", "Fprintln"}, "Fprintf": {"Fmt", "Fprintf"},
+	},
+	"io": {
+		"WriteString": {"Io", "WriteString"},
 	},
 	"sort": {
 		"Ints": {"Sort", "Ints"}, "Float64s": {"Sort", "Float64s"}, "Strings": {"Sort", "Strings"},
@@ -61,6 +65,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"time": {
 		"Sleep": {"Time", "Sleep"},
+		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
 	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
@@ -117,6 +122,36 @@ var opaqueShimTypes = map[string]bool{
 	"sync.Map":          true,
 	"strings.Builder":   true,
 	"bytes.Buffer":      true,
+	"os.File":           true,
+	"time.Time":         true,
+	"time.Location":     true,
+}
+
+// shimVarRegistry maps "importpath.VarName" stdlib package variables to a
+// no-argument accessor returning the runtime object.
+var shimVarRegistry = map[string]shimFunc{
+	"os.Stdout":  {"Os", "Stdout"},
+	"os.Stderr":  {"Os", "Stderr"},
+	"time.UTC":   {"Time", "UTC"},
+	"time.Local": {"Time", "Local"},
+}
+
+// shimVarExtern returns the accessor extern for a shimmed stdlib package variable
+// reference (e.g. os.Stdout), if e is one.
+func (l *funcLowerer) shimVarExtern(e ast.Expr) (*goir.Extern, bool) {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok {
+		return nil, false
+	}
+	v, ok := l.pkg.TypesInfo.Uses[sel.Sel].(*types.Var)
+	if !ok || v.Pkg() == nil {
+		return nil, false
+	}
+	sf, ok := shimVarRegistry[v.Pkg().Path()+"."+v.Name()]
+	if !ok {
+		return nil, false
+	}
+	return &goir.Extern{Assembly: shimAssembly, Namespace: shimAssembly, Type: sf.csType, Method: sf.csMethod, Ret: goir.TObject}, true
 }
 
 // opaqueZeroCtor maps an opaque value-type shim to the constructor producing its
@@ -129,6 +164,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"sync.Map":        {"Sync", "NewMap"},
 	"strings.Builder": {"StringsBuilder", "New"},
 	"bytes.Buffer":    {"BytesBuffer", "New"},
+	"time.Time":       {"Time", "TimeZero"},
 }
 
 // shimZeroExtern returns the zero-value constructor extern for an opaque value
@@ -159,6 +195,17 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"String": {"Reflect", "Type_String"}, "NumField": {"Reflect", "Type_NumField"},
 		"Elem": {"Reflect", "Type_Elem"},
 	},
+	"strings.Builder": {
+		"WriteString": {"StringsBuilder", "WriteString"}, "WriteByte": {"StringsBuilder", "WriteByte"},
+		"WriteRune": {"StringsBuilder", "WriteRune"}, "Write": {"StringsBuilder", "Write"},
+		"String": {"StringsBuilder", "String"}, "Len": {"StringsBuilder", "Len"},
+		"Cap": {"StringsBuilder", "Cap"}, "Reset": {"StringsBuilder", "Reset"}, "Grow": {"StringsBuilder", "Grow"},
+	},
+	"bytes.Buffer": {
+		"WriteString": {"BytesBuffer", "WriteString"}, "WriteByte": {"BytesBuffer", "WriteByte"},
+		"Write": {"BytesBuffer", "Write"}, "String": {"BytesBuffer", "String"},
+		"Bytes": {"BytesBuffer", "Bytes"}, "Len": {"BytesBuffer", "Len"}, "Reset": {"BytesBuffer", "Reset"},
+	},
 	"sync.Mutex": {
 		"Lock": {"Sync", "Mutex_Lock"}, "Unlock": {"Sync", "Mutex_Unlock"}, "TryLock": {"Sync", "Mutex_TryLock"},
 	},
@@ -174,6 +221,16 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"sync.Map": {
 		"Store": {"Sync", "Map_Store"}, "Load": {"Sync", "Map_Load"}, "Delete": {"Sync", "Map_Delete"},
+	},
+	"time.Time": {
+		"Unix": {"Time", "Time_Unix"}, "UnixNano": {"Time", "Time_UnixNano"}, "UnixMilli": {"Time", "Time_UnixMilli"},
+		"Year": {"Time", "Time_Year"}, "Month": {"Time", "Time_Month"}, "Day": {"Time", "Time_Day"},
+		"Hour": {"Time", "Time_Hour"}, "Minute": {"Time", "Time_Minute"}, "Second": {"Time", "Time_Second"},
+		"Nanosecond": {"Time", "Time_Nanosecond"}, "Weekday": {"Time", "Time_Weekday"},
+		"Add": {"Time", "Time_Add"}, "Sub": {"Time", "Time_Sub"},
+		"Before": {"Time", "Time_Before"}, "After": {"Time", "Time_After"}, "Equal": {"Time", "Time_Equal"},
+		"IsZero": {"Time", "Time_IsZero"}, "UTC": {"Time", "Time_UTC"}, "Local": {"Time", "Time_Local"},
+		"String": {"Time", "Time_String"}, "Format": {"Time", "Time_Format"},
 	},
 	"time.Duration": {
 		"Seconds": {"Time", "Duration_Seconds"}, "Minutes": {"Time", "Duration_Minutes"},

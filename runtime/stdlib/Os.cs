@@ -2,9 +2,18 @@ namespace GoCLR.Stdlib;
 
 using GoCLR.Runtime;
 
+/// <summary>A minimal os.File handle (currently the standard streams).</summary>
+public sealed class GoFile { public bool IsStderr; }
+
 /// <summary>Shim for a subset of Go's <c>os</c> package.</summary>
 public static class Os
 {
+    private static readonly GoFile StdoutFile = new() { IsStderr = false };
+    private static readonly GoFile StderrFile = new() { IsStderr = true };
+
+    public static object Stdout() => StdoutFile;
+    public static object Stderr() => StderrFile;
+
     public static GoString Getenv(GoString key) =>
         GoString.FromDotNetString(System.Environment.GetEnvironmentVariable(key.ToDotNetString()) ?? "");
 

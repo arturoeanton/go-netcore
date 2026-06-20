@@ -49,7 +49,7 @@ public static class Strings
         }
         return -1;
     }
-    public static long IndexByte(GoString s, long c)
+    public static long IndexByte(GoString s, int c)
     {
         byte[] b = s.Bytes;
         for (int i = 0; i < b.Length; i++) if (b[i] == (byte)c) return i;

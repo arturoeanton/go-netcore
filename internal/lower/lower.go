@@ -484,6 +484,15 @@ func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
 		if isOpaqueShimType(named) {
 			return goir.Type{Kind: goir.KObject, Shim: named.Obj().Pkg().Path() + "." + named.Obj().Name()}, true
 		}
+	}
+	// A pointer to an opaque value-type shim IS that shim's runtime object
+	// (*bytes.Buffer and bytes.Buffer share one handle).
+	if pt, ok := t.Underlying().(*types.Pointer); ok {
+		if named, ok := pt.Elem().(*types.Named); ok && isOpaqueShimType(named) {
+			return goir.Type{Kind: goir.KObject, Shim: named.Obj().Pkg().Path() + "." + named.Obj().Name()}, true
+		}
+	}
+	if named, ok := t.(*types.Named); ok {
 		if _, isStruct := named.Underlying().(*types.Struct); isStruct {
 			return goir.StructType(c.structFor(named)), true
 		}

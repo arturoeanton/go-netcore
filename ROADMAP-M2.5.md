@@ -17,6 +17,38 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ---
 
+## Progress (live)
+
+**82 conformance fixtures pass, all byte-exact vs `go run`.**
+
+Foundations (§0.1) — **DONE**: multi-package lowering (main + transitive non-stdlib
+closure → one assembly), package-level vars + `init()` (`__goclr_init`), the C# shim /
+extern-ref mechanism (dynamic MemberRef/TypeRef/AssemblyRef beyond the fixed token
+spine; `GoCLR.Stdlib.dll` 2nd managed assembly; linker copies it; variadic +
+multi-result `object[]` shims), the **opaque value-type pattern** (sync.\*/time.Time/
+strings.Builder/bytes.Buffer as runtime handles, `&v` shares the handle), and **shim
+variables** (`os.Stdout`/`Stderr`/`time.UTC`).
+
+Reflect keystone (§5) — **read-path DONE**: reflection in C# over boxed values + a
+compiler-emitted struct-tag registry; powers `fmt %v/%+v`, `json.Marshal`.
+
+P0 packages shimmed (byte-exact): `math`, `strings` (+`Builder`), `bytes` (+`Buffer`),
+`errors`, `unicode`, `unicode/utf8`, `strconv`, `math/bits`, `os`, `reflect`,
+`encoding/json` (Marshal), `fmt` (+`Fprint*`), `io` (`WriteString`), `sort`, `sync`
+(Mutex/RWMutex/WaitGroup/Once/Map), `time` (Duration + `time.Time`/`Format`).
+String conversions and the `error` model (IGoError fallback) done.
+
+P0 remaining: `math/rand` (seeded deterministic port), `context` (Background/TODO/
+WithValue + Done/Err/Value), the **write-path** (`json.Unmarshal` +
+`reflect.Value.Set*`/`New`/`Elem`), and float shortest-round-trip (`strconv` ftoa)
+parity for exact `%g`/`%v`.
+
+Documented limitations: `time.Time` is UTC-only (use `.UTC()` for determinism;
+Go uses Local); a named numeric type with `String()` (e.g. `time.Duration`) passed to
+`fmt` as `any` prints the raw value — call `.String()` (boxed-Stringer pending).
+
+---
+
 ## 0. Foundations that must exist BEFORE per-package work
 
 These are not packages — they are the machinery the whole overlay depends on.

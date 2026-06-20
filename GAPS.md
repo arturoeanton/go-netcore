@@ -27,12 +27,12 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Funcs (recursion) ✅; methods (value + pointer receivers) ✅ | ✅ | M | ✅ |
 | Multiple return values + multiple/parallel assignment (object[] tuples) | ✅ | M | ✅ |
 | Closures + function values (lambda-lift + GoClosure, by-ref capture) | ✅ | M | ✅ |
-| Control flow: if/for/switch ✅; range over string/slice/map ✅ | 🟡 | M | ✅ |
-| range over channel/int/array, goto, labels, labeled break/continue | 🚧 | M | ✅ |
-| Variadic functions (`f(args ...T)`, fmt.Println) — needed by fmt/Echo | 🚧 | M | ✅ |
-| Goroutines (`go f()`) + channels + select (runtime exists, lowering 🚧) | 🚧 | L | ✅ |
-| Generics / type parameters | 🚧 | L | ✅ |
-| Extra numeric types (uint*/float*/complex), fallthrough | 🚧 | M | 🟡 |
+| Control flow: if/for/switch ✅; range over string/slice/map ✅ | ✅ | M | ✅ |
+| range over channel/int/array, goto, labels, labeled break/continue | ✅ | M | ✅ |
+| Variadic functions (`f(args ...T)`, fmt.Println) — needed by fmt/Echo | ✅ | M | ✅ |
+| Goroutines (`go f()` + `go func(a){}(x)`) + channels + select | ✅ | L | ✅ |
+| Generics / type parameters (functions + types/methods, monomorphized) | ✅ | L | ✅ |
+| Extra numeric types (uint*/float*/complex ✅), fallthrough ✅ | ✅ | M | 🟡 |
 | range over string (runes + byte index) | ✅ | S | ✅ |
 | runtime strings: GoString len/index/concat/compare | ✅ | M | ✅ |
 | Structs as value types + composite literals + field access | ✅ | L | ✅ |
@@ -41,40 +41,43 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Managed pointers (GoPtr cell): &x/*p, &T{}, new, ptr-to-struct, nil, aliasing | ✅ | M | ✅ |
 | Empty interface `any` + type assert + type switch | ✅ | L | ✅ |
 | Named interfaces + error + method dispatch (value-receiver implementers) | ✅ | L | ✅ |
-| Pointer-receiver interface implementers (type-tag needed) | 🚧 | M | ✅ |
+| Pointer-receiver interface implementers (GoPtr type-id tag + dispatch) | ✅ | M | ✅ |
 | Defer/panic/recover (CIL exception-handling clauses, LIFO defers) | ✅ | M | ✅ |
-| Goroutines lowering | 🚧 | S | ✅ |
-| Channels + select lowering | 🚧 | M | 🟡 |
-| Generics | 🚧 | L | ✅ |
-| Reflection lowering + generated descriptors | 🚧 | L | ✅ |
+| Goroutines lowering | ✅ | S | ✅ |
+| Channels + select lowering | ✅ | M | 🟡 |
+| Generics | ✅ | L | ✅ |
+| Reflection lowering + emitted struct-tag descriptors (read-path) | 🟡 | L | ✅ |
+| Multi-package lowering + globals + init() + C# shim/extern mechanism | ✅ | XL | ✅ |
 
 ## 3. .NET runtime (`GoCLR.Runtime`)
 
 | Piece | State | Effort | MVP? |
 |---|---|---|---|
 | GoString/Slice/Map/Ptr/Interface/panic/defer/goroutine/channel/error | ✅ | — | ✅ |
-| sync: Mutex/RWMutex/Once/WaitGroup/Pool/Cond | 🚧 | M | ✅ |
+| sync: Mutex/RWMutex/Once/WaitGroup/Map (Pool/Cond pending) | 🟡 | M | ✅ |
 | sync/atomic | 🚧 | S | ✅ |
-| GoArray, complex64/128, Bytes helpers | 🚧 | S | 🟡 |
-| reflect runtime | 🚧 | L | ✅ |
-| Time/Atomic/Console/GoFunc/struct value helpers | 🟡 | M | ✅ |
+| complex64/128 ✅; GoArray, Bytes helpers | 🟡 | S | 🟡 |
+| reflect runtime (read-path: kinds/fields/tags/values; write-path pending) | 🟡 | L | ✅ |
+| Time (Duration + time.Time/Format), Console/GoFunc/struct value helpers | 🟡 | M | ✅ |
 | select runtime, ASCII fast-path, intern pool | 🚧 | M | 🟡 |
 
-## 4. Stdlib overlay (only the map exists today)
+## 4. Stdlib overlay (C# shim mechanism live; 82 conformance fixtures byte-exact)
 
 | Package(s) | State | Effort | MVP? |
 |---|---|---|---|
-| errors/fmt/strconv/strings/bytes/sort/math | 🚧 | M | ✅ |
-| io/bufio/context | 🚧 | M | ✅ |
-| encoding/json (System.Text.Json shim, Go tags) | 🚧 | L | ✅ |
+| errors/fmt/strconv/strings/bytes/sort/math/math-bits | 🟡 (shimmed; float ftoa parity pending) | M | ✅ |
+| strings.Builder / bytes.Buffer / io.WriteString / fmt.Fprint* | ✅ | M | ✅ |
+| io (Reader/Writer ifaces, ReadAll/Copy) / bufio / context | 🚧 | M | ✅ |
+| encoding/json — Marshal (Go tags, sorted keys) ✅; Unmarshal 🚧 | 🟡 | L | ✅ |
 | net/http overlay on Kestrel | 🚧 | XL | ✅ |
 | net/url, mime, mime/multipart | 🚧 | M | ✅ |
 | regexp (+ syntax) | 🚧 | L | ✅ |
-| unicode/utf8/utf16 | 🚧 | S | ✅ |
-| reflect (subset for goja) | 🚧 | L | ✅ |
-| time/runtime/log/log-slog | 🚧 | M | ✅ |
-| os (partial)/path/filepath | 🚧 | M | ✅ |
-| GoCLR.Stdlib.dll packaging | 🚧 | M | ✅ |
+| unicode/utf8 ✅; utf16 | 🟡 | S | ✅ |
+| reflect (read-path: kinds/fields/tags/values) ✅; settable write-path 🚧 | 🟡 | L | ✅ |
+| time (Duration + time.Time/Format) ✅; runtime/log/slog 🚧 | 🟡 | M | ✅ |
+| os (env/exit/getpid/Stdout/Stderr) ✅; path/filepath 🚧 | 🟡 | M | ✅ |
+| math/rand (seeded, deterministic) | 🚧 | M | ✅ |
+| GoCLR.Stdlib.dll packaging + linker copy | ✅ | M | ✅ |
 
 ## 5. Target dependency compatibility
 
@@ -101,8 +104,8 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 
 | Item | State | Effort | MVP? |
 |---|---|---|---|
-| Conformance runner (go vs goclr: stdout/stderr/exit) | ✅ | S | ✅ |
-| 20 conformance tests (001–020) | 🟡 (5 M0-subset pass; rest skip until M1) | M | ✅ |
+| Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
+| 82 conformance fixtures (000–283), all byte-exact vs `go run` | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |

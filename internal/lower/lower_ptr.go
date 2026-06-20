@@ -20,6 +20,11 @@ func (c *lowerCtx) analyzeAddrTaken(body ast.Node) map[types.Object]bool {
 	mark := func(e ast.Expr) {
 		if id, ok := unparen(e).(*ast.Ident); ok {
 			if v, ok := pkg.TypesInfo.Uses[id].(*types.Var); ok {
+				// Opaque value-type shims are already reference handles; taking
+				// their address does not require a cell.
+				if t, ok := c.goType(v.Type()); ok && t.Shim != "" {
+					return
+				}
 				set[v] = true
 			}
 		}
@@ -167,6 +172,11 @@ func (l *funcLowerer) emitAddr(e ast.Expr) bool {
 
 // addrOf lowers &operand, leaving a GoPtr on the stack.
 func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
+	// &opaqueShimValue is the same runtime object (it is already a reference).
+	if l.exprType(e.X).Shim != "" {
+		l.expr(e.X)
+		return
+	}
 	switch x := unparen(e.X).(type) {
 	case *ast.Ident:
 		if !l.emitAddr(x) {

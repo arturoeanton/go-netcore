@@ -51,6 +51,24 @@ public static class Fmt
     public static object Errorf(GoString format, GoSlice args) =>
         new GoError(GoString.FromDotNetString(DoSprintf(format.ToDotNetString(), Args(args))));
 
+    /// <summary>Write a string to an io.Writer the runtime understands (a buffer,
+    /// builder, or stdout/stderr); returns the byte count.</summary>
+    internal static long WriteTo(object? w, string s)
+    {
+        switch (w)
+        {
+            case GoStringBuilder sb: sb.SB.Append(s); break;
+            case GoBuffer buf: foreach (byte b in Encoding.UTF8.GetBytes(s)) buf.B.Add(b); break;
+            case GoFile f when f.IsStderr: System.Console.Error.Write(s); System.Console.Error.Flush(); break;
+            default: Out(s); break;
+        }
+        return Encoding.UTF8.GetByteCount(s);
+    }
+
+    public static object?[] Fprint(object? w, GoSlice args) { long n = WriteTo(w, Sprint(args).ToDotNetString()); return new object?[] { n, null }; }
+    public static object?[] Fprintln(object? w, GoSlice args) { long n = WriteTo(w, Sprintln(args).ToDotNetString()); return new object?[] { n, null }; }
+    public static object?[] Fprintf(object? w, GoString format, GoSlice args) { long n = WriteTo(w, DoSprintf(format.ToDotNetString(), Args(args))); return new object?[] { n, null }; }
+
     private static string DoSprintf(string f, object?[] args)
     {
         var sb = new StringBuilder();
