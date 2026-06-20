@@ -42,16 +42,15 @@ func (c *lowerCtx) analyzeAddrTaken(body ast.Node) map[types.Object]bool {
 			if n.Op == token.AND {
 				mark(n.X)
 			}
-		case *ast.CallExpr:
-			// A pointer-receiver method called on an addressable value takes
-			// its address implicitly (u.PtrMethod() == (&u).PtrMethod()).
-			if sel, ok := n.Fun.(*ast.SelectorExpr); ok {
-				if seln := pkg.TypesInfo.Selections[sel]; seln != nil && seln.Kind() == types.MethodVal {
-					if fn, ok := seln.Obj().(*types.Func); ok {
-						if sig, ok := fn.Type().(*types.Signature); ok && isPointerType(sig.Recv().Type()) {
-							if !isPointerType(pkg.TypesInfo.TypeOf(sel.X)) {
-								mark(sel.X)
-							}
+		case *ast.SelectorExpr:
+			// A pointer-receiver method called on, or taken as a value from, an
+			// addressable value takes its address implicitly (u.PtrMethod() and the
+			// method value u.PtrMethod both bind &u).
+			if seln := pkg.TypesInfo.Selections[n]; seln != nil && seln.Kind() == types.MethodVal {
+				if fn, ok := seln.Obj().(*types.Func); ok {
+					if sig, ok := fn.Type().(*types.Signature); ok && isPointerType(sig.Recv().Type()) {
+						if !isPointerType(pkg.TypesInfo.TypeOf(n.X)) {
+							mark(n.X)
 						}
 					}
 				}

@@ -204,6 +204,100 @@ func (l *funcLowerer) funcValueCall(e *ast.CallExpr) goir.Type {
 	return retType
 }
 
+// methodValue lowers a bound method value `recv.M` (not called): it captures the
+// receiver and produces a GoClosure whose lifted body invokes the method with the
+// captured receiver, so the value can be called or passed like any func value.
+func (l *funcLowerer) methodValue(sel *ast.SelectorExpr, seln *types.Selection) goir.Type {
+	fn, _ := seln.Obj().(*types.Func)
+	if fn == nil {
+		l.fail(sel.Pos(), "method value")
+		return goir.TFunc
+	}
+	m := l.byFunc[fn]
+	if m == nil {
+		if gm, ok := l.instantiateMethod(fn, seln); ok {
+			m = gm
+		} else {
+			l.fail(sel.Pos(), "method value "+sel.Sel.Name)
+			return goir.TFunc
+		}
+	}
+	l.needsInvoker = true
+	l.invokeMethod()
+
+	id := len(l.closures)
+	method := &goir.Method{
+		Name:    "__mvalue_" + itoa(id),
+		GoName:  "__mvalue_" + itoa(id),
+		Params:  []goir.Type{goir.TObjectArray, goir.TObjectArray}, // env, args
+		Ret:     goir.TObject,
+		Results: []goir.Type{goir.TObject},
+	}
+	ci := &closureInfo{id: id, method: method}
+	l.closures = append(l.closures, ci)
+	l.prog.Methods = append(l.prog.Methods, method)
+
+	// Lifted body: receiver = env[0]; args from args[]; call the method; box result.
+	recvType := m.Params[0]
+	cl := &funcLowerer{lowerCtx: l.lowerCtx, m: method, ok: true}
+	cl.typeSubst = l.typeSubst
+	cl.locals = map[types.Object]int{}
+	cl.cells = map[int]goir.Type{}
+	cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 0})
+	cl.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+	cl.emit(goir.Op{Code: goir.OpLdElemRef})
+	cl.emitUnbox(recvType)
+	for i, pt := range m.Params[1:] {
+		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
+		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+		cl.emit(goir.Op{Code: goir.OpLdElemRef})
+		cl.emitUnbox(pt)
+	}
+	cl.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
+	if m.Ret == goir.TVoid {
+		cl.emit(goir.Op{Code: goir.OpLdNull})
+	} else {
+		cl.emitBox(m.Ret)
+	}
+	cl.emit(goir.Op{Code: goir.OpRet})
+
+	// At the site: env = object[]{ boxed receiver }; GoClosures.New(id, env).
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(id)})
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 1})
+	l.emit(goir.Op{Code: goir.OpNewObjArray})
+	l.emit(goir.Op{Code: goir.OpDup})
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+	l.emitMethodReceiver(sel, fn, recvType)
+	l.emit(goir.Op{Code: goir.OpStelemRef})
+	l.emit(goir.Op{Code: goir.OpClosNew})
+	return goir.TFunc
+}
+
+// emitMethodReceiver pushes the receiver for a method value, adapting the base
+// expression to the method's value/pointer receiver (then leaving it boxed).
+func (l *funcLowerer) emitMethodReceiver(sel *ast.SelectorExpr, fn *types.Func, recvType goir.Type) {
+	sig := fn.Type().(*types.Signature)
+	recvIsPtr := isPointerType(sig.Recv().Type())
+	baseType := l.exprType(sel.X)
+	baseIsPtr := baseType.Kind == goir.KPtr
+	switch {
+	case recvIsPtr && baseIsPtr:
+		l.expr(sel.X)
+	case recvIsPtr && !baseIsPtr:
+		if !l.emitAddr(sel.X) {
+			l.fail(sel.Pos(), "method value needs an addressable receiver")
+			return
+		}
+	case !recvIsPtr && baseIsPtr:
+		l.expr(sel.X)
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(*baseType.Elem)
+	default:
+		l.expr(sel.X)
+	}
+	l.emitBox(recvType)
+}
+
 // isFuncValue reports whether an expression denotes a function VALUE (a closure),
 // as opposed to a direct reference to a named function.
 func (l *funcLowerer) isFuncValue(e ast.Expr) bool {

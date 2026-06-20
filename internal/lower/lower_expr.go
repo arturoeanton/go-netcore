@@ -66,6 +66,10 @@ func (l *funcLowerer) expr(e ast.Expr) {
 	case *ast.TypeAssertExpr:
 		l.typeAssert(e)
 	case *ast.SelectorExpr:
+		if seln := l.pkg.TypesInfo.Selections[e]; seln != nil && seln.Kind() == types.MethodVal {
+			l.methodValue(e, seln)
+			return
+		}
 		l.fieldRead(e)
 	case *ast.CompositeLit:
 		l.compositeLit(e)
