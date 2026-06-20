@@ -6,10 +6,38 @@ using GoCLR.Runtime;
 /// <summary>A *big.Int handle (mutable, like Go's receiver-as-destination).</summary>
 public sealed class GoBigInt { public BigInteger V; }
 
+/// <summary>A *big.Float handle. Backed by double (best-effort): exact for the JS
+/// Number range goja converts through it (integers up to 2^53), lossy beyond.</summary>
+public sealed class GoBigFloat { public double V; }
+
 /// <summary>Shim for a subset of Go's <c>math/big</c> (Int). Methods return the
 /// receiver (the destination), matching Go's chaining.</summary>
 public static class Big
 {
+    // --- big.Float (double-backed) ---
+    private static double F(object o) => ((GoBigFloat)o).V;
+    public static object NewFloat(double x) => new GoBigFloat { V = x };
+    public static object FloatZero() => new GoBigFloat { V = 0 };
+    public static object Float_SetInt(object z, object x) { ((GoBigFloat)z).V = (double)V(x); return z; }
+    public static object Float_Sub(object z, object x, object y) { ((GoBigFloat)z).V = F(x) - F(y); return z; }
+    public static long Float_Cmp(object z, object y) => F(z).CompareTo(F(y));
+    public static long Float_Sign(object z) => System.Math.Sign(F(z));
+    public static bool Float_IsInt(object z) { double v = F(z); return !double.IsInfinity(v) && !double.IsNaN(v) && v == System.Math.Truncate(v); }
+    public static GoString Float_String(object z) => GoString.FromDotNetString(GoCLR.Runtime.GoFtoa.Shortest(F(z)));
+    public static GoString Float_Text(object z, int fmt, long prec) => GoString.FromDotNetString(GoCLR.Runtime.GoFtoa.Shortest(F(z)));
+    public static object?[] Float_Int(object z, object? dst)
+    {
+        var d = dst as GoBigInt ?? new GoBigInt();
+        d.V = new BigInteger(System.Math.Truncate(F(z)));
+        return new object?[] { d, 0L }; // (*Int, Accuracy=Exact)
+    }
+    public static object?[] Float_SetString(object z, GoString s)
+    {
+        if (double.TryParse(s.ToDotNetString(), System.Globalization.NumberStyles.Float, Inv, out double v))
+        { ((GoBigFloat)z).V = v; return new object?[] { z, true }; }
+        return new object?[] { null, false };
+    }
+
     public static object NewInt(long x) => new GoBigInt { V = x };
     public static object IntZero() => new GoBigInt { V = 0 };
     private static BigInteger V(object o) => ((GoBigInt)o).V;

@@ -87,7 +87,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"SetFlags": {"Log", "SetFlags"}, "SetPrefix": {"Log", "SetPrefix"}, "Flags": {"Log", "Flags"}, "Prefix": {"Log", "Prefix"},
 	},
 	"math/big": {
-		"NewInt": {"Big", "NewInt"},
+		"NewInt": {"Big", "NewInt"}, "NewFloat": {"Big", "NewFloat"},
 	},
 	"path": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
@@ -255,6 +255,7 @@ var opaqueShimTypes = map[string]bool{
 	"hash.Hash32":                  true,
 	"hash.Hash64":                  true,
 	"math/big.Int":                 true,
+	"math/big.Float":               true,
 	"encoding/base32.Encoding":     true,
 	"strings.Reader":               true,
 	"bytes.Reader":                 true,
@@ -418,6 +419,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"bytes.Buffer":    {"BytesBuffer", "New"},
 	"time.Time":       {"Time", "TimeZero"},
 	"math/big.Int":    {"Big", "IntZero"},
+	"math/big.Float":  {"Big", "FloatZero"},
 }
 
 // shimZeroExtern returns the zero-value constructor extern for an opaque value
@@ -551,6 +553,11 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetInt64": {"Big", "Int_SetInt64"}, "SetUint64": {"Big", "Int_SetUint64"},
 		"Lsh": {"Big", "Int_Lsh"}, "Rsh": {"Big", "Int_Rsh"}, "SetBytes": {"Big", "Int_SetBytes"},
 		"Bytes": {"Big", "Int_Bytes"}, "Text": {"Big", "Int_Text"}, "DivMod": {"Big", "Int_DivMod"},
+	},
+	"math/big.Float": {
+		"SetInt": {"Big", "Float_SetInt"}, "Sub": {"Big", "Float_Sub"}, "Cmp": {"Big", "Float_Cmp"},
+		"Sign": {"Big", "Float_Sign"}, "IsInt": {"Big", "Float_IsInt"}, "String": {"Big", "Float_String"},
+		"Text": {"Big", "Float_Text"}, "Int": {"Big", "Float_Int"}, "SetString": {"Big", "Float_SetString"},
 	},
 	"strings.Replacer": {
 		"Replace": {"Strings", "Replacer_Replace"},
