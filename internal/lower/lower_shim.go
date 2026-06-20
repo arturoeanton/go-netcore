@@ -202,7 +202,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Join": {"Strings", "Join"}, "NewReader": {"Readers", "NewStringReader"}, "Cut": {"Strings", "Cut"}, "IndexRune": {"Strings", "IndexRune"},
 		"ContainsRune": {"Strings", "ContainsRune"}, "ContainsAny": {"Strings", "ContainsAny"},
 		"IndexAny": {"Strings", "IndexAny"}, "LastIndexByte": {"Strings", "LastIndexByte"},
-		"ToTitle": {"Strings", "ToTitle"}, "SplitAfter": {"Strings", "SplitAfter"}, "Map": {"Strings", "Map"},
+		"ToTitle": {"Strings", "ToTitle"}, "SplitAfter": {"Strings", "SplitAfter"}, "SplitAfterN": {"Strings", "SplitAfterN"}, "Map": {"Strings", "Map"},
 		"TrimFunc": {"Strings", "TrimFunc"}, "TrimLeftFunc": {"Strings", "TrimLeftFunc"}, "TrimRightFunc": {"Strings", "TrimRightFunc"},
 		"IndexFunc": {"Strings", "IndexFunc"}, "FieldsFunc": {"Strings", "FieldsFunc"},
 		"NewReplacer": {"Strings", "NewReplacer"},

@@ -180,6 +180,19 @@ public static class Strings
         return Slice(parts.ToArray());
     }
 
+    public static GoSlice SplitAfterN(GoString s, GoString sep, long n)
+    {
+        if (n == 0) return new GoSlice { Data = Array.Empty<object?>(), Len = 0, Cap = 0 };
+        if (n < 0) return SplitAfter(s, sep);
+        string str = s.ToDotNetString(), sp = sep.ToDotNetString();
+        var parts = new System.Collections.Generic.List<string>();
+        int start = 0, idx;
+        while (parts.Count < n - 1 && sp.Length > 0 && (idx = str.IndexOf(sp, start, StringComparison.Ordinal)) >= 0)
+        { parts.Add(str.Substring(start, idx + sp.Length - start)); start = idx + sp.Length; }
+        parts.Add(str.Substring(start));
+        return Slice(parts.ToArray());
+    }
+
     private static bool RunePred(GoClosure f, int r) => (bool)GoRuntime.InvokeArgs(f, r)!;
 
     public static GoString TrimFunc(GoString s, GoClosure f) => TrimRightFunc(TrimLeftFunc(s, f), f);
