@@ -140,6 +140,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"AddInt64": {"Atomic", "AddInt64"}, "AddInt32": {"Atomic", "AddInt32"}, "AddUint64": {"Atomic", "AddUint64"},
 		"LoadInt64": {"Atomic", "LoadInt64"}, "LoadInt32": {"Atomic", "LoadInt32"}, "LoadUint64": {"Atomic", "LoadUint64"},
 		"StoreInt64": {"Atomic", "StoreInt64"}, "StoreInt32": {"Atomic", "StoreInt32"}, "StoreUint64": {"Atomic", "StoreUint64"},
+		"LoadUint32": {"Atomic", "LoadUint32"}, "StoreUint32": {"Atomic", "StoreUint32"},
+		"AddUint32": {"Atomic", "AddUint32"}, "SwapUint64": {"Atomic", "SwapUint64"},
+		"CompareAndSwapUint64": {"Atomic", "CompareAndSwapUint64"}, "CompareAndSwapUint32": {"Atomic", "CompareAndSwapUint32"},
 		"SwapInt64": {"Atomic", "SwapInt64"}, "SwapInt32": {"Atomic", "SwapInt32"},
 		"CompareAndSwapInt64": {"Atomic", "CompareAndSwapInt64"}, "CompareAndSwapInt32": {"Atomic", "CompareAndSwapInt32"},
 	},
@@ -629,6 +632,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Uint64": {"Big", "Int_Uint64"}, "And": {"Big", "Int_And"}, "Or": {"Big", "Int_Or"},
 		"Xor": {"Big", "Int_Xor"}, "Not": {"Big", "Int_Not"}, "BitLen": {"Big", "Int_BitLen"},
 		"IsInt64": {"Big", "Int_IsInt64"}, "IsUint64": {"Big", "Int_IsUint64"},
+		"CmpAbs": {"Big", "Int_CmpAbs"}, "Sqrt": {"Big", "Int_Sqrt"}, "ProbablyPrime": {"Big", "Int_ProbablyPrime"},
+		"QuoRem": {"Big", "Int_QuoRem"},
 	},
 	"math/big.Float": {
 		"SetInt": {"Big", "Float_SetInt"}, "Sub": {"Big", "Float_Sub"}, "Cmp": {"Big", "Float_Cmp"},

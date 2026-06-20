@@ -64,6 +64,13 @@ public static class Big
         ((GoBigInt)z).V = r; return z;
     }
     public static object Int_Set(object z, object x) { ((GoBigInt)z).V = V(x); return z; }
+    // QuoRem: truncated division — z = x/y (toward zero), r = x - y*z; returns (z, r).
+    public static object?[] Int_QuoRem(object z, object x, object y, object r)
+    {
+        BigInteger q = BigInteger.DivRem(V(x), V(y), out BigInteger rem);
+        ((GoBigInt)z).V = q; ((GoBigInt)r).V = rem;
+        return new object?[] { z, r };
+    }
     // DivMod sets z to the Euclidean quotient and m to the (non-negative) modulus,
     // returning (z, m).
     public static object?[] Int_DivMod(object z, object x, object y, object m)
@@ -85,6 +92,26 @@ public static class Big
     public static long Int_BitLen(object x) { var a = BigInteger.Abs(V(x)); long n = 0; while (a > 0) { a >>= 1; n++; } return n; }
     public static bool Int_IsInt64(object x) => V(x) >= long.MinValue && V(x) <= long.MaxValue;
     public static bool Int_IsUint64(object x) => V(x) >= 0 && V(x) <= ulong.MaxValue;
+    public static long Int_CmpAbs(object x, object y) => BigInteger.Abs(V(x)).CompareTo(BigInteger.Abs(V(y)));
+    // Sqrt sets z to floor(sqrt(x)) (x must be non-negative), returning z.
+    public static object Int_Sqrt(object z, object x)
+    {
+        BigInteger n = V(x);
+        if (n < 0) throw new GoPanicException(GoString.FromDotNetString("square root of negative number"));
+        if (n == 0) { ((GoBigInt)z).V = 0; return z; }
+        BigInteger lo = 0, hi = n, r = 0;
+        while (lo <= hi) { var mid = (lo + hi) >> 1; if (mid * mid <= n) { r = mid; lo = mid + 1; } else hi = mid - 1; }
+        ((GoBigInt)z).V = r; return z;
+    }
+    public static bool Int_ProbablyPrime(object x, long n)
+    {
+        BigInteger v = V(x);
+        if (v < 2) return false;
+        if (v < 4) return true;
+        if (v % 2 == 0) return false;
+        for (BigInteger i = 3; i * i <= v; i += 2) if (v % i == 0) return false;
+        return true;
+    }
     public static object Int_Lsh(object z, object x, ulong n) { ((GoBigInt)z).V = V(x) << (int)n; return z; }
     public static object Int_Rsh(object z, object x, ulong n) { ((GoBigInt)z).V = V(x) >> (int)n; return z; }
 

@@ -17,7 +17,7 @@ type tokenSet struct {
 	println    uint32 // MemberRef Builtins.Println(object[])
 	print      uint32 // MemberRef Builtins.Print(object[])
 	method     func(*goir.Method) uint32
-	us         map[string]uint16 // #US offsets for ldstr
+	us         map[string]uint32 // #US offsets for ldstr
 	structType func(*goir.Struct) uint32
 	field      func(*goir.Struct, int) uint32
 	global     func(int) uint32          // static-field token for a global index

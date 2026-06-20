@@ -126,7 +126,7 @@ func Emit(prog *goir.Program, outPath string) error {
 	h := newHeaps()
 
 	// Intern user strings first so ldstr offsets are stable.
-	usOff := map[string]uint16{}
+	usOff := map[string]uint32{}
 	for _, m := range prog.Methods {
 		for _, op := range m.Code {
 			if op.Code == goir.OpLdStr || op.Code == goir.OpStrConst {
@@ -157,7 +157,7 @@ func Emit(prog *goir.Program, outPath string) error {
 
 	// Assign StandAloneSig rows for methods with locals.
 	localSigTok := map[*goir.Method]uint32{}
-	var sigBlobOffsets []uint16
+	var sigBlobOffsets []uint32
 	for _, m := range prog.Methods {
 		if len(m.Locals) == 0 {
 			continue

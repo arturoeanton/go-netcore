@@ -6,12 +6,12 @@ import (
 )
 
 // heaps accumulates the four ECMA-335 metadata heaps. Indices are byte offsets
-// (#Strings/#US/#Blob) or 1-based indices (#GUID). HeapSizes is kept at 0, so all
-// heap references in the tables stream are 2 bytes — this holds as long as no
-// heap exceeds 64 KiB, which is always true for the M0 outputs.
+// (#Strings/#US/#Blob) or 1-based indices (#GUID), all uint32. The tables stream
+// always references the #Strings/#GUID/#Blob heaps with 4-byte indices (HeapSizes
+// = 0x07), so a heap may grow past 64 KiB — required for large programs (goja).
 type heaps struct {
 	strings   []byte
-	stringMap map[string]uint16
+	stringMap map[string]uint32
 	blobs     []byte
 	us        []byte
 	guids     []byte
@@ -20,17 +20,17 @@ type heaps struct {
 func newHeaps() *heaps {
 	return &heaps{
 		strings:   []byte{0}, // offset 0 == empty string
-		stringMap: map[string]uint16{"": 0},
+		stringMap: map[string]uint32{"": 0},
 		blobs:     []byte{0}, // offset 0 == empty blob
 		us:        []byte{0}, // offset 0 == empty user string
 	}
 }
 
-func (h *heaps) addString(s string) uint16 {
+func (h *heaps) addString(s string) uint32 {
 	if off, ok := h.stringMap[s]; ok {
 		return off
 	}
-	off := uint16(len(h.strings))
+	off := uint32(len(h.strings))
 	h.strings = append(h.strings, s...)
 	h.strings = append(h.strings, 0)
 	h.stringMap[s] = off
@@ -38,19 +38,19 @@ func (h *heaps) addString(s string) uint16 {
 }
 
 // addBlob appends a length-prefixed blob and returns its offset.
-func (h *heaps) addBlob(data []byte) uint16 {
+func (h *heaps) addBlob(data []byte) uint32 {
 	if len(data) == 0 {
 		return 0
 	}
-	off := uint16(len(h.blobs))
+	off := uint32(len(h.blobs))
 	h.blobs = appendCompressedUint(h.blobs, uint32(len(data)))
 	h.blobs = append(h.blobs, data...)
 	return off
 }
 
 // addUserString appends a UTF-16 user string (for ldstr) and returns its offset.
-func (h *heaps) addUserString(s string) uint16 {
-	off := uint16(len(h.us))
+func (h *heaps) addUserString(s string) uint32 {
+	off := uint32(len(h.us))
 	u16 := utf16.Encode([]rune(s))
 	raw := make([]byte, len(u16)*2+1)
 	for i, c := range u16 {
@@ -64,9 +64,9 @@ func (h *heaps) addUserString(s string) uint16 {
 }
 
 // addGUID appends a 16-byte GUID and returns its 1-based index.
-func (h *heaps) addGUID(g [16]byte) uint16 {
+func (h *heaps) addGUID(g [16]byte) uint32 {
 	h.guids = append(h.guids, g[:]...)
-	return uint16(len(h.guids) / 16)
+	return uint32(len(h.guids) / 16)
 }
 
 func userStringFinalByte(s string) byte {
@@ -166,8 +166,12 @@ func roundUp(n, a int) int { return (n + a - 1) / a * a }
 // writer is a tiny little-endian byte-buffer helper.
 type writer struct{ b *[]byte }
 
-func (w *writer) u8(v byte)      { *w.b = append(*w.b, v) }
-func (w *writer) u16(v uint16)   { *w.b = binary.LittleEndian.AppendUint16(*w.b, v) }
-func (w *writer) u32(v uint32)   { *w.b = binary.LittleEndian.AppendUint32(*w.b, v) }
+func (w *writer) u8(v byte)    { *w.b = append(*w.b, v) }
+func (w *writer) u16(v uint16) { *w.b = binary.LittleEndian.AppendUint16(*w.b, v) }
+func (w *writer) u32(v uint32) { *w.b = binary.LittleEndian.AppendUint32(*w.b, v) }
+
+// heap writes a #Strings/#GUID/#Blob heap index. HeapSizes is 0x07, so every heap
+// reference in the tables stream is 4 bytes (programs may exceed a 64 KiB heap).
+func (w *writer) heap(v uint32)  { *w.b = binary.LittleEndian.AppendUint32(*w.b, v) }
 func (w *writer) u64(v uint64)   { *w.b = binary.LittleEndian.AppendUint64(*w.b, v) }
 func (w *writer) bytes(p []byte) { *w.b = append(*w.b, p...) }

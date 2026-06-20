@@ -15,6 +15,7 @@ import (
 //
 //go:embed overlays/sort/sort.go.txt
 //go:embed overlays/sort/search.go.txt
+//go:embed overlays/slices/slices.go.txt
 var overlayFS embed.FS
 
 // projectOverlayDir is the convention directory, relative to a project's module
@@ -35,12 +36,22 @@ const projectOverlayDir = "goclr.overlays"
 type stdlibOverlayPkg struct {
 	importPath string
 	files      map[string]string // base filename -> embed path
+	// replaceOnly keeps the package's other .go files as their real GOROOT source
+	// (only the named files are swapped). Use when just one file is unlowerable and
+	// the rest compile fine — blanking them would drop declarations the patched file
+	// still depends on.
+	replaceOnly bool
 }
 
 var stdlibOverlayPkgs = []stdlibOverlayPkg{
-	{"sort", map[string]string{
+	{importPath: "sort", files: map[string]string{
 		"sort.go":   "overlays/sort/sort.go.txt",
 		"search.go": "overlays/sort/search.go.txt",
+	}},
+	// slices: only slices.go uses unsafe (the overlaps/startIdx aliasing checks).
+	// Replace just that file; iter.go/sort.go/zsort*.go compile from real source.
+	{importPath: "slices", replaceOnly: true, files: map[string]string{
+		"slices.go": "overlays/slices/slices.go.txt",
 	}},
 }
 
@@ -70,6 +81,9 @@ func StdlibOverlay(env []string) map[string][]byte {
 					out[full] = content
 				}
 				continue
+			}
+			if p.replaceOnly {
+				continue // leave this file as its real GOROOT source
 			}
 			// Blank every other file so its declarations don't conflict.
 			out[full] = []byte("package " + name + "\n")

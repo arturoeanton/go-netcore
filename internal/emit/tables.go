@@ -143,7 +143,7 @@ var (
 // buildTables serializes the #~ stream for a whole program. methodRVAs is
 // parallel to prog.Methods; sigBlobOffsets holds the #Blob offset of each
 // StandAloneSig row (one per method that declares locals, in method order).
-func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffsets []uint16, ext *externCollection) []byte {
+func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffsets []uint32, ext *externCollection) []byte {
 	moduleName := prog.AssemblyName + ".dll"
 
 	// Strings.
@@ -193,7 +193,7 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	// each struct's instance fields. structFieldStart[i] is the 1-based Field-table
 	// row of struct i's first field (its TypeDef.FieldList).
 	type fieldRow struct {
-		name, sig uint16
+		name, sig uint32 // #Strings, #Blob offsets
 		static    bool
 	}
 	var fieldRows []fieldRow
@@ -205,7 +205,7 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 			static: true,
 		})
 	}
-	structNameIdx := make([]uint16, len(prog.Structs))
+	structNameIdx := make([]uint32, len(prog.Structs))
 	structFieldStart := make([]int, len(prog.Structs))
 	for i, s := range prog.Structs {
 		structNameIdx[i] = h.addString(s.Name)
@@ -221,8 +221,8 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	hasFields := len(fieldRows) > 0
 
 	// Method names and signatures.
-	methodNameIdx := make([]uint16, len(prog.Methods))
-	methodSigIdx := make([]uint16, len(prog.Methods))
+	methodNameIdx := make([]uint32, len(prog.Methods))
+	methodSigIdx := make([]uint32, len(prog.Methods))
 	for i, m := range prog.Methods {
 		methodNameIdx[i] = h.addString(methodCLRName(m))
 		methodSigIdx[i] = h.addBlob(methodSigBlob(m.Params, m.Ret))
@@ -248,8 +248,8 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 		{"ToByteSlice", sigStrToSlice},
 		{"ToRuneSlice", sigStrToSlice},
 	}
-	strMemberName := make([]uint16, len(strMembers))
-	strMemberSig := make([]uint16, len(strMembers))
+	strMemberName := make([]uint32, len(strMembers))
+	strMemberSig := make([]uint32, len(strMembers))
 	for i, m := range strMembers {
 		strMemberName[i] = h.addString(m.name)
 		strMemberSig[i] = h.addBlob(m.blob)
@@ -265,8 +265,8 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 		{"AppendOne", sigSliceApp},
 		{"Slice", sigSliceSlice},
 	}
-	sliceMemberName := make([]uint16, len(sliceMembers))
-	sliceMemberSig := make([]uint16, len(sliceMembers))
+	sliceMemberName := make([]uint32, len(sliceMembers))
+	sliceMemberSig := make([]uint32, len(sliceMembers))
 	for i, m := range sliceMembers {
 		sliceMemberName[i] = h.addString(m.name)
 		sliceMemberSig[i] = h.addBlob(m.blob)
@@ -282,8 +282,8 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 		{"Delete", sigMapDelete},
 		{"Keys", sigMapKeys},
 	}
-	mapMemberName := make([]uint16, len(mapMembers))
-	mapMemberSig := make([]uint16, len(mapMembers))
+	mapMemberName := make([]uint32, len(mapMembers))
+	mapMemberSig := make([]uint32, len(mapMembers))
 	for i, m := range mapMembers {
 		mapMemberName[i] = h.addString(m.name)
 		mapMemberSig[i] = h.addBlob(m.blob)
@@ -295,8 +295,8 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 		{"Get", sigPtrGet},
 		{"Set", sigPtrSet},
 	}
-	ptrMemberName := make([]uint16, len(ptrMembers))
-	ptrMemberSig := make([]uint16, len(ptrMembers))
+	ptrMemberName := make([]uint32, len(ptrMembers))
+	ptrMemberSig := make([]uint32, len(ptrMembers))
 	for i, m := range ptrMembers {
 		ptrMemberName[i] = h.addString(m.name)
 		ptrMemberSig[i] = h.addBlob(m.blob)
@@ -312,8 +312,8 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 		{"Len", sigChanLen},
 		{"Cap", sigChanLen}, // same signature as Len
 	}
-	chanMemberName := make([]uint16, len(chanMembers))
-	chanMemberSig := make([]uint16, len(chanMembers))
+	chanMemberName := make([]uint32, len(chanMembers))
+	chanMemberSig := make([]uint32, len(chanMembers))
 	for i, m := range chanMembers {
 		chanMemberName[i] = h.addString(m.name)
 		chanMemberSig[i] = h.addBlob(m.blob)
@@ -338,7 +338,7 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u32(0)
 	w.u8(2) // major
 	w.u8(0) // minor
-	w.u8(0) // heap sizes (2-byte)
+	w.u8(7) // heap sizes: #Strings/#GUID/#Blob all 4-byte (large heaps)
 	w.u8(1) // reserved
 	valid := uint64(1)<<0 | 1<<1 | 1<<2 | 1<<6 | 1<<10 | 1<<32 | 1<<35
 	if hasFields {
@@ -351,7 +351,10 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u64(0) // sorted
 
 	// Pre-add the heap entries for the dynamic shim rows so their offsets are set.
-	type extTypeRow struct{ scope, name, ns uint16 }
+	type extTypeRow struct {
+		scope    uint16 // ResolutionScope coded index
+		name, ns uint32 // #Strings offsets
+	}
 	extTypes := make([]extTypeRow, len(ext.types))
 	for i, et := range ext.types {
 		extTypes[i] = extTypeRow{
@@ -360,7 +363,10 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 			ns:    h.addString(et.namespace),
 		}
 	}
-	type extMemberRow struct{ parent, name, sig uint16 }
+	type extMemberRow struct {
+		parent    uint16 // MemberRefParent coded index
+		name, sig uint32 // #Strings, #Blob offsets
+	}
 	extMembers := make([]extMemberRow, len(ext.methods))
 	for i, em := range ext.methods {
 		extMembers[i] = extMemberRow{
@@ -369,7 +375,7 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 			sig:    h.addBlob(methodSigBlob(em.Params, em.Ret)),
 		}
 	}
-	extAsmName := make([]uint16, len(ext.assemblies))
+	extAsmName := make([]uint32, len(ext.assemblies))
 	for i, a := range ext.assemblies {
 		extAsmName[i] = h.addString(a)
 	}
@@ -391,14 +397,14 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u32(uint32(2 + len(ext.assemblies))) // AssemblyRef (System.Runtime, GoCLR.Runtime, shims)
 
 	// --- Module (0x00) ---
-	w.u16(0)
-	w.u16(sModule)
-	w.u16(mvidIdx)
-	w.u16(0)
-	w.u16(0)
+	w.u16(0)        // Generation
+	w.heap(sModule) // Name (#Strings)
+	w.heap(mvidIdx) // Mvid (#GUID)
+	w.heap(0)       // EncId (#GUID)
+	w.heap(0)       // EncBaseId (#GUID)
 
 	// --- TypeRef (0x01) ---
-	typeRef := func(scope, name, ns uint16) { w.u16(scope); w.u16(name); w.u16(ns) }
+	typeRef := func(scope uint16, name, ns uint32) { w.u16(scope); w.heap(name); w.heap(ns) }
 	typeRef(scopeSysRuntime, sObject, sSystem)          // [1]
 	typeRef(scopeSysRuntime, sInt64, sSystem)           // [2]
 	typeRef(scopeSysRuntime, sBoolean, sSystem)         // [3]
@@ -437,15 +443,15 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	// --- TypeDef (0x02) ---
 	// [1] <Module>.
 	w.u32(0)
-	w.u16(sModuleType)
-	w.u16(sEmpty)
+	w.heap(sModuleType)
+	w.heap(sEmpty)
 	w.u16(0) // extends null
 	w.u16(1) // FieldList
 	w.u16(1) // MethodList (no methods)
 	// [2] Program : System.Object — owns all methods.
 	w.u32(0x00100001) // Public | BeforeFieldInit
-	w.u16(sProgram)
-	w.u16(sEmpty)
+	w.heap(sProgram)
+	w.heap(sEmpty)
 	w.u16(extendsObject)
 	w.u16(1) // FieldList (owns none; structs' fields start at 1)
 	w.u16(1) // MethodList -> MethodDef[1] (owns all methods)
@@ -454,8 +460,8 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	structMethodList := uint16(len(prog.Methods) + 1) // structs own no methods
 	for i := range prog.Structs {
 		w.u32(0x00100109) // Public | SequentialLayout | Sealed | BeforeFieldInit
-		w.u16(structNameIdx[i])
-		w.u16(sEmpty)
+		w.heap(structNameIdx[i])
+		w.heap(sEmpty)
 		w.u16(extendsValueType)
 		w.u16(uint16(structFieldStart[i])) // FieldList
 		w.u16(structMethodList)            // MethodList
@@ -468,109 +474,109 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 			flags = 0x0016 // Public | Static
 		}
 		w.u16(flags)
-		w.u16(fr.name)
-		w.u16(fr.sig)
+		w.heap(fr.name)
+		w.heap(fr.sig)
 	}
 
 	// --- MethodDef (0x06) ---
 	for i := range prog.Methods {
-		w.u32(methodRVAs[i])    // RVA
-		w.u16(0)                // ImplFlags
-		w.u16(0x0016)           // Public | Static
-		w.u16(methodNameIdx[i]) // Name
-		w.u16(methodSigIdx[i])  // Signature
-		w.u16(1)                // ParamList (Param table empty)
+		w.u32(methodRVAs[i])     // RVA
+		w.u16(0)                 // ImplFlags
+		w.u16(0x0016)            // Public | Static
+		w.heap(methodNameIdx[i]) // Name
+		w.heap(methodSigIdx[i])  // Signature
+		w.u16(1)                 // ParamList (Param table empty)
 	}
 
 	// --- MemberRef (0x0A) ---
 	sPrintlnName := h.addString("Println")
 	sPrintName := h.addString("Print")
 	w.u16(parentBuiltins) // [1] Println
-	w.u16(sPrintlnName)
-	w.u16(bPrintln)
+	w.heap(sPrintlnName)
+	w.heap(bPrintln)
 	w.u16(parentBuiltins) // [2] Print
-	w.u16(sPrintName)
-	w.u16(bPrintln)
+	w.heap(sPrintName)
+	w.heap(bPrintln)
 	for i := range strMembers { // GoStrings.* (incl. To{Byte,Rune}Slice)
 		w.u16(parentGoStrings)
-		w.u16(strMemberName[i])
-		w.u16(strMemberSig[i])
+		w.heap(strMemberName[i])
+		w.heap(strMemberSig[i])
 	}
 	for i := range sliceMembers { // GoSlices.*
 		w.u16(parentGoSlices)
-		w.u16(sliceMemberName[i])
-		w.u16(sliceMemberSig[i])
+		w.heap(sliceMemberName[i])
+		w.heap(sliceMemberSig[i])
 	}
 	for i := range mapMembers { // GoMaps.*
 		w.u16(parentGoMaps)
-		w.u16(mapMemberName[i])
-		w.u16(mapMemberSig[i])
+		w.heap(mapMemberName[i])
+		w.heap(mapMemberSig[i])
 	}
 	for i := range ptrMembers { // GoPtrs.*
 		w.u16(parentGoPtrs)
-		w.u16(ptrMemberName[i])
-		w.u16(ptrMemberSig[i])
+		w.heap(ptrMemberName[i])
+		w.heap(ptrMemberSig[i])
 	}
 	// [30..33] Builtins.Panic / Recover / SetPanic / PanicHandled.
 	w.u16(parentBuiltins)
-	w.u16(h.addString("Panic"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x01, 0x1C})) // void(object)
+	w.heap(h.addString("Panic"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x01, 0x1C})) // void(object)
 	w.u16(parentBuiltins)
-	w.u16(h.addString("Recover"))
-	w.u16(h.addBlob([]byte{0x00, 0x00, 0x1C})) // object()
+	w.heap(h.addString("Recover"))
+	w.heap(h.addBlob([]byte{0x00, 0x00, 0x1C})) // object()
 	w.u16(parentBuiltins)
-	w.u16(h.addString("SetPanic"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x01, 0x12, 0x3D})) // void(class GoPanicException)
+	w.heap(h.addString("SetPanic"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x01, 0x12, 0x3D})) // void(class GoPanicException)
 	w.u16(parentBuiltins)
-	w.u16(h.addString("PanicHandled"))
-	w.u16(h.addBlob([]byte{0x00, 0x00, 0x02})) // bool()
+	w.heap(h.addString("PanicHandled"))
+	w.heap(h.addBlob([]byte{0x00, 0x00, 0x02})) // bool()
 	// [34..36] GoClosures.New / Id / Env.
 	parentGoClosures := uint16(17<<3 | 1)
 	w.u16(parentGoClosures)
-	w.u16(h.addString("New"))
-	w.u16(h.addBlob([]byte{0x00, 0x02, 0x12, goClosureCoded, 0x0A, 0x1D, 0x1C})) // GoClosure(i8, object[])
+	w.heap(h.addString("New"))
+	w.heap(h.addBlob([]byte{0x00, 0x02, 0x12, goClosureCoded, 0x0A, 0x1D, 0x1C})) // GoClosure(i8, object[])
 	w.u16(parentGoClosures)
-	w.u16(h.addString("Id"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x0A, 0x12, goClosureCoded})) // i8(GoClosure)
+	w.heap(h.addString("Id"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x0A, 0x12, goClosureCoded})) // i8(GoClosure)
 	w.u16(parentGoClosures)
-	w.u16(h.addString("Env"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x1D, 0x1C, 0x12, goClosureCoded})) // object[](GoClosure)
+	w.heap(h.addString("Env"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x1D, 0x1C, 0x12, goClosureCoded})) // object[](GoClosure)
 	// [37..43] GoChans.* (Make/Send/Recv/Recv2/Close/Len/Cap).
 	parentGoChans := uint16(23<<3 | 1)
 	for i := range chanMembers {
 		w.u16(parentGoChans)
-		w.u16(chanMemberName[i])
-		w.u16(chanMemberSig[i])
+		w.heap(chanMemberName[i])
+		w.heap(chanMemberSig[i])
 	}
 	// [44] GoRuntime.Go(GoClosure).
 	parentGoRuntime := uint16(24<<3 | 1)
 	w.u16(parentGoRuntime)
-	w.u16(h.addString("Go"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x01, 0x12, goClosureCoded})) // void(GoClosure)
+	w.heap(h.addString("Go"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x01, 0x12, goClosureCoded})) // void(GoClosure)
 	// [45] GoRuntime.SetInvoker(GoInvoker).
 	w.u16(parentGoRuntime)
-	w.u16(h.addString("SetInvoker"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x01, 0x12, goInvokerCoded})) // void(GoInvoker)
+	w.heap(h.addString("SetInvoker"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x01, 0x12, goInvokerCoded})) // void(GoInvoker)
 	// [46] GoInvoker::.ctor(object, native int) — delegate constructor.
 	parentGoInvoker := uint16(25<<3 | 1)
 	w.u16(parentGoInvoker)
-	w.u16(h.addString(".ctor"))
-	w.u16(h.addBlob([]byte{0x20, 0x02, 0x01, 0x1C, 0x18})) // HASTHIS void(object, native int)
+	w.heap(h.addString(".ctor"))
+	w.heap(h.addBlob([]byte{0x20, 0x02, 0x01, 0x1C, 0x18})) // HASTHIS void(object, native int)
 	// [47] GoSelect.Select(object[], object[], object[], bool) -> object[].
 	parentGoSelect := uint16(26<<3 | 1)
 	w.u16(parentGoSelect)
-	w.u16(h.addString("Select"))
-	w.u16(h.addBlob([]byte{0x00, 0x04, 0x1D, 0x1C, 0x1D, 0x1C, 0x1D, 0x1C, 0x1D, 0x1C, 0x02}))
+	w.heap(h.addString("Select"))
+	w.heap(h.addBlob([]byte{0x00, 0x04, 0x1D, 0x1C, 0x1D, 0x1C, 0x1D, 0x1C, 0x1D, 0x1C, 0x02}))
 	// [48] GoPtrs.TypeIdOf(GoPtr) -> i8 (appended last to keep earlier tokens stable).
 	w.u16(parentGoPtrs)
-	w.u16(h.addString("TypeIdOf"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x0A, 0x12, goPtrCoded})) // i8(pt)
+	w.heap(h.addString("TypeIdOf"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x0A, 0x12, goPtrCoded})) // i8(pt)
 	// [49..57] GoComplexs.* (Make/Add/Sub/Mul/Div/Neg/Eq/Real/Imag).
 	parentGoComplexs := uint16(28<<3 | 1)
 	cplx := func(name string, blob []byte) {
 		w.u16(parentGoComplexs)
-		w.u16(h.addString(name))
-		w.u16(h.addBlob(blob))
+		w.heap(h.addString(name))
+		w.heap(h.addBlob(blob))
 	}
 	cplx("Make", sigCplxMake)
 	cplx("Add", sigCplxBin)
@@ -584,38 +590,38 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	// [58..60] GoDefers.Mark() -> i8, Push(GoClosure), Run(i8).
 	parentGoDefers := uint16(29<<3 | 1)
 	w.u16(parentGoDefers)
-	w.u16(h.addString("Mark"))
-	w.u16(h.addBlob([]byte{0x00, 0x00, 0x0A})) // i8()
+	w.heap(h.addString("Mark"))
+	w.heap(h.addBlob([]byte{0x00, 0x00, 0x0A})) // i8()
 	w.u16(parentGoDefers)
-	w.u16(h.addString("Push"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x01, 0x12, goClosureCoded})) // void(GoClosure)
+	w.heap(h.addString("Push"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x01, 0x12, goClosureCoded})) // void(GoClosure)
 	w.u16(parentGoDefers)
-	w.u16(h.addString("Run"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x01, 0x0A})) // void(i8)
+	w.heap(h.addString("Run"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x01, 0x0A})) // void(i8)
 	// [61] GoErrors.Error(GoError) -> GoString.
 	w.u16(uint16(31<<3 | 1)) // MemberRefParent -> TypeRef[31] GoErrors
-	w.u16(h.addString("Error"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x12, goErrorCoded})) // GoString(GoError)
+	w.heap(h.addString("Error"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x12, goErrorCoded})) // GoString(GoError)
 	// [62..64] GoStrings.FromRune/FromBytes/FromRunes.
 	w.u16(parentGoStrings)
-	w.u16(h.addString("FromRune"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x0A})) // GoString(i8)
+	w.heap(h.addString("FromRune"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x0A})) // GoString(i8)
 	w.u16(parentGoStrings)
-	w.u16(h.addString("FromBytes"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x11, goSliceCoded})) // GoString(sl)
+	w.heap(h.addString("FromBytes"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x11, goSliceCoded})) // GoString(sl)
 	w.u16(parentGoStrings)
-	w.u16(h.addString("FromRunes"))
-	w.u16(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x11, goSliceCoded})) // GoString(sl)
-	for _, em := range extMembers {                                               // [65+] shim methods
+	w.heap(h.addString("FromRunes"))
+	w.heap(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x11, goSliceCoded})) // GoString(sl)
+	for _, em := range extMembers {                                                // [65+] shim methods
 		w.u16(em.parent)
-		w.u16(em.name)
-		w.u16(em.sig)
+		w.heap(em.name)
+		w.heap(em.sig)
 	}
 
 	// --- StandAloneSig (0x11) ---
 	if hasLocals {
 		for _, off := range sigBlobOffsets {
-			w.u16(off)
+			w.heap(off)
 		}
 	}
 
@@ -625,10 +631,10 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u16(0)
 	w.u16(0)
 	w.u16(0)
-	w.u32(0) // Flags
-	w.u16(0) // PublicKey
-	w.u16(sAsm)
-	w.u16(0) // Culture
+	w.u32(0)     // Flags
+	w.heap(0)    // PublicKey (#Blob)
+	w.heap(sAsm) // Name (#Strings)
+	w.heap(0)    // Culture (#Strings)
 
 	// --- AssemblyRef (0x23) ---
 	// [1] System.Runtime 8.0.0.0.
@@ -637,20 +643,20 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u16(0)
 	w.u16(0)
 	w.u32(0)
-	w.u16(bEcmaToken)
-	w.u16(sSysRuntime)
-	w.u16(0)
-	w.u16(0)
+	w.heap(bEcmaToken)  // PublicKeyOrToken (#Blob)
+	w.heap(sSysRuntime) // Name (#Strings)
+	w.heap(0)           // Culture (#Strings)
+	w.heap(0)           // HashValue (#Blob)
 	// [2] GoCLR.Runtime 1.0.0.0.
 	w.u16(1)
 	w.u16(0)
 	w.u16(0)
 	w.u16(0)
 	w.u32(0)
-	w.u16(0)
-	w.u16(sGoclrRuntime)
-	w.u16(0)
-	w.u16(0)
+	w.heap(0)             // PublicKeyOrToken (#Blob)
+	w.heap(sGoclrRuntime) // Name (#Strings)
+	w.heap(0)             // Culture (#Strings)
+	w.heap(0)             // HashValue (#Blob)
 	// [3+] shim assemblies (GoCLR.Stdlib, ...) 1.0.0.0.
 	for _, name := range extAsmName {
 		w.u16(1)
@@ -658,10 +664,10 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 		w.u16(0)
 		w.u16(0)
 		w.u32(0)
-		w.u16(0)
-		w.u16(name)
-		w.u16(0)
-		w.u16(0)
+		w.heap(0)    // PublicKeyOrToken (#Blob)
+		w.heap(name) // Name (#Strings)
+		w.heap(0)    // Culture (#Strings)
+		w.heap(0)    // HashValue (#Blob)
 	}
 
 	return out
