@@ -69,7 +69,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | strings.Builder / bytes.Buffer / io.WriteString / fmt.Fprint* | ✅ | M | ✅ |
 | context (Background/WithValue/WithCancel/WithTimeout) ✅; io ifaces/bufio 🚧 | 🟡 | M | ✅ |
 | encoding/json — Marshal + Unmarshal (descriptor-driven write-path) | ✅ | L | ✅ |
-| net/http client (HttpClient) ✅; server (Kestrel) 🚧 | 🟡 | XL | ✅ |
+| net/http client + server (HttpListener) ✅ | ✅ | XL | ✅ |
 | net/url (escapes + Parse) ✅; mime, mime/multipart 🚧 | 🟡 | M | ✅ |
 | regexp (.NET Regex; common RE2 patterns) | 🟡 | L | ✅ |
 | unicode/utf8 ✅; utf16 | 🟡 | S | ✅ |
@@ -105,7 +105,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Item | State | Effort | MVP? |
 |---|---|---|---|
 | Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
-| 106 conformance fixtures (000–306), all byte-exact vs `go run` | ✅ | M | ✅ |
+| 108 conformance fixtures (000–308), all byte-exact vs `go run` | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |

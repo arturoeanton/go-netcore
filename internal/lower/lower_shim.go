@@ -221,6 +221,7 @@ var opaqueShimTypes = map[string]bool{
 	"net/http.Response":            true,
 	"net.Listener":                 true,
 	"net.Conn":                     true,
+	"net.PacketConn":               true,
 	"net/http.ResponseWriter":      true,
 	"net/http.Request":             true,
 	"os/exec.Cmd":                  true,

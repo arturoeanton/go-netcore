@@ -64,6 +64,21 @@ the func-constructor is deferred.
 `f(g())` where `g` returns multiple values (e.g. `fmt.Println(strconv.Atoi(s))`)
 is not yet supported — assign the results first (`v, err := g(); f(v, err)`).
 
+## P1 items still deferred
+
+These P1 packages need a larger feature or external module and are deferred:
+- **`container/heap`** — `heap.Init/Push/Pop` call back into the user type's
+  `Less/Swap/Push/Pop` (interface methods); calling Go methods from a shim needs an
+  interface-method-callback bridge.
+- **`flag`** — needs command-line args forwarded from `goclr run` to the program
+  (`os.Args` plumbing).
+- **`net` UDP** — `PacketConn.WriteTo` takes a `net.Addr`; needs
+  `net.ResolveUDPAddr`/`*net.UDPAddr`. TCP (Listen/Dial/Conn) works.
+- **`x/sync/errgroup`** — shim written, but the import needs the external x/sync
+  module present to type-check.
+- `log/slog`, `mime/multipart`, `os/signal`, `net/http` cookiejar/httptest,
+  `google/uuid` — not yet shimmed.
+
 ## Misc
 
 - `strings.NewReplacer`, `strings.EqualFold` full-Unicode folding, and

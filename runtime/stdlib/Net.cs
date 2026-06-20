@@ -78,4 +78,45 @@ public static class Net
         catch (System.Exception e) { return new object?[] { 0L, new GoError(GoString.FromDotNetString(e.Message)) }; }
     }
     public static object? Conn_Close(object co) { ((GoConn)co).C.Close(); return null; }
+
+    // ---- UDP (PacketConn) --------------------------------------------------
+    public static object?[] ListenPacket(GoString network, GoString address)
+    {
+        try
+        {
+            var (host, port) = Parse(address.ToDotNetString());
+            var u = new UdpClient(new IPEndPoint(host == "0.0.0.0" ? IPAddress.Any : IPAddress.Parse(host == "localhost" ? "127.0.0.1" : host), port));
+            return new object?[] { new GoPacketConn { U = u }, null };
+        }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("listen udp: " + e.Message)) }; }
+    }
+
+    public static object?[] PC_WriteTo(object pc, GoSlice p, GoString addr)
+    {
+        try
+        {
+            var buf = new byte[p.Len];
+            for (int i = 0; i < p.Len; i++) buf[i] = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
+            var (host, port) = Parse(addr.ToDotNetString());
+            ((GoPacketConn)pc).U.Send(buf, buf.Length, host == "" ? "127.0.0.1" : host, port);
+            return new object?[] { (long)p.Len, null };
+        }
+        catch (System.Exception e) { return new object?[] { 0L, new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+    public static object?[] PC_ReadFrom(object pc, GoSlice p)
+    {
+        try
+        {
+            IPEndPoint? ep = null;
+            byte[] data = ((GoPacketConn)pc).U.Receive(ref ep);
+            int n = System.Math.Min(data.Length, p.Len);
+            for (int i = 0; i < n; i++) p.Data![p.Off + i] = (int)data[i];
+            return new object?[] { (long)n, GoString.FromDotNetString(ep?.ToString() ?? ""), null };
+        }
+        catch (System.Exception e) { return new object?[] { 0L, GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+    public static object? PC_Close(object pc) { ((GoPacketConn)pc).U.Close(); return null; }
 }
+
+/// <summary>A net.PacketConn over a UdpClient.</summary>
+public sealed class GoPacketConn { public UdpClient U = null!; }
