@@ -179,7 +179,7 @@ func (l *funcLowerer) assign(s *ast.AssignStmt) {
 		if obj != nil {
 			t, _ := l.goType(obj.Type())
 			idx, _ := l.declareLocal(obj, t)
-			l.initLocal(idx, func() { l.expr(rhs) })
+			l.initLocal(idx, func() { l.exprCoerced(rhs, t) })
 		} else if useObj := l.pkg.TypesInfo.Uses[lhs]; useObj != nil {
 			// Redeclaration in a new scope that reuses an existing local.
 			l.assignLocal(l.locals[useObj], func() { l.expr(rhs) })

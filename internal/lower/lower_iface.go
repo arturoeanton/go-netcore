@@ -204,6 +204,15 @@ func (l *funcLowerer) exprCoerced(e ast.Expr, target goir.Type) {
 	l.expr(e)
 	if target.Kind == goir.KObject {
 		l.emitBox(l.exprType(e))
+		return
+	}
+	// Copying an array value (assignment, argument, return, field/element store)
+	// duplicates its backing storage — arrays have value semantics, unlike slices.
+	if target.Array {
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ArrayClone",
+			Params: []goir.Type{target}, Ret: target,
+		}})
 	}
 }
 

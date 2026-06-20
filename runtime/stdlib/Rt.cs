@@ -44,6 +44,17 @@ public static class Rt
         return a.Equals(b);
     }
 
+    /// <summary>Copy a fixed array's backing storage (value semantics on copy). The
+    /// live element references are shallow-copied, which is correct because every
+    /// element write re-boxes (it never mutates a shared boxed value in place).</summary>
+    public static GoSlice ArrayClone(GoSlice s)
+    {
+        if (s.Data == null) return s;
+        var d = new object?[s.Len];
+        System.Array.Copy(s.Data, s.Off, d, 0, s.Len);
+        return new GoSlice { Data = d, Off = 0, Len = s.Len, Cap = s.Len };
+    }
+
     /// <summary>clear(m): remove all entries from a map.</summary>
     public static void ClearMap(GoMap? m) => m?.Data?.Clear();
 

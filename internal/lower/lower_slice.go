@@ -40,7 +40,15 @@ func (l *funcLowerer) emitBoxedElem(v ast.Expr) {
 		return
 	}
 	l.expr(v)
-	l.emitBox(l.exprType(v))
+	t := l.exprType(v)
+	// Storing an array value into a container, argument, or tuple copies it.
+	if t.Array {
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ArrayClone",
+			Params: []goir.Type{t}, Ret: t,
+		}})
+	}
+	l.emitBox(t)
 }
 
 // emitZeroValue pushes the unboxed zero value of any supported type.

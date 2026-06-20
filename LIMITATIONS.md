@@ -51,18 +51,18 @@ special-case expansions (e.g. `İ` U+0130 → `i` + combining dot) are not appli
 `time.Time` operates in UTC. Go's `time.Now()`/`time.Unix()` use the local zone;
 for cross-runtime-deterministic output use `.UTC()` and `time.Date(..., time.UTC)`.
 
-## Fixed-size arrays
+## Fixed-size arrays — value semantics edge
 
-`[N]T` fixed-size array types (e.g. `var a [4]byte`, `[32]byte`) are not yet
-supported (use slices). Consequence: `sha256.Sum256(data)` (returns `[32]byte`)
-is unavailable — use `h := sha256.New(); h.Write(data); h.Sum(nil)` ([]byte). And
-`hmac.New(sha256.New, key)` needs a shim function value (see above), so HMAC via
-the func-constructor is deferred.
+`[N]T` fixed-size arrays are supported (slice-backed). They carry Go value
+semantics: copying an array — on assignment (`y := x`), argument passing (named
+functions and closures), return, and storing into a container — duplicates its
+backing storage; slicing an array (`a[:]`) shares it, as in Go.
 
-## Multi-value call as an argument list
-
-`f(g())` where `g` returns multiple values (e.g. `fmt.Println(strconv.Atoi(s))`)
-is not yet supported — assign the results first (`v, err := g(); f(v, err)`).
+The one residual case is an array that is a **field of a struct** which is then
+copied by value: `b := a` where `a` has an `[N]T` field, followed by mutating that
+field through `b`, still aliases `a`'s array. A correct fix needs a compiler-emitted
+deep copy (the runtime cannot distinguish an array-backed `GoSlice` from a real
+slice). Workaround: copy the array field explicitly, or hold it behind a pointer.
 
 ## P1 items still deferred
 

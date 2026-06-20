@@ -576,9 +576,11 @@ func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
 		if !ok {
 			return goir.Type{}, false
 		}
-		// Fixed-size [N]T arrays are backed by a slice; value-copy semantics are
-		// approximated (see LIMITATIONS).
-		return goir.SliceType(et), true
+		// Fixed-size [N]T arrays are slice-backed but carry value semantics; the
+		// Array flag drives copy-on-assignment in exprCoerced.
+		at := goir.SliceType(et)
+		at.Array = true
+		return at, true
 	}
 	if mp, ok := t.Underlying().(*types.Map); ok {
 		kt, ok1 := c.goType(mp.Key())

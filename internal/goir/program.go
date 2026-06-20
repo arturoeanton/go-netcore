@@ -43,6 +43,10 @@ type Type struct {
 	// (e.g. "sync.WaitGroup"); Kind is KObject. Its zero value is a fresh object
 	// built by a registered constructor rather than null.
 	Shim string
+	// Array marks a fixed-size [N]T array (Kind is KSlice, since arrays are
+	// slice-backed). Unlike a slice, an array has value semantics: copying it (on
+	// assignment, argument passing, return) duplicates its backing storage.
+	Array bool
 }
 
 // Predeclared primitive types. They are package-level values (not consts) so
