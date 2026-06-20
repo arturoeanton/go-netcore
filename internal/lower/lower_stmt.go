@@ -339,7 +339,7 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 	// struct; mutate the field through the cell rather than via ldloca of the cell.
 	if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
 		l.cellFieldModify(idx, elem, fi, func(ft goir.Type) {
-			l.expr(rhs)
+			l.exprCoerced(rhs, ft)
 		})
 		return
 	}
@@ -360,7 +360,7 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 			l.emitUnbox(bt)
 			l.emit(goir.Op{Code: goir.OpStLoc, Local: structTmp})
 			l.emit(goir.Op{Code: goir.OpLdLocA, Local: structTmp})
-			l.expr(rhs)
+			l.exprCoerced(rhs, bt.Struct.Fields[fi].Type)
 			l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxTmp})
@@ -383,7 +383,7 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 		return
 	}
 	l.lvalueAddr(sel.X)
-	l.expr(rhs)
+	l.exprCoerced(rhs, bt.Struct.Fields[fi].Type)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
 }
 

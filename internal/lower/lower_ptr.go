@@ -383,7 +383,9 @@ func (l *funcLowerer) ptrStructFieldWrite(e *ast.SelectorExpr, pt goir.Type, rhs
 		}
 		fi = path[len(path)-1]
 	}
-	l.expr(rhs)
+	// Coerce so a nil into a GoSlice/GoMap field becomes the value-type nil (NilSlice),
+	// not a null reference (which the JIT rejects for a valuetype field).
+	l.exprCoerced(rhs, cur.Struct.Fields[fi].Type)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: cur.Struct, Field: fi})
 
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: pTmp})
