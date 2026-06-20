@@ -41,7 +41,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	// NOTE: "unicode" is compiled from real Go source (see compileFromSource in
 	// lower.go), not shimmed — it provides RangeTable/Is/In and the full tables.
 	"reflect": {
-		"TypeOf": {"Reflect", "TypeOf"}, "ValueOf": {"Reflect", "ValueOf"}, "DeepEqual": {"Reflect", "DeepEqual"},
+		"TypeOf": {"Reflect", "TypeOf"}, "ValueOf": {"Reflect", "ValueOf"}, "DeepEqual": {"Reflect", "DeepEqual"}, "MakeSlice": {"Reflect", "MakeSlice"}, "MakeMap": {"Reflect", "MakeMap"}, "Zero": {"Reflect", "Zero"},
 		"New": {"Reflect", "New"},
 	},
 	"encoding/json": {

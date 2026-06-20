@@ -87,6 +87,31 @@ public static class Reflect
 
     public static object TypeOf(object? x) => new GoReflectType { Sample = x };
     public static object ValueOf(object? x) => new GoReflectValue { V = x };
+
+    // reflect.MakeSlice(typ, len, cap): a slice Value of the type's element kind;
+    // elements default to null (the zero for the interface element type goja uses),
+    // and the caller writes them via Index(i).Set.
+    public static object MakeSlice(object typ, long len, long cap)
+    {
+        if (cap < len) cap = len;
+        return new GoReflectValue { V = new GoSlice { Data = new object?[cap], Off = 0, Len = (int)len, Cap = (int)cap } };
+    }
+    public static object MakeMap(object typ) =>
+        new GoReflectValue { V = GoCLR.Runtime.GoMaps.Make() };
+    // reflect.Zero(typ): the type's zero value, inferred from the type's sample.
+    public static object Zero(object typ)
+    {
+        var s = ((GoReflectType)typ).Sample;
+        object? z = s switch
+        {
+            long => 0L, int => 0, ulong => (ulong)0, uint => (uint)0,
+            double => 0.0, float => 0f, bool => false,
+            GoString => GoString.FromDotNetString(""),
+            GoSlice => new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 },
+            _ => null,
+        };
+        return new GoReflectValue { V = z };
+    }
     public static bool DeepEqual(object? a, object? b) => Eq(a, b);
 
     // --- reflect.Type methods ---
@@ -121,8 +146,13 @@ public static class Reflect
         var x = RVal(v);
         return x switch { null => true, long l => l == 0, int i => i == 0, ulong u => u == 0, double d => d == 0, bool b => !b, GoString s => s.Len == 0, GoSlice sl => sl.Data == null, GoMap mp => mp.Data == null, _ => false };
     }
-    public static object Value_Index(object? v, long i) =>
-        new GoReflectValue { V = GoCLR.Runtime.GoSlices.Get((GoSlice)RVal(v)!, i) };
+    public static object Value_Index(object? v, long i)
+    {
+        var s = (GoSlice)RVal(v)!;
+        int idx = s.Off + (int)i;
+        // Settable: writes through the slice's shared backing array.
+        return new GoReflectValue { V = s.Data![idx], Setter = nv => s.Data[idx] = nv };
+    }
     public static object Value_Field(object? v, long i)
     {
         var parent = (GoReflectValue)v!;
