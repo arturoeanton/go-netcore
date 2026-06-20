@@ -352,6 +352,20 @@ func (l *funcLowerer) ptrStructFieldWrite(e *ast.SelectorExpr, pt goir.Type, rhs
 	l.emit(goir.Op{Code: goir.OpPtrSet})
 }
 
+// emitEmbeddedIfaceValue leaves on the stack the embedded interface value reached
+// from a concrete receiver through embedPath (struct { SomeIface }), so a method
+// promoted from that interface can be dispatched on it.
+func (l *funcLowerer) emitEmbeddedIfaceValue(sel *ast.SelectorExpr, embedPath []int) {
+	bt := l.exprType(sel.X)
+	l.expr(sel.X)
+	if bt.Kind == goir.KPtr {
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(*bt.Elem)
+		bt = *bt.Elem
+	}
+	l.emitFieldChain(bt, embedPath)
+}
+
 // concreteMethodCall lowers recv.Method(args) where recv's static type is a type
 // parameter resolved (during monomorphization) to a concrete type. It looks up
 // the method on the concrete type and emits a direct call.
@@ -420,7 +434,15 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 	}
 	// Interface method call: dispatch on the dynamic type.
 	if iface, ok := recvT.Underlying().(*types.Interface); ok {
-		return l.interfaceDispatch(e, sel, fn, iface)
+		return l.interfaceDispatch(e, func() { l.expr(sel.X) }, fn, iface)
+	}
+	// Method promoted from an *embedded interface field* of a concrete receiver
+	// (struct { SomeIface }): the method's receiver is an interface, so navigate to
+	// the embedded interface value and dispatch on it.
+	if iface, ok := fn.Type().(*types.Signature).Recv().Type().Underlying().(*types.Interface); ok {
+		if idx := seln.Index(); len(idx) > 1 {
+			return l.interfaceDispatch(e, func() { l.emitEmbeddedIfaceValue(sel, idx[:len(idx)-1]) }, fn, iface)
+		}
 	}
 	m := l.byFunc[fn]
 	if m == nil {

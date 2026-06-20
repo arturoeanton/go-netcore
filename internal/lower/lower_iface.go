@@ -59,7 +59,7 @@ func (c *lowerCtx) implementers(iface *types.Interface) []ifaceImpl {
 
 // interfaceDispatch lowers i.M(args) by generating an isinst-based switch over
 // the concrete types that implement the interface, calling the matching method.
-func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, ifaceMethod *types.Func, iface *types.Interface) goir.Type {
+func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, emitRecv func(), ifaceMethod *types.Func, iface *types.Interface) goir.Type {
 	sig := ifaceMethod.Type().(*types.Signature)
 	retType := goir.TVoid
 	if sig.Results().Len() == 1 {
@@ -82,7 +82,7 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 	}
 
 	iTmp := l.addLocal(nil, goir.TObject)
-	l.expr(sel.X)
+	emitRecv()
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: iTmp})
 
 	impls := l.implementers(iface)
