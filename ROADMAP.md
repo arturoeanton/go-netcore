@@ -54,6 +54,14 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | — | .NET runtime: GoString (UTF-8), slices, maps, pointers | ✅ |
 | — | .NET runtime: interfaces, type descriptors, method tables | ✅ |
 | — | .NET runtime: defer / panic / recover, goroutines, channels, errors | ✅ |
+| M2.5 | Multi-package lowering (main + transitive non-stdlib closure → 1 assembly) | ✅ |
+| M2.5 | Package globals (static fields) + `init()` + var initializers (`__goclr_init`) | ✅ |
+| M2.5 | C# shim / extern-ref mechanism + `GoCLR.Stdlib.dll` (2nd managed assembly) | ✅ |
+| M2.5 | Opaque value-type shims, shim variables, native (runtime) function values | ✅ |
+| M2.5 | 20 P0 stdlib packages byte-exact (see M2.5 section) | ✅ |
+| M2.5 | reflect read + settable write path; compiler-emitted type/tag descriptors | ✅ |
+| M2.5 | Go-exact float formatting (shortest ftoa: %v/%g/%e/println/strconv) | ✅ |
+| M2.5 | encoding/json Marshal + Unmarshal (descriptor-driven) | ✅ |
 
 ## Milestones
 
@@ -124,8 +132,8 @@ Multi-value increment (done, verified `goclr run` == `go run`):
 fallthrough, labeled break/continue, goto, untyped-const edge cases, interfaces
 (needed for `error` and multi-return with error) — interfaces land in M2.
 
-### M2 — critical runtime 🟡 (in progress)
-Done this increment (verified `goclr run` == `go run`):
+### M2 — critical runtime ✅ CLOSED
+Done (verified `goclr run` == `go run`):
 - ✅ empty interface `interface{}` / `any` → opaque object (auto-box on conversion)
 - ✅ type assertion `x.(T)` (single + comma-ok `v, ok := x.(T)`) via isinst/unbox.any
 - ✅ type switch `switch v := x.(type)` with per-case binding
@@ -190,11 +198,11 @@ just those two libs). Remaining LANGUAGE work — ALL required to close M2:
 gaps are a few stdlib-format niceties (float/complex println exact formatting,
 handled once fmt is overlaid). Next: **M2.5 stdlib overlay** → M3 goja.
 
-### M2.5 — stdlib overlay 🟡 (in progress)
+### M2.5 — stdlib overlay 🟡 (P0 ✅ CLOSED; P1+ pending)
 Full plan in `ROADMAP-M2.5.md` (overlay mechanism, missing core pkgs, reflect
-keystone, semantic-parity hazards, priority matrix). Delivery mechanism done; P0
-packages landing incrementally, each verified byte-exact vs `go run` via the
-conformance harness. **82 conformance fixtures pass.**
+keystone, semantic-parity hazards, priority matrix). Delivery mechanism + all P0
+packages done, each verified byte-exact vs `go run` via the conformance harness.
+**88 conformance fixtures pass.** Tagged `0.0.2.p0full`.
 
 Foundations (the "how"):
 - ✅ **multi-package lowering** — compiles main + its transitive non-stdlib
