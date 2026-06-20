@@ -63,59 +63,95 @@ func (l *funcLowerer) fieldPtrExtern(elem goir.Type) *goir.Extern {
 	}
 }
 
-// buildFieldAlias lowers &s.field, leaving a field-alias GoPtr on the stack. It
-// supports a field (direct or promoted through value embeds) reached through a
-// pointer (&p.f), a package-level struct global (&g.f), or an addressable local
-// struct held in a cell (&r.f). Returns false for shapes it does not handle.
+// buildFieldAlias lowers &s.field (possibly a multi-level chain s.a.b.f), leaving a
+// field-alias GoPtr on the stack. It walks the selector chain to its root — a
+// pointer (&p.…f), a package-level struct global (&g.…f), or an addressable local
+// struct held in a cell (&r.…f) — and aliases the field reached by the field path
+// from there. Returns false for shapes it does not handle.
 func (l *funcLowerer) buildFieldAlias(sel *ast.SelectorExpr) bool {
-	bt := l.exprType(sel.X)
-	var root goir.Type
-	switch {
-	case bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct:
-		root = *bt.Elem
-	case bt.Kind == goir.KStruct:
-		root = bt
-	default:
-		return false
-	}
-
-	// Resolve the (possibly promoted) field path and the final field type, requiring
-	// value-embed-only navigation (a pointer embed has no in-place field storage).
-	path := []int{root.Struct.FieldIndex(sel.Sel.Name)}
-	if path[0] < 0 {
-		p, ok := l.promotedFieldPath(sel)
+	var names []string
+	innermost := sel // the selector whose .Sel is the final field (for promoted leaf)
+	cur := ast.Expr(sel)
+	for {
+		s, ok := unparen(cur).(*ast.SelectorExpr)
 		if !ok {
 			return false
 		}
-		path = p
-	}
-	cont := root
-	for _, idx := range path[:len(path)-1] {
-		ft := cont.Struct.Fields[idx].Type
-		if ft.Kind != goir.KStruct {
-			return false
-		}
-		cont = ft
-	}
-	ft := cont.Struct.Fields[path[len(path)-1]].Type
-
-	switch {
-	case bt.Kind == goir.KPtr:
-		l.emitFieldAliasPtr(func() { l.expr(sel.X) }, bt, root, path, ft)
-		return true
-	default:
-		if gi, ok := l.globalRef(sel.X); ok {
-			l.emitFieldAliasGlobal(gi, root, path, ft)
+		names = append([]string{s.Sel.Name}, names...)
+		bt := l.exprType(s.X)
+		if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct {
+			root := *bt.Elem
+			path, ft, ok := l.fieldPath(root, names, innermost)
+			if !ok {
+				return false
+			}
+			sx := s.X
+			l.emitFieldAliasPtr(func() { l.expr(sx) }, bt, root, path, ft)
 			return true
 		}
-		if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
+		if bt.Kind != goir.KStruct {
+			return false
+		}
+		if gi, ok := l.globalRef(s.X); ok {
+			path, ft, ok := l.fieldPath(bt, names, innermost)
+			if !ok {
+				return false
+			}
+			l.emitFieldAliasGlobal(gi, bt, path, ft)
+			return true
+		}
+		if idx, elem, isCell := l.identCell(s.X); isCell && elem.Kind == goir.KStruct {
+			path, ft, ok := l.fieldPath(elem, names, innermost)
+			if !ok {
+				return false
+			}
 			cidx := idx
 			l.emitFieldAliasPtr(func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: cidx}) },
 				goir.PtrType(elem), elem, path, ft)
 			return true
 		}
-		return false
+		cur = s.X // keep walking up the chain
 	}
+}
+
+// fieldPath resolves a chain of field names (top-down from root) to a field-index
+// path and the final field's type. Intermediate names must be direct value-struct
+// fields; the single-name case may be a promoted field (value embeds only).
+func (l *funcLowerer) fieldPath(root goir.Type, names []string, leaf *ast.SelectorExpr) ([]int, goir.Type, bool) {
+	if len(names) == 1 {
+		if fi := root.Struct.FieldIndex(names[0]); fi >= 0 {
+			return []int{fi}, root.Struct.Fields[fi].Type, true
+		}
+		p, ok := l.promotedFieldPath(leaf)
+		if !ok {
+			return nil, goir.Type{}, false
+		}
+		cont := root
+		for _, idx := range p[:len(p)-1] {
+			if cont.Struct.Fields[idx].Type.Kind != goir.KStruct {
+				return nil, goir.Type{}, false
+			}
+			cont = cont.Struct.Fields[idx].Type
+		}
+		return p, cont.Struct.Fields[p[len(p)-1]].Type, true
+	}
+	path := make([]int, 0, len(names))
+	cur := root
+	for i, name := range names {
+		if cur.Kind != goir.KStruct {
+			return nil, goir.Type{}, false
+		}
+		fi := cur.Struct.FieldIndex(name)
+		if fi < 0 {
+			return nil, goir.Type{}, false // promoted mid-chain unsupported
+		}
+		path = append(path, fi)
+		if i == len(names)-1 {
+			return path, cur.Struct.Fields[fi].Type, true
+		}
+		cur = cur.Struct.Fields[fi].Type
+	}
+	return nil, goir.Type{}, false
 }
 
 // emitLdfldaChain, given the address of a root struct on the stack, emits a ldflda
