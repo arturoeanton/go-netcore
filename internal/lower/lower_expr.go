@@ -72,9 +72,20 @@ func (l *funcLowerer) expr(e ast.Expr) {
 	case *ast.TypeAssertExpr:
 		l.typeAssert(e)
 	case *ast.SelectorExpr:
-		if seln := l.pkg.TypesInfo.Selections[e]; seln != nil && seln.Kind() == types.MethodVal {
-			l.methodValue(e, seln)
-			return
+		if seln := l.pkg.TypesInfo.Selections[e]; seln != nil {
+			if seln.Kind() == types.MethodVal {
+				l.methodValue(e, seln)
+				return
+			}
+			// A method expression T.M / (*T).M is a func value whose first parameter
+			// is the receiver — exactly funcValue's shape.
+			if seln.Kind() == types.MethodExpr {
+				if fn, ok := seln.Obj().(*types.Func); ok {
+					if _, ok := l.funcValue(fn); ok {
+						return
+					}
+				}
+			}
 		}
 		l.fieldRead(e)
 	case *ast.CompositeLit:
