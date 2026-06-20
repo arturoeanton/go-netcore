@@ -272,6 +272,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/base32.StdEncoding":    {"Base32", "StdEncoding"},
 	"context.Canceled":               {"Context", "Canceled"},
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
+	"io.EOF":                         {"Io", "EOF"},
 }
 
 // shimFuncValue, when e is a reference to a shimmed stdlib function used as a
@@ -441,6 +442,14 @@ var binaryMethods = map[string]shimFunc{
 var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net/url.URL": {
 		"IsAbs": {"Url", "URL_IsAbs"}, "String": {"Url", "URL_String"},
+	},
+	"strings.Reader": {
+		"ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
+		"ReadRune": {"Readers", "Reader_ReadRune"}, "Len": {"Readers", "Reader_Len"}, "Size": {"Readers", "Reader_Size"},
+	},
+	"bytes.Reader": {
+		"ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
+		"ReadRune": {"Readers", "Reader_ReadRune"}, "Len": {"Readers", "Reader_Len"}, "Size": {"Readers", "Reader_Size"},
 	},
 	"reflect.Type": {
 		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},

@@ -10,6 +10,33 @@ public sealed class GoReader { public byte[] Data = System.Array.Empty<byte>(); 
 public static class Readers
 {
     public static object NewStringReader(GoString s) => new GoReader { Data = s.Bytes };
+
+    // strings.Reader / bytes.Reader methods.
+    public static object?[] Reader_ReadByte(object r)
+    {
+        var gr = (GoReader)r;
+        if (gr.Pos >= gr.Data.Length) return new object?[] { (int)0, Io.EOFSentinel };
+        return new object?[] { (int)gr.Data[gr.Pos++], null };
+    }
+    public static object? Reader_UnreadByte(object r)
+    {
+        var gr = (GoReader)r;
+        if (gr.Pos > 0) gr.Pos--;
+        return null;
+    }
+    public static long Reader_Len(object r) { var gr = (GoReader)r; return gr.Data.Length - gr.Pos; }
+    public static long Reader_Size(object r) => ((GoReader)r).Data.Length;
+    public static object?[] Reader_ReadRune(object r)
+    {
+        var gr = (GoReader)r;
+        if (gr.Pos >= gr.Data.Length) return new object?[] { (int)0, 0L, Io.EOFSentinel };
+        var rem = new byte[gr.Data.Length - gr.Pos];
+        System.Array.Copy(gr.Data, gr.Pos, rem, 0, rem.Length);
+        var s = System.Text.Encoding.UTF8.GetString(rem);
+        var rune = System.Text.Rune.GetRuneAt(s, 0);
+        gr.Pos += rune.Utf8SequenceLength;
+        return new object?[] { rune.Value, (long)rune.Utf8SequenceLength, null };
+    }
     public static object NewBytesReader(GoSlice b)
     {
         var d = new byte[b.Len];
