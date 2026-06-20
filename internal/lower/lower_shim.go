@@ -60,6 +60,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}},
 	"crypto/md5":    {"New": {"Crypto", "Md5New"}},
 	"crypto/rand":   {"Read": {"Crypto", "RandRead"}},
+	"net/url": {
+		"QueryEscape": {"Url", "QueryEscape"}, "PathEscape": {"Url", "PathEscape"},
+		"QueryUnescape": {"Url", "QueryUnescape"}, "PathUnescape": {"Url", "PathUnescape"},
+	},
 	"path": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
@@ -164,21 +168,24 @@ var shimRegistry = map[string]map[string]shimFunc{
 // opaqueShimTypes are stdlib types represented at runtime as opaque object
 // handles (not lowered structures); method calls on them dispatch to shims.
 var opaqueShimTypes = map[string]bool{
-	"reflect.Type":             true,
-	"reflect.Value":            true,
-	"sync.Mutex":               true,
-	"sync.RWMutex":             true,
-	"sync.WaitGroup":           true,
-	"sync.Once":                true,
-	"sync.Map":                 true,
-	"strings.Builder":          true,
-	"bytes.Buffer":             true,
-	"os.File":                  true,
-	"time.Time":                true,
-	"time.Location":            true,
-	"math/rand.Rand":           true,
-	"math/rand.Source":         true,
-	"encoding/base64.Encoding": true,
+	"reflect.Type":                 true,
+	"reflect.Value":                true,
+	"sync.Mutex":                   true,
+	"sync.RWMutex":                 true,
+	"sync.WaitGroup":               true,
+	"sync.Once":                    true,
+	"sync.Map":                     true,
+	"strings.Builder":              true,
+	"bytes.Buffer":                 true,
+	"os.File":                      true,
+	"time.Time":                    true,
+	"time.Location":                true,
+	"math/rand.Rand":               true,
+	"math/rand.Source":             true,
+	"encoding/base64.Encoding":     true,
+	"encoding/binary.littleEndian": true,
+	"encoding/binary.bigEndian":    true,
+	"encoding/binary.ByteOrder":    true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
@@ -192,6 +199,8 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/base64.URLEncoding":    {"Base64", "URLEncoding"},
 	"encoding/base64.RawStdEncoding": {"Base64", "RawStdEncoding"},
 	"encoding/base64.RawURLEncoding": {"Base64", "RawURLEncoding"},
+	"encoding/binary.LittleEndian":   {"Binary", "LittleEndian"},
+	"encoding/binary.BigEndian":      {"Binary", "BigEndian"},
 	"context.Canceled":               {"Context", "Canceled"},
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 }
@@ -249,6 +258,14 @@ func isOpaqueShimType(named *types.Named) bool {
 // shimMethodRegistry maps "importpath.TypeName" to its shimmed methods
 // (Go method name -> C# type/static-method). The C# method takes the receiver as
 // its first argument.
+
+// binaryMethods are the encoding/binary.ByteOrder methods (shared by the
+// little-/big-endian concrete types and the interface).
+var binaryMethods = map[string]shimFunc{
+	"Uint16": {"Binary", "Uint16"}, "Uint32": {"Binary", "Uint32"}, "Uint64": {"Binary", "Uint64"},
+	"PutUint16": {"Binary", "PutUint16"}, "PutUint32": {"Binary", "PutUint32"}, "PutUint64": {"Binary", "PutUint64"},
+}
+
 var shimMethodRegistry = map[string]map[string]shimFunc{
 	"reflect.Type": {
 		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},
@@ -261,6 +278,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
 	},
+	"encoding/binary.littleEndian": binaryMethods,
+	"encoding/binary.bigEndian":    binaryMethods,
+	"encoding/binary.ByteOrder":    binaryMethods,
 	"hash.Hash": {
 		"Write": {"Crypto", "Hash_Write"}, "Sum": {"Crypto", "Hash_Sum"}, "Reset": {"Crypto", "Hash_Reset"},
 		"Size": {"Crypto", "Hash_Size"}, "BlockSize": {"Crypto", "Hash_BlockSize"},

@@ -346,6 +346,12 @@ public static class Fmt
             case long l: return l.ToString(Inv);
             case int i: return i.ToString(Inv);
             case ulong u: return u.ToString(Inv);
+            case uint ui: return ui.ToString(Inv);
+            case short sh: return sh.ToString(Inv);
+            case ushort ush: return ush.ToString(Inv);
+            case byte by: return by.ToString(Inv);
+            case sbyte sb: return sb.ToString(Inv);
+            case float fl: return FormatFloatV(fl);
             case double d: return FormatFloatV(d);
             case GoString gs: return gs.ToDotNetString();
             case IGoError e: return e.Error().ToDotNetString();
