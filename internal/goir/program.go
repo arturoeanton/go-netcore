@@ -93,6 +93,7 @@ type Struct struct {
 type Field struct {
 	Name string
 	Type Type
+	Tag  string // the raw Go struct tag (for reflect/json), without backticks
 }
 
 // FieldIndex returns the index of a field by name, or -1.

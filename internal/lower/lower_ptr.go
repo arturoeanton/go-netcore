@@ -314,6 +314,11 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 		l.fail(e.Pos(), "method call")
 		return goir.TVoid
 	}
+	// Method on a shimmed stdlib type (reflect.Type.Kind, …) -> external call.
+	if ext, ok := l.shimMethodExtern(seln); ok {
+		return l.shimMethodCall(e, sel, ext)
+	}
+
 	// Method on a type-parameter value inside a monomorphized generic: the
 	// receiver's concrete type is known, so call it directly rather than treating
 	// the type parameter's constraint as an interface to dispatch on.

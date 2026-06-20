@@ -245,17 +245,48 @@ func (c *lowerCtx) collectGlobals(p *frontend.Package) {
 	}
 }
 
-// buildInit generates the startup method that runs package-var initializers (in
-// dependency/source order) and then each init() function. Returns nil if the
-// program has no globals or init functions.
+// taggedStructs returns the registered structs that carry at least one field tag.
+func (c *lowerCtx) taggedStructs() []*goir.Struct {
+	var out []*goir.Struct
+	for _, s := range c.structOrder {
+		for _, f := range s.Fields {
+			if f.Tag != "" {
+				out = append(out, s)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// buildInit generates the startup method that registers struct tags (for
+// reflect/json), runs package-var initializers (in dependency/source order) and
+// then each init() function. Returns nil if there is nothing to do.
 func (c *lowerCtx) buildInit() (*goir.Method, bool) {
-	if len(c.varInits) == 0 && len(c.initFuncs) == 0 {
+	tagged := c.taggedStructs()
+	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 {
 		return nil, true
 	}
 	m := &goir.Method{Name: "__goclr_init", GoName: "__goclr_init", Ret: goir.TVoid}
 	l := &funcLowerer{lowerCtx: c, m: m, ok: true}
 	l.locals = map[types.Object]int{}
 	l.cells = map[int]goir.Type{}
+	// Register struct field tags first so reflect/json see them everywhere.
+	regExt := &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Reflect", Method: "RegisterTag",
+		Params: []goir.Type{goir.TString, goir.TString, goir.TString}, Ret: goir.TVoid,
+	}
+	for _, s := range tagged {
+		for _, f := range s.Fields {
+			if f.Tag == "" {
+				continue
+			}
+			l.emit(goir.Op{Code: goir.OpStrConst, Str: s.Name})
+			l.emit(goir.Op{Code: goir.OpStrConst, Str: f.Name})
+			l.emit(goir.Op{Code: goir.OpStrConst, Str: f.Tag})
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: regExt})
+		}
+	}
 	for _, vi := range c.varInits {
 		c.pkg = vi.pkg
 		if vi.value != nil {
@@ -448,6 +479,11 @@ func (c *lowerCtx) recvTypeName(fd *ast.FuncDecl) string {
 // goType maps a go/types.Type to a goir.Type, registering struct types on demand.
 func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
 	if named, ok := t.(*types.Named); ok {
+		// Opaque shim types (reflect.Type, reflect.Value, …) are handles, not
+		// lowered structures: represent them as plain objects.
+		if isOpaqueShimType(named) {
+			return goir.TObject, true
+		}
 		if _, isStruct := named.Underlying().(*types.Struct); isStruct {
 			return goir.StructType(c.structFor(named)), true
 		}
@@ -554,7 +590,7 @@ func (c *lowerCtx) structFor(named *types.Named) *goir.Struct {
 			c.unsupported(f.Pos(), "struct field type in "+named.Obj().Name())
 			ft = goir.TVoid
 		}
-		s.Fields = append(s.Fields, goir.Field{Name: f.Name(), Type: ft})
+		s.Fields = append(s.Fields, goir.Field{Name: f.Name(), Type: ft, Tag: st.Tag(i)})
 	}
 	return s
 }

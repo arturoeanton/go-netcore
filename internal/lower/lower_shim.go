@@ -44,6 +44,17 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"IsGraphic": {"Unicode", "IsGraphic"}, "ToUpper": {"Unicode", "ToUpper"}, "ToLower": {"Unicode", "ToLower"},
 		"ToTitle": {"Unicode", "ToTitle"},
 	},
+	"reflect": {
+		"TypeOf": {"Reflect", "TypeOf"}, "ValueOf": {"Reflect", "ValueOf"}, "DeepEqual": {"Reflect", "DeepEqual"},
+	},
+	"encoding/json": {
+		"Marshal": {"Json", "Marshal"},
+	},
+	"fmt": {
+		"Sprint": {"Fmt", "Sprint"}, "Sprintln": {"Fmt", "Sprintln"}, "Sprintf": {"Fmt", "Sprintf"},
+		"Print": {"Fmt", "Print"}, "Println": {"Fmt", "Println"}, "Printf": {"Fmt", "Printf"},
+		"Errorf": {"Fmt", "Errorf"},
+	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
 		"LeadingZeros": {"MathBits", "LeadingZeros"}, "LeadingZeros64": {"MathBits", "LeadingZeros64"},
@@ -87,6 +98,97 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 }
 
+// opaqueShimTypes are stdlib types represented at runtime as opaque object
+// handles (not lowered structures); method calls on them dispatch to shims.
+var opaqueShimTypes = map[string]bool{
+	"reflect.Type":  true,
+	"reflect.Value": true,
+}
+
+// isOpaqueShimType reports whether a named type is an opaque shim handle.
+func isOpaqueShimType(named *types.Named) bool {
+	obj := named.Obj()
+	if obj == nil || obj.Pkg() == nil {
+		return false
+	}
+	return opaqueShimTypes[obj.Pkg().Path()+"."+obj.Name()]
+}
+
+// shimMethodRegistry maps "importpath.TypeName" to its shimmed methods
+// (Go method name -> C# type/static-method). The C# method takes the receiver as
+// its first argument.
+var shimMethodRegistry = map[string]map[string]shimFunc{
+	"reflect.Type": {
+		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},
+		"String": {"Reflect", "Type_String"}, "NumField": {"Reflect", "Type_NumField"},
+		"Elem": {"Reflect", "Type_Elem"},
+	},
+	"reflect.Value": {
+		"Kind": {"Reflect", "Value_Kind"}, "Type": {"Reflect", "Value_Type"},
+		"Interface": {"Reflect", "Value_Interface"}, "Int": {"Reflect", "Value_Int"},
+		"Uint": {"Reflect", "Value_Uint"}, "Float": {"Reflect", "Value_Float"},
+		"String": {"Reflect", "Value_String"}, "Bool": {"Reflect", "Value_Bool"},
+		"Len": {"Reflect", "Value_Len"}, "Index": {"Reflect", "Value_Index"},
+		"Field": {"Reflect", "Value_Field"}, "NumField": {"Reflect", "Value_NumField"},
+		"IsNil": {"Reflect", "Value_IsNil"}, "IsZero": {"Reflect", "Value_IsZero"},
+		"IsValid": {"Reflect", "Value_IsValid"}, "Elem": {"Reflect", "Value_Elem"},
+		"MapKeys": {"Reflect", "Value_MapKeys"}, "MapIndex": {"Reflect", "Value_MapIndex"},
+	},
+}
+
+// shimMethodExtern builds an extern descriptor for a method call on a shimmed
+// stdlib type (e.g. reflect.Type.Kind), with the receiver as the first argument.
+func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, bool) {
+	fn, ok := seln.Obj().(*types.Func)
+	if !ok {
+		return nil, false
+	}
+	recv := namedOf(seln.Recv())
+	if recv == nil || recv.Obj() == nil || recv.Obj().Pkg() == nil {
+		return nil, false
+	}
+	methods, ok := shimMethodRegistry[recv.Obj().Pkg().Path()+"."+recv.Obj().Name()]
+	if !ok {
+		return nil, false
+	}
+	sf, ok := methods[fn.Name()]
+	if !ok {
+		return nil, false
+	}
+	sig := fn.Type().(*types.Signature)
+	params := []goir.Type{goir.TObject} // receiver handle
+	for i := 0; i < sig.Params().Len(); i++ {
+		pt, ok := l.lowerCtx.goType(sig.Params().At(i).Type())
+		if !ok {
+			return nil, false
+		}
+		params = append(params, pt)
+	}
+	ret := goir.TVoid
+	switch sig.Results().Len() {
+	case 0:
+	case 1:
+		ret, _ = l.lowerCtx.goType(sig.Results().At(0).Type())
+	default:
+		ret = goir.TObjectArray
+	}
+	return &goir.Extern{Assembly: shimAssembly, Namespace: shimAssembly, Type: sf.csType, Method: sf.csMethod, Params: params, Ret: ret}, true
+}
+
+// shimMethodCall lowers a shimmed method call: receiver then args, OpCallExtern.
+func (l *funcLowerer) shimMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr, ext *goir.Extern) goir.Type {
+	l.expr(sel.X) // receiver handle
+	for i, a := range e.Args {
+		if i+1 < len(ext.Params) {
+			l.exprCoerced(a, ext.Params[i+1])
+		} else {
+			l.expr(a)
+		}
+	}
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+	return ext.Ret
+}
+
 // shimExtern builds an extern descriptor for a call to a shimmed stdlib function,
 // deriving its parameter and result IR types from the Go signature. Returns false
 // if the function is not shimmed (or has a multi-result signature, not yet
@@ -105,7 +207,7 @@ func (l *funcLowerer) shimExtern(fn *types.Func) (*goir.Extern, bool) {
 		return nil, false
 	}
 	sig, ok := fn.Type().(*types.Signature)
-	if !ok || sig.Variadic() {
+	if !ok {
 		return nil, false
 	}
 	var params []goir.Type
@@ -139,16 +241,11 @@ func (l *funcLowerer) shimExtern(fn *types.Func) (*goir.Extern, bool) {
 	}, true
 }
 
-// shimCall lowers a call to a shimmed stdlib function: arguments coerced to the
-// shim's parameter types, then OpCallExtern.
-func (l *funcLowerer) shimCall(e *ast.CallExpr, ext *goir.Extern) goir.Type {
-	for i, a := range e.Args {
-		if i < len(ext.Params) {
-			l.exprCoerced(a, ext.Params[i])
-		} else {
-			l.expr(a)
-		}
-	}
+// shimCall lowers a call to a shimmed stdlib function: arguments are lowered with
+// emitCallArgs (which packs a variadic tail into a slice matching the shim's last
+// parameter), then OpCallExtern.
+func (l *funcLowerer) shimCall(e *ast.CallExpr, ext *goir.Extern, variadic bool) goir.Type {
+	l.emitCallArgs(e.Args, ext.Params, variadic, e.Ellipsis.IsValid())
 	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
 	return ext.Ret
 }

@@ -359,7 +359,11 @@ func (l *funcLowerer) unaryExpr(e *ast.UnaryExpr) {
 func (l *funcLowerer) namedFuncCall(e *ast.CallExpr, ident *ast.Ident, fn *types.Func) goir.Type {
 	// Shimmed stdlib function -> external (GoCLR.Stdlib) call.
 	if ext, ok := l.shimExtern(fn); ok {
-		return l.shimCall(e, ext)
+		variadic := false
+		if sig, ok := fn.Type().(*types.Signature); ok {
+			variadic = sig.Variadic()
+		}
+		return l.shimCall(e, ext, variadic)
 	}
 	callee, ok := l.byFunc[fn]
 	if !ok {
