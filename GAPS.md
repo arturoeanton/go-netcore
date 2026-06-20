@@ -187,16 +187,32 @@ field mutating through a pointer, `*p = v` boxing a value type into an interface
 cell, `a, b = f()` keeping a concrete result boxed for an `interface{}` target, and
 multi-result `return s, nil` boxing a value-type nil as `NilSlice`.
 
-Remaining gaps on richer JS (the next frontier — all in goja's VM/runtime, reached
-in order):
+### Update — much-expanded working set
 
-1. `for`-loops inside a function body fail at runtime (variable stash/scope handling
-   in the interpreter loop).
-2. String/array prototype methods (`"x".toUpperCase()`, `[..].map`) crash in
-   `getStringSingleton` / array creation — the per-type prototype singletons are
-   reached via paths that nil-deref.
+Two further runtime fixes (each with a conformance fixture) unblocked a large swath:
+
+- A named value stored into an interface-element slice (`code[pc] = jne(target)`,
+  `code []instruction`, `jne` a named int32) kept its typed-box identity, so
+  interface dispatch on the element matches (conformance 364). This was the SHARED
+  root cause of both loops AND arrays: the compiler backpatches jump instructions
+  into the bytecode this way.
+- A slice's capacity region (`s[len:cap]`) now holds the element zero value for both
+  `make(cap)` and append-grown backings (conformance 365), instead of nulls — goja
+  reads a sentinel in the last cap slot.
+
+With these, goja evaluates a **large** JavaScript subset on the CLR: arithmetic,
+strings and string methods (`toUpperCase`/`slice`), `Math`, objects and property
+access, function calls/closures, and `for`/`while` loops (see `examples/demo_goja`).
+
+Still open (the remaining frontier):
+
+1. Array callbacks — `[].map`/`reduce` — nil-deref in `toLength` reading `this.length`
+   inside the native prototype method (the JS-function-as-callback + native-call
+   boundary).
+2. `JSON.stringify` of objects.
 3. `fmt` formatting a non-nil `*goja.Exception` crashes in `Exception.String` (only
-   hit when surfacing one of the above errors).
+   hit when surfacing an error); and a typed-nil pointer in an interface compares
+   `== nil` true (Go: false) — a known representation gap.
 
 `GOCLR_PANIC_TRACE=1` makes the runtime print a panic's throw-site .NET stack — the
 key tool for locating these (a `recover()` otherwise masks the origin).
