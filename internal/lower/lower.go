@@ -39,8 +39,9 @@ type lowerCtx struct {
 	// each concrete instantiation discovered at a call site is monomorphized into
 	// its own method (monoInsts, keyed by name+type-args) and queued in monoTodo.
 	genericDecls       map[string]*ast.FuncDecl
-	genericDeclPkg     map[string]*frontend.Package  // owning package of each generic func template (for cross-package instantiation)
-	genericMethodDecls map[*types.Func]*ast.FuncDecl // generic method templates, by origin *types.Func
+	genericDeclPkg     map[string]*frontend.Package      // owning package of each generic func template (for cross-package instantiation)
+	genericMethodDecls map[*types.Func]*ast.FuncDecl     // generic method templates, by origin *types.Func
+	genericMethodPkg   map[*types.Func]*frontend.Package // owning package of each generic method template
 	monoInsts          map[string]*goir.Method
 	monoTodo           []monoJob
 	// Multi-package: prefixOf maps each lowered package's *types.Package to the
@@ -85,6 +86,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		genericDecls:       map[string]*ast.FuncDecl{},
 		genericDeclPkg:     map[string]*frontend.Package{},
 		genericMethodDecls: map[*types.Func]*ast.FuncDecl{},
+		genericMethodPkg:   map[*types.Func]*frontend.Package{},
 		monoInsts:          map[string]*goir.Method{},
 		prefixOf:           map[*types.Package]string{},
 		globals:            map[*types.Var]int{},
@@ -131,6 +133,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 				if fn, ok := p.TypesInfo.Defs[fd.Name].(*types.Func); ok {
 					if sig, ok := fn.Type().(*types.Signature); ok && sig.RecvTypeParams().Len() > 0 {
 						c.genericMethodDecls[fn] = fd
+						c.genericMethodPkg[fn] = p
 						continue
 					}
 				}

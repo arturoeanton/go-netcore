@@ -483,6 +483,39 @@ func (l *funcLowerer) namedFuncCall(e *ast.CallExpr, ident *ast.Ident, fn *types
 	return callee.Ret
 }
 
+// explicitGenericFun reports whether fun is an explicit generic instantiation of a
+// free function (Fn[T] or pkg.Fn[T]), returning the function identifier and object.
+// Index/IndexListExpr that are array/slice indexing or generic type conversions are
+// not matched (those resolve elsewhere).
+func (l *funcLowerer) explicitGenericFun(fun ast.Expr) (*ast.Ident, *types.Func, bool) {
+	var x ast.Expr
+	switch ix := fun.(type) {
+	case *ast.IndexExpr:
+		x = ix.X
+	case *ast.IndexListExpr:
+		x = ix.X
+	default:
+		return nil, nil, false
+	}
+	var id *ast.Ident
+	switch xx := x.(type) {
+	case *ast.Ident:
+		id = xx
+	case *ast.SelectorExpr:
+		id = xx.Sel
+	default:
+		return nil, nil, false
+	}
+	fn, ok := l.pkg.TypesInfo.Uses[id].(*types.Func)
+	if !ok || fn.Pkg() == nil {
+		return nil, nil, false
+	}
+	if sig, ok := fn.Type().(*types.Signature); !ok || sig.Recv() != nil {
+		return nil, nil, false // methods dispatch through methodCall
+	}
+	return id, fn, true
+}
+
 // callExpr lowers a call and returns its result type (TVoid for none).
 func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 	// Type conversions: T(x), including []byte(s) / []rune(s) where the call
@@ -501,6 +534,12 @@ func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 				return l.namedFuncCall(e, sel.Sel, fn)
 			}
 		}
+	}
+	// Explicit generic instantiation: Fn[T](args) / pkg.Fn[T](args). The callee is
+	// an Index/IndexListExpr whose X names a generic free function; route it through
+	// the normal generic-call path (TypesInfo.Instances records the type args).
+	if id, fn, ok := l.explicitGenericFun(e.Fun); ok {
+		return l.namedFuncCall(e, id, fn)
 	}
 	// Calling a function value (closure / func variable).
 	if l.isFuncValue(e.Fun) {

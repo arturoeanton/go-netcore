@@ -172,11 +172,16 @@ func namedOf(t types.Type) *types.Named {
 func (l *funcLowerer) instantiateMethod(fn *types.Func, seln *types.Selection) (*goir.Method, bool) {
 	orig := fn.Origin()
 	decl := l.genericMethodDecls[orig]
+	declPkg := l.genericMethodPkg[orig]
 	if decl == nil {
 		decl = l.genericMethodDecls[fn]
+		declPkg = l.genericMethodPkg[fn]
 	}
 	if decl == nil {
 		return nil, false
+	}
+	if declPkg == nil {
+		declPkg = l.pkg
 	}
 	recvNamed := namedOf(seln.Recv())
 	if recvNamed == nil || recvNamed.TypeArgs() == nil {
@@ -193,13 +198,18 @@ func (l *funcLowerer) instantiateMethod(fn *types.Func, seln *types.Selection) (
 	if m, ok := l.monoInsts[key]; ok {
 		return m, true
 	}
+	// The method template may live in another package; shell it against the
+	// template's type info, not the caller's.
+	saved := l.pkg
+	l.pkg = declPkg
 	m, ok := l.methodShellSubst(decl, subst)
+	l.pkg = saved
 	if !ok {
 		return nil, false
 	}
 	l.monoInsts[key] = m
 	l.prog.Methods = append(l.prog.Methods, m)
-	l.monoTodo = append(l.monoTodo, monoJob{decl: decl, method: m, subst: subst, pkg: l.pkg})
+	l.monoTodo = append(l.monoTodo, monoJob{decl: decl, method: m, subst: subst, pkg: declPkg})
 	return m, true
 }
 
