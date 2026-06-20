@@ -7,8 +7,18 @@ on `dotnet`. No C# host, no JS runtime: a Go JS engine executing as managed CLR
 code.
 
 ```sh
+# On a fresh checkout, recreate vendor/ first so the goja/regexp2 overlays apply
+# (vendor/ is gitignored — see ../../goclr.overlays/README.md):
+go mod vendor
+
 goclr run .          # build to a .NET dll and run it
+# or, without installing the binary:
+go run ../../cmd/goclr/main.go run .
 ```
+
+> Without `vendor/`, the build fails with `GCLR0201: unsupported unsafe operation`
+> because goja's `regexp2`/typedarray `unsafe.Pointer` code is read straight from
+> the module cache, where the goclr overlays cannot be applied.
 
 Output (identical to `go run .`):
 

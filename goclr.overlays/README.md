@@ -34,3 +34,18 @@ which is byte-for-byte identical and fully supported by the backend.
 Distinct from these are goclr's **standard-library** source overlays (e.g. a
 reflectlite-free `sort`), which are part of the compiler itself and embedded in the
 binary — they apply to every program and are not application-specific.
+
+## Reproducing on a fresh checkout
+
+`vendor/` is **not** committed (it is gitignored). Because the overlays here apply
+only to `vendor/<path>`, building a target that needs them (goja, the demo) on a
+fresh clone requires recreating `vendor/` first:
+
+```bash
+go mod vendor                                       # recreate vendor/ from go.mod
+go run ./cmd/goclr/main.go run examples/demo_goja   # overlays now apply
+```
+
+Without `vendor/`, goclr reads the dependency from the module cache, where the
+overlay cannot be swapped in, and the build fails with
+`GCLR0201: unsupported unsafe operation`.

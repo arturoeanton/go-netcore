@@ -136,27 +136,38 @@ two named types that share one runtime representation:
 
 A precise fix needs per-value runtime type tags (an itable), which is M3 scope.
 
-## goja / full runtime reflection
+## goja / JavaScript evaluation
 
-Running goja (and similar reflection-heavy engines) end-to-end is **not** yet
-possible: goja's Go↔JS interop layer is built on the full `reflect` API
-(`reflect.ValueOf`, `MakeSlice`, `MakeMap`, `New`, field/method access by name)
-across ~25 files. goclr's value model erases runtime type identity, so a faithful
-`reflect` needs the same per-value type tags / runtime type descriptors as the
-interface-dispatch item above. The supporting infrastructure is in place
-(`go mod vendor` + unsafe-pointer overlays, `unicode` and `sort` compiled from
-source, long-form local opcodes, `&slice[i]`); the remaining blocker is the
-runtime type system. Tracked as an M3 milestone. See GOJA-STRATEGY.md.
+goja now **compiles, loads, JITs, runs init, and evaluates a large JavaScript
+subset** (arithmetic, strings + string methods, `Math`, objects/property access,
+function calls/closures, `for`/`while` loops). The reflection-heavy interop is
+served by the typed box + a sample-based `reflect` overlay. What remains (see
+GAPS.md for detail):
+
+- **Array callbacks** — `[].map`/`reduce`: a typed-nil pointer crosses the
+  JS-callback ↔ native-function boundary (`getStr("length")` returns a typed nil),
+  tied to the typed-nil-in-interface gap below.
+- **`JSON.stringify`** of objects.
+- `fmt` formatting a non-nil `*goja.Exception` (`Exception.String`).
+
+## Typed-nil pointer inside an interface
+
+A nil pointer stored into an interface (`var p *T; var i any = p`) compares
+`i == nil` **true** in goclr, where Go reports **false** (Go's interface keeps the
+static type, so the interface is non-nil even though the pointed-to value is nil).
+A consequence: code that distinguishes "nil interface" from "interface holding a
+typed nil" (some library `Value` hierarchies) can diverge. A precise fix needs a
+typed-nil representation that survives boxing.
 
 ## `slices` / `cmp`
 
-Not yet provided. The path is a source overlay like `sort`'s (cross-package generic
-instantiation now works, so the generic functions monomorphize correctly). The one
-remaining constraint is **API completeness**: overlaying `slices` replaces its
-source for the whole build's type-checking, so the overlay must define every
-exported function any package in the graph uses — `os`, for instance, calls
-`slices.Grow`. A partial overlay breaks unrelated stdlib type-checking, so the
-overlay must implement the full non-iterator API (~32 functions).
+Provided. `cmp` and `slices` compile from source (`slices` via a `replaceOnly`
+overlay that patches only `slices.go`'s `unsafe`-based `overlaps`/`startIdx` with a
+pointer-identity scan; the rest of the package is its real GOROOT source). Caveat:
+`slices.overlaps`/`startIdx` rely on slice-element pointer identity, which goclr's
+GoPtr model does not preserve across `&s[i]` — so the in-place aliasing
+optimizations they guard are conservative (they fall back to copying). This does
+not affect element values, only the optimization choice.
 
 ## Misc
 

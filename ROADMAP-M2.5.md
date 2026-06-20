@@ -19,14 +19,17 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**146 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
-hardened** (an adversarial multi-agent sweep over all 20 packages found and fixed
-~30 divergences: fmt verb engine + flags/width + no-crash type handling, strconv
+**165 conformance fixtures pass, all byte-exact vs `go run`.** P0 + P1 + P2 stdlib
+are complete and hardened, the typed-box keystone (M3) is in place, and the headline
+validation target — **goja — now compiles, loads, JITs, runs init, and evaluates a
+large JavaScript subset** (see `GAPS.md`, `GOJA-STRATEGY.md`, `examples/demo_goja`).
+P0 hardening (the original adversarial sweep over all 20 packages) fixed ~30
+divergences: fmt verb engine + flags/width + no-crash type handling, strconv
 ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embedded/
 pointer-field, a latent nil-slice lowering segfault, time Duration.String integer
 precision, errors `%w` wrapping, Go-exact float ftoa, string slicing, append spread,
-local type/const decls, and broad method coverage). Deferred edges are tracked in
-`LIMITATIONS.md`. Tagged `0.0.2.p0full` (initial), `0.0.3.p0hard` (hardened).
+local type/const decls, and broad method coverage. Deferred edges are tracked in
+`LIMITATIONS.md`. Tagged `0.0.2.p0full` … `0.0.24.goja-loops-arrays-objects`.
 
 **P1 in progress** (`0.0.5.p1http`): shimmed `encoding/hex·base64·base32·binary`,
 `crypto/sha256·sha1·sha512·md5` + `crypto/rand`, `path` + `path/filepath`,

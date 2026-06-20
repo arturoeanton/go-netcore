@@ -118,11 +118,58 @@ root cause** — goclr erases per-value runtime type identity:
 
 Both are dissolved by the same M3 feature: **per-value type tags / an itable**, so
 that (a) an interface value carries its concrete type, and (b) `reflect` can read
-it. Until then, goja **compiles partway but cannot run**. This is an architectural
-milestone, deliberately not rushed — a half-implemented `reflect` would be silent,
-dangerous tech debt (see the project's "sin deuda técnica" rule).
+it. (**Resolved** — this was implemented; see the final status section below. goja
+now evaluates JavaScript.) The feature was deliberately not rushed — a half-
+implemented `reflect` would be silent, dangerous tech debt (the "sin deuda técnica"
+rule).
 
 **Recommendation for M3:** add a `TypeId` (and a small type-descriptor table) to
 *every* boxed value, not just `GoPtr`; route interface dispatch and a new `reflect`
 shim through it. That single foundation unblocks goja, precise `%T`/`%#v`, nil-map
 formatting, and multi-named-slice interface dispatch at once.
+
+---
+
+## STATUS UPDATE — goja runs JavaScript (the recommendation above was carried out)
+
+The **typed box** (`docs/DESIGN-typed-box.md`) gives every named non-struct value a
+runtime type identity (`GoNamed{TypeId, Value}`); interface dispatch, `==`, `fmt`,
+and a sample-based `reflect` overlay recover it. With that keystone in place, goja
+went all the way from "compiles partway" to **evaluating JavaScript**: `vm.New()`
+→ full package init → parse → compile → run. `RunString("1+2")` returns `3`;
+`1+2*3` → 7; string concat, string methods (`toUpperCase`/`slice`), `Math`, objects
+and property access, function calls/closures, and `for`/`while` loops all evaluate
+with output identical to `go run`. See `examples/demo_goja` and `GAPS.md`.
+
+Getting there required, on top of the typed box and the safe unsafe-overlays, a long
+series of general codegen/runtime fixes (each landed with a conformance fixture).
+The load-bearing ones:
+
+- **4-byte metadata heap indices (`HeapSizes=0x07`).** The emitter assumed
+  2-byte heap references, valid only while every metadata heap stays under 64 KiB.
+  A program as large as goja overflows them, so once a heap crossed 64 KiB every
+  signature/name reference was misread (`TypeLoadException`). Foundational for any
+  large program, not just goja.
+- **Typed-box identity preserved across slices/interfaces.** A named value stored
+  into an interface-element slice (`code[pc] = jne(target)`, the bytecode the
+  compiler backpatches) kept its type tag — the shared root cause of goja's loops
+  *and* arrays failing.
+- **Slice capacity region holds element zero values** (`make`/`append`), so code that
+  reslices into `s[len:cap]` reads zeros, not nulls.
+- Generic instantiations introduced by package-var initializers, non-void
+  panic-tail `ret`, `InitLocals`, variadic/promoted interface dispatch, identical-
+  layout struct conversion (`type Tag compact.Tag`), pointer-receiver methods
+  promoted from embedded value fields, `*p = v` / `a,b = f()` / `return s, nil`
+  boxing, and matching shim signatures (atomic Int32, reflect, time, runtime).
+
+### Still open (the remaining frontier)
+
+1. **Array callbacks** — `[].map`/`reduce`: a typed-nil pointer crosses the
+   JS-callback ↔ native-function boundary (`getStr("length")` returns a typed nil),
+   tied to the typed-nil-in-interface representation gap.
+2. **`JSON.stringify`** of objects.
+3. `fmt` formatting a non-nil `*goja.Exception` (`Exception.String`), only hit when
+   surfacing one of the above as an error.
+
+Tagged milestones: `0.0.21.goja-compiles-loads-jits`, `0.0.22.goja-runs-1plus2`,
+`0.0.23.goja-evaluates-js`, `0.0.24.goja-loops-arrays-objects`.

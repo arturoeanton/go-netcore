@@ -68,6 +68,16 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | M2.5 | Stdlib classification by module (modules whose path has no dot now lower their subpackages) | ✅ |
 | M2.5 | `unicode` + `sort` compiled from goclr source overlays; `&slice[i]`; `&^`/`&^=`; keyed array/slice literals; fixed `[N]T` arrays; `clear` builtin; `errors.As` | ✅ |
 | M2.5 | Long-form local opcodes (256+ locals) + chunked package-var init (64 KB IL limit) | ✅ |
+| M3 | Typed box: `TypeId` on every boxed named value; identity preserved across slices/interfaces; interface dispatch over representation-sharing types | ✅ |
+| M3 | Sample-based `reflect` overlay covering goja's interop surface | ✅ |
+| M3 | Large-program emitter: 4-byte metadata heap indices (`HeapSizes=0x07`), `InitLocals`, fat headers — required by goja-scale assemblies | ✅ |
+| M3 | Slice capacity semantics (`make`/`append` cap region holds element zeros); identical-layout struct conversion; promoted pointer-receiver method mutation through a pointer | ✅ |
+| M3 | **goja: compiles → loads → JITs → runs init → evaluates a large JS subset** (arithmetic, strings + methods, `Math`, objects, closures, `for`/`while`) | ✅ |
+| M3 | goja: array callbacks (`map`/`reduce`), `JSON.stringify` | 🚧 |
+| M3 | `goclr test` (real `testing.T`); CI conformance matrix; stable compatibility report | 🚧 |
+
+**165 conformance fixtures pass byte-for-byte vs `go run`.** Tags
+`0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`.
 
 ## Milestones
 
@@ -275,17 +285,22 @@ Whole, idiomatic apps across the target classes that must be byte-exact under
 validation target, not the product). `business-json`, `cli-csv`, `rules-engine`,
 `http-basic` ✅; `goja` and `examples/demo_goja` ⏳ blocked on the typed-box.
 
-### M3 — the typed-box keystone (current focus)
+### M3 — the typed-box keystone + goja running (largely done)
 
 `unsafe.Pointer` (goja's old blocker) is **solved** via `goclr.overlays/` +
-`encoding/binary`; goja runs under `go run`. The remaining blocker is a single
-foundation — **per-value runtime type identity** — designed in
-`docs/DESIGN-typed-box.md`. It unblocks, in priority order:
-- 🚧 **typed box**: `TypeId`/itable on every boxed value (named-primitive
-  Stringers, precise `%T`/`%#v`, nil-map `%v`)
-- 🚧 **deep reflect** on the runtime type descriptors (text/template, validators)
-- 🚧 **precise interface dispatch** via itable (resolves the representation
-  collapse that blocks `sort.StringSlice` → **goja compiles + runs JS**)
+`encoding/binary`. The keystone — **per-value runtime type identity**, designed in
+`docs/DESIGN-typed-box.md` — is implemented and carried goja from "compiles
+partway" to **evaluating JavaScript**:
+- ✅ **typed box**: `TypeId` on every boxed named value (named-primitive Stringers,
+  `%T`, interface dispatch over representation-sharing types)
+- ✅ **precise interface dispatch** via the typed box (resolves the representation
+  collapse, incl. across slices/interfaces and promoted/variadic methods)
+- ✅ **sample-based reflect** overlay covering goja's interop surface
+- ✅ **large-program emitter** (4-byte metadata heap indices, `InitLocals`),
+  **slice capacity semantics**, and a long tail of codegen-correctness fixes that
+  together make **goja compile, load, JIT, run init, and evaluate a large JS
+  subset** (see `examples/demo_goja`, GAPS.md) — tagged `0.0.21`…`0.0.24`
+- 🚧 remaining JS surface: array callbacks (`map`/`reduce`), `JSON.stringify`
 - 🚧 `goclr test` with a real `testing.T`; CI conformance matrix; stable
   HTML/JSON compatibility report
 
