@@ -332,9 +332,7 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	if !finishChunk(cl) {
 		return nil, false
 	}
-	for _, m := range chunks {
-		c.prog.Methods = append(c.prog.Methods, m)
-	}
+	c.prog.Methods = append(c.prog.Methods, chunks...)
 
 	// Top-level init: call each chunk in order, then run init() functions.
 	m := &goir.Method{Name: "__goclr_init", GoName: "__goclr_init", Ret: goir.TVoid}

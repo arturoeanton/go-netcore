@@ -1,0 +1,32 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+# The default v2 linter set (errcheck, govet, ineffassign, staticcheck, unused) plus
+# a few high-signal additions. The compiler reports user errors through the
+# diagnostics model, so unchecked fmt.Fprint* to stderr in the CLI is intentional.
+linters:
+  enable:
+    - misspell
+    - unconvert
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+      # Embedded dependency overlays mirror upstream source verbatim.
+      - path: goclr\.overlays/
+        linters:
+          - misspell
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
