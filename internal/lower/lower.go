@@ -749,8 +749,12 @@ type funcLowerer struct {
 	deferNormalLabel int
 	resultLocal      int
 	// closure lowering: the body of a lifted function literal.
-	inClosure  bool
-	closureRet goir.Type
+	inClosure bool
+	// closureRet is the first result type (TVoid if none); closureResults holds all
+	// result types when the literal returns more than one (returned as an object[]
+	// tuple, like a multi-result named function).
+	closureRet     goir.Type
+	closureResults []goir.Type
 	// namedResults holds the local indices of named return values, in order, when
 	// the function declares them (e.g. func f() (err error)); empty otherwise.
 	namedResults []int

@@ -97,10 +97,25 @@ func (l *funcLowerer) buildClosure(lit *ast.FuncLit, ci *closureInfo) {
 	cl.cells = map[int]goir.Type{}
 	cl.addrTaken = cl.analyzeAddrTaken(lit.Body)
 
-	// Result type (single value or void).
+	// Result types: the first (for single-value returns) and the full list (so a
+	// multi-result literal returns an object[] tuple).
 	cl.closureRet = goir.TVoid
 	if res := lit.Type.Results; res != nil && res.NumFields() >= 1 {
-		cl.closureRet, _ = cl.goType(cl.pkg.TypesInfo.TypeOf(res.List[0].Type))
+		var rts []goir.Type
+		for _, f := range res.List {
+			ft, _ := cl.goType(cl.pkg.TypesInfo.TypeOf(f.Type))
+			n := len(f.Names)
+			if n == 0 {
+				n = 1
+			}
+			for k := 0; k < n; k++ {
+				rts = append(rts, ft)
+			}
+		}
+		cl.closureRet = rts[0]
+		if len(rts) > 1 {
+			cl.closureResults = rts
+		}
 	}
 
 	// Captured cells come from env (arg 0).
@@ -158,12 +173,15 @@ func (l *funcLowerer) funcValueCall(e *ast.CallExpr) goir.Type {
 		l.fail(e.Pos(), "call of a non-function value")
 		return goir.TVoid
 	}
+	// A multi-result function value returns the same object[] tuple a multi-result
+	// named function does; the lifted body produces it and __invoke returns it boxed
+	// as object, which the caller (multiAssignCall) unpacks.
+	multiResult := sig.Results().Len() > 1
 	retType := goir.TVoid
 	if sig.Results().Len() == 1 {
 		retType, _ = l.goType(sig.Results().At(0).Type())
-	} else if sig.Results().Len() > 1 {
-		l.fail(e.Pos(), "function value with multiple results")
-		return goir.TVoid
+	} else if multiResult {
+		retType = goir.TObjectArray
 	}
 
 	l.expr(e.Fun) // GoClosure
@@ -180,6 +198,8 @@ func (l *funcLowerer) funcValueCall(e *ast.CallExpr) goir.Type {
 		l.emit(goir.Op{Code: goir.OpPop})
 		return goir.TVoid
 	}
+	// Cast the boxed object result to the concrete return type (a value type is
+	// unboxed; object[] / reference types are castclass'd via unbox.any).
 	l.emitUnbox(retType)
 	return retType
 }

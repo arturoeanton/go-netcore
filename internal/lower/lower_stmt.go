@@ -1135,11 +1135,27 @@ func (l *funcLowerer) modifyDeref(star *ast.StarExpr, binTok token.Token, emitOp
 }
 
 func (l *funcLowerer) returnStmt(s *ast.ReturnStmt) {
-	// Inside a lifted closure body: return a boxed value (or null for void).
+	// Inside a lifted closure body: return a boxed value (or null for void). A
+	// multi-result literal returns an object[] tuple, which __invoke hands back as
+	// object for the caller to unpack — the same shape as a named multi-result fn.
 	if l.inClosure {
-		if l.closureRet != goir.TVoid {
+		switch {
+		case len(l.closureResults) > 1:
+			if len(s.Results) != len(l.closureResults) {
+				l.fail(s.Pos(), "naked return in a multi-result closure")
+				return
+			}
+			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(s.Results))})
+			l.emit(goir.Op{Code: goir.OpNewObjArray})
+			for i, r := range s.Results {
+				l.emit(goir.Op{Code: goir.OpDup})
+				l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+				l.emitBoxedElem(r)
+				l.emit(goir.Op{Code: goir.OpStelemRef})
+			}
+		case l.closureRet != goir.TVoid:
 			l.emitBoxedElem(s.Results[0])
-		} else {
+		default:
 			l.emit(goir.Op{Code: goir.OpLdNull})
 		}
 		// A closure that uses defer routes its return through the defer epilogue.
