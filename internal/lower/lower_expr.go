@@ -293,21 +293,32 @@ func (l *funcLowerer) binaryExpr(e *ast.BinaryExpr) {
 		return
 	case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
 		opType := l.cmpOperandType(e.X, e.Y)
-		// A slice is a value type and can only be compared against nil; test its
-		// backing array rather than emitting an invalid `ceq` on the struct.
 		if opType.Kind == goir.KSlice {
-			operand := e.X
-			if isNilIdent(e.X) {
-				operand = e.Y
+			// A slice value can only be compared against nil (test its backing
+			// array). Two non-nil slice-typed operands are a fixed-array comparison
+			// (the type checker rejects slice==slice), which is element-wise by value.
+			if isNilIdent(e.X) || isNilIdent(e.Y) {
+				operand := e.X
+				if isNilIdent(e.X) {
+					operand = e.Y
+				}
+				l.expr(operand)
+				l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+					Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "SliceIsNil",
+					Params: []goir.Type{opType}, Ret: goir.TBool,
+				}})
+				if e.Op == token.NEQ {
+					l.emit(goir.Op{Code: goir.OpNot})
+				}
+				return
 			}
-			l.expr(operand)
-			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "SliceIsNil",
-				Params: []goir.Type{opType}, Ret: goir.TBool,
-			}})
-			if e.Op == token.NEQ {
-				l.emit(goir.Op{Code: goir.OpNot})
-			}
+			l.emitValueEqual(e, opType)
+			return
+		}
+		// Structs and arrays compare by value (== is element/field-wise in Go), not
+		// by the reference identity of their boxed runtime objects.
+		if opType.Kind == goir.KStruct {
+			l.emitValueEqual(e, opType)
 			return
 		}
 		l.expr(e.X)
@@ -329,6 +340,23 @@ func (l *funcLowerer) binaryExpr(e *ast.BinaryExpr) {
 
 func isUnsigned(t goir.Type) bool {
 	return t.Kind == goir.KUint64 || t.Kind == goir.KUint32
+}
+
+// emitValueEqual lowers a struct or array == / != as a by-value comparison:
+// both operands are boxed and handed to the runtime, which compares fields and
+// elements recursively.
+func (l *funcLowerer) emitValueEqual(e *ast.BinaryExpr, opType goir.Type) {
+	l.expr(e.X)
+	l.emitBox(opType)
+	l.expr(e.Y)
+	l.emitBox(opType)
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ValueEqual",
+		Params: []goir.Type{goir.TObject, goir.TObject}, Ret: goir.TBool,
+	}})
+	if e.Op == token.NEQ {
+		l.emit(goir.Op{Code: goir.OpNot})
+	}
 }
 
 // cmpOperandType returns the operand type of a comparison, ignoring a nil operand.

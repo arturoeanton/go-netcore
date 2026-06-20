@@ -9,6 +9,41 @@ public static class Rt
     /// <summary>A slice is nil iff its backing array is null (Go's `s == nil`).</summary>
     public static bool SliceIsNil(GoSlice s) => s.Data == null;
 
+    /// <summary>Go value equality (==) for structs and fixed arrays: compares fields
+    /// and elements recursively, matching Go's element-wise semantics rather than the
+    /// reference identity of the boxed runtime objects.</summary>
+    public static bool ValueEqual(object? a, object? b)
+    {
+        if (a == null || b == null) return ReferenceEquals(a, b);
+
+        // Fixed arrays are slice-backed: equal length and element-wise equal.
+        if (a is GoSlice sa && b is GoSlice sb)
+        {
+            if (sa.Len != sb.Len) return false;
+            for (int i = 0; i < sa.Len; i++)
+                if (!ValueEqual(sa.Data![sa.Off + i], sb.Data![sb.Off + i]))
+                    return false;
+            return true;
+        }
+        if (a is GoString ga && b is GoString gb) return GoStrings.Equal(ga, gb);
+
+        var t = a.GetType();
+        if (t != b.GetType()) return false;
+
+        // A struct compares field by field; a pointer cell by what it points at.
+        if (a is GoPtr pa && b is GoPtr pb) return ReferenceEquals(pa, pb);
+        var fields = t.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        if (fields.Length > 0 && !t.IsPrimitive && !t.IsEnum)
+        {
+            foreach (var f in fields)
+                if (!ValueEqual(f.GetValue(a), f.GetValue(b)))
+                    return false;
+            return true;
+        }
+        // Boxed primitives/enums and other leaf values: value equality.
+        return a.Equals(b);
+    }
+
     /// <summary>clear(m): remove all entries from a map.</summary>
     public static void ClearMap(GoMap? m) => m?.Data?.Clear();
 
