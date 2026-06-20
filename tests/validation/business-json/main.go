@@ -109,15 +109,17 @@ func main() {
 	copy(items, order.Items)
 	sort.Slice(items, func(i, j int) bool { return items[i].Subtotal() > items[j].Subtotal() })
 	for _, li := range items {
-		fmt.Printf("  %-8s x%-4d %10s = %s\n", li.SKU, li.Quantity, li.Unit.String(), li.Subtotal())
+		// Money has a String() method; we call it explicitly. Implicit %s dispatch
+		// on a named primitive awaits the typed-box keystone (docs/DESIGN-typed-box.md).
+		fmt.Printf("  %-8s x%-4d %10s = %s\n", li.SKU, li.Quantity, li.Unit.String(), li.Subtotal().String())
 	}
 
 	inv := order.Invoice()
 	fmt.Println(strings.Repeat("-", 40))
-	fmt.Printf("Subtotal: %s\n", inv.Subtotal)
-	fmt.Printf("Discount: %s (%.0f%%)\n", inv.Discount, inv.Rate*100)
-	fmt.Printf("Tax:      %s\n", inv.Tax)
-	fmt.Printf("Total:    %s\n", inv.Total)
+	fmt.Printf("Subtotal: %s\n", inv.Subtotal.String())
+	fmt.Printf("Discount: %s (%.0f%%)\n", inv.Discount.String(), inv.Rate*100)
+	fmt.Printf("Tax:      %s\n", inv.Tax.String())
+	fmt.Printf("Total:    %s\n", inv.Total.String())
 
 	out, _ := json.MarshalIndent(inv, "", "  ")
 	fmt.Println(string(out))
