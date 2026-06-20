@@ -17,6 +17,14 @@ large, demanding dependencies that force goclr to implement general Go features
 correctly — not as products of goclr. They drive the roadmap; they do not earn
 special cases in the compiler.
 
+To show the same generality on the everyday target classes, [`tests/validation/`](tests/validation/)
+holds whole idiomatic apps — a business/JSON service, a CLI/ETL job, an
+interface-driven rules engine, an HTTP service — each byte-exact under `go run`
+vs `goclr run`. goja stays the hard target: it is blocked on the **typed-box
+keystone** (per-value runtime type identity), designed in
+[`docs/DESIGN-typed-box.md`](docs/DESIGN-typed-box.md) — the single foundation
+that also delivers precise `%T`, reflect, and named-primitive `Stringer`s.
+
 ## Status
 
 The compiler runs end-to-end: front half + the ECMA-335 emitter + the .NET runtime

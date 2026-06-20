@@ -255,19 +255,39 @@ The `reflect` **write-path** is done: `reflect.ValueOf(&x).Elem()` is settable a
 parent structs for nested field sets).
 
 **P0 is complete.** Remaining stdlib work is P1+ (net/http, net, crypto, database/sql,
-…) tracked in `ROADMAP-M2.5.md`. Next: **M3 goja**.
+…) tracked in `ROADMAP-M2.5.md`. Next: **the typed-box keystone (M3)** — see below.
 
 Known documented limitations:
 - `time.Time` operates in **UTC** (Go uses Local in `time.Unix`/`Now`); use `.UTC()`
   for cross-runtime determinism.
-- a named numeric type with a `String()` method (e.g. `time.Duration`) passed to
-  `fmt` as `any` prints the raw value, not the Stringer output — call `.String()`
-  explicitly (general boxed-Stringer support is pending).
+- a named numeric type with a `String()` method (e.g. `time.Duration`, an `int`
+  enum) passed to `fmt` as `any` prints the raw value, not the Stringer output —
+  call `.String()` explicitly. The general fix is the typed-box keystone below.
+- a panic that reaches the top of a goroutine prints the .NET unhandled-exception
+  framing rather than Go's `panic:` + stack trace + `exit status 2`; the value and
+  message are correct, and **recovered** panics (incl. divide-by-zero, index OOB,
+  nil deref) match Go exactly.
 
-### M3 — goja
-- 🟡 compatibility analysis runs; `analyze` flags goja's `unsafe.Pointer` use in
-  `typedarrays.go` as the key unsupported area to solve
-- 🚧 compile + run JS
+### Validation suite (`tests/validation/`)
+
+Whole, idiomatic apps across the target classes that must be byte-exact under
+`go run` vs `goclr run`, proving the compiler is application-agnostic (goja is a
+validation target, not the product). `business-json`, `cli-csv`, `rules-engine`,
+`http-basic` ✅; `goja` and `examples/demo_goja` ⏳ blocked on the typed-box.
+
+### M3 — the typed-box keystone (current focus)
+
+`unsafe.Pointer` (goja's old blocker) is **solved** via `goclr.overlays/` +
+`encoding/binary`; goja runs under `go run`. The remaining blocker is a single
+foundation — **per-value runtime type identity** — designed in
+`docs/DESIGN-typed-box.md`. It unblocks, in priority order:
+- 🚧 **typed box**: `TypeId`/itable on every boxed value (named-primitive
+  Stringers, precise `%T`/`%#v`, nil-map `%v`)
+- 🚧 **deep reflect** on the runtime type descriptors (text/template, validators)
+- 🚧 **precise interface dispatch** via itable (resolves the representation
+  collapse that blocks `sort.StringSlice` → **goja compiles + runs JS**)
+- 🚧 `goclr test` with a real `testing.T`; CI conformance matrix; stable
+  HTML/JSON compatibility report
 
 ### M4 — net/http overlay (Kestrel)
 - 🚧 overlay package + Kestrel host
