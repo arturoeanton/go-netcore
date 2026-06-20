@@ -1272,20 +1272,30 @@ func (l *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 
 	// Push the return value onto the stack (nothing for void).
 	if len(l.resultTypes) > 1 {
-		if len(s.Results) != len(l.resultTypes) {
+		// return f() where f yields a matching multi-value tuple: the call already
+		// returns a boxed object[] tuple, so leave it on the stack as the result.
+		if len(s.Results) == 1 {
+			tup, ok := l.pkg.TypesInfo.TypeOf(s.Results[0]).(*types.Tuple)
+			if !ok || tup.Len() != len(l.resultTypes) {
+				l.fail(s.Pos(), "naked multi-return")
+				return
+			}
+			l.expr(s.Results[0])
+		} else if len(s.Results) != len(l.resultTypes) {
 			l.fail(s.Pos(), "naked multi-return")
 			return
-		}
-		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(s.Results))})
-		l.emit(goir.Op{Code: goir.OpNewObjArray})
-		for i, r := range s.Results {
-			l.emit(goir.Op{Code: goir.OpDup})
-			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
-			// Each slot holds a boxed value; box by the expression's own type (a
-			// concrete value returned as an interface must still be boxed; a nil
-			// interface result becomes null).
-			l.emitBoxedElem(r)
-			l.emit(goir.Op{Code: goir.OpStelemRef})
+		} else {
+			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(s.Results))})
+			l.emit(goir.Op{Code: goir.OpNewObjArray})
+			for i, r := range s.Results {
+				l.emit(goir.Op{Code: goir.OpDup})
+				l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+				// Each slot holds a boxed value; box by the expression's own type (a
+				// concrete value returned as an interface must still be boxed; a nil
+				// interface result becomes null).
+				l.emitBoxedElem(r)
+				l.emit(goir.Op{Code: goir.OpStelemRef})
+			}
 		}
 	} else if len(s.Results) == 1 {
 		l.exprCoerced(s.Results[0], l.resultTypes[0])
