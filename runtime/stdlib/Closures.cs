@@ -13,4 +13,39 @@ public static class NativeClosures
     /// <summary>Wrap a C# delegate as a Go function value.</summary>
     public static GoClosure Make(System.Func<object?[], object?> fn)
         => new GoClosure { Id = -1, Native = fn };
+
+    private static readonly System.Collections.Generic.Dictionary<string, System.Reflection.MethodInfo> Cache = new();
+
+    /// <summary>Wrap a shimmed stdlib function (e.g. unicode.IsSpace, sha256.New) as
+    /// a Go function value, invoked by reflection with the closure's args.</summary>
+    public static GoClosure FromShim(GoString type, GoString method)
+    {
+        string key = type.ToDotNetString() + "." + method.ToDotNetString();
+        if (!Cache.TryGetValue(key, out var mi))
+        {
+            var t = System.Type.GetType("GoCLR.Stdlib." + type.ToDotNetString())!;
+            mi = t.GetMethod(method.ToDotNetString())!;
+            Cache[key] = mi;
+        }
+        return new GoClosure { Id = -1, Native = args => InvokeShim(mi, args) };
+    }
+
+    private static object? InvokeShim(System.Reflection.MethodInfo mi, object?[] args)
+    {
+        var ps = mi.GetParameters();
+        var conv = new object?[ps.Length];
+        for (int i = 0; i < ps.Length; i++)
+            conv[i] = Coerce(i < args.Length ? args[i] : null, ps[i].ParameterType);
+        return mi.Invoke(null, conv);
+    }
+
+    private static object? Coerce(object? v, System.Type target)
+    {
+        if (v == null || target.IsInstanceOfType(v)) return v;
+        if (target == typeof(int) || target == typeof(long) || target == typeof(uint) || target == typeof(ulong)
+            || target == typeof(short) || target == typeof(ushort) || target == typeof(byte) || target == typeof(sbyte)
+            || target == typeof(double) || target == typeof(float))
+            return System.Convert.ChangeType(v, target);
+        return v;
+    }
 }

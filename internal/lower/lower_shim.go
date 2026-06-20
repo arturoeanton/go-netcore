@@ -60,6 +60,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}},
 	"crypto/md5":    {"New": {"Crypto", "Md5New"}},
 	"crypto/rand":   {"Read": {"Crypto", "RandRead"}},
+	"crypto/hmac":   {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
 	"net/url": {
 		"QueryEscape": {"Url", "QueryEscape"}, "PathEscape": {"Url", "PathEscape"},
 		"QueryUnescape": {"Url", "QueryUnescape"}, "PathUnescape": {"Url", "PathUnescape"},
@@ -234,6 +235,44 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/base32.StdEncoding":    {"Base32", "StdEncoding"},
 	"context.Canceled":               {"Context", "Canceled"},
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
+}
+
+// shimFuncValue, when e is a reference to a shimmed stdlib function used as a
+// value (not a call), emits a native GoClosure wrapping that shim (invoked by
+// reflection at runtime), and reports true.
+func (l *funcLowerer) shimFuncValue(e ast.Expr) bool {
+	var id *ast.Ident
+	switch x := e.(type) {
+	case *ast.Ident:
+		id = x
+	case *ast.SelectorExpr:
+		id = x.Sel
+	default:
+		return false
+	}
+	fn, ok := l.pkg.TypesInfo.Uses[id].(*types.Func)
+	if !ok || fn.Pkg() == nil {
+		return false
+	}
+	funcs, ok := shimRegistry[fn.Pkg().Path()]
+	if !ok {
+		return false
+	}
+	sf, ok := funcs[fn.Name()]
+	if !ok {
+		return false
+	}
+	// The resulting native closure may be invoked through the dispatcher, so
+	// ensure it exists and is registered at startup.
+	l.needsInvoker = true
+	l.invokeMethod()
+	l.emit(goir.Op{Code: goir.OpStrConst, Str: sf.csType})
+	l.emit(goir.Op{Code: goir.OpStrConst, Str: sf.csMethod})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "NativeClosures", Method: "FromShim",
+		Params: []goir.Type{goir.TString, goir.TString}, Ret: goir.TFunc,
+	}})
+	return true
 }
 
 // shimFieldRegistry maps "importpath.Type" to its readable fields, each lowering

@@ -26,11 +26,18 @@ public static class Crypto
     public static object Sha384New() => H("SHA384", 48, 128);
     public static object Md5New() => H("MD5", 16, 64);
 
-    public static object HmacNew(object alg, GoSlice key)
+    public static object HmacNew(GoClosure newFn, GoSlice key)
     {
-        var h = (GoHash)alg;
+        var h = (GoHash)GoRuntime.InvokeArgs(newFn)!; // call the func()hash.Hash
         h.Key = Bytes(key);
         return h;
+    }
+    public static bool HmacEqual(GoSlice a, GoSlice b)
+    {
+        if (a.Len != b.Len) return false;
+        int diff = 0;
+        for (int i = 0; i < a.Len; i++) diff |= (byte)System.Convert.ToInt64(a.Data![a.Off + i]) ^ (byte)System.Convert.ToInt64(b.Data![b.Off + i]);
+        return diff == 0;
     }
 
     private static byte[] Bytes(GoSlice s)

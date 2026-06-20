@@ -30,6 +30,11 @@ func (l *funcLowerer) expr(e ast.Expr) {
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
 		return
 	}
+	// A shimmed stdlib function used as a value (unicode.IsSpace, sha256.New) ->
+	// a native closure wrapping the shim.
+	if l.shimFuncValue(e) {
+		return
+	}
 	switch e := e.(type) {
 	case *ast.Ident:
 		if e.Name == "nil" {
