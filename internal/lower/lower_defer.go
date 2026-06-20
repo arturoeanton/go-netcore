@@ -191,6 +191,21 @@ func (l *funcLowerer) deferStmt(s *ast.DeferStmt) {
 			l.deferMethod(call, fun, seln)
 			return
 		}
+		// Package-qualified free function: defer pkg.Func(args) — shimmed (e.g.
+		// fmt.Println) or compiled. Handle here so variadic args are packed; falling
+		// through to deferFuncValue would mis-bind a shim's parameters.
+		if fn, ok := l.pkg.TypesInfo.Uses[fun.Sel].(*types.Func); ok {
+			if sig, ok := fn.Type().(*types.Signature); ok && sig.Recv() == nil {
+				if ext, ok := l.shimExtern(fn); ok {
+					l.deferShimCall(call, ext, sig.Variadic())
+					return
+				}
+				if callee, ok := l.byFunc[fn]; ok {
+					l.deferNamed(call, callee)
+					return
+				}
+			}
+		}
 	case *ast.Ident:
 		if b, ok := l.pkg.TypesInfo.Uses[fun].(*types.Builtin); ok {
 			l.deferBuiltin(call, b.Name())
@@ -400,6 +415,44 @@ func (l *funcLowerer) deferShimMethod(call *ast.CallExpr, sel *ast.SelectorExpr,
 			pt = ext.Params[i+1]
 		}
 		captures = append(captures, thunkCapture{emit: func() { l.exprCoerced(arg, pt) }, typ: pt})
+	}
+	l.buildThunk(captures, func(cl *funcLowerer) {
+		for i, pt := range ext.Params {
+			cl.emitEnvArg(i, pt)
+		}
+		cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+		if ext.Ret != goir.TVoid {
+			cl.emit(goir.Op{Code: goir.OpPop})
+		}
+	})
+	l.emit(goir.Op{Code: goir.OpDeferPush})
+}
+
+// deferShimCall lowers `defer pkg.Func(args)` for a shimmed free function: it
+// captures the (eagerly evaluated) arguments — packing the variadic tail into a
+// GoSlice, exactly as a direct shim call would — and calls the extern at unwind.
+func (l *funcLowerer) deferShimCall(call *ast.CallExpr, ext *goir.Extern, variadic bool) {
+	captures := make([]thunkCapture, 0, len(ext.Params))
+	if variadic {
+		nFixed := len(ext.Params) - 1
+		for i := 0; i < nFixed; i++ {
+			arg, pt := call.Args[i], ext.Params[i]
+			captures = append(captures, thunkCapture{emit: func() { l.exprCoerced(arg, pt) }, typ: pt})
+		}
+		sliceT := ext.Params[nFixed]
+		if call.Ellipsis.IsValid() {
+			sa := call.Args[nFixed]
+			captures = append(captures, thunkCapture{emit: func() { l.expr(sa) }, typ: sliceT})
+		} else {
+			tail := call.Args[nFixed:]
+			elemT := *sliceT.Elem
+			captures = append(captures, thunkCapture{emit: func() { l.packVariadic(tail, elemT) }, typ: sliceT})
+		}
+	} else {
+		for i, pt := range ext.Params {
+			arg, p := call.Args[i], pt
+			captures = append(captures, thunkCapture{emit: func() { l.exprCoerced(arg, p) }, typ: p})
+		}
 	}
 	l.buildThunk(captures, func(cl *funcLowerer) {
 		for i, pt := range ext.Params {
