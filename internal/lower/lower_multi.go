@@ -24,6 +24,34 @@ func (l *funcLowerer) assignToTarget(s *ast.AssignStmt, lhs ast.Expr, t goir.Typ
 				l.cellFieldModify(idx, elem, fi, func(ft goir.Type) { emitVal() })
 				return
 			}
+			// s[i].field = v : read the boxed struct element, set the field, write back.
+			if ix, ok := unparen(sel.X).(*ast.IndexExpr); ok && l.exprType(ix.X).Kind == goir.KSlice {
+				xt := l.exprType(ix.X)
+				sliceTmp := l.addLocal(nil, xt)
+				idxTmp := l.addLocal(nil, goir.TInt64)
+				structTmp := l.addLocal(nil, bt)
+				l.expr(ix.X)
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: sliceTmp})
+				l.expr(ix.Index)
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: idxTmp})
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxTmp})
+				l.emit(goir.Op{Code: goir.OpSliceGet})
+				l.emitUnbox(bt)
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: structTmp})
+				l.emit(goir.Op{Code: goir.OpLdLocA, Local: structTmp})
+				emitVal()
+				l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxTmp})
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: structTmp})
+				l.emitBox(bt)
+				l.emit(goir.Op{Code: goir.OpSliceSet})
+				return
+			}
+			if l.pointerRootedFieldWriteVal(sel, func(parent *goir.Struct, pfi int) { emitVal() }) {
+				return
+			}
 			l.lvalueAddr(sel.X)
 			emitVal()
 			l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
