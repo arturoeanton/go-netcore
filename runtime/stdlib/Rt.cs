@@ -45,9 +45,11 @@ public static class Rt
     public static long NamedId(object? v) => v is GoNamed n ? n.TypeId : 0;
 
     /// <summary>A pointer aliasing a struct field (&amp;s.field): the getter/setter
-    /// closures re-navigate the field's stable container on each *p access.</summary>
-    public static GoPtr FieldPtr(GoClosure getter, GoClosure setter) =>
-        new() { FGet = getter, FSet = setter };
+    /// closures re-navigate the field's stable container on each *p access. typeId
+    /// tags the pointee's struct type (0 for non-struct fields) so the field alias
+    /// answers type assertions / pointer-receiver dispatch like any *Struct.</summary>
+    public static GoPtr FieldPtr(GoClosure getter, GoClosure setter, long typeId) =>
+        new() { FGet = getter, FSet = setter, TypeId = typeId };
 
     /// <summary>A slice is nil iff its backing array is null (Go's `s == nil`).</summary>
     public static bool SliceIsNil(GoSlice s) => s.Data == null;

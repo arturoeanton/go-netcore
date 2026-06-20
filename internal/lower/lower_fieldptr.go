@@ -54,13 +54,26 @@ func (l *funcLowerer) buildAccessorClosure(captures []thunkCapture, emitBody fun
 	}
 }
 
-// fieldPtrExtern is the Rt.FieldPtr(getter, setter) call that wraps a getter/setter
-// closure pair into a field-alias GoPtr.
+// fieldPtrExtern is the Rt.FieldPtr(getter, setter, typeId) call that wraps a
+// getter/setter closure pair into a field-alias GoPtr. typeId tags the pointee's
+// struct type so a *Struct field alias (&s.field) supports type assertion and
+// pointer-receiver interface dispatch like any other *Struct pointer.
 func (l *funcLowerer) fieldPtrExtern(elem goir.Type) *goir.Extern {
 	return &goir.Extern{
 		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "FieldPtr",
-		Params: []goir.Type{goir.TFunc, goir.TFunc}, Ret: goir.PtrType(elem),
+		Params: []goir.Type{goir.TFunc, goir.TFunc, goir.TInt64}, Ret: goir.PtrType(elem),
 	}
+}
+
+// emitFieldPtrCall pushes the pointee's struct type id (0 for non-struct fields)
+// and calls Rt.FieldPtr, after the getter/setter closures are already on the stack.
+func (l *funcLowerer) emitFieldPtrCall(ft goir.Type) {
+	var id int64
+	if ft.Kind == goir.KStruct {
+		id = int64(ft.Struct.Id)
+	}
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.fieldPtrExtern(ft)})
 }
 
 // buildFieldAlias lowers &s.field (possibly a multi-level chain s.a.b.f), leaving a
@@ -170,7 +183,7 @@ func (l *funcLowerer) emitGlobalAlias(gi int, t goir.Type) {
 		cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(gi)})
 		cl.emit(goir.Op{Code: goir.OpLdNull})
 	})
-	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.fieldPtrExtern(t)})
+	l.emitFieldPtrCall(t)
 }
 
 // emitLdfldaChain, given the address of a root struct on the stack, emits a ldflda
@@ -217,7 +230,7 @@ func (l *funcLowerer) emitFieldAliasPtr(emitPtr func(), ptrType, root goir.Type,
 		cl.emit(goir.Op{Code: goir.OpPtrSet})
 		cl.emit(goir.Op{Code: goir.OpLdNull})
 	})
-	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.fieldPtrExtern(ft)})
+	l.emitFieldPtrCall(ft)
 }
 
 // emitFieldAliasGlobal builds a field alias whose container is a struct global.
@@ -243,5 +256,5 @@ func (l *funcLowerer) emitFieldAliasGlobal(gi int, root goir.Type, path []int, f
 		cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(gi)})
 		cl.emit(goir.Op{Code: goir.OpLdNull})
 	})
-	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.fieldPtrExtern(ft)})
+	l.emitFieldPtrCall(ft)
 }
