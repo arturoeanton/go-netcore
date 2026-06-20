@@ -36,6 +36,45 @@ public static class Big
         ((GoBigInt)z).V = r; return z;
     }
     public static object Int_Set(object z, object x) { ((GoBigInt)z).V = V(x); return z; }
+    public static object Int_SetInt64(object z, long x) { ((GoBigInt)z).V = x; return z; }
+    public static object Int_SetUint64(object z, ulong x) { ((GoBigInt)z).V = x; return z; }
+    public static object Int_Lsh(object z, object x, ulong n) { ((GoBigInt)z).V = V(x) << (int)n; return z; }
+    public static object Int_Rsh(object z, object x, ulong n) { ((GoBigInt)z).V = V(x) >> (int)n; return z; }
+
+    public static object Int_SetBytes(object z, GoSlice buf)
+    {
+        int n = buf.Len;
+        var le = new byte[n + 1];
+        for (int i = 0; i < n; i++) le[i] = (byte)(System.Convert.ToInt64(buf.Data![buf.Off + (n - 1 - i)]) & 0xff);
+        le[n] = 0; // force a non-negative magnitude
+        ((GoBigInt)z).V = new BigInteger(le);
+        return z;
+    }
+    public static GoSlice Int_Bytes(object x)
+    {
+        var v = BigInteger.Abs(V(x));
+        if (v.IsZero) return new GoSlice { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
+        var le = v.ToByteArray(); // little-endian, possibly with a trailing 0 sign byte
+        int len = le.Length;
+        while (len > 1 && le[len - 1] == 0) len--;
+        var d = new object?[len];
+        for (int i = 0; i < len; i++) d[i] = (int)le[len - 1 - i]; // big-endian, boxed as byte (int)
+        return new GoSlice { Data = d, Off = 0, Len = len, Cap = len };
+    }
+    public static GoString Int_Text(object x, long bas)
+    {
+        var v = V(x);
+        if (bas == 10) return GoString.FromDotNetString(v.ToString());
+        if (v.IsZero) return GoString.FromDotNetString("0");
+        bool neg = v.Sign < 0;
+        var m = BigInteger.Abs(v);
+        const string digits = "0123456789abcdefghijklmnopqrstuvwxyz";
+        var sb = new System.Text.StringBuilder();
+        while (m > 0) { sb.Insert(0, digits[(int)(m % bas)]); m /= bas; }
+        if (neg) sb.Insert(0, '-');
+        return GoString.FromDotNetString(sb.ToString());
+    }
+
     public static long Int_Cmp(object z, object y) => V(z).CompareTo(V(y));
     public static long Int_Sign(object z) => V(z).Sign;
     public static long Int_Int64(object z) => (long)V(z);

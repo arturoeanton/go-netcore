@@ -541,6 +541,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Abs": {"Big", "Int_Abs"}, "Exp": {"Big", "Int_Exp"}, "Set": {"Big", "Int_Set"},
 		"Cmp": {"Big", "Int_Cmp"}, "Sign": {"Big", "Int_Sign"}, "Int64": {"Big", "Int_Int64"},
 		"String": {"Big", "Int_String"}, "SetString": {"Big", "Int_SetString"},
+		"SetInt64": {"Big", "Int_SetInt64"}, "SetUint64": {"Big", "Int_SetUint64"},
+		"Lsh": {"Big", "Int_Lsh"}, "Rsh": {"Big", "Int_Rsh"}, "SetBytes": {"Big", "Int_SetBytes"},
+		"Bytes": {"Big", "Int_Bytes"}, "Text": {"Big", "Int_Text"},
 	},
 	"strings.Replacer": {
 		"Replace": {"Strings", "Replacer_Replace"},
