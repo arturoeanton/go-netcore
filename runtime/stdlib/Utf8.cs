@@ -87,5 +87,26 @@ public static class Utf8
         return DecodeLastRuneInString(GoString.FromBytes(bytes));
     }
 
+    private static int RuneByteLen(byte b0)
+    {
+        if (b0 < 0x80) return 1;
+        if ((b0 & 0xE0) == 0xC0) return 2;
+        if ((b0 & 0xF0) == 0xE0) return 3;
+        if ((b0 & 0xF8) == 0xF0) return 4;
+        return 1; // invalid lead byte: a single (error) rune
+    }
+    public static bool FullRune(GoSlice p)
+    {
+        if (p.Len == 0) return false;
+        int need = RuneByteLen((byte)(System.Convert.ToInt64(p.Data![p.Off]) & 0xff));
+        return p.Len >= need;
+    }
+    public static bool FullRuneInString(GoString s)
+    {
+        var b = s.Bytes;
+        if (b.Length == 0) return false;
+        return b.Length >= RuneByteLen(b[0]);
+    }
+
     public static long RuneCountInString2(GoString s) => RuneCountInString(s);
 }
