@@ -442,6 +442,7 @@ var binaryMethods = map[string]shimFunc{
 var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net/url.URL": {
 		"IsAbs": {"Url", "URL_IsAbs"}, "String": {"Url", "URL_String"},
+		"ResolveReference": {"Url", "URL_ResolveReference"},
 	},
 	"strings.Reader": {
 		"ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},

@@ -46,6 +46,69 @@ public static class Url
     public static GoString URL_Opaque(object u) => GoString.FromDotNetString(((GoUrl)u).Opaque);
     public static object? URL_User(object u) => ((GoUrl)u).User.Length == 0 ? null : GoString.FromDotNetString(((GoUrl)u).User);
 
+    // ResolveReference resolves a URI reference relative to a base URL (RFC 3986,
+    // practical subset — scheme/host/path merge with dot-segment removal).
+    public static object URL_ResolveReference(object baseO, object refO)
+    {
+        var b = (GoUrl)baseO; var r = (GoUrl)refO;
+        var u = new GoUrl
+        {
+            Scheme = r.Scheme,
+            Host = r.Host,
+            Path = r.Path,
+            RawQuery = r.RawQuery,
+            Fragment = r.Fragment,
+            Opaque = r.Opaque,
+            User = r.User,
+        };
+        if (r.Scheme == "") u.Scheme = b.Scheme;
+        if (r.Scheme != "" || r.Host != "")
+        {
+            u.Path = RemoveDotSegments(r.Path);
+            return u;
+        }
+        if (r.Opaque != "") { u.Host = ""; u.Path = ""; return u; }
+        if (r.Path == "" && r.RawQuery == "")
+        {
+            u.RawQuery = b.RawQuery;
+            if (r.Fragment == "") u.Fragment = b.Fragment;
+        }
+        u.Host = b.Host;
+        u.User = b.User;
+        u.Path = RemoveDotSegments(ResolvePath(b.Path, r.Path));
+        return u;
+    }
+
+    private static string ResolvePath(string basePath, string refPath)
+    {
+        if (refPath == "") return basePath;
+        if (refPath.StartsWith("/")) return refPath;
+        int slash = basePath.LastIndexOf('/');
+        if (slash < 0) return refPath;
+        return basePath.Substring(0, slash + 1) + refPath;
+    }
+
+    private static string RemoveDotSegments(string p)
+    {
+        if (p == "") return "";
+        bool rooted = p.StartsWith("/");
+        var parts = p.Split('/');
+        var outp = new System.Collections.Generic.List<string>();
+        foreach (var seg in parts)
+        {
+            if (seg == "." ) continue;
+            if (seg == "..")
+            {
+                if (outp.Count > 0 && outp[outp.Count - 1] != "") outp.RemoveAt(outp.Count - 1);
+                continue;
+            }
+            outp.Add(seg);
+        }
+        var res = string.Join("/", outp);
+        if (rooted && !res.StartsWith("/")) res = "/" + res.TrimStart('/');
+        return res;
+    }
+
     public static object URL_Clone(object uo)
     {
         var u = (GoUrl)uo;
