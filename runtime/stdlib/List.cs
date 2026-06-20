@@ -42,6 +42,54 @@ public static class List
         return e.Value;
     }
 
+    // unlink removes e from its list's chain without touching N (for moves).
+    private static void Unlink(GoList l, GoElement e)
+    {
+        if (e.Prv != null) e.Prv.Nxt = e.Nxt; else l.Head = e.Nxt;
+        if (e.Nxt != null) e.Nxt.Prv = e.Prv; else l.Tail = e.Prv;
+        e.Nxt = e.Prv = null;
+    }
+
+    public static void List_MoveToFront(object lo, object eo)
+    {
+        var l = (GoList)lo; var e = (GoElement)eo;
+        if (e.List != l || l.Head == e) return;
+        Unlink(l, e);
+        e.Nxt = l.Head;
+        if (l.Head != null) l.Head.Prv = e; else l.Tail = e;
+        l.Head = e;
+    }
+    public static void List_MoveToBack(object lo, object eo)
+    {
+        var l = (GoList)lo; var e = (GoElement)eo;
+        if (e.List != l || l.Tail == e) return;
+        Unlink(l, e);
+        e.Prv = l.Tail;
+        if (l.Tail != null) l.Tail.Nxt = e; else l.Head = e;
+        l.Tail = e;
+    }
+    public static object List_Init(object lo)
+    {
+        var l = (GoList)lo; l.Head = l.Tail = null; l.N = 0;
+        return l;
+    }
+    public static object List_InsertBefore(object lo, object? v, object mark)
+    {
+        var l = (GoList)lo; var m = (GoElement)mark;
+        var e = new GoElement { Value = v, List = l, Prv = m.Prv, Nxt = m };
+        if (m.Prv != null) m.Prv.Nxt = e; else l.Head = e;
+        m.Prv = e; l.N++;
+        return e;
+    }
+    public static object List_InsertAfter(object lo, object? v, object mark)
+    {
+        var l = (GoList)lo; var m = (GoElement)mark;
+        var e = new GoElement { Value = v, List = l, Nxt = m.Nxt, Prv = m };
+        if (m.Nxt != null) m.Nxt.Prv = e; else l.Tail = e;
+        m.Nxt = e; l.N++;
+        return e;
+    }
+
     public static object? Element_Next(object e) => ((GoElement)e).Nxt;
     public static object? Element_Prev(object e) => ((GoElement)e).Prv;
     public static object? Element_Value(object e) => ((GoElement)e).Value;

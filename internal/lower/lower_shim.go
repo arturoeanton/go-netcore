@@ -436,6 +436,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"container/list.List": {
 		"Len": {"List", "List_Len"}, "Front": {"List", "List_Front"}, "Back": {"List", "List_Back"},
 		"PushBack": {"List", "List_PushBack"}, "PushFront": {"List", "List_PushFront"}, "Remove": {"List", "List_Remove"},
+		"MoveToFront": {"List", "List_MoveToFront"}, "MoveToBack": {"List", "List_MoveToBack"},
+		"Init": {"List", "List_Init"}, "InsertBefore": {"List", "List_InsertBefore"}, "InsertAfter": {"List", "List_InsertAfter"},
 	},
 	"container/list.Element": {
 		"Next": {"List", "Element_Next"}, "Prev": {"List", "Element_Prev"},
