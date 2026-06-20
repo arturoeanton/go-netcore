@@ -509,6 +509,14 @@ func (l *funcLowerer) loopExits() (cont, end int) {
 }
 
 func (l *funcLowerer) forStmt(s *ast.ForStmt) {
+	// Go 1.22: a three-clause for loop whose loop variable is captured by a closure
+	// gives each iteration its own instance of the variable. When the variable is
+	// address-taken, lower it with a fresh per-iteration cell so closures observe
+	// the value at their iteration (not the final value).
+	if obj, t, ok := l.capturedLoopVar(s); ok {
+		l.forStmtCaptured(s, obj, t)
+		return
+	}
 	pre, havePre := l.takePendingLoop()
 	if s.Init != nil {
 		l.stmt(s.Init)
@@ -531,6 +539,94 @@ func (l *funcLowerer) forStmt(s *ast.ForStmt) {
 	l.breaks = l.breaks[:len(l.breaks)-1]
 	l.continues = l.continues[:len(l.continues)-1]
 	l.mark(post)
+	if s.Post != nil {
+		l.stmt(s.Post)
+	}
+	l.emit(goir.Op{Code: goir.OpBr, Label: top})
+	l.mark(end)
+}
+
+// capturedLoopVar reports the loop variable of a three-clause for whose `i := …`
+// init declares a single address-taken variable (i.e. captured by a closure in the
+// body), for which Go 1.22 per-iteration semantics matter.
+func (l *funcLowerer) capturedLoopVar(s *ast.ForStmt) (types.Object, goir.Type, bool) {
+	as, ok := s.Init.(*ast.AssignStmt)
+	if !ok || as.Tok != token.DEFINE || len(as.Lhs) != 1 || len(as.Rhs) != 1 {
+		return nil, goir.Type{}, false
+	}
+	id, ok := as.Lhs[0].(*ast.Ident)
+	if !ok || id.Name == "_" {
+		return nil, goir.Type{}, false
+	}
+	obj := l.pkg.TypesInfo.Defs[id]
+	if obj == nil || !l.addrTaken[obj] {
+		return nil, goir.Type{}, false
+	}
+	t, ok := l.goType(obj.Type())
+	if !ok {
+		return nil, goir.Type{}, false
+	}
+	return obj, t, true
+}
+
+// forStmtCaptured lowers a three-clause for whose loop variable is captured, using
+// a plain "carry" local for the condition/post and a fresh GoPtr "capture" cell per
+// iteration for the body. The capture cell is re-allocated each iteration so each
+// closure binds that iteration's value; modifications in the body are synced back
+// to the carry before the post runs.
+func (l *funcLowerer) forStmtCaptured(s *ast.ForStmt, obj types.Object, t goir.Type) {
+	pre, havePre := l.takePendingLoop()
+	carry := l.addLocal(nil, t)
+	capture := len(l.m.Locals)
+	l.m.Locals = append(l.m.Locals, goir.PtrType(t))
+	l.cells[capture] = t
+
+	// init: evaluate the loop variable's initializer into the carry local.
+	init := s.Init.(*ast.AssignStmt)
+	l.exprCoerced(init.Rhs[0], t)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: carry})
+
+	top := l.label()
+	post := l.label()
+	// A labeled captured loop must reuse the labels its labeled-statement registered
+	// so labeled break/continue resolve here (continue lands on the sync point).
+	cont := post
+	end := l.label()
+	if havePre {
+		cont = pre.post
+		end = pre.end
+	} else {
+		cont = l.label()
+	}
+
+	l.mark(top)
+	// Condition reads the carry value.
+	l.locals[obj] = carry
+	if s.Cond != nil {
+		l.expr(s.Cond)
+		l.emit(goir.Op{Code: goir.OpBrFalse, Label: end})
+	}
+	// Fresh per-iteration cell initialized from the carry; the body sees it.
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: carry})
+	l.emitBox(t)
+	l.ptrNew(t)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: capture})
+	l.locals[obj] = capture
+
+	l.breaks = append(l.breaks, end)
+	l.continues = append(l.continues, cont)
+	l.block(s.Body)
+	l.breaks = l.breaks[:len(l.breaks)-1]
+	l.continues = l.continues[:len(l.continues)-1]
+
+	// Sync any body mutation of the variable back to the carry, then run post.
+	l.mark(cont)
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: capture})
+	l.emit(goir.Op{Code: goir.OpPtrGet})
+	l.emitUnbox(t)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: carry})
+	l.mark(post)
+	l.locals[obj] = carry
 	if s.Post != nil {
 		l.stmt(s.Post)
 	}
@@ -680,16 +776,14 @@ func (l *funcLowerer) rangeStmt(s *ast.RangeStmt) {
 	l.emit(goir.Op{Code: goir.OpClt})
 	l.emit(goir.Op{Code: goir.OpBrFalse, Label: end})
 
-	if keyLocal >= 0 {
+	l.storeRangeVar(keyLocal, func() {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxLocal})
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: keyLocal})
-	}
-	if valLocal >= 0 {
+	})
+	l.storeRangeVar(valLocal, func() {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: sLocal})
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxLocal})
 		l.emit(goir.Op{Code: goir.OpStrRuneAt})
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: valLocal})
-	}
+	})
 
 	l.breaks = append(l.breaks, end)
 	l.continues = append(l.continues, cont)
@@ -738,10 +832,9 @@ func (l *funcLowerer) rangeInt(s *ast.RangeStmt) {
 	l.emit(goir.Op{Code: goir.OpClt})
 	l.emit(goir.Op{Code: goir.OpBrFalse, Label: end})
 
-	if keyLocal >= 0 {
+	l.storeRangeVar(keyLocal, func() {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxLocal})
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: keyLocal})
-	}
+	})
 
 	l.breaks = append(l.breaks, end)
 	l.continues = append(l.continues, cont)
@@ -782,17 +875,15 @@ func (l *funcLowerer) rangeSlice(s *ast.RangeStmt, st goir.Type) {
 	l.emit(goir.Op{Code: goir.OpClt})
 	l.emit(goir.Op{Code: goir.OpBrFalse, Label: end})
 
-	if keyLocal >= 0 {
+	l.storeRangeVar(keyLocal, func() {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxLocal})
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: keyLocal})
-	}
-	if valLocal >= 0 {
+	})
+	l.storeRangeVar(valLocal, func() {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: sLocal})
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxLocal})
 		l.emit(goir.Op{Code: goir.OpSliceGet})
 		l.emitUnbox(elem)
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: valLocal})
-	}
+	})
 
 	l.breaks = append(l.breaks, end)
 	l.continues = append(l.continues, cont)
@@ -810,7 +901,9 @@ func (l *funcLowerer) rangeSlice(s *ast.RangeStmt, st goir.Type) {
 }
 
 // rangeVar resolves a range key/value target to a local, returning -1 for a nil
-// or blank (_) target. New variables (`:=`) are declared; existing ones reused.
+// or blank (_) target. New variables (`:=`) are declared (becoming a GoPtr cell
+// when captured by a closure, so each iteration binds a fresh value per Go 1.22);
+// existing ones are reused. Use storeRangeVar to assign the per-iteration value.
 func (l *funcLowerer) rangeVar(s *ast.RangeStmt, e ast.Expr, t goir.Type) int {
 	id, ok := e.(*ast.Ident)
 	if !ok || id.Name == "_" {
@@ -818,7 +911,8 @@ func (l *funcLowerer) rangeVar(s *ast.RangeStmt, e ast.Expr, t goir.Type) int {
 	}
 	if s.Tok == token.DEFINE {
 		if obj := l.pkg.TypesInfo.Defs[id]; obj != nil {
-			return l.addLocal(obj, t)
+			idx, _ := l.declareLocal(obj, t)
+			return idx
 		}
 	}
 	idx, _, ok := l.lookupVar(id)
@@ -826,6 +920,16 @@ func (l *funcLowerer) rangeVar(s *ast.RangeStmt, e ast.Expr, t goir.Type) int {
 		return -1
 	}
 	return idx
+}
+
+// storeRangeVar assigns the per-iteration value (pushed by emitValue) to a range
+// variable local: for a captured (cell) var it allocates a fresh cell so closures
+// observe that iteration's value; for a plain local it stores directly.
+func (l *funcLowerer) storeRangeVar(idx int, emitValue func()) {
+	if idx < 0 {
+		return
+	}
+	l.initLocal(idx, emitValue)
 }
 
 func (l *funcLowerer) incDec(s *ast.IncDecStmt) {

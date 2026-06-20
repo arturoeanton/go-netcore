@@ -152,19 +152,17 @@ func (l *funcLowerer) rangeMap(s *ast.RangeStmt, mt goir.Type) {
 	l.emit(goir.Op{Code: goir.OpSliceGet})
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: rawKey})
 
-	if keyLocal >= 0 {
+	l.storeRangeVar(keyLocal, func() {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: rawKey})
 		l.emitUnbox(keyT)
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: keyLocal})
-	}
-	if valLocal >= 0 {
+	})
+	l.storeRangeVar(valLocal, func() {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: mTmp})
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: rawKey})
 		l.emitBoxedZero(valT)
 		l.emit(goir.Op{Code: goir.OpMapGet})
 		l.emitUnbox(valT)
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: valLocal})
-	}
+	})
 
 	l.breaks = append(l.breaks, end)
 	l.continues = append(l.continues, cont)

@@ -102,13 +102,12 @@ func (l *funcLowerer) rangeChan(s *ast.RangeStmt, ct goir.Type) {
 	l.emitUnbox(goir.TBool)
 	l.emit(goir.Op{Code: goir.OpBrFalse, Label: end})
 
-	if valLocal >= 0 {
+	l.storeRangeVar(valLocal, func() {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tupLocal})
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
 		l.emit(goir.Op{Code: goir.OpLdElemRef})
 		l.emitUnbox(elem)
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: valLocal})
-	}
+	})
 
 	l.breaks = append(l.breaks, end)
 	l.continues = append(l.continues, cont)
