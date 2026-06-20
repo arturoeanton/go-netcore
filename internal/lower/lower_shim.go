@@ -59,6 +59,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"io": {
 		"WriteString": {"Io", "WriteString"},
 	},
+	"math/rand": {
+		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
+	},
 	"sort": {
 		"Ints": {"Sort", "Ints"}, "Float64s": {"Sort", "Float64s"}, "Strings": {"Sort", "Strings"},
 		"IntsAreSorted": {"Sort", "IntsAreSorted"}, "SearchInts": {"Sort", "SearchInts"},
@@ -125,6 +128,8 @@ var opaqueShimTypes = map[string]bool{
 	"os.File":           true,
 	"time.Time":         true,
 	"time.Location":     true,
+	"math/rand.Rand":    true,
+	"math/rand.Source":  true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
@@ -221,6 +226,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"sync.Map": {
 		"Store": {"Sync", "Map_Store"}, "Load": {"Sync", "Map_Load"}, "Delete": {"Sync", "Map_Delete"},
+	},
+	"math/rand.Rand": {
+		"Int63": {"Rand", "Rand_Int63"}, "Int": {"Rand", "Rand_Int"}, "Int63n": {"Rand", "Rand_Int63n"},
+		"Intn": {"Rand", "Rand_Intn"}, "Float64": {"Rand", "Rand_Float64"}, "Perm": {"Rand", "Rand_Perm"},
 	},
 	"time.Time": {
 		"Unix": {"Time", "Time_Unix"}, "UnixNano": {"Time", "Time_UnixNano"}, "UnixMilli": {"Time", "Time_UnixMilli"},
