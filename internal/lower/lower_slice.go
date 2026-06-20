@@ -125,6 +125,11 @@ func structNeedsOpaqueInit(st *goir.Struct) bool {
 				return true
 			}
 		}
+		// A fixed-array field ([N]T) zeroes to a length-N backing, not the nil slice
+		// that initobj leaves; it needs explicit post-initobj initialization.
+		if f.Type.Kind == goir.KSlice && f.Type.Array {
+			return true
+		}
 		if f.Type.Kind == goir.KStruct && structNeedsOpaqueInit(f.Type.Struct) {
 			return true
 		}
@@ -147,6 +152,12 @@ func (l *funcLowerer) emitStructOpaqueInits(st *goir.Struct, emitAddr func()) {
 				l.emitZeroValue(f.Type) // calls the shim's zero constructor
 				l.emit(goir.Op{Code: goir.OpStFld, Struct: st, Field: fi})
 			}
+		case f.Type.Kind == goir.KSlice && f.Type.Array:
+			// Fixed-array field: replace the nil slice left by initobj with a length-N
+			// backing of zeroed elements.
+			emitAddr()
+			l.emitZeroValue(f.Type)
+			l.emit(goir.Op{Code: goir.OpStFld, Struct: st, Field: fi})
 		case f.Type.Kind == goir.KStruct && structNeedsOpaqueInit(f.Type.Struct):
 			i := fi
 			l.emitStructOpaqueInits(f.Type.Struct, func() {
