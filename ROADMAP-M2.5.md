@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**137 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
+**139 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
 hardened** (an adversarial multi-agent sweep over all 20 packages found and fixed
 ~30 divergences: fmt verb engine + flags/width + no-crash type handling, strconv
 ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embedded/
@@ -33,7 +33,7 @@ local type/const decls, and broad method coverage). Deferred edges are tracked i
 `net/url` (escapes **+ Parse** with field reads), `regexp` (.NET Regex), `log`,
 `math/big` (Int), `bufio.Scanner` + `io.ReadAll/Copy` + `strings`/`bytes` readers
 + `os.Stdin`, and the **`net/http` client** (`http.Get`/`Post` → `*Response` with
-`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 137 conformance
+`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 139 conformance
 fixtures. Enablers added: `GoRuntime.InvokeArgs` (shims call Go funcs),
 native-closure-to-shim, `new(opaqueShim)` yields the shim object, and **shim
 struct-field reads** (`u.Host`, `resp.StatusCode` → getter externs).
@@ -51,7 +51,7 @@ P2 (tag `0.0.9.p2`): `encoding/csv`, `compress/gzip·zlib·flate`,
 `math/big` (Euclidean Div + Quo/Rem/GCD).
 
 P3 (started): the **hash family** — `hash/fnv` (32/32a/64/64a), `hash/crc32`
-(IEEE), `hash/adler32`. **137 conformance fixtures byte-exact.**
+(IEEE), `hash/adler32`. **139 conformance fixtures byte-exact.**
 
 **Language hardening pass** (fixtures 315–328) — bugs found by stress-testing
 diverse real Go programs, each fixed + fixtured. Several were *silently wrong*
@@ -93,6 +93,12 @@ assembly and cgo remain as limitations:
 - Builtins/stdlib: **`copy`** (slices + `[]byte`←string), **`time.After`** (select
 - **Critical concurrency fix**: a `sync.Mutex`/`RWMutex`/`WaitGroup`/`Once` or `strings.Builder` as a STRUCT FIELD was left null by initobj — the first use NRE'd, and in a goroutine that silently killed it so `WaitGroup.Wait()` hung forever (every concurrent struct embeds a mutex). Opaque-shim fields now zero-init to a fresh object. Plus **nested field writes through a pointer** (`p.A.B.x = v`, `++`, `op=`). Fixtures 336/337.
   timeouts), **`strings.NewReplacer`**, **`json.MarshalIndent`**.
+
+**Toward generality + the typed-box keystone (fixtures 338-339, validation suite).** Stress-testing whole real apps drove the work, not stdlib breadth:
+- **Integer divide/modulo by zero** now panics with Go's recoverable runtime error instead of an uncatchable CLR `DivideByZeroException` (recover() sees it; float division still yields ±Inf/NaN). Fixture 338.
+- **Interface methods with multiple results** (`Check(int) (bool, string)`) now dispatch (the lowered method returns a boxed object[] tuple the caller spreads). Fixture 339.
+- **Validation suite** (`tests/validation`, agnosticism proof): `business-json`, `cli-csv`, `rules-engine`, `http-basic` are whole idiomatic apps, byte-exact under go run vs goclr run; `goja` stays the hard target (skipped, needs the keystone). `examples/demo_goja` runs JS from a .NET dll (blocked on the keystone).
+- **Typed-box keystone designed** (`docs/DESIGN-typed-box.md`): per-value TypeId/itable so named-primitive Stringers, precise `%T`, reflect, and `sort.StringSlice`-style dispatch (goja) work. Execution-ready 5-step plan; deferred from this pass to avoid rushing an invasive change.
 
 **Compiler made application-agnostic + quality infra.** goja/Echo are validation
 targets, not products: the compiler no longer embeds any dependency-specific

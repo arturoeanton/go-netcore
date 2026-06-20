@@ -29,7 +29,31 @@ The remaining case is a named **primitive** type with a `String()`/`Error()` met
 fmt **as `any`**: it boxes to a bare primitive, so fmt can't recover the named type
 and prints the underlying value. **Workaround:** call `.String()` explicitly. A
 general fix needs type-tagged boxing of named primitives at interface conversions
-(the same per-value type identity that precise `%T` and `reflect` need — M3).
+(the same per-value type identity that precise `%T` and `reflect` need — M3). This
+is the **typed-box keystone**; its execution-ready design is in
+`docs/DESIGN-typed-box.md`, and it also unblocks the `%#v`/`%T`/nil-map cases above
+and the goja validation target (below).
+
+## Uncaught panic output format
+
+A panic that is **recovered** behaves exactly like Go (including runtime panics:
+integer divide-by-zero, index out of range, nil dereference). A panic that reaches
+the top of a goroutine prints the .NET unhandled-exception format
+(`Unhandled exception. GoCLR.Runtime.GoPanicException: panic: …`) rather than Go's
+`panic: …` followed by a goroutine stack trace and `exit status 2`. The panic value
+and message are correct; the surrounding framing and the stack trace are not
+reproduced. (Conformance compares recovered panics, whose output is exact.)
+
+## goja validation target
+
+The pure-Go JavaScript engine `goja` does not yet compile under goclr: it pulls in
+`golang.org/x/text/collate`, which uses `sort.StringSlice` through `sort.Sort`.
+Dispatching `sort.Interface` to `sort.StringSlice` requires per-value type identity
+(every named slice type currently collapses to one `GoSlice`, so slice-based
+`Interface` implementers are mutually indistinguishable). This is the
+representation-collapse problem solved by the typed-box keystone
+(`docs/DESIGN-typed-box.md`); `cmp` and a few `x/text` support overlays are also
+needed. `examples/demo_goja` and `tests/validation/goja` track this target.
 
 ## Function values of shimmed stdlib functions
 
