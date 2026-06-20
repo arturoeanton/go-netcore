@@ -401,17 +401,23 @@ func (l *funcLowerer) pointerRootedFieldWrite(sel *ast.SelectorExpr, rhs ast.Exp
 // pushed (so a compound op can Dup + LdFld the old value). Returns false if the
 // chain is not rooted at a *struct.
 func (l *funcLowerer) pointerRootedFieldWriteVal(sel *ast.SelectorExpr, emitVal func(parent *goir.Struct, fi int)) bool {
-	var fields []string
+	var path []int
 	cur := ast.Expr(sel)
 	for {
 		s, ok := unparen(cur).(*ast.SelectorExpr)
 		if !ok {
 			return false
 		}
-		fields = append([]string{s.Sel.Name}, fields...)
+		// Each selection's index path may span several embedded fields (a promoted
+		// field), so prepend the whole path, not just one name.
+		seln := l.pkg.TypesInfo.Selections[s]
+		if seln == nil || seln.Kind() != types.FieldVal {
+			return false
+		}
+		path = append(append([]int{}, seln.Index()...), path...)
 		bt := l.exprType(s.X)
 		if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct {
-			l.emitPtrRootedWrite(s.X, *bt.Elem, fields, emitVal)
+			l.emitPtrRootedWrite(s.X, *bt.Elem, path, emitVal)
 			return true
 		}
 		if bt.Kind != goir.KStruct {
@@ -423,8 +429,9 @@ func (l *funcLowerer) pointerRootedFieldWriteVal(sel *ast.SelectorExpr, emitVal 
 
 // emitPtrRootedWrite reads *ptr into a temp, leaves the address of the target
 // field's container struct on the stack for emitVal (which pushes the value and is
-// followed by stfld), then stores the temp back through the pointer.
-func (l *funcLowerer) emitPtrRootedWrite(ptrExpr ast.Expr, root goir.Type, fields []string, emitVal func(parent *goir.Struct, fi int)) {
+// followed by stfld), then stores the temp back through the pointer. path is a
+// field-index chain (into the goir structs), spanning embedded value fields.
+func (l *funcLowerer) emitPtrRootedWrite(ptrExpr ast.Expr, root goir.Type, path []int, emitVal func(parent *goir.Struct, fi int)) {
 	pt := l.exprType(ptrExpr)
 	pTmp := l.addLocal(nil, pt)
 	l.expr(ptrExpr)
@@ -438,16 +445,16 @@ func (l *funcLowerer) emitPtrRootedWrite(ptrExpr ast.Expr, root goir.Type, field
 
 	l.emit(goir.Op{Code: goir.OpLdLocA, Local: rTmp})
 	cur := root
-	for i := 0; i < len(fields)-1; i++ {
-		fi := cur.Struct.FieldIndex(fields[i])
-		if fi < 0 || cur.Struct.Fields[fi].Type.Kind != goir.KStruct {
+	for i := 0; i < len(path)-1; i++ {
+		fi := path[i]
+		if fi >= len(cur.Struct.Fields) || cur.Struct.Fields[fi].Type.Kind != goir.KStruct {
 			l.fail(ptrExpr.Pos(), "nested field write through a non-struct field")
 			return
 		}
 		l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: fi})
 		cur = cur.Struct.Fields[fi].Type
 	}
-	last := cur.Struct.FieldIndex(fields[len(fields)-1])
+	last := path[len(path)-1]
 	emitVal(cur.Struct, last)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: cur.Struct, Field: last})
 
@@ -1131,6 +1138,17 @@ func (l *funcLowerer) modifyField(sel *ast.SelectorExpr, binTok token.Token, emi
 		st := *bt.Elem
 		fi := st.Struct.FieldIndex(sel.Sel.Name)
 		if fi < 0 {
+			// A promoted field (through embedding) reached via the pointer: RMW along
+			// the full index path rooted at the pointer.
+			if l.pointerRootedFieldWriteVal(sel, func(parent *goir.Struct, pfi int) {
+				pft := parent.Fields[pfi].Type
+				l.emit(goir.Op{Code: goir.OpDup})
+				l.emit(goir.Op{Code: goir.OpLdFld, Struct: parent, Field: pfi})
+				emitOperand(pft)
+				l.emitArith(binTok, pft)
+			}) {
+				return
+			}
 			l.fail(sel.Pos(), "unknown field "+sel.Sel.Name)
 			return
 		}

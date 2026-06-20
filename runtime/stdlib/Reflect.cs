@@ -363,6 +363,7 @@ public static class Reflect
         return new GoReflectType { Sample = null };
     }
     public static long Type_NumMethod(object t) => 0;
+    public static object Type_Method(object t, long i) => new GoReflectMethod { Index = (int)i };
     public static long Type_NumIn(object t) => 0;
     public static long Type_NumOut(object t) => 0;
     public static object Type_In(object t, long i) => new GoReflectType { Sample = null };
@@ -461,6 +462,18 @@ public static class Reflect
     }
     public static long Value_NumMethod(object? v) => 0;
     public static bool Value_CanInterface(object? v) => true;
+    // FieldByIndex walks a multi-level field path ([]int). The sample model tracks
+    // a single level; navigate as far as the live value allows.
+    public static object Value_FieldByIndex(object? v, GoSlice index)
+    {
+        object cur = v!;
+        for (int i = 0; i < index.Len; i++)
+            cur = Value_Field(cur, System.Convert.ToInt64(index.Data![index.Off + i]));
+        return cur;
+    }
+    // Method(i) as a callable Value. The runtime does not retain method sets, so a
+    // bound method Value is produced only on the (unreached) path where NumMethod>0.
+    public static object Value_Method(object? v, long i) => new GoReflectValue { V = null };
     public static object Value_FieldByName(object? v, GoString name)
     {
         var obj = RVal(v);

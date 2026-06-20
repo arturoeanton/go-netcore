@@ -29,6 +29,29 @@ public static class Time
         return ch;
     }
 
+    // time.NewTicker(d): a *Ticker whose C channel receives the time every d. The
+    // send is non-blocking (capacity 1), so slow receivers drop ticks, like Go.
+    public static object NewTicker(long d)
+    {
+        var t = new GoTicker { C = GoChans.Make(1) };
+        int ms = d <= 0 ? 1 : (int)(d / Millisecond);
+        t.Timer = new System.Threading.Timer(_ => t.C.TrySend(Now()), null, ms, ms);
+        return t;
+    }
+    // time.NewTimer(d): a *Timer that fires C once after d.
+    public static object NewTimer(long d)
+    {
+        var t = new GoTicker { C = After(d) };
+        return t;
+    }
+    // time.Tick(d): just the channel of a new ticker (the ticker is never collected).
+    public static GoChan Tick(long d) => ((GoTicker)NewTicker(d)).C;
+
+    public static object Ticker_C(object t) => ((GoTicker)t).C;
+    public static object? Ticker_Stop(object t) { ((GoTicker)t).Timer?.Dispose(); return null; }
+    public static object? Timer_Stop(object t) { ((GoTicker)t).Timer?.Dispose(); return true; }
+    public static object? Ticker_Reset(object t, long d) { return null; }
+
     // time.Month / time.Weekday String() (named int types).
     public static GoString Month_String(long m) => GoString.FromDotNetString(m >= 1 && m <= 12 ? MonthsLong[m - 1] : "%!Month(" + m + ")");
     public static GoString Weekday_String(long w) => GoString.FromDotNetString(w >= 0 && w <= 6 ? DaysLong[w] : "%!Weekday(" + w + ")");
@@ -231,3 +254,6 @@ public sealed class GoTime { public long N; public bool IsZero; }
 /// <summary>A *time.Location: UTC by default, or a fixed-offset zone from
 /// time.FixedZone (Name + OffsetSeconds).</summary>
 public sealed class GoLocation { public string Name = "UTC"; public int OffsetSeconds; }
+
+/// <summary>A *time.Ticker / *time.Timer: the C channel plus its driving timer.</summary>
+public sealed class GoTicker { public GoChan C = null!; public System.Threading.Timer? Timer; }

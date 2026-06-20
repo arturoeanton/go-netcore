@@ -37,6 +37,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Acosh": {"Math", "Acosh"}, "Asinh": {"Math", "Asinh"}, "Atanh": {"Math", "Atanh"},
 		"Expm1": {"Math", "Expm1"}, "Log1p": {"Math", "Log1p"},
 	},
+	"go/ast": {
+		"IsExported": {"Ast", "IsExported"},
+	},
 	"errors": {
 		"New": {"Errors", "New"}, "Unwrap": {"Errors", "Unwrap"}, "Is": {"Errors", "Is"},
 	},
@@ -148,7 +151,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"time": {
 		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},
 		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
-		"FixedZone": {"Time", "FixedZone"},
+		"FixedZone": {"Time", "FixedZone"}, "NewTicker": {"Time", "NewTicker"}, "NewTimer": {"Time", "NewTimer"},
+		"Tick": {"Time", "Tick"},
 	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
@@ -268,6 +272,8 @@ var opaqueShimTypes = map[string]bool{
 	"strings.Reader":               true,
 	"bytes.Reader":                 true,
 	"bufio.Scanner":                true,
+	"time.Ticker":                  true,
+	"time.Timer":                   true,
 	"encoding/json.Decoder":        true,
 	"encoding/json.Encoder":        true,
 	"reflect.StructField":          true,
@@ -351,6 +357,12 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"container/list.Element": {
 		"Value": {"List", "Element_Value"},
+	},
+	"time.Ticker": {
+		"C": {"Time", "Ticker_C"},
+	},
+	"time.Timer": {
+		"C": {"Time", "Ticker_C"},
 	},
 	"reflect.StructField": {
 		"Name": {"Reflect", "StructField_Name"}, "Tag": {"Reflect", "StructField_Tag"},
@@ -505,7 +517,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"In": {"Reflect", "Type_In"}, "Out": {"Reflect", "Type_Out"},
 		"AssignableTo": {"Reflect", "Type_AssignableTo"}, "ConvertibleTo": {"Reflect", "Type_ConvertibleTo"},
 		"Comparable": {"Reflect", "Type_Comparable"}, "Implements": {"Reflect", "Type_Implements"},
-		"PkgPath": {"Reflect", "Type_PkgPath"},
+		"PkgPath": {"Reflect", "Type_PkgPath"}, "Method": {"Reflect", "Type_Method"},
 	},
 	"reflect.Kind": {
 		"String": {"Reflect", "Kind_String"},
@@ -515,6 +527,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"bufio.Scanner": {
 		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"}, "Err": {"Bufio", "Scanner_Err"},
+	},
+	"time.Ticker": {
+		"Stop": {"Time", "Ticker_Stop"}, "Reset": {"Time", "Ticker_Reset"},
+	},
+	"time.Timer": {
+		"Stop": {"Time", "Timer_Stop"}, "Reset": {"Time", "Ticker_Reset"},
 	},
 	"io.ReadCloser": {
 		"Close": {"Http", "Body_Close"},
@@ -690,7 +708,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetLen": {"Reflect", "Value_SetLen"}, "SetCap": {"Reflect", "Value_SetCap"},
 		"Slice": {"Reflect", "Value_Slice"}, "Pointer": {"Reflect", "Value_Pointer"},
 		"NumMethod": {"Reflect", "Value_NumMethod"}, "CanInterface": {"Reflect", "Value_CanInterface"},
-		"FieldByName": {"Reflect", "Value_FieldByName"},
+		"FieldByName": {"Reflect", "Value_FieldByName"}, "FieldByIndex": {"Reflect", "Value_FieldByIndex"},
+		"Method": {"Reflect", "Value_Method"},
 	},
 }
 
