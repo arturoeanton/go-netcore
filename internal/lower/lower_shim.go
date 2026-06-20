@@ -256,11 +256,17 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"IsZero": {"Time", "Time_IsZero"}, "UTC": {"Time", "Time_UTC"}, "Local": {"Time", "Time_Local"},
 		"String": {"Time", "Time_String"}, "Format": {"Time", "Time_Format"},
 	},
+	"time.Month": {
+		"String": {"Time", "Month_String"},
+	},
+	"time.Weekday": {
+		"String": {"Time", "Weekday_String"},
+	},
 	"time.Duration": {
 		"Seconds": {"Time", "Duration_Seconds"}, "Minutes": {"Time", "Duration_Minutes"},
 		"Hours": {"Time", "Duration_Hours"}, "Nanoseconds": {"Time", "Duration_Nanoseconds"},
 		"Microseconds": {"Time", "Duration_Microseconds"}, "Milliseconds": {"Time", "Duration_Milliseconds"},
-		"String": {"Time", "Duration_String"},
+		"String": {"Time", "Duration_String"}, "Truncate": {"Time", "Duration_Truncate"}, "Round": {"Time", "Duration_Round"},
 	},
 	"reflect.Value": {
 		"Kind": {"Reflect", "Value_Kind"}, "Type": {"Reflect", "Value_Type"},

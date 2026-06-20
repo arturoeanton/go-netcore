@@ -15,6 +15,10 @@ public static class Time
         System.Threading.Thread.Sleep((int)(d / Millisecond));
     }
 
+    // time.Month / time.Weekday String() (named int types).
+    public static GoString Month_String(long m) => GoString.FromDotNetString(m >= 1 && m <= 12 ? MonthsLong[m - 1] : "%!Month(" + m + ")");
+    public static GoString Weekday_String(long w) => GoString.FromDotNetString(w >= 0 && w <= 6 ? DaysLong[w] : "%!Weekday(" + w + ")");
+
     // time.Duration methods (receiver is the int64 nanosecond count).
     public static double Duration_Seconds(long d) => (double)d / Second;
     public static double Duration_Minutes(long d) => (double)d / Minute;
@@ -23,25 +27,76 @@ public static class Time
     public static long Duration_Microseconds(long d) => d / Microsecond;
     public static long Duration_Milliseconds(long d) => d / Millisecond;
 
+    public static long Duration_Truncate(long d, long m) => m <= 0 ? d : d - d % m;
+    public static long Duration_Round(long d, long m)
+    {
+        if (m <= 0) return d;
+        long r = d % m;
+        if (d < 0) { r = -r; if (r + r < m) return d + r; long d1 = d - (m - r); return d1 < d ? d1 : long.MinValue; }
+        if (r + r < m) return d - r;
+        long d2 = d + (m - r); return d2 > d ? d2 : long.MaxValue;
+    }
+
+    // Duration.String() — a faithful integer port of Go's time/time.go (no float64,
+    // so durations above 2^53 ns stay exact).
     public static GoString Duration_String(long d)
     {
-        if (d == 0) return GoString.FromDotNetString("0s");
-        var sb = new System.Text.StringBuilder();
-        long n = d;
-        if (n < 0) { sb.Append('-'); n = -n; }
-        if (n >= Second)
+        var buf = new byte[40];
+        int w = buf.Length;
+        bool neg = d < 0;
+        ulong u = unchecked((ulong)d);
+        if (neg) u = unchecked(0 - u);
+
+        if (u < (ulong)Second)
         {
-            double secs = (double)n / Second;
-            long h = (long)(secs / 3600); secs -= h * 3600;
-            long m = (long)(secs / 60); secs -= m * 60;
-            if (h > 0) sb.Append(h).Append('h');
-            if (h > 0 || m > 0) sb.Append(m).Append('m');
-            sb.Append(secs.ToString("0.#########", System.Globalization.CultureInfo.InvariantCulture)).Append('s');
+            int prec;
+            w--; buf[w] = (byte)'s';
+            w--;
+            if (u == 0) return GoString.FromDotNetString("0s");
+            if (u < (ulong)Microsecond) { prec = 0; buf[w] = (byte)'n'; }
+            else if (u < (ulong)Millisecond) { prec = 3; w--; buf[w] = 0xC2; buf[w + 1] = 0xB5; } // "µ"
+            else { prec = 6; buf[w] = (byte)'m'; }
+            (w, u) = FmtFrac(buf, w, u, prec);
+            w = FmtInt(buf, w, u);
         }
-        else if (n >= Millisecond) sb.Append(((double)n / Millisecond).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)).Append("ms");
-        else if (n >= Microsecond) sb.Append(((double)n / Microsecond).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)).Append("µs");
-        else sb.Append(n).Append("ns");
-        return GoString.FromDotNetString(sb.ToString());
+        else
+        {
+            w--; buf[w] = (byte)'s';
+            (w, u) = FmtFrac(buf, w, u, 9);
+            w = FmtInt(buf, w, u % 60);
+            u /= 60;
+            if (u > 0)
+            {
+                w--; buf[w] = (byte)'m';
+                w = FmtInt(buf, w, u % 60);
+                u /= 60;
+                if (u > 0) { w--; buf[w] = (byte)'h'; w = FmtInt(buf, w, u); }
+            }
+        }
+        if (neg) { w--; buf[w] = (byte)'-'; }
+        return GoString.FromDotNetString(System.Text.Encoding.UTF8.GetString(buf, w, buf.Length - w));
+    }
+
+    // Print u/10^prec into buf ending at w, trimming trailing zeros; returns (newW, intPart).
+    private static (int, ulong) FmtFrac(byte[] buf, int w, ulong v, int prec)
+    {
+        bool print = false;
+        for (int i = 0; i < prec; i++)
+        {
+            int digit = (int)(v % 10);
+            print = print || digit != 0;
+            if (print) { w--; buf[w] = (byte)('0' + digit); }
+            v /= 10;
+        }
+        if (print) { w--; buf[w] = (byte)'.'; }
+        return (w, v);
+    }
+
+    private static int FmtInt(byte[] buf, int w, ulong v)
+    {
+        if (v == 0) { w--; buf[w] = (byte)'0'; }
+        else while (v > 0) { w--; buf[w] = (byte)('0' + (int)(v % 10)); v /= 10; }
+        return w;
     }
 
     // ---- time.Time (UTC value type backed by Unix nanoseconds) -------------

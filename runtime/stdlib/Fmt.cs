@@ -48,8 +48,36 @@ public static class Fmt
     public static object?[] Println(GoSlice args) { var s = Sprintln(args); Out(s.ToDotNetString()); return new object?[] { (long)s.Len, null }; }
     public static object?[] Printf(GoString format, GoSlice args) { var s = DoSprintf(format.ToDotNetString(), Args(args)); Out(s); return new object?[] { (long)Encoding.UTF8.GetByteCount(s), null }; }
 
-    public static object Errorf(GoString format, GoSlice args) =>
-        new GoError(GoString.FromDotNetString(DoSprintf(format.ToDotNetString(), Args(args))));
+    public static object Errorf(GoString format, GoSlice args)
+    {
+        var a = Args(args);
+        string f = format.ToDotNetString();
+        string msg = DoSprintf(f, a);
+        object? wrapped = FindWrapArg(f, a);
+        return new GoError(GoString.FromDotNetString(msg), wrapped);
+    }
+
+    // Locate the argument consumed by a %w verb (the wrapped error), mirroring the
+    // argument-advance rules of DoSprintf.
+    private static object? FindWrapArg(string f, object?[] args)
+    {
+        int ai = 0;
+        for (int i = 0; i < f.Length; i++)
+        {
+            if (f[i] != '%') continue;
+            i++;
+            if (i >= f.Length) break;
+            while (i < f.Length && "+-# 0".IndexOf(f[i]) >= 0) i++;
+            while (i < f.Length && (char.IsDigit(f[i]) || f[i] == '*')) { if (f[i] == '*') ai++; i++; }
+            if (i < f.Length && f[i] == '.') { i++; while (i < f.Length && (char.IsDigit(f[i]) || f[i] == '*')) { if (f[i] == '*') ai++; i++; } }
+            if (i >= f.Length) break;
+            char verb = f[i];
+            if (verb == '%') continue;
+            if (verb == 'w') return ai < args.Length ? args[ai] : null;
+            ai++;
+        }
+        return null;
+    }
 
     /// <summary>Write a string to an io.Writer the runtime understands (a buffer,
     /// builder, or stdout/stderr); returns the byte count.</summary>
@@ -155,6 +183,7 @@ public static class Fmt
             case 'G': return FloatVerb(v, sp, () => sp.Prec < 0 ? GoFtoa.Shortest(ToDouble(v)) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
             case 'p': return v == null ? "<nil>" : "0x" + (System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(v) & 0xffffff).ToString("x", Inv);
             case 'T': return GoTypeName(v);
+            case 'w': // %w (Errorf) formats the wrapped error like %v
             case 'v': return sp.Hash ? FormatGoSyntax(v) : Format(v, 'v', sp.Plus, sp.Hash);
             default: return BadVerb(verb, v);
         }
