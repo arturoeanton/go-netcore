@@ -219,6 +219,7 @@ var opaqueShimTypes = map[string]bool{
 	"sync.Once":                    true,
 	"sync.Map":                     true,
 	"sync.Pool":                    true,
+	"strconv.NumError":             true,
 	"strings.Builder":              true,
 	"strings.Replacer":             true,
 	"bytes.Buffer":                 true,
@@ -277,6 +278,8 @@ var shimVarRegistry = map[string]shimFunc{
 	"context.Canceled":               {"Context", "Canceled"},
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 	"io.EOF":                         {"Io", "EOF"},
+	"strconv.ErrRange":               {"Strconv", "ErrRangeVar"},
+	"strconv.ErrSyntax":              {"Strconv", "ErrSyntaxVar"},
 }
 
 // shimFuncValue, when e is a reference to a shimmed stdlib function used as a
@@ -320,6 +323,9 @@ func (l *funcLowerer) shimFuncValue(e ast.Expr) bool {
 // shimFieldRegistry maps "importpath.Type" to its readable fields, each lowering
 // to a getter (the C# method takes the opaque object as its only argument).
 var shimFieldRegistry = map[string]map[string]shimFunc{
+	"strconv.NumError": {
+		"Err": {"Strconv", "NumError_Err"}, "Func": {"Strconv", "NumError_Func"}, "Num": {"Strconv", "NumError_Num"},
+	},
 	"net/url.URL": {
 		"Scheme": {"Url", "URL_Scheme"}, "Host": {"Url", "URL_Host"}, "Path": {"Url", "URL_Path"},
 		"RawQuery": {"Url", "URL_RawQuery"}, "Fragment": {"Url", "URL_Fragment"},

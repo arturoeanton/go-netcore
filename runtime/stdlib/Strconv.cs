@@ -3,6 +3,15 @@ namespace GoCLR.Stdlib;
 using System.Globalization;
 using GoCLR.Runtime;
 
+/// <summary>A *strconv.NumError (the error type Parse* return); Err is the shared
+/// ErrSyntax/ErrRange sentinel so code can compare `e.Err == strconv.ErrRange`.</summary>
+public sealed class GoNumError : IGoError
+{
+    public string Func = "", Num = "";
+    public GoError Err = null!;
+    public GoString Error() => GoString.FromDotNetString($"strconv.{Func}: parsing \"{Num}\": {Err.Message}");
+}
+
 /// <summary>Shim for Go's <c>strconv</c> package. Integer/bool conversions are
 /// exact; float formatting is best-effort (Go's shortest-decimal ftoa is not yet
 /// ported). Parse* return a boxed (value, error) tuple.</summary>
@@ -13,8 +22,22 @@ public static class Strconv
     private const string ErrSyntax = "invalid syntax";
     private const string ErrRange = "value out of range";
 
-    private static object NumError(string fn, string num, string kind) =>
-        new GoError(GoString.FromDotNetString($"strconv.{fn}: parsing \"{num}\": {kind}"));
+    // strconv.ErrSyntax / ErrRange sentinels — shared instances so `err == strconv.ErrRange`
+    // (reference comparison) works, including via NumError.Err.
+    public static readonly GoError ErrSyntaxErr = new(GoString.FromDotNetString(ErrSyntax));
+    public static readonly GoError ErrRangeErr = new(GoString.FromDotNetString(ErrRange));
+    public static object ErrSyntaxVar() => ErrSyntaxErr;
+    public static object ErrRangeVar() => ErrRangeErr;
+
+    private static object NumError(string fn, string num, string kind)
+    {
+        var err = kind == ErrRange ? ErrRangeErr : ErrSyntaxErr;
+        return new GoNumError { Func = fn, Num = num, Err = err };
+    }
+
+    public static object NumError_Err(object o) => ((GoNumError)o).Err;
+    public static GoString NumError_Func(object o) => GoString.FromDotNetString(((GoNumError)o).Func);
+    public static GoString NumError_Num(object o) => GoString.FromDotNetString(((GoNumError)o).Num);
 
     public static GoString Itoa(long i) => GoString.FromDotNetString(i.ToString(Inv));
     public static GoString FormatInt(long i, long b) => GoString.FromDotNetString(ToBase(i, (int)b, i < 0));
