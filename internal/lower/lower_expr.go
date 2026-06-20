@@ -648,6 +648,10 @@ func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 			return goir.TFloat64
 		case "clear":
 			return l.clearCall(e)
+		case "max":
+			return l.maxMinCall(e, true)
+		case "min":
+			return l.maxMinCall(e, false)
 		default:
 			l.fail(e.Pos(), "builtin "+o.Name())
 			return goir.TVoid
@@ -989,6 +993,48 @@ func (l *funcLowerer) truncateInt(t goir.Type) {
 	if t.TruncOp != goir.OpNop {
 		l.emit(goir.Op{Code: t.TruncOp})
 	}
+}
+
+// maxMinCall lowers the Go 1.21 builtin max/min over two or more ordered operands
+// of the same type. It folds the arguments through a running accumulator. For
+// floating-point operands a NaN argument propagates to the result (Go's rule:
+// "if any argument is a NaN, the result is a NaN").
+func (l *funcLowerer) maxMinCall(e *ast.CallExpr, isMax bool) goir.Type {
+	t := l.exprType(e.Args[0])
+	acc := l.addLocal(nil, t)
+	cur := l.addLocal(nil, t)
+	l.exprCoerced(e.Args[0], t)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: acc})
+
+	op := token.LSS
+	if isMax {
+		op = token.GTR
+	}
+	isFloat := t.Kind == goir.KFloat64 || t.Kind == goir.KFloat32
+	for _, arg := range e.Args[1:] {
+		l.exprCoerced(arg, t)
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: cur})
+		replace, skip := l.label(), l.label()
+		// if cur <op> acc -> replace
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: cur})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: acc})
+		l.compare(op, t)
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: replace})
+		if isFloat {
+			// cur is NaN (cur != cur) -> replace, so a NaN propagates.
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: cur})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: cur})
+			l.emit(goir.Op{Code: goir.OpCeq})
+			l.emit(goir.Op{Code: goir.OpBrFalse, Label: replace})
+		}
+		l.emit(goir.Op{Code: goir.OpBr, Label: skip})
+		l.mark(replace)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: cur})
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: acc})
+		l.mark(skip)
+	}
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: acc})
+	return t
 }
 
 // clearCall lowers the clear builtin: clear(m) empties a map; clear(s) zeroes the

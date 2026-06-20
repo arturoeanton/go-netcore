@@ -90,14 +90,48 @@ func IsSorted(data Interface) bool {
 	return true
 }
 
+// --- Interface adapters for the basic slice types ---
+//
+// IntSlice/Float64Slice/StringSlice attach sort.Interface to a concrete slice.
+// goclr's typed box gives each named slice type a distinct runtime identity, so
+// sort.Sort dispatches to the right Len/Less/Swap even when several named-slice
+// implementers coexist (e.g. a program's own type alongside sort.StringSlice).
+
+// IntSlice attaches Interface to []int, sorting in increasing order.
+type IntSlice []int
+
+func (x IntSlice) Len() int           { return len(x) }
+func (x IntSlice) Less(i, j int) bool { return x[i] < x[j] }
+func (x IntSlice) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
+func (x IntSlice) Sort()              { Sort(x) }
+func (x IntSlice) Search(target int) int {
+	return Search(len(x), func(i int) bool { return x[i] >= target })
+}
+
+// Float64Slice attaches Interface to []float64, sorting NaNs to the front.
+type Float64Slice []float64
+
+func (x Float64Slice) Len() int { return len(x) }
+func (x Float64Slice) Less(i, j int) bool {
+	return x[i] < x[j] || (isNaN(x[i]) && !isNaN(x[j]))
+}
+func (x Float64Slice) Swap(i, j int) { x[i], x[j] = x[j], x[i] }
+func (x Float64Slice) Sort()         { Sort(x) }
+
+// StringSlice attaches Interface to []string, sorting lexicographically.
+type StringSlice []string
+
+func (x StringSlice) Len() int           { return len(x) }
+func (x StringSlice) Less(i, j int) bool { return x[i] < x[j] }
+func (x StringSlice) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
+func (x StringSlice) Sort()              { Sort(x) }
+func (x StringSlice) Search(target string) int {
+	return Search(len(x), func(i int) bool { return x[i] >= target })
+}
+
 // --- convenience helpers ---
 //
-// These sort concrete slices directly rather than through an Interface adapter.
-// goclr's interface dispatch keys on the boxed value's runtime representation, and
-// every named slice type collapses to one GoSlice — so defining IntSlice/
-// Float64Slice/StringSlice as Interface implementers would make them mutually
-// indistinguishable at a sort.Sort dispatch. Inlining keeps the only Interface
-// implementers in a program the user's (or goja's) own distinct types.
+// These sort concrete slices directly (a fast path that avoids the interface).
 
 func isNaN(f float64) bool { return f != f }
 

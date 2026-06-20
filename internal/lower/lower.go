@@ -391,6 +391,8 @@ func funcDecls(p *frontend.Package) []*ast.FuncDecl {
 var compileFromSource = map[string]bool{
 	"unicode": true,
 	"sort":    true, // via a goclr source overlay (drops internal/reflectlite)
+	"cmp":     true, // tiny generic package (Less/Compare/Or over the Ordered set)
+	"slices":  true, // generic slice helpers (depends only on cmp)
 }
 
 // collectPackages returns root plus its transitive non-stdlib dependencies that
