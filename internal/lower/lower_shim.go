@@ -159,6 +159,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"os": {
 		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"},
 		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
+		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"},
 	},
 	"bytes": {
 		"Equal": {"Bytes", "Equal"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
