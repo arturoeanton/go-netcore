@@ -9,9 +9,29 @@ public sealed class GoWaitGroup { public int Count; public readonly object Gate 
 public sealed class GoOnce { public int Done; public readonly object Gate = new(); }
 public sealed class GoSyncMap { public readonly System.Collections.Concurrent.ConcurrentDictionary<object, object?> D = new(); }
 
+/// <summary>sync.Pool: a free-list of reusable objects with an optional New factory.</summary>
+public sealed class GoPool
+{
+    public GoClosure? New;
+    public readonly System.Collections.Concurrent.ConcurrentStack<object?> Items = new();
+}
+
 /// <summary>Shim for Go's <c>sync</c> package over .NET synchronization.</summary>
 public static class Sync
 {
+    public static object NewPool() => new GoPool();
+    public static object NewPoolWith(GoClosure newFn) => new GoPool { New = newFn };
+    public static object? Pool_Get(object p)
+    {
+        var pool = (GoPool)p;
+        if (pool.Items.TryPop(out var v)) return v;
+        return pool.New != null ? GoRuntime.InvokeArgs(pool.New) : null;
+    }
+    public static void Pool_Put(object p, object? v)
+    {
+        if (v != null) ((GoPool)p).Items.Push(v);
+    }
+
     public static object NewMutex() => new GoMutex();
     public static object NewRWMutex() => new GoRWMutex();
     public static object NewWaitGroup() => new GoWaitGroup();

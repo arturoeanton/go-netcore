@@ -164,6 +164,18 @@ func (l *funcLowerer) emitFieldChain(structType goir.Type, path []int) goir.Type
 
 // compositeLit lowers a struct composite literal Point{...} (keyed or positional)
 // into a temp local: zero-initialize, set provided fields, then push the value.
+// keyedElt returns the value of a keyed composite-literal field by name, or nil.
+func keyedElt(e *ast.CompositeLit, name string) ast.Expr {
+	for _, elt := range e.Elts {
+		if kv, ok := elt.(*ast.KeyValueExpr); ok {
+			if id, ok := kv.Key.(*ast.Ident); ok && id.Name == name {
+				return kv.Value
+			}
+		}
+	}
+	return nil
+}
+
 func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 	t := l.exprType(e)
 	switch t.Kind {
@@ -175,8 +187,19 @@ func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 		return l.mapLit(e, t)
 	case goir.KObject:
 		// Composite literal of an opaque value-type shim (e.g. bytes.Buffer{}) —
-		// produce its zero value object (field initializers are not supported).
+		// produce its zero value object (field initializers are not supported,
+		// except sync.Pool{New: fn} whose factory must be captured).
 		if t.Shim != "" {
+			if t.Shim == "sync.Pool" {
+				if fn := keyedElt(e, "New"); fn != nil {
+					l.expr(fn)
+					l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+						Assembly: shimAssembly, Namespace: shimAssembly, Type: "Sync", Method: "NewPoolWith",
+						Params: []goir.Type{goir.TFunc}, Ret: t,
+					}})
+					return t
+				}
+			}
 			l.emitZeroValue(t)
 			return t
 		}

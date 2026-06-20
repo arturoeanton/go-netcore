@@ -213,6 +213,7 @@ var opaqueShimTypes = map[string]bool{
 	"sync.WaitGroup":               true,
 	"sync.Once":                    true,
 	"sync.Map":                     true,
+	"sync.Pool":                    true,
 	"strings.Builder":              true,
 	"strings.Replacer":             true,
 	"bytes.Buffer":                 true,
@@ -370,6 +371,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"sync.WaitGroup":  {"Sync", "NewWaitGroup"},
 	"sync.Once":       {"Sync", "NewOnce"},
 	"sync.Map":        {"Sync", "NewMap"},
+	"sync.Pool":       {"Sync", "NewPool"},
 	"strings.Builder": {"StringsBuilder", "New"},
 	"bytes.Buffer":    {"BytesBuffer", "New"},
 	"time.Time":       {"Time", "TimeZero"},
@@ -526,6 +528,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"sync.Map": {
 		"Store": {"Sync", "Map_Store"}, "Load": {"Sync", "Map_Load"}, "Delete": {"Sync", "Map_Delete"},
 		"LoadOrStore": {"Sync", "Map_LoadOrStore"}, "LoadAndDelete": {"Sync", "Map_LoadAndDelete"},
+	},
+	"sync.Pool": {
+		"Get": {"Sync", "Pool_Get"}, "Put": {"Sync", "Pool_Put"},
 	},
 	"math/rand.Rand": {
 		"Int63": {"Rand", "Rand_Int63"}, "Int": {"Rand", "Rand_Int"}, "Int63n": {"Rand", "Rand_Int63n"},
