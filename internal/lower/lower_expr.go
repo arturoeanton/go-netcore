@@ -282,6 +282,19 @@ func (l *funcLowerer) indexExpr(e *ast.IndexExpr) {
 		l.sliceIndexRead(e, xt)
 	case goir.KMap:
 		l.mapIndexRead(e, xt)
+	case goir.KPtr:
+		// (*p)[i] where p is a pointer to an array: Go auto-dereferences.
+		if xt.Elem != nil && xt.Elem.Kind == goir.KSlice {
+			st := *xt.Elem
+			l.expr(e.X)
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emitUnbox(st)
+			l.expr(e.Index)
+			l.emit(goir.Op{Code: goir.OpSliceGet})
+			l.emitUnbox(*st.Elem)
+			return
+		}
+		l.fail(e.Pos(), "indexing (only strings, slices and maps are supported)")
 	default:
 		l.fail(e.Pos(), "indexing (only strings, slices and maps are supported)")
 	}
