@@ -256,6 +256,7 @@ var opaqueShimTypes = map[string]bool{
 	"hash.Hash64":                  true,
 	"math/big.Int":                 true,
 	"math/big.Float":               true,
+	"hash/maphash.Hash":            true,
 	"encoding/base32.Encoding":     true,
 	"strings.Reader":               true,
 	"bytes.Reader":                 true,
@@ -420,6 +421,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"time.Time":       {"Time", "TimeZero"},
 	"math/big.Int":    {"Big", "IntZero"},
 	"math/big.Float":  {"Big", "FloatZero"},
+	"hash/maphash.Hash": {"MapHash", "New"},
 }
 
 // shimZeroExtern returns the zero-value constructor extern for an opaque value
@@ -558,6 +560,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetInt": {"Big", "Float_SetInt"}, "Sub": {"Big", "Float_Sub"}, "Cmp": {"Big", "Float_Cmp"},
 		"Sign": {"Big", "Float_Sign"}, "IsInt": {"Big", "Float_IsInt"}, "String": {"Big", "Float_String"},
 		"Text": {"Big", "Float_Text"}, "Int": {"Big", "Float_Int"}, "SetString": {"Big", "Float_SetString"},
+	},
+	"hash/maphash.Hash": {
+		"WriteByte": {"MapHash", "WriteByte"}, "Write": {"MapHash", "Write"}, "WriteString": {"MapHash", "WriteString"},
+		"Sum64": {"MapHash", "Sum64"}, "Reset": {"MapHash", "Reset"}, "Size": {"MapHash", "Size"}, "BlockSize": {"MapHash", "BlockSize"},
 	},
 	"strings.Replacer": {
 		"Replace": {"Strings", "Replacer_Replace"},
