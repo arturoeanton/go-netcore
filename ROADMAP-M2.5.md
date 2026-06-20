@@ -28,15 +28,19 @@ precision, errors `%w` wrapping, Go-exact float ftoa, string slicing, append spr
 local type/const decls, and broad method coverage). Deferred edges are tracked in
 `LIMITATIONS.md`. Tagged `0.0.2.p0full` (initial), `0.0.3.p0hard` (hardened).
 
-**P1 in progress** (`0.0.4.p1`): shimmed `encoding/hex`, `encoding/base64`,
-`encoding/base32`, `encoding/binary`, `crypto/sha256·sha1·sha512·md5`,
-`crypto/rand`, `path`, `path/filepath`, `net/url` (escapes), `regexp` (.NET Regex),
-`log`, `math/big` (Int). 104 conformance fixtures. Enablers added along the way:
-`GoRuntime.InvokeArgs` (shims call back into Go funcs), native-closure-to-shim,
-`new(opaqueShim)` yields the shim object. Still deferred for P1 (need larger
-features — fixed arrays, io.Reader plumbing, Kestrel): `net` TCP/UDP, `net/http`
-server+client, `bufio`/`io` interfaces, `container/heap·list`, `crypto/hmac`,
-`log/slog`, `x/crypto/bcrypt`.
+**P1 in progress** (`0.0.5.p1http`): shimmed `encoding/hex·base64·base32·binary`,
+`crypto/sha256·sha1·sha512·md5` + `crypto/rand`, `path` + `path/filepath`,
+`net/url` (escapes **+ Parse** with field reads), `regexp` (.NET Regex), `log`,
+`math/big` (Int), `bufio.Scanner` + `io.ReadAll/Copy` + `strings`/`bytes` readers
++ `os.Stdin`, and the **`net/http` client** (`http.Get`/`Post` → `*Response` with
+`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 106 conformance
+fixtures. Enablers added: `GoRuntime.InvokeArgs` (shims call Go funcs),
+native-closure-to-shim, `new(opaqueShim)` yields the shim object, and **shim
+struct-field reads** (`u.Host`, `resp.StatusCode` → getter externs).
+
+Still deferred for P1 (need larger features — fixed arrays, full io.Reader
+interface for user types, Kestrel/sockets): `net` TCP/UDP, `net/http` **server**
+(Kestrel), `container/heap·list`, `crypto/hmac`, `log/slog`, `x/crypto/bcrypt`.
 
 Foundations (§0.1) — **DONE**: multi-package lowering (main + transitive non-stdlib
 closure → one assembly), package-level vars + `init()` (`__goclr_init`), the C# shim /
