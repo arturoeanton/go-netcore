@@ -23,7 +23,15 @@ public static class Csv
     {
         var r = (GoCsvReader)ro;
         var rows = new System.Collections.Generic.List<object?>();
-        foreach (var line in ParseRows(r.Data, r.Comma)) rows.Add(Row(line));
+        int expect = -1, lineNo = 0;
+        foreach (var line in ParseRows(r.Data, r.Comma))
+        {
+            lineNo++;
+            if (expect < 0) expect = line.Count; // Go enforces FieldsPerRecord
+            else if (line.Count != expect)
+                return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("record on line " + lineNo + ": wrong number of fields")) };
+            rows.Add(Row(line));
+        }
         var d = rows.ToArray();
         return new object?[] { new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length }, null };
     }

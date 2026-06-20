@@ -234,6 +234,13 @@ public static class Fmt
     {
         if (v is GoString gq) return GoQuote(gq);
         if (IsIntegral(v)) return "'" + char.ConvertFromUtf32((int)ToLong(v)) + "'";
+        // %q over a slice quotes each element.
+        if (v is GoSlice sl)
+        {
+            var sb = new StringBuilder("[");
+            for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(sl.Data![sl.Off + i])); }
+            return sb.Append(']').ToString();
+        }
         return BadVerb('q', v);
     }
 
