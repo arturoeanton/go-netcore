@@ -38,9 +38,44 @@ fixtures. Enablers added: `GoRuntime.InvokeArgs` (shims call Go funcs),
 native-closure-to-shim, `new(opaqueShim)` yields the shim object, and **shim
 struct-field reads** (`u.Host`, `resp.StatusCode` → getter externs).
 
-Still deferred for P1 (need larger features — fixed arrays, full io.Reader
-interface for user types, Kestrel/sockets): `net` TCP/UDP, `net/http` **server**
-(Kestrel), `container/heap·list`, `crypto/hmac`, `log/slog`, `x/crypto/bcrypt`.
+P1 (tags `0.0.6.p1`/`0.0.7.p1hard`) — **substantially complete + hardened**: all
+the major real-services packages work — `net/http` client **and server**
+(HttpListener), `net` TCP (Listen/Dial/Conn), `crypto` (sha/md5/rand/hmac/subtle),
+`regexp`, `path/filepath`, `net/url` (escapes+Parse), `bufio`/`io` readers, `log`,
+`math/big`, `container/list`, `os/exec`, `mime`. Enablers added: **shim functions
+as values** (reflection-wrapped native closures), **shim struct-field reads**
+(`u.Host`, `resp.StatusCode`).
+
+P2 (tag `0.0.9.p2`): `encoding/csv`, `compress/gzip·zlib·flate`,
+`crypto/aes`+`cipher` (AES-GCM), plus `encoding/hex·base64·base32·binary` and
+`math/big` (Euclidean Div + Quo/Rem/GCD).
+
+P3 (started): the **hash family** — `hash/fnv` (32/32a/64/64a), `hash/crc32`
+(IEEE), `hash/adler32`. **114 conformance fixtures byte-exact.**
+
+### What the remaining P1/P2/P3/P4 still need (infrastructure, not shims)
+
+- **Third-party ecosystem** (GORM, redis, testify, gRPC, JWT libs, validator,
+  websocket) — these are pure Go but live outside stdlib; they need the
+  **overlay/compile-direct resolution mechanism** (§0.1) so the backend compiles
+  their source, plus driving it over the (large) packages. The shim approach
+  doesn't apply to arbitrary third-party code.
+- **`database/sql` + driver** — XL; needs a managed driver (Npgsql/SQLite) behind
+  the `database/sql` interfaces.
+- **`html/template` / `text/template`, `encoding/xml`/`gob`** — template/codec
+  engines (parser + reflect execution); large, reflect-heavy.
+- **`crypto/rsa·ecdsa·x509·tls`** — .NET has the primitives but the key/cert
+  parsing surface is broad.
+- **Deferred P1 edges**: `net` UDP (needs `net.Addr`/ResolveUDPAddr),
+  `container/heap` (interface-method callback into user code), `flag` (arg
+  forwarding), `log/slog`, `x/crypto/bcrypt`.
+- **P4 (perf/packaging)** — NativeAOT, trimming, portable PDB/debug symbols,
+  slice/map generic specialization, value-type struct layout, GC tuning. This is
+  backend/build-pipeline work, independent of stdlib coverage.
+
+The clean next lever for all the ecosystem work is the **overlay-resolution
+mechanism** (compile pure-Go deps directly, inject goclr-safe overlays for the few
+unsafe files — see `GOJA-STRATEGY.md`).
 
 Foundations (§0.1) — **DONE**: multi-package lowering (main + transitive non-stdlib
 closure → one assembly), package-level vars + `init()` (`__goclr_init`), the C# shim /
