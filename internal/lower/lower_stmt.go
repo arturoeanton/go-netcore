@@ -1323,8 +1323,22 @@ func (l *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 	// multi-result literal returns an object[] tuple, which __invoke hands back as
 	// object for the caller to unpack — the same shape as a named multi-result fn.
 	if l.inClosure {
+		bare := len(s.Results) == 0 && len(l.namedResults) > 0
 		switch {
 		case len(l.closureResults) > 1:
+			if bare {
+				// Bare return in a multi-result closure: gather the named-result locals.
+				l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(l.namedResults))})
+				l.emit(goir.Op{Code: goir.OpNewObjArray})
+				for i, ri := range l.namedResults {
+					l.emit(goir.Op{Code: goir.OpDup})
+					l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+					l.loadVar(ri)
+					l.emitBox(l.closureResults[i])
+					l.emit(goir.Op{Code: goir.OpStelemRef})
+				}
+				break
+			}
 			// return f() where f yields a matching multi-value tuple: the call already
 			// returns a boxed object[] tuple — return it directly.
 			if len(s.Results) == 1 {
@@ -1348,7 +1362,12 @@ func (l *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 				}
 			}
 		case l.closureRet != goir.TVoid:
-			l.emitBoxedElem(s.Results[0])
+			if bare {
+				l.loadVar(l.namedResults[0])
+				l.emitBox(l.closureRet)
+			} else {
+				l.emitBoxedElem(s.Results[0])
+			}
 		default:
 			l.emit(goir.Op{Code: goir.OpLdNull})
 		}

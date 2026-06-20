@@ -37,6 +37,14 @@ public static class Strings
     public static bool EqualFold(GoString a, GoString b) => string.Equals(a.ToDotNetString(), b.ToDotNetString(), StringComparison.OrdinalIgnoreCase);
 
     public static long Index(GoString s, GoString sub) => IndexBytes(s.Bytes, sub.Bytes);
+    // strings.Compare: lexicographic byte comparison, returning -1/0/+1.
+    public static long Compare(GoString a, GoString b)
+    {
+        byte[] x = a.Bytes, y = b.Bytes;
+        int n = System.Math.Min(x.Length, y.Length);
+        for (int i = 0; i < n; i++) if (x[i] != y[i]) return x[i] < y[i] ? -1 : 1;
+        return x.Length == y.Length ? 0 : (x.Length < y.Length ? -1 : 1);
+    }
     public static long LastIndex(GoString s, GoString sub)
     {
         byte[] b = s.Bytes, sb = sub.Bytes;

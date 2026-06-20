@@ -211,7 +211,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"strings": {
 		"ToUpper": {"Strings", "ToUpper"}, "ToLower": {"Strings", "ToLower"}, "Title": {"Strings", "Title"},
 		"Contains": {"Strings", "Contains"}, "HasPrefix": {"Strings", "HasPrefix"}, "HasSuffix": {"Strings", "HasSuffix"},
-		"EqualFold": {"Strings", "EqualFold"}, "Index": {"Strings", "Index"}, "LastIndex": {"Strings", "LastIndex"},
+		"EqualFold": {"Strings", "EqualFold"}, "Index": {"Strings", "Index"}, "LastIndex": {"Strings", "LastIndex"}, "Compare": {"Strings", "Compare"},
 		"IndexByte": {"Strings", "IndexByte"}, "Count": {"Strings", "Count"}, "Repeat": {"Strings", "Repeat"},
 		"Replace": {"Strings", "Replace"}, "ReplaceAll": {"Strings", "ReplaceAll"}, "TrimSpace": {"Strings", "TrimSpace"},
 		"Trim": {"Strings", "Trim"}, "TrimLeft": {"Strings", "TrimLeft"}, "TrimRight": {"Strings", "TrimRight"},
@@ -626,6 +626,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetInt64": {"Big", "Int_SetInt64"}, "SetUint64": {"Big", "Int_SetUint64"},
 		"Lsh": {"Big", "Int_Lsh"}, "Rsh": {"Big", "Int_Rsh"}, "SetBytes": {"Big", "Int_SetBytes"},
 		"Bytes": {"Big", "Int_Bytes"}, "Text": {"Big", "Int_Text"}, "DivMod": {"Big", "Int_DivMod"},
+		"Uint64": {"Big", "Int_Uint64"}, "And": {"Big", "Int_And"}, "Or": {"Big", "Int_Or"},
+		"Xor": {"Big", "Int_Xor"}, "Not": {"Big", "Int_Not"}, "BitLen": {"Big", "Int_BitLen"},
+		"IsInt64": {"Big", "Int_IsInt64"}, "IsUint64": {"Big", "Int_IsUint64"},
 	},
 	"math/big.Float": {
 		"SetInt": {"Big", "Float_SetInt"}, "Sub": {"Big", "Float_Sub"}, "Cmp": {"Big", "Float_Cmp"},
@@ -724,7 +727,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Slice": {"Reflect", "Value_Slice"}, "Pointer": {"Reflect", "Value_Pointer"},
 		"NumMethod": {"Reflect", "Value_NumMethod"}, "CanInterface": {"Reflect", "Value_CanInterface"},
 		"FieldByName": {"Reflect", "Value_FieldByName"}, "FieldByIndex": {"Reflect", "Value_FieldByIndex"},
-		"Method": {"Reflect", "Value_Method"},
+		"Method": {"Reflect", "Value_Method"}, "Call": {"Reflect", "Value_Call"},
+		"MethodByName": {"Reflect", "Value_MethodByName"}, "OverflowInt": {"Reflect", "Value_OverflowInt"},
 	},
 }
 

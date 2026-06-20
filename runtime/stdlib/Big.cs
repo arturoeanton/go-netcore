@@ -76,6 +76,15 @@ public static class Big
 
     public static object Int_SetInt64(object z, long x) { ((GoBigInt)z).V = x; return z; }
     public static object Int_SetUint64(object z, ulong x) { ((GoBigInt)z).V = x; return z; }
+    // Uint64 returns the low 64 bits (Go's behaviour for out-of-range values).
+    public static ulong Int_Uint64(object x) => unchecked((ulong)(V(x) & ulong.MaxValue));
+    public static object Int_And(object z, object x, object y) { ((GoBigInt)z).V = V(x) & V(y); return z; }
+    public static object Int_Or(object z, object x, object y) { ((GoBigInt)z).V = V(x) | V(y); return z; }
+    public static object Int_Xor(object z, object x, object y) { ((GoBigInt)z).V = V(x) ^ V(y); return z; }
+    public static object Int_Not(object z, object x) { ((GoBigInt)z).V = -(V(x)) - 1; return z; } // two's-complement NOT
+    public static long Int_BitLen(object x) { var a = BigInteger.Abs(V(x)); long n = 0; while (a > 0) { a >>= 1; n++; } return n; }
+    public static bool Int_IsInt64(object x) => V(x) >= long.MinValue && V(x) <= long.MaxValue;
+    public static bool Int_IsUint64(object x) => V(x) >= 0 && V(x) <= ulong.MaxValue;
     public static object Int_Lsh(object z, object x, ulong n) { ((GoBigInt)z).V = V(x) << (int)n; return z; }
     public static object Int_Rsh(object z, object x, ulong n) { ((GoBigInt)z).V = V(x) >> (int)n; return z; }
 

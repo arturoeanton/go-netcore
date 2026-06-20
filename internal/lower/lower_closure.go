@@ -162,6 +162,28 @@ func (l *funcLowerer) buildClosure(lit *ast.FuncLit, ci *closureInfo) {
 		}
 	}
 
+	// Named results become zero-initialized locals (so the body can assign them and
+	// a bare `return` reads them back), like a top-level function's named results.
+	if lit.Type.Results != nil {
+		for _, field := range lit.Type.Results.List {
+			if len(field.Names) == 0 {
+				continue
+			}
+			rt, _ := cl.goType(cl.pkg.TypesInfo.TypeOf(field.Type))
+			for _, name := range field.Names {
+				if name.Name == "_" {
+					cl.namedResults = append(cl.namedResults, -1)
+					continue
+				}
+				obj := cl.pkg.TypesInfo.Defs[name]
+				idx, _ := cl.declareLocal(obj, rt)
+				rtCopy := rt
+				cl.initLocal(idx, func() { cl.emitZeroValue(rtCopy) })
+				cl.namedResults = append(cl.namedResults, idx)
+			}
+		}
+	}
+
 	if blockHasDefer(lit.Body) {
 		cl.buildClosureDeferred(lit.Body)
 	} else {

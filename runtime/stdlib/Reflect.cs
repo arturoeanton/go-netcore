@@ -474,6 +474,25 @@ public static class Reflect
     // Method(i) as a callable Value. The runtime does not retain method sets, so a
     // bound method Value is produced only on the (unreached) path where NumMethod>0.
     public static object Value_Method(object? v, long i) => new GoReflectValue { V = null };
+    public static object Value_MethodByName(object? v, GoString name) => new GoReflectValue { V = null };
+    public static bool Value_OverflowInt(object? v, long x) => false;
+
+    // Call(in []Value) []Value: invoke the wrapped function with the unwrapped
+    // argument Values and wrap each result as a Value. The wrapped value is a
+    // GoClosure (a Go func bridged through reflect.ValueOf).
+    public static GoSlice Value_Call(object? v, GoSlice inArgs)
+    {
+        var f = RVal(v) as GoClosure;
+        var args = new object?[inArgs.Len];
+        for (int i = 0; i < inArgs.Len; i++) args[i] = RVal(inArgs.Data![inArgs.Off + i]);
+        object? res = f != null ? GoCLR.Runtime.GoRuntime.InvokeArgs(f, args) : null;
+        // A multi-result function returns a boxed object[] tuple; a single result is
+        // the bare value (null counts as a single nil result).
+        object?[] outs = res is object?[] tuple ? tuple : new[] { res };
+        var data = new object?[outs.Length];
+        for (int i = 0; i < outs.Length; i++) data[i] = new GoReflectValue { V = outs[i] };
+        return new GoSlice { Data = data, Off = 0, Len = data.Length, Cap = data.Length };
+    }
     public static object Value_FieldByName(object? v, GoString name)
     {
         var obj = RVal(v);
