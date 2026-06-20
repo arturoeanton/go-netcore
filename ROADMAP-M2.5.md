@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**114 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
+**123 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
 hardened** (an adversarial multi-agent sweep over all 20 packages found and fixed
 ~30 divergences: fmt verb engine + flags/width + no-crash type handling, strconv
 ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embedded/
@@ -33,7 +33,7 @@ local type/const decls, and broad method coverage). Deferred edges are tracked i
 `net/url` (escapes **+ Parse** with field reads), `regexp` (.NET Regex), `log`,
 `math/big` (Int), `bufio.Scanner` + `io.ReadAll/Copy` + `strings`/`bytes` readers
 + `os.Stdin`, and the **`net/http` client** (`http.Get`/`Post` → `*Response` with
-`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 114 conformance
+`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 123 conformance
 fixtures. Enablers added: `GoRuntime.InvokeArgs` (shims call Go funcs),
 native-closure-to-shim, `new(opaqueShim)` yields the shim object, and **shim
 struct-field reads** (`u.Host`, `resp.StatusCode` → getter externs).
@@ -51,7 +51,7 @@ P2 (tag `0.0.9.p2`): `encoding/csv`, `compress/gzip·zlib·flate`,
 `math/big` (Euclidean Div + Quo/Rem/GCD).
 
 P3 (started): the **hash family** — `hash/fnv` (32/32a/64/64a), `hash/crc32`
-(IEEE), `hash/adler32`. **114 conformance fixtures byte-exact.**
+(IEEE), `hash/adler32`. **123 conformance fixtures byte-exact.**
 
 ### What the remaining P1/P2/P3/P4 still need (infrastructure, not shims)
 
