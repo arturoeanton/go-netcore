@@ -88,6 +88,7 @@ public static class Fmt
             case GoStringBuilder sb: sb.SB.Append(s); break;
             case GoBuffer buf: foreach (byte b in Encoding.UTF8.GetBytes(s)) buf.B.Add(b); break;
             case GoFile f when f.IsStderr: System.Console.Error.Write(s); System.Console.Error.Flush(); break;
+            case GoRespWriter rw: { var b = Encoding.UTF8.GetBytes(s); rw.Resp.OutputStream.Write(b, 0, b.Length); break; }
             default: Out(s); break;
         }
         return Encoding.UTF8.GetByteCount(s);

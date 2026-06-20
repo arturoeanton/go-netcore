@@ -106,6 +106,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
+		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"},
 	},
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
@@ -215,6 +216,8 @@ var opaqueShimTypes = map[string]bool{
 	"regexp.Regexp":                true,
 	"net/url.URL":                  true,
 	"net/http.Response":            true,
+	"net/http.ResponseWriter":      true,
+	"net/http.Request":             true,
 	"os/exec.Cmd":                  true,
 	"container/list.List":          true,
 	"container/list.Element":       true,
@@ -296,6 +299,10 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"container/list.Element": {
 		"Value": {"List", "Element_Value"},
+	},
+	"net/http.Request": {
+		"Method": {"Http", "Req_Method"}, "URL": {"Http", "Req_URL"}, "Body": {"Http", "Req_Body"},
+		"Host": {"Http", "Req_Host"}, "RemoteAddr": {"Http", "Req_RemoteAddr"},
 	},
 }
 
@@ -388,6 +395,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"io.ReadCloser": {
 		"Close": {"Http", "Body_Close"},
+	},
+	"net/http.ResponseWriter": {
+		"Write": {"Http", "RW_Write"}, "WriteHeader": {"Http", "RW_WriteHeader"},
 	},
 	"os/exec.Cmd": {
 		"Output": {"Exec", "Cmd_Output"}, "CombinedOutput": {"Exec", "Cmd_CombinedOutput"}, "Run": {"Exec", "Cmd_Run"},
