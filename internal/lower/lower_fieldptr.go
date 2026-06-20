@@ -64,102 +64,129 @@ func (l *funcLowerer) fieldPtrExtern(elem goir.Type) *goir.Extern {
 }
 
 // buildFieldAlias lowers &s.field, leaving a field-alias GoPtr on the stack. It
-// supports a field reached through a pointer (&p.f), a package-level struct global
-// (&g.f), or an addressable local struct held in a cell (&r.f). Returns false for
-// shapes it does not handle (the caller falls back / reports an error).
+// supports a field (direct or promoted through value embeds) reached through a
+// pointer (&p.f), a package-level struct global (&g.f), or an addressable local
+// struct held in a cell (&r.f). Returns false for shapes it does not handle.
 func (l *funcLowerer) buildFieldAlias(sel *ast.SelectorExpr) bool {
 	bt := l.exprType(sel.X)
-
-	// container access: env-capture strategy + the struct type whose field we alias.
+	var root goir.Type
 	switch {
 	case bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct:
-		st := *bt.Elem
-		fi := st.Struct.FieldIndex(sel.Sel.Name)
-		if fi < 0 {
-			return false
-		}
-		// container is the GoPtr value of sel.X; getter/setter go through GoPtr.Get/Set.
-		l.emitFieldAliasViaPtr(func() { l.expr(sel.X) }, bt, st, fi)
-		return true
-
+		root = *bt.Elem
 	case bt.Kind == goir.KStruct:
-		fi := bt.Struct.FieldIndex(sel.Sel.Name)
-		if fi < 0 {
+		root = bt
+	default:
+		return false
+	}
+
+	// Resolve the (possibly promoted) field path and the final field type, requiring
+	// value-embed-only navigation (a pointer embed has no in-place field storage).
+	path := []int{root.Struct.FieldIndex(sel.Sel.Name)}
+	if path[0] < 0 {
+		p, ok := l.promotedFieldPath(sel)
+		if !ok {
 			return false
 		}
+		path = p
+	}
+	cont := root
+	for _, idx := range path[:len(path)-1] {
+		ft := cont.Struct.Fields[idx].Type
+		if ft.Kind != goir.KStruct {
+			return false
+		}
+		cont = ft
+	}
+	ft := cont.Struct.Fields[path[len(path)-1]].Type
+
+	switch {
+	case bt.Kind == goir.KPtr:
+		l.emitFieldAliasPtr(func() { l.expr(sel.X) }, bt, root, path, ft)
+		return true
+	default:
 		if gi, ok := l.globalRef(sel.X); ok {
-			l.emitFieldAliasViaGlobal(gi, bt, fi)
+			l.emitFieldAliasGlobal(gi, root, path, ft)
 			return true
 		}
 		if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
-			// the cell is a GoPtr to the struct: same as the pointer case, capturing it.
 			cidx := idx
-			l.emitFieldAliasViaPtr(func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: cidx}) },
-				goir.PtrType(elem), elem, elem.Struct.FieldIndex(sel.Sel.Name))
+			l.emitFieldAliasPtr(func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: cidx}) },
+				goir.PtrType(elem), elem, path, ft)
 			return true
 		}
 		return false
 	}
-	return false
 }
 
-// emitFieldAliasViaPtr builds a field alias whose container is a GoPtr (emitPtr
-// pushes it): the getter does *ptr.field, the setter writes it back through *ptr.
-func (l *funcLowerer) emitFieldAliasViaPtr(emitPtr func(), ptrType, st goir.Type, fi int) {
-	ft := st.Struct.Fields[fi].Type
+// emitLdfldaChain, given the address of a root struct on the stack, emits a ldflda
+// chain through path[:last] (value embeds) and returns the struct that directly
+// holds the final field.
+func (l *funcLowerer) emitLdfldaChain(root goir.Type, path []int) goir.Type {
+	cont := root
+	for _, idx := range path[:len(path)-1] {
+		l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cont.Struct, Field: idx})
+		cont = cont.Struct.Fields[idx].Type
+	}
+	return cont
+}
+
+// emitFieldAliasPtr builds a field alias whose container is a GoPtr (emitPtr pushes
+// it): the getter reads *ptr then navigates to the field; the setter navigates and
+// writes the field, then writes *ptr back.
+func (l *funcLowerer) emitFieldAliasPtr(emitPtr func(), ptrType, root goir.Type, path []int, ft goir.Type) {
 	cap := []thunkCapture{{emit: emitPtr, typ: ptrType}}
-	// getter: env[0] (GoPtr) -> Get -> unbox struct -> ldfld -> box
+	last := path[len(path)-1]
 	l.buildAccessorClosure(cap, func(cl *funcLowerer) {
 		cl.emitEnvArg(0, ptrType)
 		cl.emit(goir.Op{Code: goir.OpPtrGet})
-		cl.emitUnbox(st)
-		cl.emit(goir.Op{Code: goir.OpLdFld, Struct: st.Struct, Field: fi})
+		cl.emitUnbox(root)
+		cl.emitFieldChain(root, path)
 		cl.emitBox(ft)
 	})
-	// setter: read *ptr into a temp, set the field from args[0], write *ptr back; ret null
 	l.buildAccessorClosure(cap, func(cl *funcLowerer) {
-		tmp := cl.addLocal(nil, st)
+		tmp := cl.addLocal(nil, root)
 		cl.emitEnvArg(0, ptrType)
 		cl.emit(goir.Op{Code: goir.OpPtrGet})
-		cl.emitUnbox(st)
+		cl.emitUnbox(root)
 		cl.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
 		cl.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
+		cont := cl.emitLdfldaChain(root, path)
 		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
 		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
 		cl.emit(goir.Op{Code: goir.OpLdElemRef})
 		cl.emitUnbox(ft)
-		cl.emit(goir.Op{Code: goir.OpStFld, Struct: st.Struct, Field: fi})
+		cl.emit(goir.Op{Code: goir.OpStFld, Struct: cont.Struct, Field: last})
 		cl.emitEnvArg(0, ptrType)
 		cl.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
-		cl.emitBox(st)
+		cl.emitBox(root)
 		cl.emit(goir.Op{Code: goir.OpPtrSet})
 		cl.emit(goir.Op{Code: goir.OpLdNull})
 	})
-	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.fieldPtrExtern(st)})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.fieldPtrExtern(ft)})
 }
 
-// emitFieldAliasViaGlobal builds a field alias whose container is a struct global:
-// getter reads global.field, setter writes it back through the global.
-func (l *funcLowerer) emitFieldAliasViaGlobal(gi int, st goir.Type, fi int) {
-	ft := st.Struct.Fields[fi].Type
+// emitFieldAliasGlobal builds a field alias whose container is a struct global.
+func (l *funcLowerer) emitFieldAliasGlobal(gi int, root goir.Type, path []int, ft goir.Type) {
+	last := path[len(path)-1]
 	l.buildAccessorClosure(nil, func(cl *funcLowerer) {
 		cl.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
-		cl.emit(goir.Op{Code: goir.OpLdFld, Struct: st.Struct, Field: fi})
+		cl.emitFieldChain(root, path)
 		cl.emitBox(ft)
 	})
 	l.buildAccessorClosure(nil, func(cl *funcLowerer) {
-		tmp := cl.addLocal(nil, st)
+		tmp := cl.addLocal(nil, root)
 		cl.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
 		cl.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
 		cl.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
+		cont := cl.emitLdfldaChain(root, path)
 		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
 		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
 		cl.emit(goir.Op{Code: goir.OpLdElemRef})
 		cl.emitUnbox(ft)
-		cl.emit(goir.Op{Code: goir.OpStFld, Struct: st.Struct, Field: fi})
+		cl.emit(goir.Op{Code: goir.OpStFld, Struct: cont.Struct, Field: last})
 		cl.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(gi)})
 		cl.emit(goir.Op{Code: goir.OpLdNull})
 	})
-	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.fieldPtrExtern(st)})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.fieldPtrExtern(ft)})
 }
