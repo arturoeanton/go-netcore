@@ -1308,6 +1308,20 @@ func (l *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 	// return them (or, under defer, route through the epilogue that runs defers
 	// first so they can observe/modify the named results).
 	if len(l.namedResults) > 0 {
+		// return f() where f yields a matching multi-value tuple, into named results:
+		// spread the boxed tuple across the named slots.
+		if len(l.namedResults) > 1 && len(s.Results) == 1 {
+			if tup, ok := l.pkg.TypesInfo.TypeOf(s.Results[0]).(*types.Tuple); ok && tup.Len() == len(l.namedResults) {
+				l.spreadNamedResults(s.Results[0])
+				if l.deferMode {
+					l.emit(goir.Op{Code: goir.OpLeave, Label: l.deferNormalLabel})
+					return
+				}
+				l.loadNamedResults()
+				l.emit(goir.Op{Code: goir.OpRet})
+				return
+			}
+		}
 		if len(s.Results) > 0 {
 			l.assignNamedResults(s.Results)
 		}
@@ -1374,6 +1388,26 @@ func (l *funcLowerer) assignNamedResults(results []ast.Expr) {
 		idx := l.namedResults[i]
 		rt := l.resultTypes[i]
 		l.assignLocal(idx, func() { l.exprCoerced(r, rt) })
+	}
+}
+
+// spreadNamedResults unpacks a multi-result call's boxed object[] tuple across the
+// function's named result slots (cell-aware).
+func (l *funcLowerer) spreadNamedResults(call ast.Expr) {
+	tmp := l.addLocal(nil, goir.TObjectArray)
+	l.expr(call)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+	for i := range l.namedResults {
+		if l.namedResults[i] < 0 {
+			continue
+		}
+		idx, rt, slot := i, l.resultTypes[i], l.namedResults[i]
+		l.assignLocal(slot, func() {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(idx)})
+			l.emit(goir.Op{Code: goir.OpLdElemRef})
+			l.emitUnbox(rt)
+		})
 	}
 }
 
