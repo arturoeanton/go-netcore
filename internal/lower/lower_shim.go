@@ -104,6 +104,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"bufio": {
 		"NewScanner": {"Bufio", "NewScanner"},
 	},
+	"net": {
+		"Listen": {"Net", "Listen"}, "Dial": {"Net", "Dial"},
+	},
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
 		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"},
@@ -216,6 +219,8 @@ var opaqueShimTypes = map[string]bool{
 	"regexp.Regexp":                true,
 	"net/url.URL":                  true,
 	"net/http.Response":            true,
+	"net.Listener":                 true,
+	"net.Conn":                     true,
 	"net/http.ResponseWriter":      true,
 	"net/http.Request":             true,
 	"os/exec.Cmd":                  true,
@@ -398,6 +403,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http.ResponseWriter": {
 		"Write": {"Http", "RW_Write"}, "WriteHeader": {"Http", "RW_WriteHeader"},
+	},
+	"net.Listener": {
+		"Accept": {"Net", "Listener_Accept"}, "Close": {"Net", "Listener_Close"},
+	},
+	"net.Conn": {
+		"Read": {"Net", "Conn_Read"}, "Write": {"Net", "Conn_Write"}, "Close": {"Net", "Conn_Close"},
 	},
 	"os/exec.Cmd": {
 		"Output": {"Exec", "Cmd_Output"}, "CombinedOutput": {"Exec", "Cmd_CombinedOutput"}, "Run": {"Exec", "Cmd_Run"},
