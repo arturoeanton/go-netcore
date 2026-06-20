@@ -39,6 +39,9 @@ public static class Json
             case double d: WriteNumber(sb, d); break;
             case GoString gs: WriteString(sb, gs.ToDotNetString()); break;
             case GoPtr p: Write(sb, p.Value); break;
+            // A nil slice/map (zero value: null backing) marshals as null, not []/{}.
+            case GoSlice s when s.Data == null: sb.Append("null"); break;
+            case GoMap m when m.Data == null: sb.Append("null"); break;
             case GoSlice s: WriteSlice(sb, s); break;
             case GoMap m: WriteMap(sb, m); break;
             default: WriteStruct(sb, v); break;

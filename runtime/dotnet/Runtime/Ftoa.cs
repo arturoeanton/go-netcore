@@ -16,41 +16,45 @@ public static class GoFtoa
         if (double.IsNaN(d)) return "NaN";
         if (double.IsPositiveInfinity(d)) return "+Inf";
         if (double.IsNegativeInfinity(d)) return "-Inf";
+        if (!ShortestDigits(d, out bool neg, out string digits, out int dp)) return neg ? "-0" : "0";
+        int exp = dp - 1;
+        string body = (exp < -4 || exp >= 6) ? FmtE(digits, exp) : FmtF(digits, dp);
+        return neg ? "-" + body : body;
+    }
 
-        bool neg = double.IsNegative(d);
+    /// <summary>strconv.FormatFloat(d, 'e', -1, 64) — shortest digits in exponent form.</summary>
+    public static string ShortestE(double d, char e = 'e')
+    {
+        if (double.IsNaN(d)) return "NaN";
+        if (double.IsInfinity(d)) return d < 0 ? "-Inf" : "+Inf";
+        if (!ShortestDigits(d, out bool neg, out string digits, out int dp)) return (neg ? "-0e+00" : "0e+00");
+        string body = FmtE(digits, dp - 1);
+        if (e == 'E') body = body.Replace('e', 'E');
+        return neg ? "-" + body : body;
+    }
+
+    // Extract the shortest round-trippable decimal digits of |d| (.NET "R"),
+    // returning the bare digit string and dp = count of digits left of the point.
+    // Returns false when the value is zero.
+    private static bool ShortestDigits(double d, out bool neg, out string digits, out int dp)
+    {
+        neg = double.IsNegative(d);
         if (neg) d = -d;
-
-        // Shortest round-trippable digits from .NET, parsed into a digit string
-        // plus dp = count of digits left of the decimal point in the significand.
         string r = d.ToString("R", Inv);
         int ePos = r.IndexOfAny(new[] { 'E', 'e' });
         int exp10 = 0;
         string mant = r;
         if (ePos >= 0) { exp10 = int.Parse(r.Substring(ePos + 1), Inv); mant = r.Substring(0, ePos); }
-
         int dot = mant.IndexOf('.');
-        string digits;
-        int dp;
         if (dot < 0) { digits = mant; dp = mant.Length + exp10; }
-        else
-        {
-            string ip = mant.Substring(0, dot), fp = mant.Substring(dot + 1);
-            digits = ip + fp;
-            dp = ip.Length + exp10;
-        }
-
+        else { string ip = mant.Substring(0, dot), fp = mant.Substring(dot + 1); digits = ip + fp; dp = ip.Length + exp10; }
         int lead = 0;
         while (lead < digits.Length - 1 && digits[lead] == '0') { lead++; dp--; }
         digits = digits.Substring(lead);
         int end = digits.Length;
         while (end > 1 && digits[end - 1] == '0') end--;
         digits = digits.Substring(0, end);
-
-        if (digits == "0") return neg ? "-0" : "0";
-
-        int exp = dp - 1;
-        string body = (exp < -4 || exp >= 6) ? FmtE(digits, exp) : FmtF(digits, dp);
-        return neg ? "-" + body : body;
+        return digits != "0";
     }
 
     private static string FmtE(string digits, int exp)
@@ -72,13 +76,49 @@ public static class GoFtoa
         return digits.Substring(0, dp) + "." + digits.Substring(dp);
     }
 
+    /// <summary>strconv.FormatFloat(d, 'f', prec, 64) — fixed notation. prec&lt;0
+    /// means shortest. Go renders ±Inf/NaN as +Inf/-Inf/NaN.</summary>
+    public static string FormatF(double d, int prec)
+    {
+        if (double.IsNaN(d)) return "NaN";
+        if (double.IsInfinity(d)) return d < 0 ? "-Inf" : "+Inf";
+        if (prec < 0)
+        {
+            // shortest fixed form: take the shortest digits and lay them out as %f.
+            string g = Shortest(d);
+            if (g.IndexOfAny(new[] { 'e', 'E' }) < 0) return g; // already fixed
+            return d.ToString("0.#####################", Inv);
+        }
+        return d.ToString("F" + prec, Inv);
+    }
+
+    /// <summary>strconv.FormatFloat(d, 'g', prec, 64) with an explicit precision
+    /// (significant digits). Go uses a lowercase exponent and the exp&lt;-4||exp&gt;=prec
+    /// switch; .NET "G" uppercases and pads the exponent, so normalize.</summary>
+    public static string FormatG(double d, int prec)
+    {
+        if (double.IsNaN(d)) return "NaN";
+        if (double.IsInfinity(d)) return d < 0 ? "-Inf" : "+Inf";
+        if (prec == 0) prec = 1;
+        string s = d.ToString("G" + prec, Inv);
+        int ei = s.IndexOfAny(new[] { 'e', 'E' });
+        if (ei < 0) return s;
+        string mant = s.Substring(0, ei);
+        char sign = s[ei + 1];
+        int ev = int.Parse(s.Substring(ei + 2), Inv);
+        string es = System.Math.Abs(ev).ToString(Inv);
+        if (es.Length < 2) es = "0" + es;
+        return mant + "e" + (ev < 0 ? '-' : '+') + es;
+    }
+
     /// <summary>strconv.FormatFloat(d, 'e', prec, 64) — Go-style %e: lowercase 'e',
     /// signed exponent with at least two digits (.NET emits three).</summary>
     public static string FormatE(double d, int prec, char e = 'e')
     {
         if (double.IsNaN(d)) return "NaN";
         if (double.IsInfinity(d)) return d < 0 ? "-Inf" : "+Inf";
-        string s = d.ToString((e == 'E' ? "E" : "e") + (prec < 0 ? 6 : prec), Inv);
+        if (prec < 0) return ShortestE(d, e);
+        string s = d.ToString((e == 'E' ? "E" : "e") + prec, Inv);
         int ei = s.IndexOfAny(new[] { 'e', 'E' });
         if (ei < 0) return s;
         string mant = s.Substring(0, ei);
