@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**128 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
+**131 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
 hardened** (an adversarial multi-agent sweep over all 20 packages found and fixed
 ~30 divergences: fmt verb engine + flags/width + no-crash type handling, strconv
 ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embedded/
@@ -33,7 +33,7 @@ local type/const decls, and broad method coverage). Deferred edges are tracked i
 `net/url` (escapes **+ Parse** with field reads), `regexp` (.NET Regex), `log`,
 `math/big` (Int), `bufio.Scanner` + `io.ReadAll/Copy` + `strings`/`bytes` readers
 + `os.Stdin`, and the **`net/http` client** (`http.Get`/`Post` → `*Response` with
-`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 128 conformance
+`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 131 conformance
 fixtures. Enablers added: `GoRuntime.InvokeArgs` (shims call Go funcs),
 native-closure-to-shim, `new(opaqueShim)` yields the shim object, and **shim
 struct-field reads** (`u.Host`, `resp.StatusCode` → getter externs).
@@ -51,7 +51,7 @@ P2 (tag `0.0.9.p2`): `encoding/csv`, `compress/gzip·zlib·flate`,
 `math/big` (Euclidean Div + Quo/Rem/GCD).
 
 P3 (started): the **hash family** — `hash/fnv` (32/32a/64/64a), `hash/crc32`
-(IEEE), `hash/adler32`. **128 conformance fixtures byte-exact.**
+(IEEE), `hash/adler32`. **131 conformance fixtures byte-exact.**
 
 **Language hardening pass** (fixtures 315–328) — bugs found by stress-testing
 diverse real Go programs, each fixed + fixtured. Several were *silently wrong*
@@ -75,6 +75,18 @@ output (the worst class), not errors:
 - Backend: **long-form local opcodes** (256+ locals no longer corrupt addresses),
   **chunked package-var init** (64 KB-per-method IL limit), `unicode`/`sort` from
   source overlays, `&slice[i]`, `&^`, keyed/fixed-array literals.
+
+**Toward "imperceptible vs real Go" (fixtures 329–331)** — the goal is that only
+assembly and cgo remain as limitations:
+- **Stringer/Error in fmt** — custom **struct and pointer** types that implement
+  `fmt.Stringer`/`error` now format via their method under `%v`/`%s` (and inside
+  slices/maps). The compiler generates a dispatch closure per type and registers it
+  at startup (by CLR name for value receivers, by runtime type id for pointers); fmt
+  invokes it for string-like verbs only. Remaining: named **primitive** Stringers
+  (`time.Duration`, enum ints) via `any` — needs typed boxing (M3).
+- **Bound method values** (`f := recv.M`) — lowered to a closure capturing the
+  receiver; callable/passable like any func value.
+- **`copy` builtin** (slices + `[]byte`←string, overlap-safe), **`strings.NewReplacer`**.
 
 **Compiler made application-agnostic + quality infra.** goja/Echo are validation
 targets, not products: the compiler no longer embeds any dependency-specific

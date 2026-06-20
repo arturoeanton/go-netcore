@@ -18,13 +18,18 @@ one; these don't yet):
 - **`%v` of a nil map** prints `<nil>` instead of `map[]` (a nil map boxes to a
   null reference, indistinguishable from other nils). Nil slices are correct (`[]`).
 
-## Boxed Stringer (named types with a String() method)
+## Stringer/Error in fmt — named *primitive* types only
 
-Passing a named numeric type that has a `String()` method (e.g. `time.Duration`,
-`time.Month`, `time.Weekday`, `reflect.Kind`) **directly to fmt as `any`** prints
-the underlying value, not the Stringer output — fmt can't recover the named type
-from a boxed primitive. **Workaround:** call `.String()` explicitly (supported).
-A general fix needs type-tagged boxing at interface conversions.
+Custom **struct and pointer** types that implement `fmt.Stringer` or `error` now
+format via their `String()`/`Error()` method under `%v`/`%s` (and inside slices and
+maps) — see the dispatch tables registered at startup.
+
+The remaining case is a named **primitive** type with a `String()`/`Error()` method
+(e.g. `time.Duration`, `time.Month`, `time.Weekday`, an `int`-based enum) passed to
+fmt **as `any`**: it boxes to a bare primitive, so fmt can't recover the named type
+and prints the underlying value. **Workaround:** call `.String()` explicitly. A
+general fix needs type-tagged boxing of named primitives at interface conversions
+(the same per-value type identity that precise `%T` and `reflect` need — M3).
 
 ## Function values of shimmed stdlib functions
 
