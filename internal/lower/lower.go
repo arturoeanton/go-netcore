@@ -38,8 +38,8 @@ type lowerCtx struct {
 	// Generics: generic function templates (by name) are not shelled directly;
 	// each concrete instantiation discovered at a call site is monomorphized into
 	// its own method (monoInsts, keyed by name+type-args) and queued in monoTodo.
-	genericDecls       map[string]*ast.FuncDecl
-	genericDeclPkg     map[string]*frontend.Package      // owning package of each generic func template (for cross-package instantiation)
+	genericDecls       map[*types.Func]*ast.FuncDecl     // generic func templates, keyed by origin (bare name collides: cmp.Compare vs slices.Compare)
+	genericDeclPkg     map[*types.Func]*frontend.Package // owning package of each generic func template (for cross-package instantiation)
 	genericMethodDecls map[*types.Func]*ast.FuncDecl     // generic method templates, by origin *types.Func
 	genericMethodPkg   map[*types.Func]*frontend.Package // owning package of each generic method template
 	monoInsts          map[string]*goir.Method
@@ -92,8 +92,8 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		structReg:          map[*types.Named]*goir.Struct{},
 		anonStructReg:      map[string]*goir.Struct{},
 		structByName:       map[string]*goir.Struct{},
-		genericDecls:       map[string]*ast.FuncDecl{},
-		genericDeclPkg:     map[string]*frontend.Package{},
+		genericDecls:       map[*types.Func]*ast.FuncDecl{},
+		genericDeclPkg:     map[*types.Func]*frontend.Package{},
 		genericMethodDecls: map[*types.Func]*ast.FuncDecl{},
 		genericMethodPkg:   map[*types.Func]*frontend.Package{},
 		monoInsts:          map[string]*goir.Method{},
@@ -136,8 +136,10 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		initN := 0
 		for _, fd := range funcDecls(p) {
 			if fd.Recv == nil && fd.Type.TypeParams != nil && fd.Type.TypeParams.NumFields() > 0 {
-				c.genericDecls[fd.Name.Name] = fd
-				c.genericDeclPkg[fd.Name.Name] = p
+				if fn, ok := p.TypesInfo.Defs[fd.Name].(*types.Func); ok {
+					c.genericDecls[fn] = fd
+					c.genericDeclPkg[fn] = p
+				}
 				continue
 			}
 			if fd.Recv != nil {

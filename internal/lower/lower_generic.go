@@ -97,7 +97,16 @@ func (l *funcLowerer) fieldParamType(field *ast.Field) (goir.Type, bool) {
 // method, instantiating (and queuing the body) on first use. fun is the called
 // identifier; its concrete type arguments come from the type checker.
 func (l *funcLowerer) genericCallee(fun *ast.Ident) (*goir.Method, bool) {
-	decl, isGeneric := l.genericDecls[fun.Name]
+	// Resolve the called function's generic origin. Keying by *types.Func (not the
+	// bare name) is essential: distinct packages share names — cmp.Compare vs
+	// slices.Compare — and a name key would instantiate the wrong template with the
+	// caller's type args (e.g. slices.Compare with S=int -> "range over integer").
+	fnObj, _ := l.pkg.TypesInfo.Uses[fun].(*types.Func)
+	if fnObj == nil {
+		return nil, false
+	}
+	origin := fnObj.Origin()
+	decl, isGeneric := l.genericDecls[origin]
 	if !isGeneric {
 		return nil, false
 	}
@@ -111,13 +120,17 @@ func (l *funcLowerer) genericCallee(fun *ast.Ident) (*goir.Method, bool) {
 	// its type parameters and parameter AST nodes must be resolved with the
 	// template's TypesInfo, not the caller's. Instances[fun] above is correctly
 	// read from the caller (that is where the call site is).
-	declPkg := l.genericDeclPkg[fun.Name]
+	declPkg := l.genericDeclPkg[origin]
 	if declPkg == nil {
 		declPkg = l.pkg
 	}
 
 	subst := map[*types.TypeParam]types.Type{}
 	var key strings.Builder
+	// Package-qualify the monomorphization key so cmp.Compare[int] and
+	// slices.Compare[int] do not collide.
+	key.WriteString(declPkg.PkgPath)
+	key.WriteByte('.')
 	key.WriteString(fun.Name)
 	key.WriteByte('[')
 	// Map each type parameter object to its concrete argument, in order.
