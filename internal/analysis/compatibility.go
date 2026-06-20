@@ -23,21 +23,21 @@ const (
 
 // PackageVerdict is the per-package compatibility outcome.
 type PackageVerdict struct {
-	ImportPath string        `json:"import_path"`
-	Kind       string        `json:"kind"` // "main", "module", "stdlib"
-	Status     string        `json:"status"` // "OK", "WARN", "FAIL"
-	Overlay    string        `json:"overlay,omitempty"`
-	Notes      []string      `json:"notes,omitempty"`
-	Unsafe     []UnsafeSite  `json:"unsafe,omitempty"`
+	ImportPath string       `json:"import_path"`
+	Kind       string       `json:"kind"`   // "main", "module", "stdlib"
+	Status     string       `json:"status"` // "OK", "WARN", "FAIL"
+	Overlay    string       `json:"overlay,omitempty"`
+	Notes      []string     `json:"notes,omitempty"`
+	Unsafe     []UnsafeSite `json:"unsafe,omitempty"`
 }
 
 // Report is the full compatibility analysis result.
 type Report struct {
-	Profile      Profile           `json:"profile"`
-	Packages     []PackageVerdict  `json:"packages"`
-	Diagnostics  []*diagnostics.Diagnostic `json:"diagnostics"`
-	Compatible   bool              `json:"compatible"`
-	bag          *diagnostics.Bag
+	Profile     Profile                   `json:"profile"`
+	Packages    []PackageVerdict          `json:"packages"`
+	Diagnostics []*diagnostics.Diagnostic `json:"diagnostics"`
+	Compatible  bool                      `json:"compatible"`
+	bag         *diagnostics.Bag
 }
 
 // Analyze runs the full compatibility analysis over a loaded result.
@@ -130,7 +130,7 @@ func analyzeStdlibOverlay(pkg *frontend.Package, v *PackageVerdict, bag *diagnos
 		bag.Add(diagnostics.New(diagnostics.SeverityWarn, diagnostics.CodeStdlibMissing,
 			pkg.PkgPath+": supported subset only").
 			WithPackage(pkg.PkgPath).
-			WithReason("the GoCLR overlay implements a documented subset of "+pkg.PkgPath+"."))
+			WithReason("the GoCLR overlay implements a documented subset of " + pkg.PkgPath + "."))
 	default:
 		// Not yet curated. Pending overlay work for goclr — a warning, not a
 		// blocking error, because it does not indicate a problem in user code.
@@ -139,7 +139,7 @@ func analyzeStdlibOverlay(pkg *frontend.Package, v *PackageVerdict, bag *diagnos
 		bag.Add(diagnostics.New(diagnostics.SeverityWarn, diagnostics.CodeStdlibMissing,
 			pkg.PkgPath+": overlay not yet provided").
 			WithPackage(pkg.PkgPath).
-			WithReason("the echo-goja profile does not yet include an overlay for "+pkg.PkgPath+".").
+			WithReason("the echo-goja profile does not yet include an overlay for " + pkg.PkgPath + ".").
 			WithSuggestion("track this under stdlib/; it is a goclr work item, not a defect in your program."))
 	}
 }

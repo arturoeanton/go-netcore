@@ -12,7 +12,6 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"os"
 	"sort"
 	"strings"
 
@@ -313,7 +312,6 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 			cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: regExt})
 		}
 	}
-	dbg := os.Getenv("GOCLR_DEBUG_INIT") != ""
 	for _, vi := range c.varInits {
 		// Start a fresh chunk once the current one is sizeable, keeping each
 		// var initializer atomic (it must not be split mid-expression).
@@ -322,9 +320,6 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 				return nil, false
 			}
 			cl = newChunk()
-		}
-		if dbg {
-			fmt.Fprintf(os.Stderr, "init chunk %d <- global[%d] %s\n", len(chunks)-1, vi.idx, c.prog.Globals[vi.idx].Name)
 		}
 		c.pkg = vi.pkg
 		if vi.value != nil {

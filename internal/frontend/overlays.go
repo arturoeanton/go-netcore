@@ -8,20 +8,23 @@ import (
 	"strings"
 )
 
-// overlayFS holds goclr-safe replacements for the handful of third-party files
-// that use unsafe.Pointer (byte<->numeric reinterpretation). When the project is
-// vendored, ApplyOverlays overwrites the vendored copy with the safe version so
-// the backend never sees the unsafe code. The reinterpret patterns map to the
-// encoding/binary shim; see GOJA-STRATEGY.md.
+// overlayFS holds the goclr-provided source overlays for standard-library packages
+// that goclr compiles from a safe reimplementation instead of their real source
+// (e.g. to drop dependencies it cannot lower). These are part of goclr's stdlib
+// support and apply to every program; they are NOT application-specific.
 //
-//go:embed overlays/regexp2helpers/indexof.go.txt
-//go:embed overlays/goja/typedarrays.go.txt
-//go:embed overlays/goja/builtin_typedarrays.go.txt
-//go:embed overlays/unistring/string.go.txt
-//go:embed overlays/gojaval/value.go.txt
 //go:embed overlays/sort/sort.go.txt
 //go:embed overlays/sort/search.go.txt
 var overlayFS embed.FS
+
+// projectOverlayDir is the convention directory, relative to a project's module
+// root, where the project supplies goclr-safe replacements for its own vendored
+// dependency files (e.g. third-party code that uses unsafe.Pointer). The compiler
+// is agnostic to which dependencies these are: it applies whatever it finds, so a
+// program is responsible for its own overlays. Layout mirrors import paths:
+//
+//	goclr.overlays/<import/path>/<file>.go.txt  ->  vendor/<import/path>/<file>.go
+const projectOverlayDir = "goclr.overlays"
 
 // stdlibOverlayPkg describes a standard-library package that goclr compiles from
 // a goclr-provided source overlay instead of the real GOROOT source (e.g. to drop
@@ -85,48 +88,52 @@ func goEnv(key string, env []string) string {
 	return strings.TrimSpace(string(b))
 }
 
-type overlayFile struct {
-	module  string // go module path
-	relpath string // file path within the module
-	embed   string // path within overlayFS
-}
-
-// overlayFiles registers each dep file that goclr replaces with a safe version.
-var overlayFiles = []overlayFile{
-	{"github.com/dlclark/regexp2/v2", "helpers/indexof.go", "overlays/regexp2helpers/indexof.go.txt"},
-	{"github.com/dop251/goja", "typedarrays.go", "overlays/goja/typedarrays.go.txt"},
-	{"github.com/dop251/goja", "builtin_typedarrays.go", "overlays/goja/builtin_typedarrays.go.txt"},
-	{"github.com/dop251/goja/unistring", "string.go", "overlays/unistring/string.go.txt"},
-	{"github.com/dop251/goja", "value.go", "overlays/gojaval/value.go.txt"},
-}
-
-// ApplyOverlays, when the module is vendored, replaces each registered unsafe dep
-// file in vendor/ with its goclr-safe version. It is a no-op (and harmless) when
-// there is no vendor directory. Returns the count applied.
+// ApplyOverlays replaces vendored dependency files with the project-supplied
+// goclr-safe versions found under <moduleRoot>/goclr.overlays (see
+// projectOverlayDir). Each `<path>.go.txt` overlay overwrites `vendor/<path>.go`.
+// It is a no-op when the project has no overlay directory or is not vendored, and
+// never touches files outside vendor/. Returns the count applied.
+//
+// The compiler holds no knowledge of which dependencies need overlays — that is
+// the project's concern — so goclr stays agnostic to any particular application.
 func ApplyOverlays(dir string, env []string) int {
 	root := moduleRoot(dir, env)
 	if root == "" {
 		return 0
 	}
+	overlayRoot := filepath.Join(root, projectOverlayDir)
 	vendor := filepath.Join(root, "vendor")
-	if st, err := os.Stat(vendor); err != nil || !st.IsDir() {
+	if !isDir(overlayRoot) || !isDir(vendor) {
 		return 0
 	}
 	n := 0
-	for _, of := range overlayFiles {
-		content, err := overlayFS.ReadFile(of.embed)
-		if err != nil {
-			continue
+	_ = filepath.WalkDir(overlayRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go.txt") {
+			return nil
 		}
-		target := filepath.Join(vendor, filepath.FromSlash(of.module), filepath.FromSlash(of.relpath))
-		if _, err := os.Stat(target); err != nil {
-			continue // dep not vendored
+		rel, relErr := filepath.Rel(overlayRoot, path)
+		if relErr != nil {
+			return nil
 		}
-		if err := os.WriteFile(target, content, 0o644); err == nil {
+		target := filepath.Join(vendor, strings.TrimSuffix(rel, ".txt"))
+		if _, statErr := os.Stat(target); statErr != nil {
+			return nil // dependency not vendored
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		if os.WriteFile(target, content, 0o644) == nil {
 			n++
 		}
-	}
+		return nil
+	})
 	return n
+}
+
+func isDir(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
 }
 
 func moduleRoot(dir string, env []string) string {

@@ -10,11 +10,11 @@ import (
 // heap references in the tables stream are 2 bytes — this holds as long as no
 // heap exceeds 64 KiB, which is always true for the M0 outputs.
 type heaps struct {
-	strings    []byte
-	stringMap  map[string]uint16
-	blobs      []byte
-	us         []byte
-	guids      []byte
+	strings   []byte
+	stringMap map[string]uint16
+	blobs     []byte
+	us        []byte
+	guids     []byte
 }
 
 func newHeaps() *heaps {
@@ -166,8 +166,8 @@ func roundUp(n, a int) int { return (n + a - 1) / a * a }
 // writer is a tiny little-endian byte-buffer helper.
 type writer struct{ b *[]byte }
 
-func (w *writer) u8(v byte)     { *w.b = append(*w.b, v) }
-func (w *writer) u16(v uint16)  { *w.b = binary.LittleEndian.AppendUint16(*w.b, v) }
-func (w *writer) u32(v uint32)  { *w.b = binary.LittleEndian.AppendUint32(*w.b, v) }
-func (w *writer) u64(v uint64)  { *w.b = binary.LittleEndian.AppendUint64(*w.b, v) }
+func (w *writer) u8(v byte)      { *w.b = append(*w.b, v) }
+func (w *writer) u16(v uint16)   { *w.b = binary.LittleEndian.AppendUint16(*w.b, v) }
+func (w *writer) u32(v uint32)   { *w.b = binary.LittleEndian.AppendUint32(*w.b, v) }
+func (w *writer) u64(v uint64)   { *w.b = binary.LittleEndian.AppendUint64(*w.b, v) }
 func (w *writer) bytes(p []byte) { *w.b = append(*w.b, p...) }

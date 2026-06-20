@@ -8,8 +8,8 @@ var ecmaPublicKeyToken = []byte{0xB0, 0x3F, 0x5F, 0x7F, 0x11, 0xD5, 0x0A, 0x3A}
 // goStringCoded / goSliceCoded are the compressed TypeDefOrRef coded indices of
 // the GoString (row 6) and GoSlice (row 9) TypeRefs: (row<<2)|1.
 const (
-	goStringCoded = 0x19 // (6<<2)|1
-	goSliceCoded  = 0x25 // (9<<2)|1
+	goStringCoded  = 0x19 // (6<<2)|1
+	goSliceCoded   = 0x25 // (9<<2)|1
 	goMapCoded     = 0x2D // (11<<2)|1
 	goPtrCoded     = 0x35 // (13<<2)|1
 	goClosureCoded = 0x41 // (16<<2)|1
@@ -92,32 +92,32 @@ func localVarSigBlob(locals []goir.Type) []byte {
 // Fixed signature blobs for the GoStrings runtime helpers. gs == VALUETYPE
 // GoString; s == ELEMENT_TYPE_STRING; i8 == I8; i4 == I4; b == BOOLEAN.
 var (
-	sigStrFromLit  = []byte{0x00, 0x01, 0x11, goStringCoded, 0x0E}                        // GoString(string)
-	sigStrLen      = []byte{0x00, 0x01, 0x0A, 0x11, goStringCoded}                        // i8(gs)
-	sigStrByteAt   = []byte{0x00, 0x02, 0x08, 0x11, goStringCoded, 0x0A}                  // i4(gs, i8)
+	sigStrFromLit  = []byte{0x00, 0x01, 0x11, goStringCoded, 0x0E}                                     // GoString(string)
+	sigStrLen      = []byte{0x00, 0x01, 0x0A, 0x11, goStringCoded}                                     // i8(gs)
+	sigStrByteAt   = []byte{0x00, 0x02, 0x08, 0x11, goStringCoded, 0x0A}                               // i4(gs, i8)
 	sigStrConcat   = []byte{0x00, 0x02, 0x11, goStringCoded, 0x11, goStringCoded, 0x11, goStringCoded} // gs(gs,gs)
-	sigStrEqual    = []byte{0x00, 0x02, 0x02, 0x11, goStringCoded, 0x11, goStringCoded}   // b(gs,gs)
-	sigStrCompare  = []byte{0x00, 0x02, 0x0A, 0x11, goStringCoded, 0x11, goStringCoded}   // i8(gs,gs)
-	sigStrRuneAt   = []byte{0x00, 0x02, 0x08, 0x11, goStringCoded, 0x0A}                  // i4(gs, i8)
-	sigStrRuneSize = []byte{0x00, 0x02, 0x0A, 0x11, goStringCoded, 0x0A}                  // i8(gs, i8)
+	sigStrEqual    = []byte{0x00, 0x02, 0x02, 0x11, goStringCoded, 0x11, goStringCoded}                // b(gs,gs)
+	sigStrCompare  = []byte{0x00, 0x02, 0x0A, 0x11, goStringCoded, 0x11, goStringCoded}                // i8(gs,gs)
+	sigStrRuneAt   = []byte{0x00, 0x02, 0x08, 0x11, goStringCoded, 0x0A}                               // i4(gs, i8)
+	sigStrRuneSize = []byte{0x00, 0x02, 0x0A, 0x11, goStringCoded, 0x0A}                               // i8(gs, i8)
 
 	// gs->slice conversions and GoSlices.* (sl == VALUETYPE GoSlice).
-	sigStrToSlice  = []byte{0x00, 0x01, 0x11, goSliceCoded, 0x11, goStringCoded}                   // sl(gs)
-	sigSliceMake   = []byte{0x00, 0x03, 0x11, goSliceCoded, 0x0A, 0x0A, 0x1C}                      // sl(i8,i8,obj)
-	sigSliceGet    = []byte{0x00, 0x02, 0x1C, 0x11, goSliceCoded, 0x0A}                            // obj(sl,i8)
-	sigSliceSet    = []byte{0x00, 0x03, 0x01, 0x11, goSliceCoded, 0x0A, 0x1C}                      // void(sl,i8,obj)
-	sigSliceLen    = []byte{0x00, 0x01, 0x0A, 0x11, goSliceCoded}                                  // i8(sl)
-	sigSliceApp    = []byte{0x00, 0x02, 0x11, goSliceCoded, 0x11, goSliceCoded, 0x1C}              // sl(sl,obj)
-	sigSliceSlice  = []byte{0x00, 0x03, 0x11, goSliceCoded, 0x11, goSliceCoded, 0x0A, 0x0A}        // sl(sl,i8,i8)
+	sigStrToSlice = []byte{0x00, 0x01, 0x11, goSliceCoded, 0x11, goStringCoded}            // sl(gs)
+	sigSliceMake  = []byte{0x00, 0x03, 0x11, goSliceCoded, 0x0A, 0x0A, 0x1C}               // sl(i8,i8,obj)
+	sigSliceGet   = []byte{0x00, 0x02, 0x1C, 0x11, goSliceCoded, 0x0A}                     // obj(sl,i8)
+	sigSliceSet   = []byte{0x00, 0x03, 0x01, 0x11, goSliceCoded, 0x0A, 0x1C}               // void(sl,i8,obj)
+	sigSliceLen   = []byte{0x00, 0x01, 0x0A, 0x11, goSliceCoded}                           // i8(sl)
+	sigSliceApp   = []byte{0x00, 0x02, 0x11, goSliceCoded, 0x11, goSliceCoded, 0x1C}       // sl(sl,obj)
+	sigSliceSlice = []byte{0x00, 0x03, 0x11, goSliceCoded, 0x11, goSliceCoded, 0x0A, 0x0A} // sl(sl,i8,i8)
 
 	// GoMaps.* (mp == CLASS GoMap; obj == OBJECT).
-	sigMapMake     = []byte{0x00, 0x00, 0x12, goMapCoded}                                  // mp()
-	sigMapLen      = []byte{0x00, 0x01, 0x0A, 0x12, goMapCoded}                            // i8(mp)
-	sigMapGet      = []byte{0x00, 0x03, 0x1C, 0x12, goMapCoded, 0x1C, 0x1C}                // obj(mp,obj,obj)
-	sigMapContains = []byte{0x00, 0x02, 0x02, 0x12, goMapCoded, 0x1C}                      // b(mp,obj)
-	sigMapSet      = []byte{0x00, 0x03, 0x01, 0x12, goMapCoded, 0x1C, 0x1C}                // void(mp,obj,obj)
-	sigMapDelete   = []byte{0x00, 0x02, 0x01, 0x12, goMapCoded, 0x1C}                      // void(mp,obj)
-	sigMapKeys     = []byte{0x00, 0x01, 0x11, goSliceCoded, 0x12, goMapCoded}              // sl(mp)
+	sigMapMake     = []byte{0x00, 0x00, 0x12, goMapCoded}                     // mp()
+	sigMapLen      = []byte{0x00, 0x01, 0x0A, 0x12, goMapCoded}               // i8(mp)
+	sigMapGet      = []byte{0x00, 0x03, 0x1C, 0x12, goMapCoded, 0x1C, 0x1C}   // obj(mp,obj,obj)
+	sigMapContains = []byte{0x00, 0x02, 0x02, 0x12, goMapCoded, 0x1C}         // b(mp,obj)
+	sigMapSet      = []byte{0x00, 0x03, 0x01, 0x12, goMapCoded, 0x1C, 0x1C}   // void(mp,obj,obj)
+	sigMapDelete   = []byte{0x00, 0x02, 0x01, 0x12, goMapCoded, 0x1C}         // void(mp,obj)
+	sigMapKeys     = []byte{0x00, 0x01, 0x11, goSliceCoded, 0x12, goMapCoded} // sl(mp)
 
 	// GoPtrs.* (pt == CLASS GoPtr).
 	sigPtrNew = []byte{0x00, 0x02, 0x12, goPtrCoded, 0x1C, 0x0A} // pt(obj, i8 typeId)
@@ -125,19 +125,19 @@ var (
 	sigPtrSet = []byte{0x00, 0x02, 0x01, 0x12, goPtrCoded, 0x1C} // void(pt,obj)
 
 	// GoComplexs.* (cx == CLASS GoComplex; r8 = 0x0D).
-	sigCplxMake = []byte{0x00, 0x02, 0x12, goComplexCoded, 0x0D, 0x0D}                       // cx(r8,r8)
+	sigCplxMake = []byte{0x00, 0x02, 0x12, goComplexCoded, 0x0D, 0x0D}                                 // cx(r8,r8)
 	sigCplxBin  = []byte{0x00, 0x02, 0x12, goComplexCoded, 0x12, goComplexCoded, 0x12, goComplexCoded} // cx(cx,cx)
-	sigCplxNeg  = []byte{0x00, 0x01, 0x12, goComplexCoded, 0x12, goComplexCoded}             // cx(cx)
-	sigCplxEq   = []byte{0x00, 0x02, 0x02, 0x12, goComplexCoded, 0x12, goComplexCoded}       // bool(cx,cx)
-	sigCplxPart = []byte{0x00, 0x01, 0x0D, 0x12, goComplexCoded}                             // r8(cx)
+	sigCplxNeg  = []byte{0x00, 0x01, 0x12, goComplexCoded, 0x12, goComplexCoded}                       // cx(cx)
+	sigCplxEq   = []byte{0x00, 0x02, 0x02, 0x12, goComplexCoded, 0x12, goComplexCoded}                 // bool(cx,cx)
+	sigCplxPart = []byte{0x00, 0x01, 0x0D, 0x12, goComplexCoded}                                       // r8(cx)
 
 	// GoChans.* (gc == CLASS GoChan).
-	sigChanMake  = []byte{0x00, 0x01, 0x12, goChanCoded, 0x0A}             // gc(i8)
-	sigChanSend  = []byte{0x00, 0x02, 0x01, 0x12, goChanCoded, 0x1C}       // void(gc,obj)
-	sigChanRecv  = []byte{0x00, 0x01, 0x1C, 0x12, goChanCoded}             // obj(gc)
-	sigChanRecv2 = []byte{0x00, 0x01, 0x1D, 0x1C, 0x12, goChanCoded}       // obj[](gc)
-	sigChanClose = []byte{0x00, 0x01, 0x01, 0x12, goChanCoded}             // void(gc)
-	sigChanLen   = []byte{0x00, 0x01, 0x0A, 0x12, goChanCoded}             // i8(gc)
+	sigChanMake  = []byte{0x00, 0x01, 0x12, goChanCoded, 0x0A}       // gc(i8)
+	sigChanSend  = []byte{0x00, 0x02, 0x01, 0x12, goChanCoded, 0x1C} // void(gc,obj)
+	sigChanRecv  = []byte{0x00, 0x01, 0x1C, 0x12, goChanCoded}       // obj(gc)
+	sigChanRecv2 = []byte{0x00, 0x01, 0x1D, 0x1C, 0x12, goChanCoded} // obj[](gc)
+	sigChanClose = []byte{0x00, 0x01, 0x01, 0x12, goChanCoded}       // void(gc)
+	sigChanLen   = []byte{0x00, 0x01, 0x0A, 0x12, goChanCoded}       // i8(gc)
 )
 
 // buildTables serializes the #~ stream for a whole program. methodRVAs is
@@ -375,9 +375,9 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	}
 
 	// Row counts, ascending table id.
-	w.u32(1)                                            // Module
-	w.u32(uint32(fixedTypeRefs + len(ext.types)))       // TypeRef (fixed + shim types)
-	w.u32(uint32(2 + len(prog.Structs)))                // TypeDef (<Module>, Program, structs)
+	w.u32(1)                                      // Module
+	w.u32(uint32(fixedTypeRefs + len(ext.types))) // TypeRef (fixed + shim types)
+	w.u32(uint32(2 + len(prog.Structs)))          // TypeDef (<Module>, Program, structs)
 	if hasFields {
 		w.u32(uint32(len(fieldRows))) // Field
 	}
@@ -387,7 +387,7 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	if hasLocals {
 		w.u32(uint32(len(sigBlobOffsets))) // StandAloneSig
 	}
-	w.u32(1)                              // Assembly
+	w.u32(1)                               // Assembly
 	w.u32(uint32(2 + len(ext.assemblies))) // AssemblyRef (System.Runtime, GoCLR.Runtime, shims)
 
 	// --- Module (0x00) ---
@@ -399,38 +399,38 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 
 	// --- TypeRef (0x01) ---
 	typeRef := func(scope, name, ns uint16) { w.u16(scope); w.u16(name); w.u16(ns) }
-	typeRef(scopeSysRuntime, sObject, sSystem)        // [1]
-	typeRef(scopeSysRuntime, sInt64, sSystem)         // [2]
-	typeRef(scopeSysRuntime, sBoolean, sSystem)       // [3]
-	typeRef(scopeSysRuntime, sInt32, sSystem)         // [4]
-	typeRef(scopeGoclrRuntime, sBuiltins, sRuntimeNS) // [5]
-	typeRef(scopeGoclrRuntime, sGoString, sRuntimeNS)  // [6]
-	typeRef(scopeGoclrRuntime, sGoStrings, sRuntimeNS) // [7]
-	typeRef(scopeSysRuntime, sValueType, sSystem)      // [8] System.ValueType
-	typeRef(scopeGoclrRuntime, sGoSlice, sRuntimeNS)   // [9] GoSlice
-	typeRef(scopeGoclrRuntime, sGoSlices, sRuntimeNS)  // [10] GoSlices
-	typeRef(scopeGoclrRuntime, sGoMap, sRuntimeNS)     // [11] GoMap
-	typeRef(scopeGoclrRuntime, sGoMaps, sRuntimeNS)    // [12] GoMaps
-	typeRef(scopeGoclrRuntime, sGoPtr, sRuntimeNS)     // [13] GoPtr
-	typeRef(scopeGoclrRuntime, sGoPtrs, sRuntimeNS)    // [14] GoPtrs
-	typeRef(scopeGoclrRuntime, sGoPanic, sRuntimeNS)     // [15] GoPanicException
-	typeRef(scopeGoclrRuntime, sGoClosure, sRuntimeNS)   // [16] GoClosure
-	typeRef(scopeGoclrRuntime, sGoClosures, sRuntimeNS)  // [17] GoClosures
-	typeRef(scopeSysRuntime, sDouble, sSystem)           // [18] System.Double
-	typeRef(scopeSysRuntime, sSingle, sSystem)           // [19] System.Single
-	typeRef(scopeSysRuntime, sUInt64, sSystem)           // [20] System.UInt64
-	typeRef(scopeSysRuntime, sUInt32, sSystem)           // [21] System.UInt32
-	typeRef(scopeGoclrRuntime, sGoChan, sRuntimeNS)      // [22] GoChan
-	typeRef(scopeGoclrRuntime, sGoChans, sRuntimeNS)     // [23] GoChans
-	typeRef(scopeGoclrRuntime, sGoRuntime, sRuntimeNS)   // [24] GoRuntime
-	typeRef(scopeGoclrRuntime, sGoInvoker, sRuntimeNS)   // [25] GoInvoker
-	typeRef(scopeGoclrRuntime, sGoSelect, sRuntimeNS)    // [26] GoSelect
-	typeRef(scopeGoclrRuntime, sGoComplex, sRuntimeNS)   // [27] GoComplex
-	typeRef(scopeGoclrRuntime, sGoComplexs, sRuntimeNS)  // [28] GoComplexs
-	typeRef(scopeGoclrRuntime, sGoDefers, sRuntimeNS)    // [29] GoDefers
-	typeRef(scopeGoclrRuntime, sGoError, sRuntimeNS)     // [30] GoError
-	typeRef(scopeGoclrRuntime, sGoErrors, sRuntimeNS)    // [31] GoErrors
-	for _, et := range extTypes {                        // [32+] shim types
+	typeRef(scopeSysRuntime, sObject, sSystem)          // [1]
+	typeRef(scopeSysRuntime, sInt64, sSystem)           // [2]
+	typeRef(scopeSysRuntime, sBoolean, sSystem)         // [3]
+	typeRef(scopeSysRuntime, sInt32, sSystem)           // [4]
+	typeRef(scopeGoclrRuntime, sBuiltins, sRuntimeNS)   // [5]
+	typeRef(scopeGoclrRuntime, sGoString, sRuntimeNS)   // [6]
+	typeRef(scopeGoclrRuntime, sGoStrings, sRuntimeNS)  // [7]
+	typeRef(scopeSysRuntime, sValueType, sSystem)       // [8] System.ValueType
+	typeRef(scopeGoclrRuntime, sGoSlice, sRuntimeNS)    // [9] GoSlice
+	typeRef(scopeGoclrRuntime, sGoSlices, sRuntimeNS)   // [10] GoSlices
+	typeRef(scopeGoclrRuntime, sGoMap, sRuntimeNS)      // [11] GoMap
+	typeRef(scopeGoclrRuntime, sGoMaps, sRuntimeNS)     // [12] GoMaps
+	typeRef(scopeGoclrRuntime, sGoPtr, sRuntimeNS)      // [13] GoPtr
+	typeRef(scopeGoclrRuntime, sGoPtrs, sRuntimeNS)     // [14] GoPtrs
+	typeRef(scopeGoclrRuntime, sGoPanic, sRuntimeNS)    // [15] GoPanicException
+	typeRef(scopeGoclrRuntime, sGoClosure, sRuntimeNS)  // [16] GoClosure
+	typeRef(scopeGoclrRuntime, sGoClosures, sRuntimeNS) // [17] GoClosures
+	typeRef(scopeSysRuntime, sDouble, sSystem)          // [18] System.Double
+	typeRef(scopeSysRuntime, sSingle, sSystem)          // [19] System.Single
+	typeRef(scopeSysRuntime, sUInt64, sSystem)          // [20] System.UInt64
+	typeRef(scopeSysRuntime, sUInt32, sSystem)          // [21] System.UInt32
+	typeRef(scopeGoclrRuntime, sGoChan, sRuntimeNS)     // [22] GoChan
+	typeRef(scopeGoclrRuntime, sGoChans, sRuntimeNS)    // [23] GoChans
+	typeRef(scopeGoclrRuntime, sGoRuntime, sRuntimeNS)  // [24] GoRuntime
+	typeRef(scopeGoclrRuntime, sGoInvoker, sRuntimeNS)  // [25] GoInvoker
+	typeRef(scopeGoclrRuntime, sGoSelect, sRuntimeNS)   // [26] GoSelect
+	typeRef(scopeGoclrRuntime, sGoComplex, sRuntimeNS)  // [27] GoComplex
+	typeRef(scopeGoclrRuntime, sGoComplexs, sRuntimeNS) // [28] GoComplexs
+	typeRef(scopeGoclrRuntime, sGoDefers, sRuntimeNS)   // [29] GoDefers
+	typeRef(scopeGoclrRuntime, sGoError, sRuntimeNS)    // [30] GoError
+	typeRef(scopeGoclrRuntime, sGoErrors, sRuntimeNS)   // [31] GoErrors
+	for _, et := range extTypes {                       // [32+] shim types
 		typeRef(et.scope, et.name, et.ns)
 	}
 
@@ -474,12 +474,12 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 
 	// --- MethodDef (0x06) ---
 	for i := range prog.Methods {
-		w.u32(methodRVAs[i])     // RVA
-		w.u16(0)                 // ImplFlags
-		w.u16(0x0016)            // Public | Static
-		w.u16(methodNameIdx[i])  // Name
-		w.u16(methodSigIdx[i])   // Signature
-		w.u16(1)                 // ParamList (Param table empty)
+		w.u32(methodRVAs[i])    // RVA
+		w.u16(0)                // ImplFlags
+		w.u16(0x0016)           // Public | Static
+		w.u16(methodNameIdx[i]) // Name
+		w.u16(methodSigIdx[i])  // Signature
+		w.u16(1)                // ParamList (Param table empty)
 	}
 
 	// --- MemberRef (0x0A) ---
@@ -606,7 +606,7 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u16(parentGoStrings)
 	w.u16(h.addString("FromRunes"))
 	w.u16(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x11, goSliceCoded})) // GoString(sl)
-	for _, em := range extMembers { // [65+] shim methods
+	for _, em := range extMembers {                                               // [65+] shim methods
 		w.u16(em.parent)
 		w.u16(em.name)
 		w.u16(em.sig)

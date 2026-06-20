@@ -50,9 +50,9 @@ type Package struct {
 
 // Result is the outcome of a load.
 type Result struct {
-	Fset     *token.FileSet
-	Roots    []*Package
-	All      map[string]*Package // keyed by import path; includes transitive deps
+	Fset  *token.FileSet
+	Roots []*Package
+	All   map[string]*Package // keyed by import path; includes transitive deps
 }
 
 // Load loads the requested patterns with full type information.

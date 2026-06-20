@@ -51,16 +51,16 @@ type Code string
 
 const (
 	// GCLR01xx loading / build / cgo
-	CodeCgoImport      Code = "GCLR0100"
-	CodeCgoRequired    Code = "GCLR0101"
-	CodeLoadFailure    Code = "GCLR0102"
-	CodeBuildConstr    Code = "GCLR0103"
-	CodeNoMainPackage  Code = "GCLR0104"
+	CodeCgoImport     Code = "GCLR0100"
+	CodeCgoRequired   Code = "GCLR0101"
+	CodeLoadFailure   Code = "GCLR0102"
+	CodeBuildConstr   Code = "GCLR0103"
+	CodeNoMainPackage Code = "GCLR0104"
 
 	// GCLR02xx unsafe / asm
-	CodeAsmFile        Code = "GCLR0200"
-	CodeUnsafePointer  Code = "GCLR0201"
-	CodeUnsafeUnknown  Code = "GCLR0202"
+	CodeAsmFile       Code = "GCLR0200"
+	CodeUnsafePointer Code = "GCLR0201"
+	CodeUnsafeUnknown Code = "GCLR0202"
 
 	// GCLR03xx unsupported language / runtime feature
 	CodeUnsupportedFeature Code = "GCLR0301"

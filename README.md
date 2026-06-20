@@ -1,15 +1,21 @@
 # goclr
 
-> goclr compiles pure-Go applications to .NET assemblies. The MVP is focused on
-> HTTP services built with [Echo](https://github.com/labstack/echo) and embedded
-> JavaScript execution via [goja](https://github.com/dop251/goja).
+> goclr compiles pure-Go applications to .NET assemblies (ECMA-335 IL → a `.dll`
+> that runs on `dotnet`), targeting business apps, headless games, and SaaS.
 
 `goclr` is an **experimental** compiler that takes pure-Go projects and compiles
 them to executable .NET assemblies. It is **not** a general Go compiler and is
 **not** 100% compatible with the official toolchain. It does **not** support cgo.
 
-The target program the MVP is built around is an Echo service whose `/eval`
-endpoint runs JavaScript through goja — see [`cmd/server`](cmd/server/main.go).
+The compiler is **application-agnostic**: it implements general Go language and
+standard-library semantics, and projects supply their own overlays for any
+hard-to-lower vendored dependency (see [`goclr.overlays/`](goclr.overlays/)).
+
+[goja](https://github.com/dop251/goja) (a pure-Go JavaScript engine) and
+[Echo](https://github.com/labstack/echo) are used as **validation targets** — real,
+large, demanding dependencies that force goclr to implement general Go features
+correctly — not as products of goclr. They drive the roadmap; they do not earn
+special cases in the compiler.
 
 ## Status
 

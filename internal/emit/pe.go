@@ -56,45 +56,45 @@ func buildPE(text []byte, textRVA uint32) []byte {
 	w.bytes([]byte{'P', 'E', 0, 0})
 
 	// --- COFF header ---
-	w.u16(0x014C)  // Machine = I386 (AnyCPU IL)
-	w.u16(1)       // NumberOfSections
-	w.u32(0)       // TimeDateStamp
-	w.u32(0)       // PointerToSymbolTable
-	w.u32(0)       // NumberOfSymbols
-	w.u16(0x00E0)  // SizeOfOptionalHeader (PE32)
-	w.u16(0x2102)  // Characteristics = EXECUTABLE_IMAGE | 32BIT_MACHINE | DLL
+	w.u16(0x014C) // Machine = I386 (AnyCPU IL)
+	w.u16(1)      // NumberOfSections
+	w.u32(0)      // TimeDateStamp
+	w.u32(0)      // PointerToSymbolTable
+	w.u32(0)      // NumberOfSymbols
+	w.u16(0x00E0) // SizeOfOptionalHeader (PE32)
+	w.u16(0x2102) // Characteristics = EXECUTABLE_IMAGE | 32BIT_MACHINE | DLL
 
 	// --- Optional header (PE32) ---
-	w.u16(0x010B)          // Magic = PE32
-	w.u8(0)                // MajorLinkerVersion
-	w.u8(0)                // MinorLinkerVersion
-	w.u32(textRawSize)     // SizeOfCode
-	w.u32(0)               // SizeOfInitializedData
-	w.u32(0)               // SizeOfUninitializedData
-	w.u32(0)               // AddressOfEntryPoint (unused for managed .NET Core)
-	w.u32(textRVA)         // BaseOfCode
-	w.u32(baseOfData)      // BaseOfData (PE32 only)
-	w.u32(imageBase)       // ImageBase
+	w.u16(0x010B)      // Magic = PE32
+	w.u8(0)            // MajorLinkerVersion
+	w.u8(0)            // MinorLinkerVersion
+	w.u32(textRawSize) // SizeOfCode
+	w.u32(0)           // SizeOfInitializedData
+	w.u32(0)           // SizeOfUninitializedData
+	w.u32(0)           // AddressOfEntryPoint (unused for managed .NET Core)
+	w.u32(textRVA)     // BaseOfCode
+	w.u32(baseOfData)  // BaseOfData (PE32 only)
+	w.u32(imageBase)   // ImageBase
 	w.u32(sectionAlignment)
 	w.u32(fileAlignment)
-	w.u16(4)               // MajorOperatingSystemVersion
-	w.u16(0)               // MinorOperatingSystemVersion
-	w.u16(0)               // MajorImageVersion
-	w.u16(0)               // MinorImageVersion
-	w.u16(4)               // MajorSubsystemVersion
-	w.u16(0)               // MinorSubsystemVersion
-	w.u32(0)               // Win32VersionValue
-	w.u32(sizeOfImage)     // SizeOfImage
-	w.u32(sizeOfHeaders)   // SizeOfHeaders
-	w.u32(0)               // CheckSum
-	w.u16(3)               // Subsystem = WINDOWS_CUI (console)
-	w.u16(0x8560)          // DllCharacteristics
-	w.u32(0x00100000)      // SizeOfStackReserve
-	w.u32(0x00001000)      // SizeOfStackCommit
-	w.u32(0x00100000)      // SizeOfHeapReserve
-	w.u32(0x00001000)      // SizeOfHeapCommit
-	w.u32(0)               // LoaderFlags
-	w.u32(16)              // NumberOfRvaAndSizes
+	w.u16(4)             // MajorOperatingSystemVersion
+	w.u16(0)             // MinorOperatingSystemVersion
+	w.u16(0)             // MajorImageVersion
+	w.u16(0)             // MinorImageVersion
+	w.u16(4)             // MajorSubsystemVersion
+	w.u16(0)             // MinorSubsystemVersion
+	w.u32(0)             // Win32VersionValue
+	w.u32(sizeOfImage)   // SizeOfImage
+	w.u32(sizeOfHeaders) // SizeOfHeaders
+	w.u32(0)             // CheckSum
+	w.u16(3)             // Subsystem = WINDOWS_CUI (console)
+	w.u16(0x8560)        // DllCharacteristics
+	w.u32(0x00100000)    // SizeOfStackReserve
+	w.u32(0x00001000)    // SizeOfStackCommit
+	w.u32(0x00100000)    // SizeOfHeapReserve
+	w.u32(0x00001000)    // SizeOfHeapCommit
+	w.u32(0)             // LoaderFlags
+	w.u32(16)            // NumberOfRvaAndSizes
 
 	// Data directories (16). Only [14] CLR runtime header is set.
 	for i := 0; i < 16; i++ {

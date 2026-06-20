@@ -20,9 +20,9 @@ type UnsafeSite struct {
 // emulate (spec §20). Sizeof/Alignof/Offsetof fold to constants; Add/Slice are
 // bounded and lowered onto managed slices.
 var approvedUnsafe = map[string]bool{
-	"unsafe.Sizeof":   true,
-	"unsafe.Alignof":  true,
-	"unsafe.Offsetof": true,
+	"unsafe.Sizeof":     true,
+	"unsafe.Alignof":    true,
+	"unsafe.Offsetof":   true,
 	"unsafe.Add":        true,
 	"unsafe.Slice":      true,
 	"unsafe.SliceData":  true,
@@ -79,7 +79,7 @@ func checkUnsafe(pkg *frontend.Package, bag *diagnostics.Bag) []UnsafeSite {
 		bag.Add(diagnostics.New(diagnostics.SeverityWarn, diagnostics.CodeUnsafeUnknown,
 			"unsafe used with approved patterns only").
 			WithPackage(pkg.PkgPath).
-			WithReason(plural(approvedCount, "approved unsafe site")+" (Sizeof/Alignof/Offsetof/Add/Slice/String)."))
+			WithReason(plural(approvedCount, "approved unsafe site") + " (Sizeof/Alignof/Offsetof/Add/Slice/String)."))
 	}
 	return sites
 }

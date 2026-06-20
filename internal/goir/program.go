@@ -23,12 +23,12 @@ const (
 	KObject
 	KObjectArray // object[] — a boxed multi-return tuple
 	KStruct      // a user-defined struct value type
-	KSlice  // a Go slice -> GoSlice (object[]-backed)
-	KMap    // a Go map -> GoMap (Dictionary-backed reference type)
-	KPtr    // a Go pointer -> GoPtr cell (reference type)
-	KFunc   // a Go function value -> GoClosure (reference type)
-	KChan   // a Go channel -> GoChan (reference type)
-	KComplex // a Go complex128/complex64 -> GoComplex {Re, Im} (reference type)
+	KSlice       // a Go slice -> GoSlice (object[]-backed)
+	KMap         // a Go map -> GoMap (Dictionary-backed reference type)
+	KPtr         // a Go pointer -> GoPtr cell (reference type)
+	KFunc        // a Go function value -> GoClosure (reference type)
+	KChan        // a Go channel -> GoChan (reference type)
+	KComplex     // a Go complex128/complex64 -> GoComplex {Re, Im} (reference type)
 )
 
 // Type is a type in the IR. Struct is set iff Kind == KStruct; Elem iff KSlice;
@@ -48,14 +48,14 @@ type Type struct {
 // Predeclared primitive types. They are package-level values (not consts) so
 // they compare equal field-wise: e.g. `t == TInt64` holds for any int64 Type.
 var (
-	TVoid    = Type{Kind: KVoid}
-	TInt64   = Type{Kind: KInt64}
-	TInt32   = Type{Kind: KInt32}
-	TUint64  = Type{Kind: KUint64}
-	TUint32  = Type{Kind: KUint32}
-	TFloat64 = Type{Kind: KFloat64}
-	TFloat32 = Type{Kind: KFloat32}
-	TBool    = Type{Kind: KBool}
+	TVoid        = Type{Kind: KVoid}
+	TInt64       = Type{Kind: KInt64}
+	TInt32       = Type{Kind: KInt32}
+	TUint64      = Type{Kind: KUint64}
+	TUint32      = Type{Kind: KUint32}
+	TFloat64     = Type{Kind: KFloat64}
+	TFloat32     = Type{Kind: KFloat32}
+	TBool        = Type{Kind: KBool}
 	TString      = Type{Kind: KString}
 	TObject      = Type{Kind: KObject}
 	TObjectArray = Type{Kind: KObjectArray}
@@ -82,8 +82,8 @@ func ChanType(elem Type) Type { return Type{Kind: KChan, Elem: &elem} }
 
 // Struct describes a user-defined struct value type.
 type Struct struct {
-	Name   string  // emitted CLR type name
-	GoName string  // original Go type name
+	Name   string // emitted CLR type name
+	GoName string // original Go type name
 	Fields []Field
 	// TypeDefRow is the struct's TypeDef row, assigned by the emitter before
 	// signatures are built so type references can be encoded.
@@ -142,7 +142,7 @@ type Method struct {
 // EHClause is a try/catch region. The fields are label ids marking the region
 // boundaries in Code; the emitter resolves them to IL offsets.
 type EHClause struct {
-	TryStart, TryEnd       int
+	TryStart, TryEnd         int
 	HandlerStart, HandlerEnd int
 }
 

@@ -19,14 +19,14 @@ func checkAsm(pkg *frontend.Package, bag *diagnostics.Bag) {
 				"Go assembly is not supported on target clr").
 				WithPackage(pkg.PkgPath).
 				WithPos(diagnostics.Position{File: f}).
-				WithReason("file "+filepath.Base(f)+" is architecture-specific assembly; the CLR backend cannot lower it.").
+				WithReason("file " + filepath.Base(f) + " is architecture-specific assembly; the CLR backend cannot lower it.").
 				WithSuggestion("use a pure-Go path guarded by //go:build goclr, or exclude this dependency for GoCLR builds."))
 		case ".c", ".h", ".cpp", ".cc":
 			bag.Add(diagnostics.New(diagnostics.SeverityError, diagnostics.CodeCgoRequired,
 				"native C/C++ source is not supported on target clr").
 				WithPackage(pkg.PkgPath).
 				WithPos(diagnostics.Position{File: f}).
-				WithReason("file "+filepath.Base(f)+" requires a native toolchain (cgo); unsupported on the CLR target.").
+				WithReason("file " + filepath.Base(f) + " requires a native toolchain (cgo); unsupported on the CLR target.").
 				WithSuggestion("use a pure-Go alternative or exclude this dependency for GoCLR builds."))
 		}
 	}

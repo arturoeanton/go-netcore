@@ -94,7 +94,7 @@ Everything in the section above is **complete and verified**:
   `unistring/string.go`, `regexp2helpers/indexof.go`, and goja `value.go` are
   rewritten with `encoding/binary` byte access. goja now **runs correctly under
   `go run`** with these overlays (typed arrays, DataView, UTF-16, JSON all exact).
-- **`goclr analyze ./cmd/_gojamin` → OK.** The unsafe blockers are gone.
+- **`goclr analyze ./tests/validation/goja` → OK.** The unsafe blockers are gone.
 - Driving the **backend** over goja surfaced and fixed a long series of real
   language gaps (now in `main`): fixed arrays, int8/16/32, `unsafe.Pointer`→object,
   `&slice[i]`, `&^`, keyed array/slice literals, **long-form local opcodes**

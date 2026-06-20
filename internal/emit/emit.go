@@ -56,10 +56,10 @@ const (
 	tokMapKeys     uint32 = 0x0A00001A
 	tokGoMap       uint32 = 0x0100000B // TypeRef GoCLR.Runtime.GoMap (sig/castclass)
 	// GoPtrs.* MemberRefs (rows 27..29).
-	tokPtrNew uint32 = 0x0A00001B
-	tokPtrGet uint32 = 0x0A00001C
-	tokPtrSet uint32 = 0x0A00001D
-	tokGoPtr  uint32 = 0x0100000D // TypeRef GoCLR.Runtime.GoPtr (sig/castclass)
+	tokPtrNew       uint32 = 0x0A00001B
+	tokPtrGet       uint32 = 0x0A00001C
+	tokPtrSet       uint32 = 0x0A00001D
+	tokGoPtr        uint32 = 0x0100000D // TypeRef GoCLR.Runtime.GoPtr (sig/castclass)
 	tokPanic        uint32 = 0x0A00001E // MemberRef Builtins.Panic(object) (row 30)
 	tokRecover      uint32 = 0x0A00001F // Builtins.Recover() (row 31)
 	tokSetPanic     uint32 = 0x0A000020 // Builtins.SetPanic(GoPanicException) (row 32)
@@ -110,10 +110,10 @@ const (
 	tokStrFromRune  uint32 = 0x0A00003E
 	tokStrFromBytes uint32 = 0x0A00003F
 	tokStrFromRunes uint32 = 0x0A000040
-	methodBase uint32 = 0x06000000
-	sigBase        uint32 = 0x11000000
-	typeDefBase    uint32 = 0x02000000
-	fieldTableBase uint32 = 0x04000000
+	methodBase      uint32 = 0x06000000
+	sigBase         uint32 = 0x11000000
+	typeDefBase     uint32 = 0x02000000
+	fieldTableBase  uint32 = 0x04000000
 )
 
 // mvid is a fixed module version GUID for deterministic output.

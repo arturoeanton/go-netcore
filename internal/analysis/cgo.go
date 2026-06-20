@@ -19,7 +19,7 @@ func checkCgo(pkg *frontend.Package, bag *diagnostics.Bag) {
 					"cgo is not supported on target clr").
 					WithPackage(pkg.PkgPath).
 					WithPos(pos).
-					WithReason("package "+pkg.PkgPath+" imports \"C\"; the CLR backend cannot compile cgo.").
+					WithReason("package " + pkg.PkgPath + " imports \"C\"; the CLR backend cannot compile cgo.").
 					WithSuggestion("use a pure-Go alternative, add a //go:build goclr implementation, or exclude this dependency for GoCLR builds."))
 			}
 		}
