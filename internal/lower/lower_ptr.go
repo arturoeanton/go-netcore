@@ -384,15 +384,25 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 	baseType := l.exprType(sel.X)
 	baseIsPtr := baseType.Kind == goir.KPtr
 
+	var writeback func() // for the pointer-rooted-field receiver RMW (see below)
 	switch {
 	case recvIsPtr && baseIsPtr:
 		l.expr(sel.X) // pass the pointer through
 	case recvIsPtr && !baseIsPtr:
 		// (&recv).Method(): recv was marked address-taken, so it is a cell.
-		if !l.emitAddr(sel.X) {
-			l.fail(e.Pos(), "pointer-receiver method on a non-addressable value")
-			return goir.TVoid
+		if l.emitAddr(sel.X) {
+			break
 		}
+		// A value-struct field reached through a pointer (p.A.B with B a value
+		// struct) is not directly addressable; read it into a fresh GoPtr cell for
+		// the call and write it back afterwards so the method's mutations persist.
+		if p, wb, ok := l.ptrRootedReceiver(sel.X); ok {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: p})
+			writeback = wb
+			break
+		}
+		l.fail(e.Pos(), "pointer-receiver method on a non-addressable value")
+		return goir.TVoid
 	case !recvIsPtr && baseIsPtr:
 		// (*recv).Method(): dereference to a value.
 		l.expr(sel.X)
@@ -405,7 +415,61 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 	// params[0] is the receiver; the rest align with the call arguments.
 	l.emitCallArgs(e.Args, m.Params[1:], sig.Variadic(), e.Ellipsis.IsValid())
 	l.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
+	if writeback != nil {
+		writeback() // persist mutations back into the pointer-rooted field (stack-neutral)
+	}
 	return m.Ret
+}
+
+// ptrRootedReceiver prepares the receiver for a pointer-receiver method call whose
+// receiver is a value-struct field reached through a pointer (p.A.B, B a value
+// struct). Such a field is not directly addressable, so its current value is read
+// into a fresh GoPtr cell; the returned writeback thunk stores the (possibly
+// mutated) cell value back into the field after the call. ok is false when recv is
+// not a pointer-rooted struct field.
+func (l *funcLowerer) ptrRootedReceiver(recv ast.Expr) (int, func(), bool) {
+	sel, ok := unparen(recv).(*ast.SelectorExpr)
+	if !ok {
+		return 0, nil, false
+	}
+	recvT := l.exprType(sel)
+	if recvT.Kind != goir.KStruct {
+		return 0, nil, false
+	}
+	// Require a *struct somewhere up the selector chain (else it is addressable the
+	// normal way, or unsupported).
+	rooted := false
+	for cur := ast.Expr(sel); ; {
+		s, ok := unparen(cur).(*ast.SelectorExpr)
+		if !ok {
+			break
+		}
+		bt := l.exprType(s.X)
+		if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct {
+			rooted = true
+			break
+		}
+		if bt.Kind != goir.KStruct {
+			break
+		}
+		cur = s.X
+	}
+	if !rooted {
+		return 0, nil, false
+	}
+	l.expr(sel) // current field value
+	l.emitBox(recvT)
+	l.ptrNew(recvT)
+	p := l.addLocal(nil, goir.PtrType(recvT))
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: p})
+	writeback := func() {
+		l.pointerRootedFieldWriteVal(sel, func(parent *goir.Struct, fi int) {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: p})
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emitUnbox(recvT)
+		})
+	}
+	return p, writeback, true
 }
 
 // promotedMethodCall lowers recv.M(args) where M is promoted from an embedded
