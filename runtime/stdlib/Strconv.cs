@@ -18,6 +18,17 @@ public static class Strconv
 
     public static GoString Itoa(long i) => GoString.FromDotNetString(i.ToString(Inv));
     public static GoString FormatInt(long i, long b) => GoString.FromDotNetString(ToBase(i, (int)b, i < 0));
+
+    // AppendInt appends the base-b text of i to dst ([]byte) and returns the slice.
+    public static GoSlice AppendInt(GoSlice dst, long i, long b)
+    {
+        var s = ToBase(i, (int)b, i < 0);
+        int n = dst.Len;
+        var d = new object?[n + s.Length];
+        for (int k = 0; k < n; k++) d[k] = dst.Data![dst.Off + k];
+        for (int k = 0; k < s.Length; k++) d[n + k] = (int)(byte)s[k];
+        return new GoSlice { Data = d, Off = 0, Len = n + s.Length, Cap = n + s.Length };
+    }
     public static GoString FormatUint(ulong i, long b) => GoString.FromDotNetString(ToBaseU(i, (int)b));
     public static GoString FormatBool(bool v) => GoString.FromDotNetString(v ? "true" : "false");
 

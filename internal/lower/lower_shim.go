@@ -176,7 +176,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ParseInt": {"Strconv", "ParseInt"}, "ParseUint": {"Strconv", "ParseUint"},
 		"ParseFloat": {"Strconv", "ParseFloat"}, "ParseBool": {"Strconv", "ParseBool"},
 		"Quote": {"Strconv", "Quote"}, "QuoteToASCII": {"Strconv", "QuoteToASCII"},
-		"CanBackquote": {"Strconv", "CanBackquote"},
+		"CanBackquote": {"Strconv", "CanBackquote"}, "AppendInt": {"Strconv", "AppendInt"},
 	},
 	"unicode/utf8": {
 		"RuneCountInString": {"Utf8", "RuneCountInString"}, "RuneCount": {"Utf8", "RuneCount"},
