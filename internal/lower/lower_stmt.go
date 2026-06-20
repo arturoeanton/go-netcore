@@ -361,9 +361,85 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 			return
 		}
 	}
+	// ptr.Inner.field = v : a field of a value-struct reached through a pointer is
+	// not directly addressable (the struct lives in a boxed cell), so read-modify-
+	// write the pointer's rooted struct.
+	if l.pointerRootedFieldWrite(sel, rhs) {
+		return
+	}
 	l.lvalueAddr(sel.X)
 	l.expr(rhs)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+}
+
+// pointerRootedFieldWrite handles assignment to a field reached through a chain of
+// value-struct selectors rooted at a *struct (e.g. p.A.B.x = v). It returns false
+// if the chain is not so rooted (handled by the normal addressable path).
+func (l *funcLowerer) pointerRootedFieldWrite(sel *ast.SelectorExpr, rhs ast.Expr) bool {
+	return l.pointerRootedFieldWriteVal(sel, func(parent *goir.Struct, fi int) {
+		l.exprCoerced(rhs, parent.Fields[fi].Type)
+	})
+}
+
+// pointerRootedFieldWriteVal is pointerRootedFieldWrite with the stored value
+// supplied by emitVal — to which the container's managed address has already been
+// pushed (so a compound op can Dup + LdFld the old value). Returns false if the
+// chain is not rooted at a *struct.
+func (l *funcLowerer) pointerRootedFieldWriteVal(sel *ast.SelectorExpr, emitVal func(parent *goir.Struct, fi int)) bool {
+	var fields []string
+	cur := ast.Expr(sel)
+	for {
+		s, ok := unparen(cur).(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		fields = append([]string{s.Sel.Name}, fields...)
+		bt := l.exprType(s.X)
+		if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct {
+			l.emitPtrRootedWrite(s.X, *bt.Elem, fields, emitVal)
+			return true
+		}
+		if bt.Kind != goir.KStruct {
+			return false
+		}
+		cur = s.X
+	}
+}
+
+// emitPtrRootedWrite reads *ptr into a temp, leaves the address of the target
+// field's container struct on the stack for emitVal (which pushes the value and is
+// followed by stfld), then stores the temp back through the pointer.
+func (l *funcLowerer) emitPtrRootedWrite(ptrExpr ast.Expr, root goir.Type, fields []string, emitVal func(parent *goir.Struct, fi int)) {
+	pt := l.exprType(ptrExpr)
+	pTmp := l.addLocal(nil, pt)
+	l.expr(ptrExpr)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: pTmp})
+
+	rTmp := l.addLocal(nil, root)
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: pTmp})
+	l.emit(goir.Op{Code: goir.OpPtrGet})
+	l.emitUnbox(root)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: rTmp})
+
+	l.emit(goir.Op{Code: goir.OpLdLocA, Local: rTmp})
+	cur := root
+	for i := 0; i < len(fields)-1; i++ {
+		fi := cur.Struct.FieldIndex(fields[i])
+		if fi < 0 || cur.Struct.Fields[fi].Type.Kind != goir.KStruct {
+			l.fail(ptrExpr.Pos(), "nested field write through a non-struct field")
+			return
+		}
+		l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: fi})
+		cur = cur.Struct.Fields[fi].Type
+	}
+	last := cur.Struct.FieldIndex(fields[len(fields)-1])
+	emitVal(cur.Struct, last)
+	l.emit(goir.Op{Code: goir.OpStFld, Struct: cur.Struct, Field: last})
+
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: pTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: rTmp})
+	l.emitBox(root)
+	l.emit(goir.Op{Code: goir.OpPtrSet})
 }
 
 // cellFieldModify performs a read-modify-write of field fi of the struct in cell
@@ -1059,6 +1135,16 @@ func (l *funcLowerer) modifyField(sel *ast.SelectorExpr, binTok token.Token, emi
 		return
 	}
 	ft := bt.Struct.Fields[fi].Type
+	// p.A.B.x op= e through a pointer: read-modify-write the rooted struct.
+	if l.pointerRootedFieldWriteVal(sel, func(parent *goir.Struct, pfi int) {
+		pft := parent.Fields[pfi].Type
+		l.emit(goir.Op{Code: goir.OpDup})
+		l.emit(goir.Op{Code: goir.OpLdFld, Struct: parent, Field: pfi})
+		emitOperand(pft)
+		l.emitArith(binTok, pft)
+	}) {
+		return
+	}
 	l.lvalueAddr(sel.X)
 	l.emit(goir.Op{Code: goir.OpDup})
 	l.emit(goir.Op{Code: goir.OpLdFld, Struct: bt.Struct, Field: fi})
