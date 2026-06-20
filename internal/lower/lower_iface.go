@@ -96,8 +96,15 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 	// such implementers. Struct value implementers keep their distinct CLR type, and
 	// pointer implementers keep their GoPtr type id — both unchanged.
 	namedId := make([]int64, len(impls))
+	// embedField[i] >= 0 marks an implementer that satisfies the interface only via
+	// an *embedded interface field* (struct { SomeIface }); the method is promoted
+	// from that field. Such a value is dispatched by unwrapping to the embedded
+	// interface value and re-dispatching (a loop, so nested wrappers terminate at a
+	// concrete implementer).
+	embedField := make([]int, len(impls))
 	for i, impl := range impls {
 		labels[i] = l.label()
+		embedField[i] = -1
 		ctypes[i], _ = l.goType(impl.named)
 		recv := types.Type(impl.named)
 		if impl.viaPtr {
@@ -105,14 +112,21 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 		} else if id, ok := l.namedIdentity(impl.named); ok {
 			namedId[i] = id
 		}
-		obj, _, _ := types.LookupFieldOrMethod(recv, true, l.pkg.Types, ifaceMethod.Name())
+		obj, idxPath, _ := types.LookupFieldOrMethod(recv, true, l.pkg.Types, ifaceMethod.Name())
 		fn, _ := obj.(*types.Func)
 		if fn != nil {
 			callees[i] = l.byFunc[fn]
 		}
 		if callees[i] == nil {
-			l.fail(e.Pos(), "interface method "+ifaceMethod.Name()+" on "+impl.named.Obj().Name())
-			return goir.TVoid
+			if fn != nil && len(idxPath) >= 1 {
+				if _, isIface := fn.Type().(*types.Signature).Recv().Type().Underlying().(*types.Interface); isIface {
+					embedField[i] = idxPath[0]
+				}
+			}
+			if embedField[i] < 0 {
+				l.fail(e.Pos(), "interface method "+ifaceMethod.Name()+" on "+impl.named.Obj().Name())
+				return goir.TVoid
+			}
 		}
 	}
 
@@ -133,6 +147,11 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 		resultTmp = l.addLocal(nil, retType)
 	}
 
+	// loopStart re-enters the type matching after an embedded-interface unwrap, so a
+	// value whose dynamic type wraps the interface (struct { SomeIface }) resolves to
+	// the concrete implementer it ultimately holds.
+	loopStart := l.label()
+	l.mark(loopStart)
 	for i, impl := range impls {
 		if !impl.viaPtr {
 			if namedId[i] != 0 {
@@ -177,6 +196,16 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 
 	for i, impl := range impls {
 		l.mark(labels[i])
+		// Embedded-interface implementer: unwrap to the embedded interface value and
+		// re-dispatch (the method is promoted from that field).
+		if embedField[i] >= 0 {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
+			l.emit(goir.Op{Code: goir.OpLdFld, Struct: ctypes[i].Struct, Field: embedField[i]})
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: iTmp})
+			l.emit(goir.Op{Code: goir.OpBr, Label: loopStart})
+			continue
+		}
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
 		if impl.viaPtr {
 			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])}) // the GoPtr receiver
