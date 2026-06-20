@@ -235,4 +235,51 @@ public static class Strings
         }
         return GoString.FromDotNetString(sb.ToString());
     }
+
+    // strings.NewReplacer(oldnew ...string) *Replacer — pairs of old, new.
+    public static object NewReplacer(GoSlice pairs)
+    {
+        int n = pairs.Len / 2;
+        var rep = new GoReplacer { Old = new string[n], New = new string[n] };
+        for (int i = 0; i < n; i++)
+        {
+            rep.Old[i] = ((GoString)pairs.Data![pairs.Off + 2 * i]!).ToDotNetString();
+            rep.New[i] = ((GoString)pairs.Data![pairs.Off + 2 * i + 1]!).ToDotNetString();
+        }
+        return rep;
+    }
+
+    // (*Replacer).Replace — single non-overlapping pass; at each position the old
+    // strings are tried in argument order and the first match wins (Go semantics).
+    public static GoString Replacer_Replace(object r, GoString s)
+    {
+        var rep = (GoReplacer)r;
+        string str = s.ToDotNetString();
+        var sb = new System.Text.StringBuilder();
+        int i = 0;
+        while (i < str.Length)
+        {
+            int match = -1;
+            for (int k = 0; k < rep.Old.Length; k++)
+            {
+                int len = rep.Old[k].Length;
+                if (len > 0 && i + len <= str.Length &&
+                    string.CompareOrdinal(str, i, rep.Old[k], 0, len) == 0)
+                {
+                    match = k;
+                    break;
+                }
+            }
+            if (match >= 0) { sb.Append(rep.New[match]); i += rep.Old[match].Length; }
+            else { sb.Append(str[i]); i++; }
+        }
+        return GoString.FromDotNetString(sb.ToString());
+    }
+}
+
+/// <summary>A strings.Replacer: ordered old→new string pairs.</summary>
+public sealed class GoReplacer
+{
+    public string[] Old = System.Array.Empty<string>();
+    public string[] New = System.Array.Empty<string>();
 }

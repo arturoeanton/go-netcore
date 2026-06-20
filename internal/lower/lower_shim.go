@@ -198,6 +198,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ToTitle": {"Strings", "ToTitle"}, "SplitAfter": {"Strings", "SplitAfter"}, "Map": {"Strings", "Map"},
 		"TrimFunc": {"Strings", "TrimFunc"}, "TrimLeftFunc": {"Strings", "TrimLeftFunc"}, "TrimRightFunc": {"Strings", "TrimRightFunc"},
 		"IndexFunc": {"Strings", "IndexFunc"}, "FieldsFunc": {"Strings", "FieldsFunc"},
+		"NewReplacer": {"Strings", "NewReplacer"},
 	},
 }
 
@@ -212,6 +213,7 @@ var opaqueShimTypes = map[string]bool{
 	"sync.Once":                    true,
 	"sync.Map":                     true,
 	"strings.Builder":              true,
+	"strings.Replacer":             true,
 	"bytes.Buffer":                 true,
 	"os.File":                      true,
 	"time.Time":                    true,
@@ -487,6 +489,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Abs": {"Big", "Int_Abs"}, "Exp": {"Big", "Int_Exp"}, "Set": {"Big", "Int_Set"},
 		"Cmp": {"Big", "Int_Cmp"}, "Sign": {"Big", "Int_Sign"}, "Int64": {"Big", "Int_Int64"},
 		"String": {"Big", "Int_String"}, "SetString": {"Big", "Int_SetString"},
+	},
+	"strings.Replacer": {
+		"Replace": {"Strings", "Replacer_Replace"},
 	},
 	"strings.Builder": {
 		"WriteString": {"StringsBuilder", "WriteString"}, "WriteByte": {"StringsBuilder", "WriteByte"},
