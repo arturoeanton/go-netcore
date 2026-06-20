@@ -15,6 +15,14 @@ public sealed class GoPtr
     /// type is otherwise erased by this single non-generic cell type.
     /// </summary>
     public long TypeId;
+
+    /// <summary>
+    /// When non-null, this pointer aliases element <see cref="Idx"/> of a slice's
+    /// backing array (from &amp;s[i]); Get/Set read/write through it so the slice
+    /// and the pointer observe the same storage. Value/TypeId are unused then.
+    /// </summary>
+    public object?[]? Arr;
+    public int Idx;
 }
 
 /// <summary>GoPtr operations the compiler calls into.</summary>
@@ -30,14 +38,14 @@ public static class GoPtrs
     public static object? Get(GoPtr? p)
     {
         if (p == null) throw NilDeref();
-        return p.Value;
+        return p.Arr != null ? p.Arr[p.Idx] : p.Value;
     }
 
     /// <summary>*p = v. Panics on a nil pointer.</summary>
     public static void Set(GoPtr? p, object? value)
     {
         if (p == null) throw NilDeref();
-        p.Value = value;
+        if (p.Arr != null) p.Arr[p.Idx] = value; else p.Value = value;
     }
 
     private static GoPanicException NilDeref() =>

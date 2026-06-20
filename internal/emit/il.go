@@ -10,10 +10,10 @@ import (
 // tokenSet holds the metadata tokens the IL translator needs. Value-type tokens
 // are used only by `box`; method signatures encode primitives inline.
 type tokenSet struct {
-	object   uint32 // TypeRef System.Object (newarr element)
-	int64Box uint32 // TypeRef System.Int64
-	int32Box uint32 // TypeRef System.Int32
-	boolBox  uint32 // TypeRef System.Boolean
+	object     uint32 // TypeRef System.Object (newarr element)
+	int64Box   uint32 // TypeRef System.Int64
+	int32Box   uint32 // TypeRef System.Int32
+	boolBox    uint32 // TypeRef System.Boolean
 	println    uint32 // MemberRef Builtins.Println(object[])
 	print      uint32 // MemberRef Builtins.Print(object[])
 	method     func(*goir.Method) uint32
@@ -27,10 +27,10 @@ type tokenSet struct {
 
 type ilBuilder struct{ buf []byte }
 
-func (b *ilBuilder) u8(v byte)     { b.buf = append(b.buf, v) }
-func (b *ilBuilder) i32(v int32)   { b.buf = binary.LittleEndian.AppendUint32(b.buf, uint32(v)) }
-func (b *ilBuilder) u32(v uint32)  { b.buf = binary.LittleEndian.AppendUint32(b.buf, v) }
-func (b *ilBuilder) i64(v int64)   { b.buf = binary.LittleEndian.AppendUint64(b.buf, uint64(v)) }
+func (b *ilBuilder) u8(v byte)    { b.buf = append(b.buf, v) }
+func (b *ilBuilder) i32(v int32)  { b.buf = binary.LittleEndian.AppendUint32(b.buf, uint32(v)) }
+func (b *ilBuilder) u32(v uint32) { b.buf = binary.LittleEndian.AppendUint32(b.buf, v) }
+func (b *ilBuilder) i64(v int64)  { b.buf = binary.LittleEndian.AppendUint64(b.buf, uint64(v)) }
 
 // ldcI4 pushes a 32-bit constant with the shortest encoding.
 func (b *ilBuilder) ldcI4(n int32) {
@@ -62,6 +62,20 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 	labelPos := map[int]int{}
 	var fixups []branchFixup
 
+	// localOp emits ldloc/stloc/ldloca/ldarg, picking the short form (1-byte
+	// operand) for index <= 255 and the FE-prefixed long form (2-byte operand)
+	// otherwise. Truncating a >255 index to a byte silently corrupts the address.
+	localOp := func(shortOp byte, longOp byte, idx int) {
+		if idx <= 0xFF {
+			b.u8(shortOp)
+			b.u8(byte(idx))
+			return
+		}
+		b.u8(0xFE)
+		b.u8(longOp)
+		b.buf = binary.LittleEndian.AppendUint16(b.buf, uint16(idx))
+	}
+
 	branch := func(op byte, target int) {
 		b.u8(op)
 		fixups = append(fixups, branchFixup{operandPos: len(b.buf), target: target})
@@ -87,14 +101,11 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 			b.u8(0x72)
 			b.u32(0x70000000 | uint32(tok.us[op.Str]))
 		case goir.OpLdLoc:
-			b.u8(0x11) // ldloc.s
-			b.u8(byte(op.Local))
+			localOp(0x11, 0x0C, op.Local) // ldloc.s / ldloc
 		case goir.OpStLoc:
-			b.u8(0x13) // stloc.s
-			b.u8(byte(op.Local))
+			localOp(0x13, 0x0E, op.Local) // stloc.s / stloc
 		case goir.OpLdArg:
-			b.u8(0x0E) // ldarg.s
-			b.u8(byte(op.Arg))
+			localOp(0x0E, 0x09, op.Arg) // ldarg.s / ldarg
 		case goir.OpAdd:
 			b.u8(0x58)
 		case goir.OpSub:
@@ -230,8 +241,7 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 			b.u8(0x28)
 			b.u32(tokStrRuneSize)
 		case goir.OpLdLocA:
-			b.u8(0x12) // ldloca.s
-			b.u8(byte(op.Local))
+			localOp(0x12, 0x0D, op.Local) // ldloca.s / ldloca
 		case goir.OpLdFld:
 			b.u8(0x7B) // ldfld
 			b.u32(tok.field(op.Struct, op.Field))
@@ -449,7 +459,7 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 func buildEHSection(clauses []goir.EHClause, labelPos map[int]int) []byte {
 	size := 4 + 24*len(clauses)
 	out := make([]byte, 0, size)
-	out = append(out, 0x41)                            // EHTable | FatFormat
+	out = append(out, 0x41)                                      // EHTable | FatFormat
 	out = append(out, byte(size), byte(size>>8), byte(size>>16)) // 3-byte DataSize
 	for _, c := range clauses {
 		tryOff := labelPos[c.TryStart]

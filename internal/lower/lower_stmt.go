@@ -1167,6 +1167,8 @@ func compoundBinToken(tok token.Token) (token.Token, bool) {
 		return token.SHL, true
 	case token.SHR_ASSIGN:
 		return token.SHR, true
+	case token.AND_NOT_ASSIGN:
+		return token.AND_NOT, true
 	default:
 		return token.ILLEGAL, false
 	}

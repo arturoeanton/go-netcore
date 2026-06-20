@@ -2,6 +2,7 @@ package lower
 
 import (
 	"go/ast"
+	"go/constant"
 	"go/types"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
@@ -131,23 +132,62 @@ func (l *funcLowerer) makeCall(e *ast.CallExpr) goir.Type {
 	return st
 }
 
-// sliceLit lowers a positional slice literal []T{a, b, c}.
+// sliceLit lowers a slice or array literal: positional ([]T{a, b, c}) or keyed
+// ([N]T{0: a, 5: b}). For an array type the backing slice is allocated to the
+// declared array length so unspecified elements keep their zero value.
 func (l *funcLowerer) sliceLit(e *ast.CompositeLit, st goir.Type) goir.Type {
 	elem := *st.Elem
+
+	// Determine the element index of each value (positional indices run from the
+	// last key) and the total length to allocate.
+	type item struct {
+		idx int64
+		val ast.Expr
+	}
+	items := make([]item, 0, len(e.Elts))
+	var next, maxIdx int64
+	keyed := false
+	for _, elt := range e.Elts {
+		val := elt
+		if kv, ok := elt.(*ast.KeyValueExpr); ok {
+			keyed = true
+			cv := l.pkg.TypesInfo.Types[kv.Key].Value
+			if cv == nil {
+				l.fail(kv.Pos(), "slice literal key (must be a constant)")
+				return goir.TVoid
+			}
+			k, ok := constant.Int64Val(constant.ToInt(cv))
+			if !ok {
+				l.fail(kv.Pos(), "slice literal key value")
+				return goir.TVoid
+			}
+			next = k
+			val = kv.Value
+		}
+		items = append(items, item{idx: next, val: val})
+		if next+1 > maxIdx {
+			maxIdx = next + 1
+		}
+		next++
+	}
+
+	// Allocation length: the declared array length, else the highest index + 1.
+	allocLen := maxIdx
+	if arr, ok := l.pkg.TypesInfo.TypeOf(e).Underlying().(*types.Array); ok {
+		allocLen = arr.Len()
+	}
+	_ = keyed
+
 	tmp := l.addLocal(nil, st)
-	l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(len(e.Elts))})
-	l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(len(e.Elts))})
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: allocLen})
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: allocLen})
 	l.emitBoxedZero(elem)
 	l.emit(goir.Op{Code: goir.OpSliceMake})
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
-	for i, elt := range e.Elts {
-		if _, ok := elt.(*ast.KeyValueExpr); ok {
-			l.fail(elt.Pos(), "keyed slice literal")
-			return goir.TVoid
-		}
+	for _, it := range items {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
-		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(i)})
-		l.emitBoxedElem(elt)
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: it.idx})
+		l.emitBoxedElem(it.val)
 		l.emit(goir.Op{Code: goir.OpSliceSet})
 	}
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})

@@ -8,9 +8,11 @@
 package lower
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"os"
 	"sort"
 	"strings"
 
@@ -22,18 +24,18 @@ import (
 // lowerCtx is state shared across all functions of a package: type resolution
 // (including the struct registry) and the function table for call resolution.
 type lowerCtx struct {
-	pkg         *frontend.Package
-	byName      map[string]*goir.Method   // free functions, by name
-	byFunc      map[*types.Func]*goir.Method // methods, by *types.Func
-	structReg   map[*types.Named]*goir.Struct
+	pkg           *frontend.Package
+	byName        map[string]*goir.Method      // free functions, by name
+	byFunc        map[*types.Func]*goir.Method // methods, by *types.Func
+	structReg     map[*types.Named]*goir.Struct
 	anonStructReg map[string]*goir.Struct // anonymous structs, keyed by structural string
 	structByName  map[string]*goir.Struct // dedup by emitted name (distinct *Named for one instantiation)
-	structOrder []*goir.Struct
-	bag         *diagnostics.Bag
-	prog        *goir.Program // for appending lifted closure methods
-	closures    []*closureInfo
-	invoke      *goir.Method // the generated function-value dispatcher
-	needsInvoker bool        // a `go` statement or deferred thunk uses the dispatcher -> register it at startup
+	structOrder   []*goir.Struct
+	bag           *diagnostics.Bag
+	prog          *goir.Program // for appending lifted closure methods
+	closures      []*closureInfo
+	invoke        *goir.Method // the generated function-value dispatcher
+	needsInvoker  bool         // a `go` statement or deferred thunk uses the dispatcher -> register it at startup
 	// Generics: generic function templates (by name) are not shelled directly;
 	// each concrete instantiation discovered at a call site is monomorphized into
 	// its own method (monoInsts, keyed by name+type-args) and queued in monoTodo.
@@ -47,14 +49,14 @@ type lowerCtx struct {
 	// Package-level variables become static fields (globals); init runs their
 	// initializers and the package init() functions before main.
 	globals   map[*types.Var]int
-	varInits  []varInit       // package-var initializers, in init order
-	initFuncs []*goir.Method  // package init() functions, in order
+	varInits  []varInit      // package-var initializers, in init order
+	initFuncs []*goir.Method // package init() functions, in order
 }
 
 // varInit is a package-level variable initializer to run during program startup.
 type varInit struct {
 	pkg   *frontend.Package
-	idx   int      // global index
+	idx   int // global index
 	gtype goir.Type
 	value ast.Expr // nil => zero-initialize
 }
@@ -267,10 +269,31 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 {
 		return nil, true
 	}
-	m := &goir.Method{Name: "__goclr_init", GoName: "__goclr_init", Ret: goir.TVoid}
-	l := &funcLowerer{lowerCtx: c, m: m, ok: true}
-	l.locals = map[types.Object]int{}
-	l.cells = map[int]goir.Type{}
+	// The package-var initializers and tag registrations are emitted into a series
+	// of bounded chunk methods (__goclr_init_N): a whole program's globals — e.g.
+	// the unicode tables — would otherwise overflow the CLR's 64KB-per-method IL
+	// limit. The top-level __goclr_init calls each chunk, then the init() funcs.
+	const chunkOpBudget = 6000
+
+	var chunks []*goir.Method
+	newChunk := func() *funcLowerer {
+		m := &goir.Method{
+			Name:   fmt.Sprintf("__goclr_init_%d", len(chunks)),
+			GoName: "__goclr_init",
+			Ret:    goir.TVoid,
+		}
+		cl := &funcLowerer{lowerCtx: c, m: m, ok: true}
+		cl.locals = map[types.Object]int{}
+		cl.cells = map[int]goir.Type{}
+		chunks = append(chunks, m)
+		return cl
+	}
+	finishChunk := func(cl *funcLowerer) bool {
+		cl.emit(goir.Op{Code: goir.OpRet})
+		return cl.ok
+	}
+
+	cl := newChunk()
 	// Register struct field tags first so reflect/json see them everywhere.
 	regExt := &goir.Extern{
 		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Reflect", Method: "RegisterTag",
@@ -281,26 +304,53 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 			if f.Tag == "" {
 				continue
 			}
-			l.emit(goir.Op{Code: goir.OpStrConst, Str: s.Name})
-			l.emit(goir.Op{Code: goir.OpStrConst, Str: f.Name})
-			l.emit(goir.Op{Code: goir.OpStrConst, Str: f.Tag})
-			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: regExt})
+			cl.emit(goir.Op{Code: goir.OpStrConst, Str: s.Name})
+			cl.emit(goir.Op{Code: goir.OpStrConst, Str: f.Name})
+			cl.emit(goir.Op{Code: goir.OpStrConst, Str: f.Tag})
+			cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: regExt})
 		}
 	}
+	dbg := os.Getenv("GOCLR_DEBUG_INIT") != ""
 	for _, vi := range c.varInits {
+		// Start a fresh chunk once the current one is sizeable, keeping each
+		// var initializer atomic (it must not be split mid-expression).
+		if len(cl.m.Code) > chunkOpBudget {
+			if !finishChunk(cl) {
+				return nil, false
+			}
+			cl = newChunk()
+		}
+		if dbg {
+			fmt.Fprintf(os.Stderr, "init chunk %d <- global[%d] %s\n", len(chunks)-1, vi.idx, c.prog.Globals[vi.idx].Name)
+		}
 		c.pkg = vi.pkg
 		if vi.value != nil {
-			l.exprCoerced(vi.value, vi.gtype)
+			cl.exprCoerced(vi.value, vi.gtype)
 		} else {
-			l.emitZeroValue(vi.gtype)
+			cl.emitZeroValue(vi.gtype)
 		}
-		l.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(vi.idx)})
+		cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(vi.idx)})
+	}
+	if !finishChunk(cl) {
+		return nil, false
+	}
+	for _, m := range chunks {
+		c.prog.Methods = append(c.prog.Methods, m)
+	}
+
+	// Top-level init: call each chunk in order, then run init() functions.
+	m := &goir.Method{Name: "__goclr_init", GoName: "__goclr_init", Ret: goir.TVoid}
+	top := &funcLowerer{lowerCtx: c, m: m, ok: true}
+	top.locals = map[types.Object]int{}
+	top.cells = map[int]goir.Type{}
+	for _, chunk := range chunks {
+		top.emit(goir.Op{Code: goir.OpCallMethod, Callee: chunk})
 	}
 	for _, fn := range c.initFuncs {
-		l.emit(goir.Op{Code: goir.OpCallMethod, Callee: fn})
+		top.emit(goir.Op{Code: goir.OpCallMethod, Callee: fn})
 	}
-	l.emit(goir.Op{Code: goir.OpRet})
-	return m, l.ok
+	top.emit(goir.Op{Code: goir.OpRet})
+	return m, top.ok
 }
 
 // funcDecls returns the function declarations of a package.
@@ -316,8 +366,17 @@ func funcDecls(p *frontend.Package) []*ast.FuncDecl {
 	return out
 }
 
+// compileFromSource lists pure, self-contained stdlib packages that goclr lowers
+// from their real Go source instead of shimming — full-fidelity semantics with no
+// native surface. They must import nothing outside this set and contain only code
+// goclr can lower (structs, slices, maps, package-level table initializers).
+var compileFromSource = map[string]bool{
+	"unicode": true,
+}
+
 // collectPackages returns root plus its transitive non-stdlib dependencies that
 // have Go source, in dependency order (a package appears after its imports).
+// Stdlib packages in compileFromSource are included and lowered like any other.
 func collectPackages(root *frontend.Package) []*frontend.Package {
 	var order []*frontend.Package
 	seen := map[*frontend.Package]bool{}
@@ -335,7 +394,10 @@ func collectPackages(root *frontend.Package) []*frontend.Package {
 		sort.Strings(names)
 		for _, ip := range names {
 			dep := p.Imports[ip]
-			if dep == nil || dep.IsStdlib || len(dep.Syntax) == 0 {
+			if dep == nil || len(dep.Syntax) == 0 {
+				continue
+			}
+			if dep.IsStdlib && !compileFromSource[dep.PkgPath] {
 				continue // stdlib needs overlays/shims; handled separately
 			}
 			visit(dep)

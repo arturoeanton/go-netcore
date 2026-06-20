@@ -274,7 +274,7 @@ func (l *funcLowerer) binaryExpr(e *ast.BinaryExpr) {
 	}
 
 	// Arithmetic / bitwise / string-concat / complex (operand-type directed).
-	if _, ok := arithOp(e.Op); !ok {
+	if _, ok := arithOp(e.Op); !ok && e.Op != token.AND_NOT {
 		l.fail(e.Pos(), "operator "+e.Op.String())
 		return
 	}
@@ -743,6 +743,13 @@ func (l *funcLowerer) emitArith(tok token.Token, operandType goir.Type) {
 		case token.QUO:
 			l.emit(goir.Op{Code: goir.OpComplexDiv})
 		}
+		return
+	}
+	// a &^ b (bit clear) == a & ^b : complement the second operand, then AND.
+	if tok == token.AND_NOT {
+		l.emitInt(-1, operandType)
+		l.emit(goir.Op{Code: goir.OpXor})
+		l.emit(goir.Op{Code: goir.OpAnd})
 		return
 	}
 	op, ok := arithOp(tok)

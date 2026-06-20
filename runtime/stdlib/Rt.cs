@@ -9,6 +9,16 @@ public static class Rt
     /// <summary>A slice is nil iff its backing array is null (Go's `s == nil`).</summary>
     public static bool SliceIsNil(GoSlice s) => s.Data == null;
 
+    /// <summary>&amp;s[i] — a pointer aliasing element i of the slice's backing array,
+    /// so the slice and the pointer share storage.</summary>
+    public static GoPtr ElemAddr(GoSlice s, long i)
+    {
+        if (s.Data == null || i < 0 || i >= s.Len)
+            throw new GoPanicException(GoString.FromDotNetString(
+                $"runtime error: index out of range [{i}] with length {s.Len}"));
+        return new GoPtr { Arr = s.Data, Idx = (int)(s.Off + i) };
+    }
+
     /// <summary>The nil slice value (zero value of every slice type): a GoSlice with
     /// a null backing array, so `s == nil` is true and append still works.</summary>
     public static GoSlice NilSlice() => default;

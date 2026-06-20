@@ -38,13 +38,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"errors": {
 		"New": {"Errors", "New"}, "Unwrap": {"Errors", "Unwrap"}, "Is": {"Errors", "Is"},
 	},
-	"unicode": {
-		"IsDigit": {"Unicode", "IsDigit"}, "IsNumber": {"Unicode", "IsNumber"}, "IsLetter": {"Unicode", "IsLetter"},
-		"IsSpace": {"Unicode", "IsSpace"}, "IsUpper": {"Unicode", "IsUpper"}, "IsLower": {"Unicode", "IsLower"},
-		"IsPunct": {"Unicode", "IsPunct"}, "IsControl": {"Unicode", "IsControl"}, "IsPrint": {"Unicode", "IsPrint"},
-		"IsGraphic": {"Unicode", "IsGraphic"}, "ToUpper": {"Unicode", "ToUpper"}, "ToLower": {"Unicode", "ToLower"},
-		"ToTitle": {"Unicode", "ToTitle"},
-	},
+	// NOTE: "unicode" is compiled from real Go source (see compileFromSource in
+	// lower.go), not shimmed — it provides RangeTable/Is/In and the full tables.
 	"reflect": {
 		"TypeOf": {"Reflect", "TypeOf"}, "ValueOf": {"Reflect", "ValueOf"}, "DeepEqual": {"Reflect", "DeepEqual"},
 		"New": {"Reflect", "New"},
