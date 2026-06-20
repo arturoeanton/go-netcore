@@ -304,7 +304,50 @@ public static class Reflect
     {
         var obj = ((GoReflectType)t).Sample;
         var f = Fields(obj)![(int)i];
-        return new GoStructField { Name = f.Name, Tag = TagFor(obj!.GetType().Name, f.Name), FieldType = f.FieldType };
+        return new GoStructField
+        {
+            Name = f.Name,
+            Tag = TagFor(obj!.GetType().Name, f.Name),
+            FieldType = f.FieldType,
+            Index = (int)i,
+            Anonymous = f.Name == f.FieldType.Name, // an embedded field is named for its type
+        };
+    }
+
+    // --- reflect.StructField field reads (opaque GoStructField handle) ------
+    public static GoString StructField_Name(object f) => GoString.FromDotNetString(((GoStructField)f).Name);
+    public static GoString StructField_Tag(object f) => GoString.FromDotNetString(((GoStructField)f).Tag);
+    public static GoString StructField_PkgPath(object f) =>
+        GoString.FromDotNetString(((GoStructField)f).Name.Length > 0 && char.IsUpper(((GoStructField)f).Name[0]) ? "" : "main");
+    public static bool StructField_Anonymous(object f) => ((GoStructField)f).Anonymous;
+    public static GoSlice StructField_Index(object f)
+    {
+        // []int{index}: a single-level field index path.
+        return new GoSlice { Data = new object?[] { (long)((GoStructField)f).Index }, Off = 0, Len = 1, Cap = 1 };
+    }
+    public static object StructField_Type(object f) => new GoReflectType { Sample = ZeroOf(((GoStructField)f).FieldType) };
+
+    // --- reflect.StructTag.Get / Lookup (receiver is the raw tag string) ----
+    public static GoString StructTag_Get(GoString tag, GoString key) =>
+        GoString.FromDotNetString(TagGet(tag.ToDotNetString(), key.ToDotNetString()));
+    public static object?[] StructTag_Lookup(GoString tag, GoString key)
+    {
+        string raw = tag.ToDotNetString(), k = key.ToDotNetString();
+        // Lookup reports ok=false only when the key is entirely absent.
+        bool present = System.Text.RegularExpressions.Regex.IsMatch(raw, "(^|\\s)" + System.Text.RegularExpressions.Regex.Escape(k) + ":");
+        return new object?[] { GoString.FromDotNetString(TagGet(raw, k)), present };
+    }
+
+    // --- reflect.Method field reads (handle; methods are not retained) ------
+    public static GoString Method_Name(object m) => GoString.FromDotNetString(((GoReflectMethod)m).Name);
+    public static long Method_Index(object m) => ((GoReflectMethod)m).Index;
+    public static GoString Method_PkgPath(object m) => GoString.FromDotNetString("");
+
+    private static object? ZeroOf(System.Type? t)
+    {
+        if (t == null) return null;
+        if (t == typeof(GoString)) return GoString.FromDotNetString("");
+        return t.IsValueType ? System.Activator.CreateInstance(t) : null;
     }
 
     // --- reflect.Type: more descriptor queries -----------------------------
@@ -437,4 +480,8 @@ public static class Reflect
 }
 
 /// <summary>reflect.StructField handle (the subset code commonly reads).</summary>
-public sealed class GoStructField { public string Name = ""; public string Tag = ""; public System.Type? FieldType; }
+public sealed class GoStructField { public string Name = ""; public string Tag = ""; public System.Type? FieldType; public int Index; public bool Anonymous; }
+
+/// <summary>reflect.Method handle. The runtime does not retain method sets, so
+/// these are produced only where a method list is reconstructed by name.</summary>
+public sealed class GoReflectMethod { public string Name = ""; public int Index; }

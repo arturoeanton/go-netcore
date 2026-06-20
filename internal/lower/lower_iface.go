@@ -61,15 +61,6 @@ func (c *lowerCtx) implementers(iface *types.Interface) []ifaceImpl {
 // the concrete types that implement the interface, calling the matching method.
 func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, emitRecv func(), ifaceMethod *types.Func, iface *types.Interface) goir.Type {
 	sig := ifaceMethod.Type().(*types.Signature)
-	retType := goir.TVoid
-	if sig.Results().Len() == 1 {
-		retType, _ = l.goType(sig.Results().At(0).Type())
-	} else if sig.Results().Len() > 1 {
-		// Multiple results: the lowered method returns a boxed object[] tuple, which
-		// the caller spreads (it sees a *types.Tuple). Dispatch stores/returns it
-		// like any single reference result.
-		retType = goir.TObjectArray
-	}
 
 	// Evaluate arguments once into temps (coerced to the method's param types).
 	argTmps := make([]int, len(e.Args))
@@ -79,6 +70,24 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, emitRecv func(), ifaceM
 		l.exprCoerced(a, pt)
 		l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
 		argTmps[i] = tmp
+	}
+	return l.interfaceDispatchCore(emitRecv, ifaceMethod, iface, argTmps)
+}
+
+// interfaceDispatchCore generates the isinst/typed-box/pointer matching over the
+// interface's implementers and calls the matching concrete method with the
+// receiver (from emitRecv) and the already-evaluated argument temps. Shared by a
+// direct interface call and a bound interface method value.
+func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.Func, iface *types.Interface, argTmps []int) goir.Type {
+	sig := ifaceMethod.Type().(*types.Signature)
+	retType := goir.TVoid
+	if sig.Results().Len() == 1 {
+		retType, _ = l.goType(sig.Results().At(0).Type())
+	} else if sig.Results().Len() > 1 {
+		// Multiple results: the lowered method returns a boxed object[] tuple, which
+		// the caller spreads (it sees a *types.Tuple). Dispatch stores/returns it
+		// like any single reference result.
+		retType = goir.TObjectArray
 	}
 
 	iTmp := l.addLocal(nil, goir.TObject)
@@ -124,7 +133,7 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, emitRecv func(), ifaceM
 				}
 			}
 			if embedField[i] < 0 {
-				l.fail(e.Pos(), "interface method "+ifaceMethod.Name()+" on "+impl.named.Obj().Name())
+				l.fail(ifaceMethod.Pos(), "interface method "+ifaceMethod.Name()+" on "+impl.named.Obj().Name())
 				return goir.TVoid
 			}
 		}

@@ -270,6 +270,8 @@ var opaqueShimTypes = map[string]bool{
 	"bufio.Scanner":                true,
 	"encoding/json.Decoder":        true,
 	"encoding/json.Encoder":        true,
+	"reflect.StructField":          true,
+	"reflect.Method":               true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
@@ -349,6 +351,15 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"container/list.Element": {
 		"Value": {"List", "Element_Value"},
+	},
+	"reflect.StructField": {
+		"Name": {"Reflect", "StructField_Name"}, "Tag": {"Reflect", "StructField_Tag"},
+		"Anonymous": {"Reflect", "StructField_Anonymous"}, "Index": {"Reflect", "StructField_Index"},
+		"Type": {"Reflect", "StructField_Type"}, "PkgPath": {"Reflect", "StructField_PkgPath"},
+	},
+	"reflect.Method": {
+		"Name": {"Reflect", "Method_Name"}, "Index": {"Reflect", "Method_Index"},
+		"PkgPath": {"Reflect", "Method_PkgPath"},
 	},
 	"net/http.Request": {
 		"Method": {"Http", "Req_Method"}, "URL": {"Http", "Req_URL"}, "Body": {"Http", "Req_Body"},
@@ -498,6 +509,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"reflect.Kind": {
 		"String": {"Reflect", "Kind_String"},
+	},
+	"reflect.StructTag": {
+		"Get": {"Reflect", "StructTag_Get"}, "Lookup": {"Reflect", "StructTag_Lookup"},
 	},
 	"bufio.Scanner": {
 		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"}, "Err": {"Bufio", "Scanner_Err"},

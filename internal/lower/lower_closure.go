@@ -268,6 +268,11 @@ func (l *funcLowerer) methodValue(sel *ast.SelectorExpr, seln *types.Selection) 
 		l.fail(sel.Pos(), "method value")
 		return goir.TFunc
 	}
+	// A method value on an interface receiver (j.M where j is an interface) has no
+	// concrete method body; bind it as a closure that dispatches at call time.
+	if iface, ok := l.pkg.TypesInfo.TypeOf(sel.X).Underlying().(*types.Interface); ok && iface.NumMethods() > 0 {
+		return l.interfaceMethodValue(sel, fn, iface)
+	}
 	m := l.byFunc[fn]
 	if m == nil {
 		if gm, ok := l.instantiateMethod(fn, seln); ok {
@@ -323,6 +328,71 @@ func (l *funcLowerer) methodValue(sel *ast.SelectorExpr, seln *types.Selection) 
 	l.emit(goir.Op{Code: goir.OpDup})
 	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
 	l.emitMethodReceiver(sel, fn, recvType)
+	l.emit(goir.Op{Code: goir.OpStelemRef})
+	l.emit(goir.Op{Code: goir.OpClosNew})
+	return goir.TFunc
+}
+
+// interfaceMethodValue binds j.M where j is an interface value: a closure that
+// captures the (boxed) interface receiver and, on each call, dispatches M over the
+// interface's implementers — the same machinery as a direct interface call.
+func (l *funcLowerer) interfaceMethodValue(sel *ast.SelectorExpr, fn *types.Func, iface *types.Interface) goir.Type {
+	l.needsInvoker = true
+	l.invokeMethod()
+	sig := fn.Type().(*types.Signature)
+
+	id := len(l.closures)
+	method := &goir.Method{
+		Name:    "__imvalue_" + itoa(id),
+		GoName:  "__imvalue_" + itoa(id),
+		Params:  []goir.Type{goir.TObjectArray, goir.TObjectArray}, // env, args
+		Ret:     goir.TObject,
+		Results: []goir.Type{goir.TObject},
+	}
+	ci := &closureInfo{id: id, method: method}
+	l.closures = append(l.closures, ci)
+	l.prog.Methods = append(l.prog.Methods, method)
+
+	cl := &funcLowerer{lowerCtx: l.lowerCtx, m: method, ok: true}
+	cl.typeSubst = l.typeSubst
+	cl.locals = map[types.Object]int{}
+	cl.cells = map[int]goir.Type{}
+
+	// args[] -> temps coerced to the interface method's parameter types.
+	argTmps := make([]int, sig.Params().Len())
+	for i := 0; i < sig.Params().Len(); i++ {
+		pt, _ := cl.goType(sig.Params().At(i).Type())
+		tmp := cl.addLocal(nil, pt)
+		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
+		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+		cl.emit(goir.Op{Code: goir.OpLdElemRef})
+		cl.emitUnbox(pt)
+		cl.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+		argTmps[i] = tmp
+	}
+	ret := cl.interfaceDispatchCore(func() {
+		// env[0] is the boxed interface receiver.
+		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 0})
+		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+		cl.emit(goir.Op{Code: goir.OpLdElemRef})
+	}, fn, iface, argTmps)
+	if ret == goir.TVoid {
+		cl.emit(goir.Op{Code: goir.OpLdNull})
+	} else {
+		cl.emitBox(ret)
+	}
+	cl.emit(goir.Op{Code: goir.OpRet})
+	if !cl.ok {
+		l.ok = false
+	}
+
+	// At the site: env = object[]{ the interface value (already an object) }.
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(id)})
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 1})
+	l.emit(goir.Op{Code: goir.OpNewObjArray})
+	l.emit(goir.Op{Code: goir.OpDup})
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+	l.expr(sel.X)
 	l.emit(goir.Op{Code: goir.OpStelemRef})
 	l.emit(goir.Op{Code: goir.OpClosNew})
 	return goir.TFunc
