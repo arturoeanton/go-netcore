@@ -55,12 +55,16 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"EncodeToString": {"Hex", "EncodeToString"}, "DecodeString": {"Hex", "DecodeString"},
 		"EncodedLen": {"Hex", "EncodedLen"}, "DecodedLen": {"Hex", "DecodedLen"},
 	},
-	"crypto/sha256": {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}},
-	"crypto/sha1":   {"New": {"Crypto", "Sha1New"}},
-	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}},
-	"crypto/md5":    {"New": {"Crypto", "Md5New"}},
-	"crypto/rand":   {"Read": {"Crypto", "RandRead"}},
-	"crypto/hmac":   {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
+	"crypto/sha256":  {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}},
+	"crypto/sha1":    {"New": {"Crypto", "Sha1New"}},
+	"crypto/sha512":  {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}},
+	"crypto/md5":     {"New": {"Crypto", "Md5New"}},
+	"crypto/rand":    {"Read": {"Crypto", "RandRead"}},
+	"crypto/hmac":    {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
+	"crypto/subtle":  {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}},
+	"mime":           {"TypeByExtension": {"Mime", "TypeByExtension"}},
+	"os/exec":        {"Command": {"Exec", "Command"}},
+	"container/list": {"New": {"List", "New"}},
 	"net/url": {
 		"QueryEscape": {"Url", "QueryEscape"}, "PathEscape": {"Url", "PathEscape"},
 		"QueryUnescape": {"Url", "QueryUnescape"}, "PathUnescape": {"Url", "PathUnescape"},
@@ -211,6 +215,9 @@ var opaqueShimTypes = map[string]bool{
 	"regexp.Regexp":                true,
 	"net/url.URL":                  true,
 	"net/http.Response":            true,
+	"os/exec.Cmd":                  true,
+	"container/list.List":          true,
+	"container/list.Element":       true,
 	"math/big.Int":                 true,
 	"encoding/base32.Encoding":     true,
 	"strings.Reader":               true,
@@ -286,6 +293,9 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"net/http.Response": {
 		"StatusCode": {"Http", "Resp_StatusCode"}, "Status": {"Http", "Resp_Status"},
 		"Body": {"Http", "Resp_Body"}, "ContentLength": {"Http", "Resp_ContentLength"},
+	},
+	"container/list.Element": {
+		"Value": {"List", "Element_Value"},
 	},
 }
 
@@ -378,6 +388,16 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"io.ReadCloser": {
 		"Close": {"Http", "Body_Close"},
+	},
+	"os/exec.Cmd": {
+		"Output": {"Exec", "Cmd_Output"}, "CombinedOutput": {"Exec", "Cmd_CombinedOutput"}, "Run": {"Exec", "Cmd_Run"},
+	},
+	"container/list.List": {
+		"Len": {"List", "List_Len"}, "Front": {"List", "List_Front"}, "Back": {"List", "List_Back"},
+		"PushBack": {"List", "List_PushBack"}, "PushFront": {"List", "List_PushFront"}, "Remove": {"List", "List_Remove"},
+	},
+	"container/list.Element": {
+		"Next": {"List", "Element_Next"}, "Prev": {"List", "Element_Prev"},
 	},
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
