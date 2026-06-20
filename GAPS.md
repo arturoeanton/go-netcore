@@ -67,8 +67,8 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 |---|---|---|---|
 | errors/fmt/strconv/strings/bytes/sort/math/math-bits | 🟡 (shimmed; float ftoa parity pending) | M | ✅ |
 | strings.Builder / bytes.Buffer / io.WriteString / fmt.Fprint* | ✅ | M | ✅ |
-| io (Reader/Writer ifaces, ReadAll/Copy) / bufio / context | 🚧 | M | ✅ |
-| encoding/json — Marshal (Go tags, sorted keys) ✅; Unmarshal 🚧 | 🟡 | L | ✅ |
+| context (Background/WithValue/WithCancel/WithTimeout) ✅; io ifaces/bufio 🚧 | 🟡 | M | ✅ |
+| encoding/json — Marshal + Unmarshal (descriptor-driven write-path) | ✅ | L | ✅ |
 | net/http overlay on Kestrel | 🚧 | XL | ✅ |
 | net/url, mime, mime/multipart | 🚧 | M | ✅ |
 | regexp (+ syntax) | 🚧 | L | ✅ |
@@ -76,7 +76,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | reflect (read-path: kinds/fields/tags/values) ✅; settable write-path 🚧 | 🟡 | L | ✅ |
 | time (Duration + time.Time/Format) ✅; runtime/log/slog 🚧 | 🟡 | M | ✅ |
 | os (env/exit/getpid/Stdout/Stderr) ✅; path/filepath 🚧 | 🟡 | M | ✅ |
-| math/rand (seeded, deterministic) | 🚧 | M | ✅ |
+| math/rand (seeded, deterministic — Go rngSource port) | ✅ | M | ✅ |
 | GoCLR.Stdlib.dll packaging + linker copy | ✅ | M | ✅ |
 
 ## 5. Target dependency compatibility
@@ -105,7 +105,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Item | State | Effort | MVP? |
 |---|---|---|---|
 | Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
-| 82 conformance fixtures (000–283), all byte-exact vs `go run` | ✅ | M | ✅ |
+| 86 conformance fixtures (000–286), all byte-exact vs `go run` | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |

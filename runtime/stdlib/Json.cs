@@ -1,7 +1,9 @@
 namespace GoCLR.Stdlib;
 
+using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using GoCLR.Runtime;
 
 /// <summary>Shim for a subset of Go's <c>encoding/json</c> (Marshal). Uses .NET
@@ -144,4 +146,170 @@ public static class Json
         GoMap m => m.Data.Count == 0,
         _ => false,
     };
+
+    // ---- Unmarshal ---------------------------------------------------------
+
+    /// <summary>json.Unmarshal(data, &amp;v). desc is a compact JSON descriptor of
+    /// v's static type (emitted by the compiler, since the runtime erases slice/map
+    /// element types). The decoded value is written back through the GoPtr cell.</summary>
+    public static object? Unmarshal(GoSlice data, object? target, GoString desc)
+    {
+        try
+        {
+            string json = SliceToString(data);
+            using var doc = JsonDocument.Parse(json);
+            using var ddoc = JsonDocument.Parse(desc.ToDotNetString());
+            object? decoded = Decode(doc.RootElement, ddoc.RootElement);
+            SetPtr(target, decoded);
+            return null;
+        }
+        catch (System.Exception e)
+        {
+            return new GoError(GoString.FromDotNetString(e.Message));
+        }
+    }
+
+    private static string SliceToString(GoSlice s)
+    {
+        var b = new byte[s.Len];
+        for (int i = 0; i < s.Len; i++) b[i] = (byte)System.Convert.ToInt64(s.Data[s.Off + i]);
+        return Encoding.UTF8.GetString(b);
+    }
+
+    private static void SetPtr(object? target, object? value)
+    {
+        if (target == null) throw new System.Exception("json: Unmarshal(nil)");
+        var vf = target.GetType().GetField("Value");
+        if (vf == null) throw new System.Exception("json: Unmarshal(non-pointer)");
+        vf.SetValue(target, Coerce(value, vf.FieldType));
+    }
+
+    // Decode a JSON element into the canonical boxed Go value for a descriptor.
+    private static object? Decode(JsonElement j, JsonElement desc)
+    {
+        string k = desc.GetProperty("k").GetString() ?? "any";
+        if (j.ValueKind == JsonValueKind.Null) return DefaultFor(k);
+        switch (k)
+        {
+            case "bool": return j.GetBoolean();
+            case "int": return j.TryGetInt64(out long li) ? li : (long)j.GetDouble();
+            case "uint": return j.TryGetUInt64(out ulong ui) ? ui : (ulong)j.GetDouble();
+            case "float": return j.GetDouble();
+            case "string": return GoString.FromDotNetString(j.GetString() ?? "");
+            case "bytes":
+            {
+                var raw = System.Convert.FromBase64String(j.GetString() ?? "");
+                var d = new object?[raw.Length];
+                for (int i = 0; i < raw.Length; i++) d[i] = (int)raw[i];
+                return new GoSlice { Data = d, Off = 0, Len = raw.Length, Cap = raw.Length };
+            }
+            case "ptr": return Decode(j, desc.GetProperty("e"));
+            case "slice":
+            {
+                var et = desc.GetProperty("e");
+                int n = j.GetArrayLength();
+                var d = new object?[n];
+                int idx = 0;
+                foreach (var el in j.EnumerateArray()) d[idx++] = Decode(el, et);
+                return new GoSlice { Data = d, Off = 0, Len = n, Cap = n };
+            }
+            case "map":
+            {
+                var vt = desc.GetProperty("v");
+                var m = GoMaps.Make();
+                foreach (var prop in j.EnumerateObject())
+                    m.Data![GoString.FromDotNetString(prop.Name)] = Decode(prop.Value, vt);
+                return m;
+            }
+            case "struct": return DecodeStruct(j, desc);
+            default: return DecodeAny(j);
+        }
+    }
+
+    private static object? DecodeStruct(JsonElement j, JsonElement desc)
+    {
+        string cname = desc.GetProperty("n").GetString() ?? "";
+        var t = ResolveType(cname);
+        if (t == null) throw new System.Exception("json: unknown type " + cname);
+        object inst = System.Activator.CreateInstance(t)!;
+        // index JSON members case-insensitively (Go matches that way)
+        var members = new Dictionary<string, JsonElement>(System.StringComparer.OrdinalIgnoreCase);
+        foreach (var p in j.EnumerateObject()) members[p.Name] = p.Value;
+        foreach (var fd in desc.GetProperty("f").EnumerateArray())
+        {
+            string jkey = fd.GetProperty("j").GetString() ?? "";
+            if (!members.TryGetValue(jkey, out var jv)) continue;
+            string cfield = fd.GetProperty("c").GetString() ?? "";
+            var fi = t.GetField(cfield);
+            if (fi == null) continue;
+            object? val = Decode(jv, fd.GetProperty("t"));
+            fi.SetValue(inst, Coerce(val, fi.FieldType));
+        }
+        return inst;
+    }
+
+    // Generic decode for interface{} targets — mirrors Go's default mapping.
+    private static object? DecodeAny(JsonElement j)
+    {
+        switch (j.ValueKind)
+        {
+            case JsonValueKind.True: return true;
+            case JsonValueKind.False: return false;
+            case JsonValueKind.Number: return j.GetDouble();
+            case JsonValueKind.String: return GoString.FromDotNetString(j.GetString() ?? "");
+            case JsonValueKind.Array:
+            {
+                int n = j.GetArrayLength();
+                var d = new object?[n];
+                int i = 0;
+                foreach (var el in j.EnumerateArray()) d[i++] = DecodeAny(el);
+                return new GoSlice { Data = d, Off = 0, Len = n, Cap = n };
+            }
+            case JsonValueKind.Object:
+            {
+                var m = GoMaps.Make();
+                foreach (var p in j.EnumerateObject()) m.Data![GoString.FromDotNetString(p.Name)] = DecodeAny(p.Value);
+                return m;
+            }
+            default: return null;
+        }
+    }
+
+    private static object? DefaultFor(string k) => k switch
+    {
+        "int" => (long)0, "uint" => (ulong)0, "float" => (double)0, "bool" => false, _ => null,
+    };
+
+    // Coerce a canonical boxed value to the concrete CLR field type (handles int
+    // widths and pointer wrapping).
+    private static object? Coerce(object? v, System.Type target)
+    {
+        if (v == null) return target.IsValueType ? System.Activator.CreateInstance(target) : null;
+        if (target.IsInstanceOfType(v)) return v;
+        if (target.IsGenericType && target.GetGenericTypeDefinition() == typeof(GoPtr<>))
+        {
+            var elem = target.GetGenericArguments()[0];
+            return System.Activator.CreateInstance(target, Coerce(v, elem));
+        }
+        if (target == typeof(long) || target == typeof(int) || target == typeof(short) || target == typeof(sbyte)
+            || target == typeof(ulong) || target == typeof(uint) || target == typeof(ushort) || target == typeof(byte))
+            return System.Convert.ChangeType(v, target);
+        if (target == typeof(double) || target == typeof(float))
+            return System.Convert.ChangeType(v, target);
+        return v;
+    }
+
+    private static readonly Dictionary<string, System.Type?> TypeCache = new();
+    private static System.Type? ResolveType(string name)
+    {
+        if (TypeCache.TryGetValue(name, out var cached)) return cached;
+        System.Type? found = null;
+        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            found = asm.GetType(name);
+            if (found != null) break;
+        }
+        TypeCache[name] = found;
+        return found;
+    }
 }

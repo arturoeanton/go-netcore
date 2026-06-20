@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**82 conformance fixtures pass, all byte-exact vs `go run`.**
+**86 conformance fixtures pass, all byte-exact vs `go run`.**
 
 Foundations (§0.1) — **DONE**: multi-package lowering (main + transitive non-stdlib
 closure → one assembly), package-level vars + `init()` (`__goclr_init`), the C# shim /
@@ -32,15 +32,25 @@ variables** (`os.Stdout`/`Stderr`/`time.UTC`).
 Reflect keystone (§5) — **read-path DONE**: reflection in C# over boxed values + a
 compiler-emitted struct-tag registry; powers `fmt %v/%+v`, `json.Marshal`.
 
+Native function values (§) — **DONE**: GoClosure gains a native-delegate fallback in
+the dispatcher, so the runtime/stdlib can hand Go callable function values
+(context.CancelFunc, future time.AfterFunc/sync.OnceFunc).
+
+json write-path (§) — **DONE via descriptors**: `json.Unmarshal` decodes into
+structs (nested + slice-of-struct), slices, maps, primitives, and `interface{}`,
+using a compiler-emitted type descriptor (the runtime erases slice/map element
+types) and writing back through the GoPtr cell.
+
 P0 packages shimmed (byte-exact): `math`, `strings` (+`Builder`), `bytes` (+`Buffer`),
 `errors`, `unicode`, `unicode/utf8`, `strconv`, `math/bits`, `os`, `reflect`,
-`encoding/json` (Marshal), `fmt` (+`Fprint*`), `io` (`WriteString`), `sort`, `sync`
-(Mutex/RWMutex/WaitGroup/Once/Map), `time` (Duration + `time.Time`/`Format`).
-String conversions and the `error` model (IGoError fallback) done.
+`encoding/json` (Marshal + Unmarshal), `fmt` (+`Fprint*`), `io` (`WriteString`),
+`sort`, `sync` (Mutex/RWMutex/WaitGroup/Once/Map), `time` (Duration +
+`time.Time`/`Format`), `math/rand` (seeded deterministic), `context`
+(Background/TODO/WithValue/WithCancel/WithTimeout + Done/Err/Value). String
+conversions and the `error` model (IGoError fallback) done.
 
-P0 remaining: `math/rand` (seeded deterministic port), `context` (Background/TODO/
-WithValue + Done/Err/Value), the **write-path** (`json.Unmarshal` +
-`reflect.Value.Set*`/`New`/`Elem`), and float shortest-round-trip (`strconv` ftoa)
+P0 remaining: the general `reflect` write-path (`reflect.Value.Set*`/`New`/`Elem`)
+for code using reflect directly, and float shortest-round-trip (`strconv` ftoa)
 parity for exact `%g`/`%v`.
 
 Documented limitations: `time.Time` is UTC-only (use `.UTC()` for determinism;

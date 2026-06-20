@@ -362,6 +362,10 @@ func (l *funcLowerer) unaryExpr(e *ast.UnaryExpr) {
 // cross-package pkg.Func), resolving the callee through the global byFunc table,
 // or monomorphizing a generic function.
 func (l *funcLowerer) namedFuncCall(e *ast.CallExpr, ident *ast.Ident, fn *types.Func) goir.Type {
+	// json.Unmarshal needs the target's static type, encoded as a descriptor.
+	if fn.Pkg() != nil && fn.Pkg().Path() == "encoding/json" && fn.Name() == "Unmarshal" {
+		return l.jsonUnmarshalCall(e)
+	}
 	// Shimmed stdlib function -> external (GoCLR.Stdlib) call.
 	if ext, ok := l.shimExtern(fn); ok {
 		variadic := false

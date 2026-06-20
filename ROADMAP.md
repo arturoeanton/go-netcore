@@ -216,15 +216,21 @@ Foundations (the "how"):
 
 P0 packages shimmed (byte-exact): `math`, `strings` (+`strings.Builder`), `bytes`
 (+`bytes.Buffer`), `errors`, `unicode`, `unicode/utf8`, `strconv`, `math/bits`,
-`os`, `reflect`, `encoding/json` (Marshal), `fmt` (+`Fprint*`), `io`
-(`WriteString`), `sort`, `sync` (Mutex/RWMutex/WaitGroup/Once/Map), `time`
-(Duration + `time.Time` incl. `Format`). String conversions
-(`string(rune)`/`[]byte`/`[]rune`) and the `error` model (IGoError fallback) done.
+`os`, `reflect`, `encoding/json` (Marshal **and** Unmarshal), `fmt` (+`Fprint*`),
+`io` (`WriteString`), `sort`, `sync` (Mutex/RWMutex/WaitGroup/Once/Map), `time`
+(Duration + `time.Time` incl. `Format`), `math/rand` (seeded, deterministic),
+`context` (Background/TODO/WithValue/WithCancel/WithTimeout + Done/Err/Value).
+String conversions (`string(rune)`/`[]byte`/`[]rune`), the `error` model (IGoError
+fallback), and **native function values** (runtime-produced closures, e.g.
+context.CancelFunc) done.
+
+`json.Unmarshal` decodes into structs (incl. nested + slice-of-struct), slices,
+maps, primitives, and `interface{}` via a compiler-emitted type descriptor (the
+runtime erases slice/map element types), writing back through the GoPtr cell.
 
 P0 remaining:
-- 🚧 `math/rand` (port Go's deterministic seeded generator for byte-match)
-- 🚧 `context` (Background/TODO/WithValue + Done/Err/Value; CancelFunc variants need func-value work)
-- 🚧 **write-path**: `json.Unmarshal` + `reflect.Value.Set*`/`New`/`Elem`
+- 🚧 general `reflect` write-path (`reflect.Value.Set*`/`New`/`Elem`) for code
+  using reflect directly (json.Unmarshal already covered via descriptors)
 - 🚧 float shortest-round-trip (`strconv` ftoa) parity for exact `%g`/`%v`
 
 Known documented limitations:
