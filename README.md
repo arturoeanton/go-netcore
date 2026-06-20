@@ -31,7 +31,7 @@ fields for `sync/atomic`, then goja's `reflect`-based interop) is tracked in
 ## Status
 
 The compiler runs end-to-end: front half + the ECMA-335 emitter + the .NET runtime
-+ a stdlib overlay. **144 conformance fixtures pass byte-for-byte vs `go run`.**
++ a stdlib overlay. **145 conformance fixtures pass byte-for-byte vs `go run`.**
 See [ROADMAP.md](ROADMAP.md) / [ROADMAP-M2.5.md](ROADMAP-M2.5.md) for the milestone
 breakdown and [LIMITATIONS.md](LIMITATIONS.md) for the tracked gaps.
 
@@ -58,7 +58,7 @@ actionable `GCLR0301`. Try it:
 go build -o bin/goclr ./cmd/goclr
 bin/goclr run ./tests/conformance/015_fib            # fib(0..9), matches `go run`
 bin/goclr run ./tests/conformance/286_json_unmarshal # struct/slice/map decode
-go test ./tests/conformance/                         # all 144 fixtures vs `go run`
+go test ./tests/conformance/                         # all 145 fixtures vs `go run`
 ```
 
 ## Install / build

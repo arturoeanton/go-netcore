@@ -49,25 +49,20 @@ the top of a goroutine prints the .NET unhandled-exception format
 and message are correct; the surrounding framing and the stack trace are not
 reproduced. (Conformance compares recovered panics, whose output is exact.)
 
-## Atomic / addressable struct fields (`&s.field` for sync/atomic)
-
-Taking the address of a **struct field** (`&t.v`, e.g. to call
-`atomic.LoadInt64(&t.v)`) is unsupported: goclr boxes struct values, so a field has
-no independent, stable, addressable storage that a `GoPtr` could alias and that
-`atomic.*` could mutate in place with correct cross-goroutine semantics. Addresses
-of locals (`&x`), composite literals (`&T{...}`), and slice elements (`&s[i]`) work;
-field addresses do not. A correct fix needs field-aliasing pointers with a shared
-lock rooted at the containing object — deferred rather than shipped half-correct.
-
 ## goja validation target
 
 The typed box resolved goja's headline blocker (the `sort.StringSlice` /
-representation-collapse dispatch), and goja now compiles through `sort`, `cmp`,
-`slices`, and most of the `regexp2` dependency. It does **not** yet run end-to-end:
-`regexp2`'s `fastclock` uses `atomic.LoadInt64(&field)` (the struct-field-address
-gap above), and goja's Go↔JS interop is heavily `reflect`-based (a large surface
-beyond the current reflect shim). `examples/demo_goja` and `tests/validation/goja`
-track this target; the harness reports it skipped until it runs.
+representation-collapse dispatch). Addressable struct fields (`&s.field`, incl.
+correct `sync/atomic` on a field) are now implemented (field-alias pointers that
+re-navigate a stable root under the atomic shim's lock). goja now **compiles
+through** `sort`/`cmp`/`slices`, all of `regexp2`, `go-sourcemap`, and into goja's
+own packages (`unistring`, `file`, `ast`). It does **not** yet run end-to-end. The
+current frontier is **interface dispatch to a generic-type implementer**
+(`Optional[T]` satisfying goja's `ast` node interfaces — the implementer's method
+is monomorphized per instantiation, so dispatch can't yet resolve it), and beyond
+that goja's Go↔JS interop is heavily `reflect`-based (a large surface beyond the
+current reflect shim). `examples/demo_goja` and `tests/validation/goja` track this
+target; the harness reports it skipped until it runs.
 
 ## Function values of shimmed stdlib functions
 
