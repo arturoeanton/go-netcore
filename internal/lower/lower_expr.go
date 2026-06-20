@@ -454,6 +454,10 @@ func (l *funcLowerer) namedFuncCall(e *ast.CallExpr, ident *ast.Ident, fn *types
 	if fn.Pkg() != nil && fn.Pkg().Path() == "encoding/json" && fn.Name() == "Unmarshal" {
 		return l.jsonUnmarshalCall(e)
 	}
+	// errors.As needs the target's concrete type to match against the chain.
+	if fn.Pkg() != nil && fn.Pkg().Path() == "errors" && fn.Name() == "As" {
+		return l.errorsAsCall(e)
+	}
 	// Shimmed stdlib function -> external (GoCLR.Stdlib) call.
 	if ext, ok := l.shimExtern(fn); ok {
 		variadic := false

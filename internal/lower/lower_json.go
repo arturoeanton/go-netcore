@@ -9,6 +9,43 @@ import (
 	"github.com/arturoeanton/go-netcore/internal/goir"
 )
 
+// errorsAsCall lowers errors.As(err, &target). The runtime erases the target's
+// static type, so the matched concrete type's CLR name is passed as a descriptor;
+// the shim walks the Unwrap chain and assigns the first matching error to *target.
+func (l *funcLowerer) errorsAsCall(e *ast.CallExpr) goir.Type {
+	if len(e.Args) != 2 {
+		l.fail(e.Pos(), "errors.As arguments")
+		return goir.TVoid
+	}
+	desc := ""
+	if pt, ok := l.pkg.TypesInfo.TypeOf(e.Args[1]).Underlying().(*types.Pointer); ok {
+		desc = l.errorMatchName(pt.Elem()) // matched type T (target is *T)
+	}
+	ext := &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Errors", Method: "As",
+		Params: []goir.Type{goir.TObject, goir.TObject, goir.TString}, Ret: goir.TBool,
+	}
+	l.exprCoerced(e.Args[0], goir.TObject) // err
+	l.expr(e.Args[1])                      // *target (a GoPtr)
+	l.emit(goir.Op{Code: goir.OpStrConst, Str: desc})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+	return goir.TBool
+}
+
+// errorMatchName returns the CLR type name the errors.As shim compares chain
+// errors against: the named struct behind a *T or T target element type.
+func (l *funcLowerer) errorMatchName(t types.Type) string {
+	if p, ok := t.Underlying().(*types.Pointer); ok {
+		t = p.Elem()
+	}
+	if named, ok := t.(*types.Named); ok {
+		if _, isStruct := named.Underlying().(*types.Struct); isStruct {
+			return l.structFor(named).Name
+		}
+	}
+	return ""
+}
+
 // jsonUnmarshalCall lowers encoding/json.Unmarshal(data, &v). Because the runtime
 // slice/map representation erases element types, the static type of the target is
 // encoded into a descriptor string (compact JSON) built here and consumed by the
