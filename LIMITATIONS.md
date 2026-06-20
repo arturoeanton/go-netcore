@@ -51,6 +51,11 @@ special-case expansions (e.g. `İ` U+0130 → `i` + combining dot) are not appli
 `time.Time` operates in UTC. Go's `time.Now()`/`time.Unix()` use the local zone;
 for cross-runtime-deterministic output use `.UTC()` and `time.Date(..., time.UTC)`.
 
+## Multi-value call as an argument list
+
+`f(g())` where `g` returns multiple values (e.g. `fmt.Println(strconv.Atoi(s))`)
+is not yet supported — assign the results first (`v, err := g(); f(v, err)`).
+
 ## Misc
 
 - `strings.NewReplacer`, `strings.EqualFold` full-Unicode folding, and

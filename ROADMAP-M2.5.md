@@ -19,7 +19,14 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**88 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete.**
+**99 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
+hardened** (an adversarial multi-agent sweep over all 20 packages found and fixed
+~30 divergences: fmt verb engine + flags/width + no-crash type handling, strconv
+ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embedded/
+pointer-field, a latent nil-slice lowering segfault, time Duration.String integer
+precision, errors `%w` wrapping, Go-exact float ftoa, string slicing, append spread,
+local type/const decls, and broad method coverage). Deferred edges are tracked in
+`LIMITATIONS.md`. Tagged `0.0.2.p0full` (initial), hardening continues toward P1.
 
 Foundations (§0.1) — **DONE**: multi-package lowering (main + transitive non-stdlib
 closure → one assembly), package-level vars + `init()` (`__goclr_init`), the C# shim /
