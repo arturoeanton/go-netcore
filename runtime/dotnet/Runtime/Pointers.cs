@@ -23,6 +23,16 @@ public sealed class GoPtr
     /// </summary>
     public object?[]? Arr;
     public int Idx;
+
+    /// <summary>
+    /// When non-null, this pointer aliases a struct field (from &amp;s.field). FGet
+    /// re-reads and FSet re-writes the field through its stable container each call,
+    /// so the pointer and the field observe the same storage even though structs are
+    /// boxed value types. Re-navigating (rather than caching a copy) is what makes
+    /// sync/atomic on a struct field correct under a shared lock.
+    /// </summary>
+    public GoClosure? FGet;
+    public GoClosure? FSet;
 }
 
 /// <summary>GoPtr operations the compiler calls into.</summary>
@@ -38,6 +48,7 @@ public static class GoPtrs
     public static object? Get(GoPtr? p)
     {
         if (p == null) throw NilDeref();
+        if (p.FGet != null) return GoRuntime.InvokeArgs(p.FGet);
         return p.Arr != null ? p.Arr[p.Idx] : p.Value;
     }
 
@@ -45,6 +56,7 @@ public static class GoPtrs
     public static void Set(GoPtr? p, object? value)
     {
         if (p == null) throw NilDeref();
+        if (p.FSet != null) { GoRuntime.InvokeArgs(p.FSet, value); return; }
         if (p.Arr != null) p.Arr[p.Idx] = value; else p.Value = value;
     }
 

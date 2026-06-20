@@ -18,7 +18,22 @@ func (c *lowerCtx) analyzeAddrTaken(body ast.Node) map[types.Object]bool {
 		return set
 	}
 	mark := func(e ast.Expr) {
-		if id, ok := unparen(e).(*ast.Ident); ok {
+		e = unparen(e)
+		// &x.f (and deeper, &x.f.g): the field has no standalone storage, so the
+		// root value local must become a cell to be aliased. Walk to the root,
+		// stopping if a base is a pointer (then &p.f aliases through the pointer and
+		// the base needs no cell).
+		for {
+			sel, ok := e.(*ast.SelectorExpr)
+			if !ok {
+				break
+			}
+			if isPointerType(pkg.TypesInfo.TypeOf(sel.X)) {
+				return
+			}
+			e = unparen(sel.X)
+		}
+		if id, ok := e.(*ast.Ident); ok {
 			if v, ok := pkg.TypesInfo.Uses[id].(*types.Var); ok {
 				// Opaque value-type shims are already reference handles; taking
 				// their address does not require a cell.
@@ -181,6 +196,13 @@ func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 		if !l.emitAddr(x) {
 			l.fail(e.Pos(), "address of "+x.Name)
 		}
+	case *ast.SelectorExpr:
+		// &s.field: a struct field has no standalone storage, so build a field-alias
+		// pointer that reads/writes the field through its stable container.
+		if l.buildFieldAlias(x) {
+			return
+		}
+		l.fail(e.Pos(), "address-of field "+x.Sel.Name)
 	case *ast.CompositeLit:
 		// &T{...}: a fresh cell holding the composite value.
 		t := l.compositeLit(x)

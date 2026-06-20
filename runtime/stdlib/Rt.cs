@@ -27,6 +27,11 @@ public static class Rt
     /// <summary>The named-type id of a boxed value, or 0 if it carries no identity.</summary>
     public static long NamedId(object? v) => v is GoNamed n ? n.TypeId : 0;
 
+    /// <summary>A pointer aliasing a struct field (&amp;s.field): the getter/setter
+    /// closures re-navigate the field's stable container on each *p access.</summary>
+    public static GoPtr FieldPtr(GoClosure getter, GoClosure setter) =>
+        new() { FGet = getter, FSet = setter };
+
     /// <summary>A slice is nil iff its backing array is null (Go's `s == nil`).</summary>
     public static bool SliceIsNil(GoSlice s) => s.Data == null;
 
