@@ -568,6 +568,17 @@ func (l *funcLowerer) emitTypeMatch(valLocal int, gt types.Type, t goir.Type, ma
 		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})
 		return
 	}
+	// `case I:` where I is a non-empty interface: match by interface satisfaction,
+	// not `isinst object` (which matches every boxed value). e.g. a type switch with
+	// both `case String` (an interface) and `case *Object` must not route an *Object
+	// into the String arm.
+	if iface, ok := gt.Underlying().(*types.Interface); ok && iface.NumMethods() > 0 {
+		tmp := l.addLocal(nil, goir.TObject)
+		l.emitInterfaceAssert(func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal}) }, iface, tmp)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})
+		return
+	}
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
 	l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: t})
 	l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})
