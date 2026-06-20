@@ -40,6 +40,7 @@ type lowerCtx struct {
 	// each concrete instantiation discovered at a call site is monomorphized into
 	// its own method (monoInsts, keyed by name+type-args) and queued in monoTodo.
 	genericDecls       map[string]*ast.FuncDecl
+	genericDeclPkg     map[string]*frontend.Package  // owning package of each generic func template (for cross-package instantiation)
 	genericMethodDecls map[*types.Func]*ast.FuncDecl // generic method templates, by origin *types.Func
 	monoInsts          map[string]*goir.Method
 	monoTodo           []monoJob
@@ -83,6 +84,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		anonStructReg:      map[string]*goir.Struct{},
 		structByName:       map[string]*goir.Struct{},
 		genericDecls:       map[string]*ast.FuncDecl{},
+		genericDeclPkg:     map[string]*frontend.Package{},
 		genericMethodDecls: map[*types.Func]*ast.FuncDecl{},
 		monoInsts:          map[string]*goir.Method{},
 		prefixOf:           map[*types.Package]string{},
@@ -123,6 +125,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		for _, fd := range funcDecls(p) {
 			if fd.Recv == nil && fd.Type.TypeParams != nil && fd.Type.TypeParams.NumFields() > 0 {
 				c.genericDecls[fd.Name.Name] = fd
+				c.genericDeclPkg[fd.Name.Name] = p
 				continue
 			}
 			if fd.Recv != nil {

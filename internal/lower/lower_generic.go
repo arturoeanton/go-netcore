@@ -107,12 +107,24 @@ func (l *funcLowerer) genericCallee(fun *ast.Ident) (*goir.Method, bool) {
 		return nil, false
 	}
 
+	// The template may live in another package (e.g. a generic in a dependency);
+	// its type parameters and parameter AST nodes must be resolved with the
+	// template's TypesInfo, not the caller's. Instances[fun] above is correctly
+	// read from the caller (that is where the call site is).
+	declPkg := l.genericDeclPkg[fun.Name]
+	if declPkg == nil {
+		declPkg = l.pkg
+	}
+
 	subst := map[*types.TypeParam]types.Type{}
 	var key strings.Builder
 	key.WriteString(fun.Name)
 	key.WriteByte('[')
 	// Map each type parameter object to its concrete argument, in order.
+	saved := l.pkg
+	l.pkg = declPkg
 	tpObjs := l.typeParamObjs(decl)
+	l.pkg = saved
 	for i, tp := range tpObjs {
 		if i >= inst.TypeArgs.Len() {
 			break
@@ -131,13 +143,15 @@ func (l *funcLowerer) genericCallee(fun *ast.Ident) (*goir.Method, bool) {
 		return m, true
 	}
 
+	l.pkg = declPkg
 	m, ok := l.shellWithSubst(decl, mangleMono(k), subst)
+	l.pkg = saved
 	if !ok {
 		return nil, false
 	}
 	l.monoInsts[k] = m
 	l.prog.Methods = append(l.prog.Methods, m)
-	l.monoTodo = append(l.monoTodo, monoJob{decl: decl, method: m, subst: subst, pkg: l.pkg})
+	l.monoTodo = append(l.monoTodo, monoJob{decl: decl, method: m, subst: subst, pkg: declPkg})
 	return m, true
 }
 

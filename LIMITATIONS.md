@@ -111,6 +111,16 @@ interface-dispatch item above. The supporting infrastructure is in place
 source, long-form local opcodes, `&slice[i]`); the remaining blocker is the
 runtime type system. Tracked as an M3 milestone. See GOJA-STRATEGY.md.
 
+## `slices` / `cmp`
+
+Not yet provided. The path is a source overlay like `sort`'s (cross-package generic
+instantiation now works, so the generic functions monomorphize correctly). The one
+remaining constraint is **API completeness**: overlaying `slices` replaces its
+source for the whole build's type-checking, so the overlay must define every
+exported function any package in the graph uses — `os`, for instance, calls
+`slices.Grow`. A partial overlay breaks unrelated stdlib type-checking, so the
+overlay must implement the full non-iterator API (~32 functions).
+
 ## Misc
 
 - `strings.NewReplacer`, `strings.EqualFold` full-Unicode folding, and
