@@ -70,8 +70,8 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | context (Background/WithValue/WithCancel/WithTimeout) ✅; io ifaces/bufio 🚧 | 🟡 | M | ✅ |
 | encoding/json — Marshal + Unmarshal (descriptor-driven write-path) | ✅ | L | ✅ |
 | net/http overlay on Kestrel | 🚧 | XL | ✅ |
-| net/url, mime, mime/multipart | 🚧 | M | ✅ |
-| regexp (+ syntax) | 🚧 | L | ✅ |
+| net/url (escapes) ✅; mime, mime/multipart 🚧 | 🟡 | M | ✅ |
+| regexp (.NET Regex; common RE2 patterns) | 🟡 | L | ✅ |
 | unicode/utf8 ✅; utf16 | 🟡 | S | ✅ |
 | reflect (read-path + settable write-path: Set*/Field/New) | ✅ | L | ✅ |
 | time (Duration + time.Time/Format) ✅; runtime/log/slog 🚧 | 🟡 | M | ✅ |
@@ -105,7 +105,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Item | State | Effort | MVP? |
 |---|---|---|---|
 | Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
-| 99 conformance fixtures (000–299), all byte-exact vs `go run` | ✅ | M | ✅ |
+| 104 conformance fixtures (000–304), all byte-exact vs `go run` | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |

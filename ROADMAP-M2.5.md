@@ -26,7 +26,17 @@ ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embe
 pointer-field, a latent nil-slice lowering segfault, time Duration.String integer
 precision, errors `%w` wrapping, Go-exact float ftoa, string slicing, append spread,
 local type/const decls, and broad method coverage). Deferred edges are tracked in
-`LIMITATIONS.md`. Tagged `0.0.2.p0full` (initial), hardening continues toward P1.
+`LIMITATIONS.md`. Tagged `0.0.2.p0full` (initial), `0.0.3.p0hard` (hardened).
+
+**P1 in progress** (`0.0.4.p1`): shimmed `encoding/hex`, `encoding/base64`,
+`encoding/base32`, `encoding/binary`, `crypto/sha256·sha1·sha512·md5`,
+`crypto/rand`, `path`, `path/filepath`, `net/url` (escapes), `regexp` (.NET Regex),
+`log`, `math/big` (Int). 104 conformance fixtures. Enablers added along the way:
+`GoRuntime.InvokeArgs` (shims call back into Go funcs), native-closure-to-shim,
+`new(opaqueShim)` yields the shim object. Still deferred for P1 (need larger
+features — fixed arrays, io.Reader plumbing, Kestrel): `net` TCP/UDP, `net/http`
+server+client, `bufio`/`io` interfaces, `container/heap·list`, `crypto/hmac`,
+`log/slog`, `x/crypto/bcrypt`.
 
 Foundations (§0.1) — **DONE**: multi-package lowering (main + transitive non-stdlib
 closure → one assembly), package-level vars + `init()` (`__goclr_init`), the C# shim /
