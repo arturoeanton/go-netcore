@@ -410,6 +410,9 @@ var binaryMethods = map[string]shimFunc{
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
+	"net/url.URL": {
+		"IsAbs": {"Url", "URL_IsAbs"}, "String": {"Url", "URL_String"},
+	},
 	"reflect.Type": {
 		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},
 		"String": {"Reflect", "Type_String"}, "NumField": {"Reflect", "Type_NumField"},

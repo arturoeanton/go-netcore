@@ -46,6 +46,24 @@ public static class Url
     public static GoString URL_Opaque(object u) => GoString.FromDotNetString(((GoUrl)u).Opaque);
     public static object? URL_User(object u) => ((GoUrl)u).User.Length == 0 ? null : GoString.FromDotNetString(((GoUrl)u).User);
 
+    public static bool URL_IsAbs(object u) => ((GoUrl)u).Scheme.Length > 0;
+    public static GoString URL_String(object uo)
+    {
+        var u = (GoUrl)uo;
+        var sb = new System.Text.StringBuilder();
+        if (u.Scheme.Length > 0) sb.Append(u.Scheme).Append(':');
+        if (u.Opaque.Length > 0) { sb.Append(u.Opaque); }
+        else
+        {
+            if (u.Host.Length > 0 || u.Scheme.Length > 0) sb.Append("//");
+            if (u.User.Length > 0) sb.Append(u.User).Append('@');
+            sb.Append(u.Host).Append(u.Path);
+        }
+        if (u.RawQuery.Length > 0) sb.Append('?').Append(u.RawQuery);
+        if (u.Fragment.Length > 0) sb.Append('#').Append(u.Fragment);
+        return GoString.FromDotNetString(sb.ToString());
+    }
+
     public static GoString QueryEscape(GoString s) => GoString.FromDotNetString(Escape(s.ToDotNetString(), false));
     public static GoString PathEscape(GoString s) => GoString.FromDotNetString(Escape(s.ToDotNetString(), true));
 
