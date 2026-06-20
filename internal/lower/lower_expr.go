@@ -236,35 +236,35 @@ func (l *funcLowerer) emitConst(e ast.Expr, t types.Type, v constant.Value) {
 		l.fail(e.Pos(), "constant type")
 		return
 	}
-	switch gt {
-	case goir.TInt64:
+	switch gt.Kind {
+	case goir.KInt64:
 		iv, _ := constant.Int64Val(constant.ToInt(v))
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: iv})
-	case goir.TInt32:
+	case goir.KInt32:
 		iv, _ := constant.Int64Val(constant.ToInt(v))
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: iv})
-	case goir.TUint64:
+	case goir.KUint64:
 		uv, _ := constant.Uint64Val(constant.ToInt(v))
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(uv)})
-	case goir.TUint32:
+	case goir.KUint32:
 		uv, _ := constant.Uint64Val(constant.ToInt(v))
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(uv)})
-	case goir.TFloat64:
+	case goir.KFloat64:
 		fv, _ := constant.Float64Val(constant.ToFloat(v))
 		l.emit(goir.Op{Code: goir.OpLdcR8, Float: fv})
-	case goir.TFloat32:
+	case goir.KFloat32:
 		fv, _ := constant.Float64Val(constant.ToFloat(v))
 		l.emit(goir.Op{Code: goir.OpLdcR4, Float: fv})
-	case goir.TComplex:
+	case goir.KComplex:
 		cv := constant.ToComplex(v)
 		re, _ := constant.Float64Val(constant.Real(cv))
 		im, _ := constant.Float64Val(constant.Imag(cv))
 		l.emit(goir.Op{Code: goir.OpLdcR8, Float: re})
 		l.emit(goir.Op{Code: goir.OpLdcR8, Float: im})
 		l.emit(goir.Op{Code: goir.OpComplexMake})
-	case goir.TBool:
+	case goir.KBool:
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: b2i(constant.BoolVal(v))})
-	case goir.TString:
+	case goir.KString:
 		l.emit(goir.Op{Code: goir.OpStrConst, Str: constant.StringVal(v)})
 	default:
 		l.fail(e.Pos(), "constant")
@@ -700,6 +700,8 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 	case goir.KString:
 		l.fail(e.Pos(), "string conversion")
 	}
+	// Converting to a sub-word integer truncates to its width (uint8(300) == 44).
+	l.truncateInt(target)
 	return target
 }
 
@@ -878,7 +880,7 @@ func (l *funcLowerer) emitZero(t goir.Type) {
 }
 
 func (l *funcLowerer) emitInt(v int64, t goir.Type) {
-	if t == goir.TInt32 {
+	if t.Kind == goir.KInt32 || t.Kind == goir.KUint32 {
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: v})
 		return
 	}
@@ -913,6 +915,7 @@ func (l *funcLowerer) emitArith(tok token.Token, operandType goir.Type) {
 		l.emitInt(-1, operandType)
 		l.emit(goir.Op{Code: goir.OpXor})
 		l.emit(goir.Op{Code: goir.OpAnd})
+		l.truncateInt(operandType)
 		return
 	}
 	op, ok := arithOp(tok)
@@ -931,6 +934,15 @@ func (l *funcLowerer) emitArith(tok token.Token, operandType goir.Type) {
 		}
 	}
 	l.emit(goir.Op{Code: op})
+	l.truncateInt(operandType)
+}
+
+// truncateInt wraps an arithmetic result back to a sub-word integer's width so
+// overflow matches Go (int8 127+1 == -128, byte 200+100 == 44).
+func (l *funcLowerer) truncateInt(t goir.Type) {
+	if t.TruncOp != goir.OpNop {
+		l.emit(goir.Op{Code: t.TruncOp})
+	}
 }
 
 // clearCall lowers the clear builtin: clear(m) empties a map; clear(s) zeroes the

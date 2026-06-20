@@ -157,6 +157,14 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 			b.u8(0x6E)
 		case goir.OpConvU4:
 			b.u8(0x6D)
+		case goir.OpConvI1:
+			b.u8(0x67)
+		case goir.OpConvI2:
+			b.u8(0x68)
+		case goir.OpConvU1:
+			b.u8(0xD2)
+		case goir.OpConvU2:
+			b.u8(0xD1)
 		case goir.OpNot:
 			b.ldcI4(0)
 			b.u8(0xFE)
@@ -477,39 +485,34 @@ func buildEHSection(clauses []goir.EHClause, labelPos map[int]int) []byte {
 }
 
 func boxToken(tok tokenSet, t goir.Type) uint32 {
-	switch t {
-	case goir.TInt64:
+	switch t.Kind {
+	case goir.KInt64:
 		return tok.int64Box
-	case goir.TInt32:
+	case goir.KInt32:
 		return tok.int32Box
-	case goir.TUint64:
+	case goir.KUint64:
 		return tokUInt64
-	case goir.TUint32:
+	case goir.KUint32:
 		return tokUInt32
-	case goir.TFloat64:
+	case goir.KFloat64:
 		return tokDouble
-	case goir.TFloat32:
+	case goir.KFloat32:
 		return tokSingle
-	case goir.TBool:
+	case goir.KBool:
 		return tok.boolBox
-	case goir.TString:
+	case goir.KString:
 		return tokGoString
+	case goir.KStruct:
+		return tok.structType(t.Struct)
+	case goir.KSlice:
+		return tokGoSlice
+	case goir.KMap:
+		return tokGoMap
+	case goir.KPtr:
+		return tokGoPtr
+	case goir.KFunc:
+		return tokGoClosure
 	default:
-		if t.Kind == goir.KStruct {
-			return tok.structType(t.Struct)
-		}
-		if t.Kind == goir.KSlice {
-			return tokGoSlice
-		}
-		if t.Kind == goir.KMap {
-			return tokGoMap
-		}
-		if t.Kind == goir.KPtr {
-			return tokGoPtr
-		}
-		if t.Kind == goir.KFunc {
-			return tokGoClosure
-		}
 		return tok.object
 	}
 }

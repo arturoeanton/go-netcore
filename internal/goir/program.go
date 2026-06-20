@@ -47,6 +47,11 @@ type Type struct {
 	// slice-backed). Unlike a slice, an array has value semantics: copying it (on
 	// assignment, argument passing, return) duplicates its backing storage.
 	Array bool
+	// TruncOp, when non-zero, is the conversion applied after arithmetic to wrap a
+	// sub-word integer (int8/int16/uint8/uint16) back to its width, since those are
+	// stored in a 32-bit slot. OpNop/0 means no truncation (int32/int64/… already
+	// wrap in their storage width).
+	TruncOp Opcode
 }
 
 // Predeclared primitive types. They are package-level values (not consts) so
@@ -196,6 +201,10 @@ const (
 	OpConvR4 // conv.r4 (to float32)
 	OpConvU8 // conv.u8 (to uint64)
 	OpConvU4 // conv.u4 (to uint32)
+	OpConvI1 // conv.i1 (truncate + sign-extend to int8 width)
+	OpConvI2 // conv.i2 (truncate + sign-extend to int16 width)
+	OpConvU1 // conv.u1 (truncate + zero-extend to uint8 width)
+	OpConvU2 // conv.u2 (truncate + zero-extend to uint16 width)
 
 	OpNewObjArray
 	OpDup

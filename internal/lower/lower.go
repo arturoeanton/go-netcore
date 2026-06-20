@@ -628,17 +628,23 @@ func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
 	switch b.Kind() {
 	case types.Int, types.Int64, types.UntypedInt:
 		return goir.TInt64, true
-	case types.Int8, types.Int16, types.Int32, types.UntypedRune:
+	case types.Int32, types.UntypedRune:
 		return goir.TInt32, true
+	case types.Int8:
+		return goir.Type{Kind: goir.KInt32, TruncOp: goir.OpConvI1}, true
+	case types.Int16:
+		return goir.Type{Kind: goir.KInt32, TruncOp: goir.OpConvI2}, true
 	case types.UnsafePointer:
 		// An opaque managed handle (only in shimmed/overlaid code).
 		return goir.TObject, true
 	case types.Uint8: // byte: indexing a string yields this
-		return goir.TInt32, true
+		return goir.Type{Kind: goir.KInt32, TruncOp: goir.OpConvU1}, true
 	case types.Uint, types.Uint64, types.Uintptr:
 		return goir.TUint64, true
-	case types.Uint32, types.Uint16:
+	case types.Uint32:
 		return goir.TUint32, true
+	case types.Uint16:
+		return goir.Type{Kind: goir.KUint32, TruncOp: goir.OpConvU2}, true
 	case types.Float64, types.UntypedFloat:
 		return goir.TFloat64, true
 	case types.Float32:
