@@ -9,6 +9,8 @@ public sealed class GoBuffer { public readonly System.Collections.Generic.List<b
 public static class BytesBuffer
 {
     public static object New() => new GoBuffer();
+    public static object NewBuffer(GoSlice b) { var g = new GoBuffer(); for (int i = 0; i < b.Len; i++) g.B.Add((byte)System.Convert.ToInt64(b.Data![b.Off + i])); return g; }
+    public static object NewBufferString(GoString s) { var g = new GoBuffer(); g.B.AddRange(s.Bytes); return g; }
     private static GoBuffer G(object b) => (GoBuffer)b;
 
     public static GoString String(object b) { var g = G(b); return GoString.FromBytesOwned(g.B.GetRange(g.Pos, g.B.Count - g.Pos).ToArray()); }

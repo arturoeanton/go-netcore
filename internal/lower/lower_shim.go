@@ -93,7 +93,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Fprint": {"Fmt", "Fprint"}, "Fprintln": {"Fmt", "Fprintln"}, "Fprintf": {"Fmt", "Fprintf"},
 	},
 	"io": {
-		"WriteString": {"Io", "WriteString"},
+		"WriteString": {"Io", "WriteString"}, "ReadAll": {"Readers", "ReadAll"}, "Copy": {"Readers", "Copy"},
+	},
+	"bufio": {
+		"NewScanner": {"Bufio", "NewScanner"},
 	},
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
@@ -145,6 +148,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"IndexByte": {"Bytes", "IndexByte"}, "Count": {"Bytes", "Count"}, "ToUpper": {"Bytes", "ToUpper"},
 		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Repeat": {"Bytes", "Repeat"},
 		"Split": {"Bytes", "Split"}, "Join": {"Bytes", "Join"},
+		"NewReader": {"Readers", "NewBytesReader"}, "NewBuffer": {"BytesBuffer", "NewBuffer"}, "NewBufferString": {"BytesBuffer", "NewBufferString"},
 	},
 	"strconv": {
 		"Itoa": {"Strconv", "Itoa"}, "Atoi": {"Strconv", "Atoi"},
@@ -169,7 +173,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Trim": {"Strings", "Trim"}, "TrimLeft": {"Strings", "TrimLeft"}, "TrimRight": {"Strings", "TrimRight"},
 		"TrimPrefix": {"Strings", "TrimPrefix"}, "TrimSuffix": {"Strings", "TrimSuffix"},
 		"Split": {"Strings", "Split"}, "SplitN": {"Strings", "SplitN"}, "Fields": {"Strings", "Fields"},
-		"Join": {"Strings", "Join"}, "Cut": {"Strings", "Cut"}, "IndexRune": {"Strings", "IndexRune"},
+		"Join": {"Strings", "Join"}, "NewReader": {"Readers", "NewStringReader"}, "Cut": {"Strings", "Cut"}, "IndexRune": {"Strings", "IndexRune"},
 		"ContainsRune": {"Strings", "ContainsRune"}, "ContainsAny": {"Strings", "ContainsAny"},
 		"IndexAny": {"Strings", "IndexAny"}, "LastIndexByte": {"Strings", "LastIndexByte"},
 		"ToTitle": {"Strings", "ToTitle"}, "SplitAfter": {"Strings", "SplitAfter"}, "Map": {"Strings", "Map"},
@@ -202,6 +206,9 @@ var opaqueShimTypes = map[string]bool{
 	"regexp.Regexp":                true,
 	"math/big.Int":                 true,
 	"encoding/base32.Encoding":     true,
+	"strings.Reader":               true,
+	"bytes.Reader":                 true,
+	"bufio.Scanner":                true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
@@ -209,6 +216,7 @@ var opaqueShimTypes = map[string]bool{
 var shimVarRegistry = map[string]shimFunc{
 	"os.Stdout":                      {"Os", "Stdout"},
 	"os.Stderr":                      {"Os", "Stderr"},
+	"os.Stdin":                       {"Os", "Stdin"},
 	"time.UTC":                       {"Time", "UTC"},
 	"time.Local":                     {"Time", "Local"},
 	"encoding/base64.StdEncoding":    {"Base64", "StdEncoding"},
@@ -292,6 +300,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"reflect.Kind": {
 		"String": {"Reflect", "Kind_String"},
+	},
+	"bufio.Scanner": {
+		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"},
 	},
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
