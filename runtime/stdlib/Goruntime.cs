@@ -10,11 +10,11 @@ public sealed class GoRuntimeFunc { public long Pc; }
 /// <summary>Shim for the subset of Go's <c>runtime</c> package that goja references.</summary>
 public static class Goruntime
 {
-    public static object FuncForPC(long pc) => new GoRuntimeFunc { Pc = pc };
+    public static object FuncForPC(ulong pc) => new GoRuntimeFunc { Pc = (long)pc };   // pc is uintptr
     public static GoString Func_Name(object f) => GoString.FromDotNetString("");
-    public static object?[] Func_FileLine(object f, long pc) =>
+    public static object?[] Func_FileLine(object f, ulong pc) =>
         new object?[] { GoString.FromDotNetString(""), 0L };
-    public static long Func_Entry(object f) => ((GoRuntimeFunc)f).Pc;
+    public static ulong Func_Entry(object f) => (ulong)((GoRuntimeFunc)f).Pc;          // returns uintptr
 
     public static long GOMAXPROCS(long n) => System.Environment.ProcessorCount;
     public static long NumCPU() => System.Environment.ProcessorCount;

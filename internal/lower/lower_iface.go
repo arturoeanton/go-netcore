@@ -62,14 +62,38 @@ func (c *lowerCtx) implementers(iface *types.Interface) []ifaceImpl {
 func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, emitRecv func(), ifaceMethod *types.Func, iface *types.Interface) goir.Type {
 	sig := ifaceMethod.Type().(*types.Signature)
 
-	// Evaluate arguments once into temps (coerced to the method's param types).
-	argTmps := make([]int, len(e.Args))
-	for i, a := range e.Args {
-		pt, _ := l.goType(sig.Params().At(i).Type())
-		tmp := l.addLocal(nil, pt)
-		l.exprCoerced(a, pt)
+	// Evaluate arguments once into temps (coerced to the method's param types). A
+	// variadic method gets one temp per fixed parameter plus a final temp holding the
+	// packed variadic slice — so a no-arg call like m.Match() still passes a (nil)
+	// slice, matching the lowered method's arity.
+	var argTmps []int
+	if sig.Variadic() {
+		nFixed := sig.Params().Len() - 1
+		for i := 0; i < nFixed; i++ {
+			pt, _ := l.goType(sig.Params().At(i).Type())
+			tmp := l.addLocal(nil, pt)
+			l.exprCoerced(e.Args[i], pt)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+			argTmps = append(argTmps, tmp)
+		}
+		sliceT, _ := l.goType(sig.Params().At(nFixed).Type())
+		tmp := l.addLocal(nil, sliceT)
+		if e.Ellipsis.IsValid() {
+			l.exprCoerced(e.Args[nFixed], sliceT) // m.Match(slice...) — slice passed directly
+		} else {
+			l.packVariadic(e.Args[nFixed:], *sliceT.Elem)
+		}
 		l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
-		argTmps[i] = tmp
+		argTmps = append(argTmps, tmp)
+	} else {
+		argTmps = make([]int, len(e.Args))
+		for i, a := range e.Args {
+			pt, _ := l.goType(sig.Params().At(i).Type())
+			tmp := l.addLocal(nil, pt)
+			l.exprCoerced(a, pt)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+			argTmps[i] = tmp
+		}
 	}
 	return l.interfaceDispatchCore(emitRecv, ifaceMethod, iface, argTmps)
 }
@@ -111,6 +135,12 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 	// interface value and re-dispatching (a loop, so nested wrappers terminate at a
 	// concrete implementer).
 	embedField := make([]int, len(impls))
+	// recvPath[i] is the embedded-field index chain to the receiver when an
+	// implementer satisfies the method via a method promoted from an embedded
+	// *concrete* field (e.g. type valueUndefined struct{ valueNull }: Export is
+	// valueNull's, so the dispatch must pass the embedded valueNull, not the outer
+	// value). Empty for a directly-declared method.
+	recvPath := make([][]int, len(impls))
 	for i, impl := range impls {
 		labels[i] = l.label()
 		embedField[i] = -1
@@ -125,6 +155,12 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		fn, _ := obj.(*types.Func)
 		if fn != nil {
 			callees[i] = l.byFunc[fn]
+			// A promoted method (idxPath longer than the method itself) reached through
+			// embedded value fields: record the field chain so the case body navigates
+			// to the embedded receiver before calling.
+			if callees[i] != nil && len(idxPath) > 1 {
+				recvPath[i] = idxPath[:len(idxPath)-1]
+			}
 		}
 		if callees[i] == nil {
 			if fn != nil && len(idxPath) >= 1 {
@@ -227,11 +263,21 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
 		if impl.viaPtr {
 			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])}) // the GoPtr receiver
+			// A value-receiver method promoted from an embedded field, reached through a
+			// pointer implementer: deref to the struct and navigate to the embedded value.
+			if len(recvPath[i]) > 0 {
+				l.emit(goir.Op{Code: goir.OpPtrGet})
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
+				l.emitEmbedNav(ctypes[i], recvPath[i], callees[i].Params[0])
+			}
 		} else {
 			if namedId[i] != 0 {
 				l.emitUnwrapNamed() // GoNamed -> inner boxed representation
 			}
 			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
+			// Method promoted from an embedded value field: navigate to the embedded
+			// receiver (the called method expects that field's type, not the outer one).
+			l.emitEmbedNav(ctypes[i], recvPath[i], callees[i].Params[0])
 		}
 		for _, at := range argTmps {
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: at})
@@ -378,6 +424,33 @@ func (l *funcLowerer) emitInterfaceAssert(valEmit func(), iface *types.Interface
 	l.emit(goir.Op{Code: goir.OpBr, Label: done})
 	l.mark(matched)
 	l.mark(done)
+}
+
+// emitEmbedNav navigates a chain of embedded-field indices from a struct value on
+// the stack to the embedded receiver of a promoted method, dereferencing any
+// embedded pointer field along the way. The receiver is left ready for callee: if
+// the promoted method has a pointer receiver (recvType is a pointer), the embedded
+// value is boxed into a fresh cell so a GoPtr is passed (correct for the read-only
+// promoted methods dispatched here; a mutating one would see a copy).
+func (l *funcLowerer) emitEmbedNav(start goir.Type, path []int, recvType goir.Type) {
+	cur := start
+	for _, fi := range path {
+		if cur.Kind == goir.KPtr {
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emitUnbox(*cur.Elem)
+			cur = *cur.Elem
+		}
+		if cur.Kind != goir.KStruct || fi >= len(cur.Struct.Fields) {
+			return // not navigable (e.g. an embedded interface, handled elsewhere)
+		}
+		l.emit(goir.Op{Code: goir.OpLdFld, Struct: cur.Struct, Field: fi})
+		cur = cur.Struct.Fields[fi].Type
+	}
+	// A pointer-receiver promoted method wants &embedded: box the value into a cell.
+	if recvType.Kind == goir.KPtr && cur.Kind != goir.KPtr {
+		l.emitBox(cur)
+		l.ptrNew(cur)
+	}
 }
 
 // ifaceIsError reports whether iface's method set is exactly the error interface's

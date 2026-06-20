@@ -383,10 +383,10 @@ public static class Reflect
     public static object PointerTo(object t) =>
         new GoReflectType { Sample = new GoPtr { Value = ((GoReflectType)t).Sample } };
 
-    // reflect.MakeFunc(typ, fn): fn is a GoReflectValue wrapping the implementing
-    // closure; return a Value carrying that callable so Call() can invoke it.
-    public static object MakeFunc(object typ, object fn) =>
-        new GoReflectValue { V = ((GoReflectValue)fn).V };
+    // reflect.MakeFunc(typ, fn): fn is the implementing Go closure; return a Value
+    // carrying that callable so Value.Call() can invoke it.
+    public static object MakeFunc(object typ, GoClosure fn) =>
+        new GoReflectValue { V = fn };
 
     public static long Copy(object dst, object src)
     {
@@ -455,10 +455,11 @@ public static class Reflect
         var s = (GoSlice)RVal(v)!;
         return new GoReflectValue { V = GoCLR.Runtime.GoSlices.Slice(s, lo, hi) };
     }
-    public static long Value_Pointer(object? v)
+    // reflect.Value.Pointer() returns uintptr (goclr: UInt64).
+    public static ulong Value_Pointer(object? v)
     {
         var x = RVal(v);
-        return x == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(x);
+        return x == null ? 0 : (ulong)(uint)System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(x);
     }
     public static long Value_NumMethod(object? v) => 0;
     public static bool Value_CanInterface(object? v) => true;

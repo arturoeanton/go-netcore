@@ -18,23 +18,25 @@ public static class Atomic
     private static ulong U64(GoPtr p) => System.Convert.ToUInt64(GoPtrs.Get(p) ?? (ulong)0);
     private static uint U32(GoPtr p) => System.Convert.ToUInt32(GoPtrs.Get(p) ?? (uint)0);
 
+    // Int32/Uint32 variants take and return int/uint to match Go's int32/uint32 (the
+    // extern signature goclr derives from the Go type); 64-bit variants use long/ulong.
     public static long AddInt64(GoPtr p, long d) { lock (Gate) { long v = I64(p) + d; GoPtrs.Set(p, v); return v; } }
-    public static long AddInt32(GoPtr p, long d) { lock (Gate) { int v = (int)(I32(p) + d); GoPtrs.Set(p, v); return v; } }
+    public static int AddInt32(GoPtr p, int d) { lock (Gate) { int v = unchecked(I32(p) + d); GoPtrs.Set(p, v); return v; } }
     public static ulong AddUint64(GoPtr p, ulong d) { lock (Gate) { ulong v = unchecked(U64(p) + d); GoPtrs.Set(p, v); return v; } }
 
     public static long LoadInt64(GoPtr p) { lock (Gate) return I64(p); }
-    public static long LoadInt32(GoPtr p) { lock (Gate) return I32(p); }
+    public static int LoadInt32(GoPtr p) { lock (Gate) return I32(p); }
     public static ulong LoadUint64(GoPtr p) { lock (Gate) return U64(p); }
 
     public static void StoreInt64(GoPtr p, long v) { lock (Gate) GoPtrs.Set(p, v); }
-    public static void StoreInt32(GoPtr p, long v) { lock (Gate) GoPtrs.Set(p, (int)v); }
+    public static void StoreInt32(GoPtr p, int v) { lock (Gate) GoPtrs.Set(p, v); }
     public static void StoreUint64(GoPtr p, ulong v) { lock (Gate) GoPtrs.Set(p, v); }
 
     public static long SwapInt64(GoPtr p, long nv) { lock (Gate) { long old = I64(p); GoPtrs.Set(p, nv); return old; } }
-    public static long SwapInt32(GoPtr p, long nv) { lock (Gate) { int old = I32(p); GoPtrs.Set(p, (int)nv); return old; } }
+    public static int SwapInt32(GoPtr p, int nv) { lock (Gate) { int old = I32(p); GoPtrs.Set(p, nv); return old; } }
 
     public static bool CompareAndSwapInt64(GoPtr p, long old, long nv) { lock (Gate) { if (I64(p) == old) { GoPtrs.Set(p, nv); return true; } return false; } }
-    public static bool CompareAndSwapInt32(GoPtr p, long old, long nv) { lock (Gate) { if (I32(p) == old) { GoPtrs.Set(p, (int)nv); return true; } return false; } }
+    public static bool CompareAndSwapInt32(GoPtr p, int old, int nv) { lock (Gate) { if (I32(p) == old) { GoPtrs.Set(p, nv); return true; } return false; } }
 
     // Uint32 variants.
     public static uint AddUint32(GoPtr p, uint d) { lock (Gate) { uint v = unchecked(U32(p) + d); GoPtrs.Set(p, v); return v; } }

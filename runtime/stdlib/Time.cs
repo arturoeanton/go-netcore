@@ -47,10 +47,10 @@ public static class Time
     // time.Tick(d): just the channel of a new ticker (the ticker is never collected).
     public static GoChan Tick(long d) => ((GoTicker)NewTicker(d)).C;
 
-    public static object Ticker_C(object t) => ((GoTicker)t).C;
-    public static object? Ticker_Stop(object t) { ((GoTicker)t).Timer?.Dispose(); return null; }
-    public static object? Timer_Stop(object t) { ((GoTicker)t).Timer?.Dispose(); return true; }
-    public static object? Ticker_Reset(object t, long d) { return null; }
+    public static GoChan Ticker_C(object t) => ((GoTicker)t).C;
+    public static void Ticker_Stop(object t) => ((GoTicker)t).Timer?.Dispose();        // *Ticker.Stop() is void
+    public static bool Timer_Stop(object t) { ((GoTicker)t).Timer?.Dispose(); return true; } // *Timer.Stop() bool
+    public static void Ticker_Reset(object t, long d) { }                               // *Ticker.Reset(d) is void
 
     // time.Month / time.Weekday String() (named int types).
     public static GoString Month_String(long m) => GoString.FromDotNetString(m >= 1 && m <= 12 ? MonthsLong[m - 1] : "%!Month(" + m + ")");
