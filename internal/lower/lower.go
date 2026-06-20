@@ -196,15 +196,8 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	}
 
 	// Drain the monomorphization worklist (each job carries its owning package).
-	for len(c.monoTodo) > 0 {
-		job := c.monoTodo[0]
-		c.monoTodo = c.monoTodo[1:]
-		c.pkg = job.pkg
-		l := &funcLowerer{lowerCtx: c, m: job.method, ok: true, typeSubst: job.subst}
-		l.build(job.decl)
-		if !l.ok {
-			return nil, false
-		}
+	if !c.drainMonoTodo() {
+		return nil, false
 	}
 
 	// Generate String()/Error() dispatch closures for fmt (after all methods are
@@ -219,12 +212,36 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		prog.Entry.Code = append([]goir.Op{{Code: goir.OpCallMethod, Callee: init}}, prog.Entry.Code...)
 	}
 
+	// buildInit may lower package-var initializers / init() bodies that introduce
+	// fresh generic instantiations (e.g. a global `= newPooledSliceBuffers[rune](…)`);
+	// drain the worklist again so those bodies are not left empty.
+	if !c.drainMonoTodo() {
+		return nil, false
+	}
+
 	c.finishInvoke()
 	if c.needsInvoker && prog.Entry != nil {
 		prog.Entry.Code = append([]goir.Op{{Code: goir.OpRegisterInvoker}}, prog.Entry.Code...)
 	}
 	prog.Structs = c.structOrder
 	return prog, true
+}
+
+// drainMonoTodo lowers every queued generic-function instantiation body until the
+// worklist is empty (a body may itself instantiate further generics). Reports false
+// if any body fails to lower.
+func (c *lowerCtx) drainMonoTodo() bool {
+	for len(c.monoTodo) > 0 {
+		job := c.monoTodo[0]
+		c.monoTodo = c.monoTodo[1:]
+		c.pkg = job.pkg
+		l := &funcLowerer{lowerCtx: c, m: job.method, ok: true, typeSubst: job.subst}
+		l.build(job.decl)
+		if !l.ok {
+			return false
+		}
+	}
+	return true
 }
 
 // collectGlobals registers a package's file-level variables as static-field
@@ -861,6 +878,14 @@ func (l *funcLowerer) build(fd *ast.FuncDecl) {
 	}
 	if fd.Body != nil {
 		l.block(fd.Body)
+	}
+	// Trailing ret. A Go body may fall through to here only when it ends in a
+	// terminating statement (panic/infinite loop), so this point is unreachable —
+	// but it must still be stack-valid: a non-void method's ret needs a value on the
+	// stack (e.g. `func f() bool { panic("x") }`, where panic is a normal-returning
+	// void call to the JIT). Push the return type's zero value first.
+	if l.m.Ret != goir.TVoid {
+		l.emitZeroValue(l.m.Ret)
 	}
 	l.emit(goir.Op{Code: goir.OpRet})
 }

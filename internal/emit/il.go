@@ -525,7 +525,10 @@ func methodBody(code []byte, maxStack int, localSigTok uint32, eh []byte) []byte
 		return append([]byte{byte(len(code)<<2) | 0x02}, code...)
 	}
 	hdr := make([]byte, 12)
-	flags := uint16(0x3003) // fat, 3 dwords
+	// Fat header, 3 dwords (0x3<<12), FatFormat (0x03) | InitLocals (0x10). InitLocals
+	// makes the CLR zero-initialize locals — required for verifiability and for GC
+	// safety when locals hold object references (the GC scans local slots).
+	flags := uint16(0x3013)
 	if len(eh) > 0 {
 		flags |= 0x0008 // CorILMethod_MoreSects
 	}
