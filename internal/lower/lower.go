@@ -509,6 +509,15 @@ func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
 		}
 		return goir.SliceType(et), true
 	}
+	if arr, ok := t.Underlying().(*types.Array); ok {
+		et, ok := c.goType(arr.Elem())
+		if !ok {
+			return goir.Type{}, false
+		}
+		// Fixed-size [N]T arrays are backed by a slice; value-copy semantics are
+		// approximated (see LIMITATIONS).
+		return goir.SliceType(et), true
+	}
 	if mp, ok := t.Underlying().(*types.Map); ok {
 		kt, ok1 := c.goType(mp.Key())
 		vt, ok2 := c.goType(mp.Elem())
@@ -546,8 +555,11 @@ func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
 	switch b.Kind() {
 	case types.Int, types.Int64, types.UntypedInt:
 		return goir.TInt64, true
-	case types.Int32, types.UntypedRune:
+	case types.Int8, types.Int16, types.Int32, types.UntypedRune:
 		return goir.TInt32, true
+	case types.UnsafePointer:
+		// An opaque managed handle (only in shimmed/overlaid code).
+		return goir.TObject, true
 	case types.Uint8: // byte: indexing a string yields this
 		return goir.TInt32, true
 	case types.Uint, types.Uint64, types.Uintptr:

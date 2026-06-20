@@ -12,6 +12,87 @@ public static class Binary
     public static object LittleEndian() => new GoByteOrder { Big = false };
     public static object BigEndian() => new GoByteOrder { Big = true };
 
+    private static void Emit(System.Collections.Generic.List<byte> outp, bool big, byte[] le)
+    {
+        if (big) System.Array.Reverse(le);
+        outp.AddRange(le);
+    }
+
+    private static void Ser(System.Collections.Generic.List<byte> outp, bool big, object? v)
+    {
+        switch (v)
+        {
+            case bool b: outp.Add((byte)(b ? 1 : 0)); break;
+            case byte by: outp.Add(by); break;
+            case sbyte sb: outp.Add((byte)sb); break;
+            case short s: Emit(outp, big, System.BitConverter.GetBytes(s)); break;
+            case ushort us: Emit(outp, big, System.BitConverter.GetBytes(us)); break;
+            case int i: Emit(outp, big, System.BitConverter.GetBytes(i)); break;
+            case uint ui: Emit(outp, big, System.BitConverter.GetBytes(ui)); break;
+            case long l: Emit(outp, big, System.BitConverter.GetBytes(l)); break;
+            case ulong ul: Emit(outp, big, System.BitConverter.GetBytes(ul)); break;
+            case float f: Emit(outp, big, System.BitConverter.GetBytes(f)); break;
+            case double d: Emit(outp, big, System.BitConverter.GetBytes(d)); break;
+            case GoSlice sl: for (int k = 0; k < sl.Len; k++) Ser(outp, big, sl.Data![sl.Off + k]); break;
+            case GoPtr p: Ser(outp, big, p.Value); break;
+            default:
+                // struct: serialize public fields in order.
+                if (v != null)
+                    foreach (var fi in v.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+                        Ser(outp, big, fi.GetValue(v));
+                break;
+        }
+    }
+
+    // binary.Write(w io.Writer, order ByteOrder, data any) error
+    public static object? Write(object? w, object order, object? data)
+    {
+        var outp = new System.Collections.Generic.List<byte>();
+        Ser(outp, ((GoByteOrder)order).Big, data);
+        Compress.WriteRaw(w, outp.ToArray());
+        return null;
+    }
+
+    private static int SizeOf(object? v) => v switch
+    {
+        bool or byte or sbyte => 1, short or ushort => 2, int or uint or float => 4,
+        long or ulong or double => 8, _ => 0,
+    };
+    private static object Deser(object? proto, byte[] b, bool big)
+    {
+        if (big) System.Array.Reverse(b);
+        return proto switch
+        {
+            short => System.BitConverter.ToInt16(b), ushort => System.BitConverter.ToUInt16(b),
+            int => System.BitConverter.ToInt32(b), uint => System.BitConverter.ToUInt32(b),
+            long => System.BitConverter.ToInt64(b), ulong => System.BitConverter.ToUInt64(b),
+            float => System.BitConverter.ToSingle(b), double => System.BitConverter.ToDouble(b),
+            byte => b[0], sbyte => (sbyte)b[0], bool => b[0] != 0, _ => 0,
+        };
+    }
+
+    // binary.Read(r io.Reader, order ByteOrder, data any) error — data is a pointer.
+    public static object? Read(object? r, object order, object? data)
+    {
+        bool big = ((GoByteOrder)order).Big;
+        var ptr = (GoPtr)data!;
+        int n = SizeOf(ptr.Value);
+        byte[] bytes = r is GoBuffer ? BytesBuffer.ReadRaw(r, n) : Readers.Drain(r);
+        if (bytes.Length < n) return new GoError(GoString.FromDotNetString("unexpected EOF"));
+        var slice = new byte[n];
+        System.Array.Copy(bytes, slice, n);
+        ptr.Value = Deser(ptr.Value, slice, big);
+        return null;
+    }
+
+    // binary.Size(data any) int — byte count, or -1 if not fixed-size.
+    public static long Size(object? data)
+    {
+        var outp = new System.Collections.Generic.List<byte>();
+        Ser(outp, false, data);
+        return outp.Count;
+    }
+
     private static byte Get(GoSlice b, int i) => (byte)System.Convert.ToInt64(b.Data![b.Off + i]);
     private static void Set(GoSlice b, int i, byte v) => b.Data![b.Off + i] = (int)v;
 

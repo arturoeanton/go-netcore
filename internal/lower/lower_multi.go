@@ -11,6 +11,63 @@ import (
 // assignToTarget stores a value (pushed by emitVal) into an LHS identifier,
 // handling :=/= and address-taken cells; the blank identifier discards.
 func (l *funcLowerer) assignToTarget(s *ast.AssignStmt, lhs ast.Expr, t goir.Type, emitVal func()) {
+	// Field target (r.f = <multi-result element>).
+	if sel, ok := unparen(lhs).(*ast.SelectorExpr); ok {
+		bt := l.exprType(sel.X)
+		if bt.Kind == goir.KStruct {
+			fi := bt.Struct.FieldIndex(sel.Sel.Name)
+			if fi < 0 {
+				l.fail(sel.Pos(), "unknown field "+sel.Sel.Name)
+				return
+			}
+			if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
+				l.cellFieldModify(idx, elem, fi, func(ft goir.Type) { emitVal() })
+				return
+			}
+			l.lvalueAddr(sel.X)
+			emitVal()
+			l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+			return
+		}
+		if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct {
+			st := *bt.Elem
+			fi := st.Struct.FieldIndex(sel.Sel.Name)
+			tmp := l.addLocal(nil, st)
+			l.expr(sel.X)
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emitUnbox(st)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+			l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
+			emitVal()
+			l.emit(goir.Op{Code: goir.OpStFld, Struct: st.Struct, Field: fi})
+			l.expr(sel.X)
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+			l.emitBox(st)
+			l.emit(goir.Op{Code: goir.OpPtrSet})
+			return
+		}
+	}
+	// Slice/map element target.
+	if ix, ok := unparen(lhs).(*ast.IndexExpr); ok {
+		xt := l.exprType(ix.X)
+		if xt.Kind == goir.KSlice {
+			l.expr(ix.X)
+			l.expr(ix.Index)
+			emitVal()
+			l.emitBox(t)
+			l.emit(goir.Op{Code: goir.OpSliceSet})
+			return
+		}
+		if xt.Kind == goir.KMap {
+			l.expr(ix.X)
+			l.exprCoerced(ix.Index, *xt.Key)
+			l.emitBox(*xt.Key)
+			emitVal()
+			l.emitBox(t)
+			l.emit(goir.Op{Code: goir.OpMapSet})
+			return
+		}
+	}
 	id, ok := lhs.(*ast.Ident)
 	if !ok {
 		l.fail(lhs.Pos(), "assignment target")

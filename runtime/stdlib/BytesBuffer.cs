@@ -41,4 +41,43 @@ public static class BytesBuffer
         for (int i = 0; i < p.Len; i++) g.B.Add((byte)System.Convert.ToInt32(p.Data[p.Off + i]));
         return new object?[] { (long)p.Len, null };
     }
+
+    // --- read path (advances Pos) ---
+    public static object?[] ReadByte(object b)
+    {
+        var g = G(b);
+        if (g.Pos >= g.B.Count) return new object?[] { 0, new GoError(GoString.FromDotNetString("EOF")) };
+        return new object?[] { (int)g.B[g.Pos++], null };
+    }
+    public static object?[] ReadRune(object b)
+    {
+        var g = G(b);
+        if (g.Pos >= g.B.Count) return new object?[] { (int)0, 0L, new GoError(GoString.FromDotNetString("EOF")) };
+        byte first = g.B[g.Pos];
+        int n = first < 0x80 ? 1 : first >= 0xF0 ? 4 : first >= 0xE0 ? 3 : first >= 0xC0 ? 2 : 1;
+        var bytes = new byte[n];
+        for (int i = 0; i < n && g.Pos < g.B.Count; i++) bytes[i] = g.B[g.Pos + i];
+        g.Pos += n;
+        var s = System.Text.Encoding.UTF8.GetString(bytes);
+        int cp = s.Length > 0 ? char.ConvertToUtf32(s, 0) : 0xFFFD;
+        return new object?[] { cp, (long)n, null };
+    }
+    public static GoSlice Next(object b, long n)
+    {
+        var g = G(b);
+        int take = (int)System.Math.Min(n, g.B.Count - g.Pos);
+        var d = new object?[take];
+        for (int i = 0; i < take; i++) d[i] = (int)g.B[g.Pos++];
+        return new GoSlice { Data = d, Off = 0, Len = take, Cap = take };
+    }
+
+    // Read up to n bytes for binary.Read (advances Pos); returns the bytes.
+    internal static byte[] ReadRaw(object b, int n)
+    {
+        var g = G(b);
+        int take = System.Math.Min(n, g.B.Count - g.Pos);
+        var r = new byte[take];
+        for (int i = 0; i < take; i++) r[i] = g.B[g.Pos++];
+        return r;
+    }
 }

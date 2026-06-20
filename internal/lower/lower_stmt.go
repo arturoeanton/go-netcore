@@ -3,6 +3,7 @@ package lower
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
 )
@@ -239,6 +240,33 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 		})
 		return
 	}
+	// s[i].field = v : read the boxed struct element, set the field, write it back.
+	if ix, ok := unparen(sel.X).(*ast.IndexExpr); ok {
+		xt := l.exprType(ix.X)
+		if xt.Kind == goir.KSlice {
+			sliceTmp := l.addLocal(nil, xt)
+			idxTmp := l.addLocal(nil, goir.TInt64)
+			structTmp := l.addLocal(nil, bt)
+			l.expr(ix.X)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: sliceTmp})
+			l.expr(ix.Index)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: idxTmp})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxTmp})
+			l.emit(goir.Op{Code: goir.OpSliceGet})
+			l.emitUnbox(bt)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: structTmp})
+			l.emit(goir.Op{Code: goir.OpLdLocA, Local: structTmp})
+			l.expr(rhs)
+			l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxTmp})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: structTmp})
+			l.emitBox(bt)
+			l.emit(goir.Op{Code: goir.OpSliceSet})
+			return
+		}
+	}
 	l.lvalueAddr(sel.X)
 	l.expr(rhs)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
@@ -318,9 +346,13 @@ func (l *funcLowerer) declStmt(s *ast.DeclStmt) {
 				return
 			}
 			idx, _ := l.declareLocal(obj, t)
+			objType := obj.Type()
 			if i < len(vs.Values) {
 				v := vs.Values[i]
 				l.initLocal(idx, func() { l.exprCoerced(v, t) })
+			} else if arr, ok := objType.Underlying().(*types.Array); ok {
+				// `var a [N]T` zero value is N zeroed elements, not a nil slice.
+				l.initLocal(idx, func() { l.emitArrayZero(*t.Elem, arr.Len()) })
 			} else {
 				l.initLocal(idx, func() { l.emitZeroValue(t) })
 			}
@@ -520,7 +552,7 @@ func (l *funcLowerer) rangeStmt(s *ast.RangeStmt) {
 		return
 	}
 	// range over an integer (Go 1.22): for i := range n { ... }, i in 0..n-1.
-	if xt.Kind == goir.KInt64 {
+	if xt.Kind == goir.KInt64 || xt.Kind == goir.KInt32 || xt.Kind == goir.KUint64 || xt.Kind == goir.KUint32 {
 		l.rangeInt(s)
 		return
 	}

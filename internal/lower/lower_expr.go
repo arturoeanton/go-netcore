@@ -120,6 +120,15 @@ func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 		return l.sliceLit(e, t)
 	case goir.KMap:
 		return l.mapLit(e, t)
+	case goir.KObject:
+		// Composite literal of an opaque value-type shim (e.g. bytes.Buffer{}) —
+		// produce its zero value object (field initializers are not supported).
+		if t.Shim != "" {
+			l.emitZeroValue(t)
+			return t
+		}
+		l.fail(e.Pos(), "composite literal of "+t.Shim)
+		return goir.TVoid
 	default:
 		l.fail(e.Pos(), "composite literal (only struct, slice and map literals are supported)")
 		return goir.TVoid

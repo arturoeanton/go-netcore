@@ -77,6 +77,15 @@ func (l *funcLowerer) emitZeroValue(t goir.Type) {
 	}
 }
 
+// emitArrayZero pushes a fresh slice of n zeroed elements (the zero value of a
+// fixed-size [N]T array, which goclr backs with a slice).
+func (l *funcLowerer) emitArrayZero(elem goir.Type, n int64) {
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: n})
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: n})
+	l.emitBoxedZero(elem)
+	l.emit(goir.Op{Code: goir.OpSliceMake})
+}
+
 // emitBoxedZero pushes the boxed zero value (for make / slice / map element zero).
 func (l *funcLowerer) emitBoxedZero(t goir.Type) {
 	l.emitZeroValue(t)
