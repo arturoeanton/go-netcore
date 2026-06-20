@@ -155,10 +155,16 @@ func (l *funcLowerer) parallelAssign(s *ast.AssignStmt) {
 	temps := make([]int, n)
 	ttypes := make([]goir.Type, n)
 	for i, rhs := range s.Rhs {
-		t := l.exprType(rhs)
+		// An untyped nil has no type of its own; take the target's type.
+		var t goir.Type
+		if isNilIdent(rhs) {
+			t = l.exprType(s.Lhs[i])
+		} else {
+			t = l.exprType(rhs)
+		}
 		ttypes[i] = t
 		tmp := l.addLocal(nil, t)
-		l.expr(rhs)
+		l.exprCoerced(rhs, t)
 		l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
 		temps[i] = tmp
 	}
