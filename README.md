@@ -23,10 +23,12 @@ interface-driven rules engine, an HTTP service — each byte-exact under `go run
 vs `goclr run`. The **typed box** ([`docs/DESIGN-typed-box.md`](docs/DESIGN-typed-box.md))
 gives every named non-struct value its runtime type identity, so named-primitive
 `Stringer`s, `%T`, and interface dispatch over representation-sharing types all
-work — which resolved goja's headline blocker. goja now compiles through `sort`,
-`cmp`, `slices`, and most of `regexp2`; the remaining tail (addressable struct
-fields for `sync/atomic`, then goja's `reflect`-based interop) is tracked in
-[LIMITATIONS.md](LIMITATIONS.md).
+work — which resolved goja's headline blocker. Addressable struct fields
+(`&s.field`, including race-free `sync/atomic` on a field) are implemented too, so
+goja now **compiles through** `sort`/`cmp`/`slices`, all of `regexp2`,
+`go-sourcemap`, and into goja's own packages (`unistring`, `file`, `ast`). The
+remaining tail (generic-type interface dispatch, then goja's `reflect`-based
+interop) is tracked in [LIMITATIONS.md](LIMITATIONS.md).
 
 ## Status
 
