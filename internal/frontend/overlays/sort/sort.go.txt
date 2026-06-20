@@ -1,0 +1,159 @@
+// Package sort — goclr overlay. A self-contained, reflection-free reimplementation
+// of the standard library's sort package: interface-based Sort/Stable/Search plus
+// the Ints/Strings/Float64s convenience helpers. The Slice family (which the real
+// package implements with internal/reflectlite) is provided by the goclr runtime
+// shim and only stubbed here, since goclr lowers every function in a compiled
+// package and reflectlite is out of scope.
+package sort
+
+// Interface is the standard sort.Interface.
+type Interface interface {
+	Len() int
+	Less(i, j int) bool
+	Swap(i, j int)
+}
+
+// insertionSort sorts data[a:b] with insertion sort (stable, simple, correct).
+func insertionSort(data Interface, a, b int) {
+	for i := a + 1; i < b; i++ {
+		for j := i; j > a && data.Less(j, j-1); j-- {
+			data.Swap(j, j-1)
+		}
+	}
+}
+
+// Sort sorts data in ascending order as determined by the Less method.
+func Sort(data Interface) {
+	n := data.Len()
+	quickSort(data, 0, n)
+}
+
+func medianOfThree(data Interface, m1, m0, m2 int) {
+	if data.Less(m1, m0) {
+		data.Swap(m1, m0)
+	}
+	if data.Less(m2, m1) {
+		data.Swap(m2, m1)
+		if data.Less(m1, m0) {
+			data.Swap(m1, m0)
+		}
+	}
+}
+
+// quickSort sorts data[a:b]; small ranges fall back to insertion sort.
+func quickSort(data Interface, a, b int) {
+	for b-a > 12 {
+		mid := a + (b-a)/2
+		medianOfThree(data, mid, a, b-1)
+		pivot := a
+		left, right := a+1, b-1
+		for {
+			for left <= right && data.Less(left, pivot) {
+				left++
+			}
+			for left <= right && data.Less(pivot, right) {
+				right--
+			}
+			if left > right {
+				break
+			}
+			data.Swap(left, right)
+			left++
+			right--
+		}
+		data.Swap(pivot, right)
+		// Recurse into the smaller side, loop on the larger (bounded stack).
+		if right-a < b-(right+1) {
+			quickSort(data, a, right)
+			a = right + 1
+		} else {
+			quickSort(data, right+1, b)
+			b = right
+		}
+	}
+	insertionSort(data, a, b)
+}
+
+// Stable sorts data in ascending order, keeping equal elements in original order.
+func Stable(data Interface) {
+	insertionSort(data, 0, data.Len())
+}
+
+// IsSorted reports whether data is sorted.
+func IsSorted(data Interface) bool {
+	n := data.Len()
+	for i := n - 1; i > 0; i-- {
+		if data.Less(i, i-1) {
+			return false
+		}
+	}
+	return true
+}
+
+// --- convenience helpers ---
+//
+// These sort concrete slices directly rather than through an Interface adapter.
+// goclr's interface dispatch keys on the boxed value's runtime representation, and
+// every named slice type collapses to one GoSlice — so defining IntSlice/
+// Float64Slice/StringSlice as Interface implementers would make them mutually
+// indistinguishable at a sort.Sort dispatch. Inlining keeps the only Interface
+// implementers in a program the user's (or goja's) own distinct types.
+
+func isNaN(f float64) bool { return f != f }
+
+func Ints(x []int) {
+	for i := 1; i < len(x); i++ {
+		for j := i; j > 0 && x[j] < x[j-1]; j-- {
+			x[j], x[j-1] = x[j-1], x[j]
+		}
+	}
+}
+
+func Float64s(x []float64) {
+	for i := 1; i < len(x); i++ {
+		for j := i; j > 0 && (x[j] < x[j-1] || (isNaN(x[j]) && !isNaN(x[j-1]))); j-- {
+			x[j], x[j-1] = x[j-1], x[j]
+		}
+	}
+}
+
+func Strings(x []string) {
+	for i := 1; i < len(x); i++ {
+		for j := i; j > 0 && x[j] < x[j-1]; j-- {
+			x[j], x[j-1] = x[j-1], x[j]
+		}
+	}
+}
+
+func IntsAreSorted(x []int) bool {
+	for i := 1; i < len(x); i++ {
+		if x[i] < x[i-1] {
+			return false
+		}
+	}
+	return true
+}
+
+func Float64sAreSorted(x []float64) bool {
+	for i := 1; i < len(x); i++ {
+		if x[i] < x[i-1] {
+			return false
+		}
+	}
+	return true
+}
+
+func StringsAreSorted(x []string) bool {
+	for i := 1; i < len(x); i++ {
+		if x[i] < x[i-1] {
+			return false
+		}
+	}
+	return true
+}
+
+// Slice and friends are intercepted by the goclr runtime shim; these definitions
+// exist only to satisfy the package's exported API surface for type checking.
+func Slice(x any, less func(i, j int) bool)              { panic("sort.Slice: goclr runtime shim") }
+func SliceStable(x any, less func(i, j int) bool)        { panic("sort.SliceStable: goclr runtime shim") }
+func SliceIsSorted(x any, less func(i, j int) bool) bool { panic("sort.SliceIsSorted: goclr runtime shim") }

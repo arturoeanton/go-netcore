@@ -79,6 +79,38 @@ These P1 packages need a larger feature or external module and are deferred:
 - `log/slog`, `mime/multipart`, `os/signal`, `net/http` cookiejar/httptest,
   `google/uuid` — not yet shimmed.
 
+## Interface dispatch keys on the boxed representation
+
+goclr's interface method dispatch is resolved at compile time: it enumerates the
+concrete types (across all lowered packages) that implement the interface and emits
+an `isinst` chain on the boxed value's runtime representation. This is exact when
+implementers have distinct representations — distinct struct types, or pointer
+implementers (disambiguated by `GoPtr.TypeId`). It is **not** able to distinguish
+two named types that share one runtime representation:
+
+- Two or more **named slice** types implementing the same interface both box to
+  `GoSlice`; a dispatch site reachable by both cannot tell them apart. The standard
+  library's `sort.IntSlice`/`StringSlice`/`Float64Slice` adapters are therefore
+  omitted from the goclr `sort` overlay, and `sort.Sort`/`Stable` on a *single*
+  named-slice implementer works, but a program with two distinct named-slice
+  implementers of one interface would mis-dispatch. Use a struct or pointer
+  implementer (as goja does) when precise dispatch is required.
+- The same applies to two named map types, or two named types over the same scalar.
+
+A precise fix needs per-value runtime type tags (an itable), which is M3 scope.
+
+## goja / full runtime reflection
+
+Running goja (and similar reflection-heavy engines) end-to-end is **not** yet
+possible: goja's Go↔JS interop layer is built on the full `reflect` API
+(`reflect.ValueOf`, `MakeSlice`, `MakeMap`, `New`, field/method access by name)
+across ~25 files. goclr's value model erases runtime type identity, so a faithful
+`reflect` needs the same per-value type tags / runtime type descriptors as the
+interface-dispatch item above. The supporting infrastructure is in place
+(`go mod vendor` + unsafe-pointer overlays, `unicode` and `sort` compiled from
+source, long-form local opcodes, `&slice[i]`); the remaining blocker is the
+runtime type system. Tracked as an M3 milestone. See GOJA-STRATEGY.md.
+
 ## Misc
 
 - `strings.NewReplacer`, `strings.EqualFold` full-Unicode folding, and

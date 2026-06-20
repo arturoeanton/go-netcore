@@ -372,6 +372,7 @@ func funcDecls(p *frontend.Package) []*ast.FuncDecl {
 // goclr can lower (structs, slices, maps, package-level table initializers).
 var compileFromSource = map[string]bool{
 	"unicode": true,
+	"sort":    true, // via a goclr source overlay (drops internal/reflectlite)
 }
 
 // collectPackages returns root plus its transitive non-stdlib dependencies that

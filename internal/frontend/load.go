@@ -79,6 +79,7 @@ func Load(cfg LoadConfig) (*Result, error) {
 		Tests:      cfg.Tests,
 		BuildFlags: []string{"-tags=" + joinTags(tags)},
 		Env:        env,
+		Overlay:    StdlibOverlay(env),
 	}
 
 	loaded, err := packages.Load(pcfg, cfg.Patterns...)

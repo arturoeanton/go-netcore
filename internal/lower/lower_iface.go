@@ -16,29 +16,42 @@ type ifaceImpl struct {
 	viaPtr bool
 }
 
-// implementers returns the named types in the package whose value method set
-// (dispatched via isinst on the boxed value) or pointer method set (dispatched
-// via a GoPtr cell + type-id check) satisfies the interface.
+// implementers returns the named types across all lowered packages whose value
+// method set (dispatched via isinst on the boxed value) or pointer method set
+// (dispatched via a GoPtr cell + type-id check) satisfies the interface. Scanning
+// every package — not just the one being lowered — is what lets an interface
+// defined in one package (e.g. sort.Interface) dispatch to an implementer defined
+// in another (the caller's type), which cross-package generic functions require.
 func (c *lowerCtx) implementers(iface *types.Interface) []ifaceImpl {
 	var out []ifaceImpl
-	scope := c.pkg.Types.Scope()
-	for _, name := range scope.Names() {
-		tn, ok := scope.Lookup(name).(*types.TypeName)
-		if !ok {
-			continue
+	seen := map[*types.Named]bool{}
+	scopes := []*types.Scope{c.pkg.Types.Scope()}
+	for pkg := range c.prefixOf {
+		if pkg != c.pkg.Types {
+			scopes = append(scopes, pkg.Scope())
 		}
-		named, ok := tn.Type().(*types.Named)
-		if !ok {
-			continue
-		}
-		if _, isIface := named.Underlying().(*types.Interface); isIface {
-			continue
-		}
-		switch {
-		case types.Implements(named, iface):
-			out = append(out, ifaceImpl{named: named})
-		case types.Implements(types.NewPointer(named), iface):
-			out = append(out, ifaceImpl{named: named, viaPtr: true})
+	}
+	for _, scope := range scopes {
+		for _, name := range scope.Names() {
+			tn, ok := scope.Lookup(name).(*types.TypeName)
+			if !ok {
+				continue
+			}
+			named, ok := tn.Type().(*types.Named)
+			if !ok || seen[named] {
+				continue
+			}
+			if _, isIface := named.Underlying().(*types.Interface); isIface {
+				continue
+			}
+			switch {
+			case types.Implements(named, iface):
+				seen[named] = true
+				out = append(out, ifaceImpl{named: named})
+			case types.Implements(types.NewPointer(named), iface):
+				seen[named] = true
+				out = append(out, ifaceImpl{named: named, viaPtr: true})
+			}
 		}
 	}
 	return out
