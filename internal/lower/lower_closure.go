@@ -31,9 +31,11 @@ func (c *lowerCtx) litFreeVars(lit *ast.FuncLit) []*types.Var {
 	ast.Inspect(lit.Body, func(n ast.Node) bool {
 		if id, ok := n.(*ast.Ident); ok {
 			if v, ok := c.pkg.TypesInfo.Uses[id].(*types.Var); ok && !defined[v] && !seen[v] && !v.IsField() {
-				// Only locals (function/block scope, not package-level, not struct
-				// fields) become captured cells.
-				if v.Parent() != nil && v.Parent() != c.pkg.Types.Scope() {
+				// Only locals (function/block scope) become captured cells. Package-
+				// level vars in ANY package (a global, e.g. a dependency's sentinel)
+				// are read directly via ldsfld, not captured.
+				isGlobal := v.Pkg() != nil && v.Parent() == v.Pkg().Scope()
+				if v.Parent() != nil && !isGlobal {
 					seen[v] = true
 					free = append(free, v)
 				}
