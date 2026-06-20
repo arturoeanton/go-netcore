@@ -96,29 +96,36 @@ public static class Reflect
     public static long Type_NumField(object t) => Fields(((GoReflectType)t).Sample)?.Length ?? 0;
     public static object Type_Elem(object t) => new GoReflectType { Sample = ElemSample(((GoReflectType)t).Sample) };
 
-    // --- reflect.Value methods ---
-    public static ulong Value_Kind(object v) => KindOf(((GoReflectValue)v).V);
-    public static object Value_Type(object v) => new GoReflectType { Sample = ((GoReflectValue)v).V };
-    public static object? Value_Interface(object v) => ((GoReflectValue)v).V;
-    public static long Value_Int(object v) => Convert.ToInt64(((GoReflectValue)v).V);
-    public static ulong Value_Uint(object v) => Convert.ToUInt64(((GoReflectValue)v).V);
-    public static double Value_Float(object v) => Convert.ToDouble(((GoReflectValue)v).V);
-    public static GoString Value_String(object v) => ((GoReflectValue)v).V is GoString gs ? gs : GoString.FromDotNetString(((GoReflectValue)v).V?.ToString() ?? "");
-    public static bool Value_Bool(object v) => (bool)((GoReflectValue)v).V!;
-    public static long Value_Len(object v) => LenOf(((GoReflectValue)v).V);
-    public static long Value_NumField(object v) => Fields(((GoReflectValue)v).V)?.Length ?? 0;
-    public static bool Value_IsNil(object v) => ((GoReflectValue)v).V == null;
-    public static bool Value_IsValid(object v) => ((GoReflectValue)v).V != null;
-    public static bool Value_IsZero(object v)
+    // --- reflect.Value methods (null receiver = the zero reflect.Value) ---
+    private static object? RVal(object? v) => (v as GoReflectValue)?.V;
+    public static ulong Value_Kind(object? v) => KindOf(RVal(v));
+    public static object Value_Type(object? v) => new GoReflectType { Sample = RVal(v) };
+    public static object? Value_Interface(object? v) => RVal(v);
+    public static long Value_Int(object? v) => Convert.ToInt64(RVal(v) ?? 0L);
+    public static ulong Value_Uint(object? v) => Convert.ToUInt64(RVal(v) ?? (ulong)0);
+    public static double Value_Float(object? v) => Convert.ToDouble(RVal(v) ?? 0.0);
+    public static GoString Value_String(object? v)
     {
-        var x = ((GoReflectValue)v).V;
-        return x switch { null => true, long l => l == 0, double d => d == 0, bool b => !b, GoString s => s.Len == 0, _ => false };
+        var x = RVal(v);
+        if (x is GoString gs) return gs;
+        // reflect.Value.String() of a non-string returns "<T Value>"
+        return GoString.FromDotNetString(x == null ? "<invalid Value>" : "<" + KindName(KindOf(x)) + " Value>");
     }
-    public static object Value_Index(object v, long i) =>
-        new GoReflectValue { V = GoCLR.Runtime.GoSlices.Get((GoSlice)((GoReflectValue)v).V!, i) };
-    public static object Value_Field(object v, long i)
+    public static bool Value_Bool(object? v) => RVal(v) is bool b && b;
+    public static long Value_Len(object? v) => LenOf(RVal(v));
+    public static long Value_NumField(object? v) => Fields(RVal(v))?.Length ?? 0;
+    public static bool Value_IsNil(object? v) { var x = RVal(v); return x == null || (x is GoSlice s && s.Data == null) || (x is GoMap m && m.Data == null); }
+    public static bool Value_IsValid(object? v) => RVal(v) != null;
+    public static bool Value_IsZero(object? v)
     {
-        var parent = (GoReflectValue)v;
+        var x = RVal(v);
+        return x switch { null => true, long l => l == 0, int i => i == 0, ulong u => u == 0, double d => d == 0, bool b => !b, GoString s => s.Len == 0, GoSlice sl => sl.Data == null, GoMap mp => mp.Data == null, _ => false };
+    }
+    public static object Value_Index(object? v, long i) =>
+        new GoReflectValue { V = GoCLR.Runtime.GoSlices.Get((GoSlice)RVal(v)!, i) };
+    public static object Value_Field(object? v, long i)
+    {
+        var parent = (GoReflectValue)v!;
         var obj = parent.V!;
         var f = Fields(obj)![(int)i];
         var fv = new GoReflectValue { V = f.GetValue(obj) };
@@ -180,11 +187,18 @@ public static class Reflect
         };
         return new GoReflectValue { V = new GoPtr { Value = zero } };
     }
-    public static GoSlice Value_MapKeys(object v) => GoCLR.Runtime.GoMaps.Keys((GoMap)((GoReflectValue)v).V!);
-    public static object Value_MapIndex(object v, object keyVal)
+    public static GoSlice Value_MapKeys(object? v)
     {
-        var m = (GoMap)((GoReflectValue)v).V!;
-        var key = ((GoReflectValue)keyVal).V;
+        var raw = GoCLR.Runtime.GoMaps.Keys((GoMap)RVal(v)!);
+        // []reflect.Value: wrap each key.
+        var d = new object?[raw.Len];
+        for (int i = 0; i < raw.Len; i++) d[i] = new GoReflectValue { V = raw.Data[raw.Off + i] };
+        return new GoSlice { Data = d, Off = 0, Len = raw.Len, Cap = raw.Len };
+    }
+    public static object Value_MapIndex(object? v, object? keyVal)
+    {
+        var m = (GoMap)RVal(v)!;
+        var key = RVal(keyVal);
         return new GoReflectValue { V = GoCLR.Runtime.GoMaps.Get(m, key!, null) };
     }
 
@@ -213,15 +227,56 @@ public static class Reflect
 
     private static bool Eq(object? a, object? b)
     {
-        if (a == null || b == null) return ReferenceEquals(a, b);
+        if (a == null || b == null) return ReferenceEquals(a, b) || (IsNilish(a) && IsNilish(b));
         switch (a)
         {
             case GoString sa when b is GoString sb: return sa.Equals(sb);
             case GoSlice la when b is GoSlice lb:
+                if ((la.Data == null) != (lb.Data == null)) return false;
                 if (la.Len != lb.Len) return false;
                 for (int i = 0; i < la.Len; i++) if (!Eq(la.Data[la.Off + i], lb.Data[lb.Off + i])) return false;
                 return true;
-            default: return a.Equals(b);
+            case GoMap ma when b is GoMap mb:
+                if ((ma.Data == null) != (mb.Data == null)) return false;
+                if (ma.Data == null) return true;
+                if (ma.Data.Count != mb.Data!.Count) return false;
+                foreach (var kv in ma.Data) { if (!mb.Data.TryGetValue(kv.Key, out var bv) || !Eq(kv.Value, bv)) return false; }
+                return true;
+            case GoPtr pa when b is GoPtr pb: return Eq(pa.Value, pb.Value);
+            case GoComplex ca when b is GoComplex cb: return ca.Re == cb.Re && ca.Im == cb.Im;
+            default:
+                // structs (value types): compare public fields recursively.
+                if (a.GetType().IsValueType && a.GetType() == b.GetType() && Fields(a) is FieldInfo[] fs && fs.Length > 0)
+                {
+                    foreach (var f in fs) if (!Eq(f.GetValue(a), f.GetValue(b))) return false;
+                    return true;
+                }
+                return a.Equals(b);
         }
     }
+
+    private static bool IsNilish(object? v) => v == null || (v is GoSlice s && s.Data == null) || (v is GoMap m && m.Data == null);
+
+    // --- reflect.Kind ---
+    public static GoString Kind_String(ulong k) => GoString.FromDotNetString(KindName(k));
+    private static string KindName(ulong k) => k switch
+    {
+        KBool => "bool", KInt => "int", 3 => "int8", 4 => "int16", 5 => "int32", 6 => "int64",
+        KUint => "uint", 8 => "uint8", 9 => "uint16", 10 => "uint32", 11 => "uint64",
+        13 => "float32", KFloat64 => "float64", KComplex128 => "complex128", 15 => "complex64",
+        KMap => "map", KPtr => "ptr", KSlice => "slice", KString => "string", KStruct => "struct",
+        18 => "func", 17 => "chan", 26 => "unsafe.Pointer", 20 => "interface",
+        _ => "invalid",
+    };
+
+    // reflect.Type.Field(i) -> a StructField handle (Name + Tag accessible).
+    public static object Type_Field(object t, long i)
+    {
+        var obj = ((GoReflectType)t).Sample;
+        var f = Fields(obj)![(int)i];
+        return new GoStructField { Name = f.Name, Tag = TagFor(obj!.GetType().Name, f.Name), FieldType = f.FieldType };
+    }
 }
+
+/// <summary>reflect.StructField handle (the subset code commonly reads).</summary>
+public sealed class GoStructField { public string Name = ""; public string Tag = ""; public System.Type? FieldType; }

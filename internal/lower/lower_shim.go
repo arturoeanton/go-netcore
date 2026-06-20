@@ -208,6 +208,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"String": {"Reflect", "Type_String"}, "NumField": {"Reflect", "Type_NumField"},
 		"Elem": {"Reflect", "Type_Elem"},
 	},
+	"reflect.Kind": {
+		"String": {"Reflect", "Kind_String"},
+	},
 	"strings.Builder": {
 		"WriteString": {"StringsBuilder", "WriteString"}, "WriteByte": {"StringsBuilder", "WriteByte"},
 		"WriteRune": {"StringsBuilder", "WriteRune"}, "Write": {"StringsBuilder", "Write"},
