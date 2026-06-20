@@ -35,6 +35,15 @@ public static class Regexp
     public static bool Re_MatchString(object r, GoString s) => ((GoRegexp)r).Re.IsMatch(s.ToDotNetString());
     public static GoString Re_FindString(object r, GoString s) { var m = ((GoRegexp)r).Re.Match(s.ToDotNetString()); return GoString.FromDotNetString(m.Success ? m.Value : ""); }
     public static GoString Re_String(object r) => GoString.FromDotNetString(((GoRegexp)r).Re.ToString());
+    public static GoSlice Re_FindStringIndex(object r, GoString gs)
+    {
+        var str = gs.ToDotNetString();
+        var m = ((GoRegexp)r).Re.Match(str);
+        if (!m.Success) return new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 }; // nil
+        int start = System.Text.Encoding.UTF8.GetByteCount(str.Substring(0, m.Index));
+        int end = start + System.Text.Encoding.UTF8.GetByteCount(m.Value);
+        return new GoSlice { Data = new object?[] { (long)start, (long)end }, Off = 0, Len = 2, Cap = 2 };
+    }
     public static GoSlice Re_FindStringSubmatch(object r, GoString s)
     {
         var m = ((GoRegexp)r).Re.Match(s.ToDotNetString());
