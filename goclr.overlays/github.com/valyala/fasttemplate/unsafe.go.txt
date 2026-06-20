@@ -1,0 +1,17 @@
+// +build !appengine
+
+package fasttemplate
+
+// goclr-safe overlay: upstream reinterprets a []byte as a string (and back) with
+// unsafe.Pointer + reflect.StringHeader/SliceHeader for a zero-copy conversion,
+// which goclr cannot lower. The standard language conversions are byte-identical
+// (they copy, where upstream aliases) — correct for fasttemplate, which only reads
+// through these results. Mirrors the package's own appengine variant (unsafe_gae.go).
+
+func unsafeBytes2String(b []byte) string {
+	return string(b)
+}
+
+func unsafeString2Bytes(s string) []byte {
+	return []byte(s)
+}

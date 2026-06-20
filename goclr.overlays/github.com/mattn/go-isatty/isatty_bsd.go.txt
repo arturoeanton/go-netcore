@@ -1,0 +1,25 @@
+//go:build (darwin || freebsd || openbsd || netbsd || dragonfly || hurd) && !appengine && !tinygo
+// +build darwin freebsd openbsd netbsd dragonfly hurd
+// +build !appengine
+// +build !tinygo
+
+package isatty
+
+// goclr-safe overlay: the upstream file calls unix.IoctlGetTermios (TIOCGETA)
+// through golang.org/x/sys/unix, which is a raw syscall layer goclr cannot lower
+// (it ships hand-written assembly + unsafe.Pointer marshalling). Terminal
+// detection is only used to decide whether to colorize log output, so reporting
+// "not a terminal" is a correct, side-effect-free answer on the CLR: log output is
+// emitted without ANSI color, exactly as when stdout is redirected. This drops the
+// x/sys/unix import entirely, removing it (and its .s assembly) from the closure.
+
+// IsTerminal returns true if the file descriptor is a terminal. Under goclr it is
+// always false (no TTY ioctl), so consumers fall back to non-colored output.
+func IsTerminal(fd uintptr) bool {
+	return false
+}
+
+// IsCygwinTerminal returns true for a cygwin/msys2 terminal; always false here.
+func IsCygwinTerminal(fd uintptr) bool {
+	return false
+}
