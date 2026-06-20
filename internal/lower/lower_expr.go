@@ -950,8 +950,35 @@ func (l *funcLowerer) emitArith(tok token.Token, operandType goir.Type) {
 			op = goir.OpShrUn
 		}
 	}
+	if (op == goir.OpDiv || op == goir.OpRem || op == goir.OpDivUn || op == goir.OpRemUn) && isIntegerKind(operandType.Kind) {
+		l.emitDivByZeroCheck()
+	}
 	l.emit(goir.Op{Code: op})
 	l.truncateInt(operandType)
+}
+
+// isIntegerKind reports whether k is one of the integer representations (signed
+// or unsigned, any width). Sub-word Go integers map to KInt32/KUint32.
+func isIntegerKind(k goir.Kind) bool {
+	switch k {
+	case goir.KInt64, goir.KInt32, goir.KUint64, goir.KUint32:
+		return true
+	}
+	return false
+}
+
+// emitDivByZeroCheck guards an integer division/remainder: with [dividend,
+// divisor] on the stack it panics (Go's recoverable "integer divide by zero"
+// runtime error) when the divisor is zero, otherwise leaves the stack unchanged
+// for the div/rem op. Float division is exempt (Go yields ±Inf/NaN there).
+func (l *funcLowerer) emitDivByZeroCheck() {
+	ok := l.label()
+	l.emit(goir.Op{Code: goir.OpDup})
+	l.emit(goir.Op{Code: goir.OpBrTrue, Label: ok})
+	l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: integer divide by zero"})
+	l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString}) // GoString is a value type; Panic takes object
+	l.emit(goir.Op{Code: goir.OpCallPanic})
+	l.mark(ok)
 }
 
 // truncateInt wraps an arithmetic result back to a sub-word integer's width so
