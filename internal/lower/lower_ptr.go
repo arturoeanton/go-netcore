@@ -422,11 +422,11 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 }
 
 // ptrRootedReceiver prepares the receiver for a pointer-receiver method call whose
-// receiver is a value-struct field reached through a pointer (p.A.B, B a value
-// struct). Such a field is not directly addressable, so its current value is read
-// into a fresh GoPtr cell; the returned writeback thunk stores the (possibly
-// mutated) cell value back into the field after the call. ok is false when recv is
-// not a pointer-rooted struct field.
+// receiver is a value-struct field that is not directly addressable — a field
+// reached through a pointer (p.A.B) or a field of a cell-held local struct (r.cc).
+// Its current value is read into a fresh GoPtr cell for the call; the returned
+// writeback thunk stores the (possibly mutated) value back into the field
+// afterwards. ok is false when no supported writeback strategy applies.
 func (l *funcLowerer) ptrRootedReceiver(recv ast.Expr) (int, func(), bool) {
 	sel, ok := unparen(recv).(*ast.SelectorExpr)
 	if !ok {
@@ -436,40 +436,74 @@ func (l *funcLowerer) ptrRootedReceiver(recv ast.Expr) (int, func(), bool) {
 	if recvT.Kind != goir.KStruct {
 		return 0, nil, false
 	}
-	// Require a *struct somewhere up the selector chain (else it is addressable the
-	// normal way, or unsupported).
-	rooted := false
-	for cur := ast.Expr(sel); ; {
-		s, ok := unparen(cur).(*ast.SelectorExpr)
-		if !ok {
-			break
+
+	// Pick a writeback strategy that mirrors the value the GoPtr cell carries.
+	pushFromCell := func(p int) {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: p})
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(recvT)
+	}
+	var writeback func(p int)
+	switch {
+	case l.isPtrRootedField(sel):
+		// p.A.B: write back through the pointer (read *p, set field, store).
+		writeback = func(p int) {
+			l.pointerRootedFieldWriteVal(sel, func(parent *goir.Struct, fi int) { pushFromCell(p) })
 		}
-		bt := l.exprType(s.X)
-		if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct {
-			rooted = true
-			break
-		}
+	default:
+		bt := l.exprType(sel.X)
 		if bt.Kind != goir.KStruct {
-			break
+			return 0, nil, false
 		}
-		cur = s.X
+		fi := bt.Struct.FieldIndex(sel.Sel.Name)
+		if fi < 0 {
+			return 0, nil, false
+		}
+		if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
+			// r.cc where r is a cell-held local struct: RMW through the cell.
+			cfi := elem.Struct.FieldIndex(sel.Sel.Name)
+			if cfi < 0 {
+				return 0, nil, false
+			}
+			writeback = func(p int) {
+				l.cellFieldModify(idx, elem, cfi, func(ft goir.Type) { pushFromCell(p) })
+			}
+		} else {
+			// r.cc where r is an addressable local struct (or field chain rooted at
+			// one): write the field through its managed address.
+			writeback = func(p int) {
+				l.lvalueAddr(sel.X)
+				pushFromCell(p)
+				l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+			}
+		}
 	}
-	if !rooted {
-		return 0, nil, false
-	}
+
 	l.expr(sel) // current field value
 	l.emitBox(recvT)
 	l.ptrNew(recvT)
 	p := l.addLocal(nil, goir.PtrType(recvT))
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: p})
-	writeback := func() {
-		l.pointerRootedFieldWriteVal(sel, func(parent *goir.Struct, fi int) {
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: p})
-			l.emit(goir.Op{Code: goir.OpPtrGet})
-			l.emitUnbox(recvT)
-		})
+	return p, func() { writeback(p) }, true
+}
+
+// isPtrRootedField reports whether a selector chain has a *struct somewhere up its
+// base (so the target field lives inside a pointed-to struct).
+func (l *funcLowerer) isPtrRootedField(sel *ast.SelectorExpr) bool {
+	for cur := ast.Expr(sel); ; {
+		s, ok := unparen(cur).(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		bt := l.exprType(s.X)
+		if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct {
+			return true
+		}
+		if bt.Kind != goir.KStruct {
+			return false
+		}
+		cur = s.X
 	}
-	return p, writeback, true
 }
 
 // promotedMethodCall lowers recv.M(args) where M is promoted from an embedded
