@@ -489,6 +489,17 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 		if fsel, ok := unparen(sel.X).(*ast.SelectorExpr); ok && l.buildFieldAlias(fsel) {
 			break
 		}
+		// A slice element s[i].Method(): &s[i] aliases the backing array element.
+		if ix, ok := unparen(sel.X).(*ast.IndexExpr); ok && l.exprType(ix.X).Kind == goir.KSlice {
+			xt := l.exprType(ix.X)
+			l.expr(ix.X)
+			l.expr(ix.Index)
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ElemAddr",
+				Params: []goir.Type{xt, goir.TInt64}, Ret: goir.PtrType(*xt.Elem),
+			}})
+			break
+		}
 		l.fail(e.Pos(), "pointer-receiver method on a non-addressable value")
 		return goir.TVoid
 	case !recvIsPtr && baseIsPtr:
