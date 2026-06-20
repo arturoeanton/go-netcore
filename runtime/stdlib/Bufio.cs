@@ -49,6 +49,8 @@ public static class Bufio
     }
 
     public static GoString Scanner_Text(object so) => GoString.FromBytes(((GoScanner)so).Cur);
+    // The scanner reads from a fully-drained in-memory buffer, so it never errors.
+    public static object? Scanner_Err(object so) => null;
     public static GoSlice Scanner_Bytes(object so)
     {
         var c = ((GoScanner)so).Cur;

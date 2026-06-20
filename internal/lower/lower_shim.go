@@ -472,7 +472,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"String": {"Reflect", "Kind_String"},
 	},
 	"bufio.Scanner": {
-		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"},
+		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"}, "Err": {"Bufio", "Scanner_Err"},
 	},
 	"io.ReadCloser": {
 		"Close": {"Http", "Body_Close"},
