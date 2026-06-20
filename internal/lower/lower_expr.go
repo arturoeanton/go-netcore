@@ -766,6 +766,47 @@ func (l *funcLowerer) printCall(e *ast.CallExpr, isPrintln bool) goir.Type {
 // emitCallArgs lowers call arguments, packing the trailing arguments of a
 // variadic callee into a slice (unless spread with `args...`).
 func (l *funcLowerer) emitCallArgs(args []ast.Expr, params []goir.Type, variadic, ellipsis bool) {
+	// f(g()) — a single argument that is itself a multi-result call: evaluate the
+	// tuple once and spread its elements across the parameters (and the variadic
+	// tail, if any). This is the only form Go allows mixing a multi-value call with.
+	if len(args) == 1 && !ellipsis {
+		if tup, ok := l.pkg.TypesInfo.TypeOf(args[0]).(*types.Tuple); ok && tup.Len() > 1 {
+			tmp := l.addLocal(nil, goir.TObjectArray)
+			l.expr(args[0]) // object[] tuple
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+			ldElem := func(i int) {
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+				l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+				l.emit(goir.Op{Code: goir.OpLdElemRef})
+			}
+			nFixed := len(params)
+			if variadic {
+				nFixed = len(params) - 1
+			}
+			for i := 0; i < nFixed; i++ {
+				ldElem(i)
+				l.emitUnbox(params[i])
+			}
+			if variadic {
+				// Pack the remaining tuple elements (already boxed) into the slice.
+				rest := tup.Len() - nFixed
+				sliceTmp := l.addLocal(nil, params[nFixed])
+				l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(rest)})
+				l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(rest)})
+				l.emitBoxedZero(*params[nFixed].Elem)
+				l.emit(goir.Op{Code: goir.OpSliceMake})
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: sliceTmp})
+				for k := 0; k < rest; k++ {
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
+					l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(k)})
+					ldElem(nFixed + k) // element is already boxed
+					l.emit(goir.Op{Code: goir.OpSliceSet})
+				}
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
+			}
+			return
+		}
+	}
 	if !variadic {
 		for i, a := range args {
 			if i < len(params) {
