@@ -1258,17 +1258,27 @@ func (l *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 	if l.inClosure {
 		switch {
 		case len(l.closureResults) > 1:
-			if len(s.Results) != len(l.closureResults) {
+			// return f() where f yields a matching multi-value tuple: the call already
+			// returns a boxed object[] tuple — return it directly.
+			if len(s.Results) == 1 {
+				tup, ok := l.pkg.TypesInfo.TypeOf(s.Results[0]).(*types.Tuple)
+				if !ok || tup.Len() != len(l.closureResults) {
+					l.fail(s.Pos(), "naked return in a multi-result closure")
+					return
+				}
+				l.expr(s.Results[0])
+			} else if len(s.Results) != len(l.closureResults) {
 				l.fail(s.Pos(), "naked return in a multi-result closure")
 				return
-			}
-			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(s.Results))})
-			l.emit(goir.Op{Code: goir.OpNewObjArray})
-			for i, r := range s.Results {
-				l.emit(goir.Op{Code: goir.OpDup})
-				l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
-				l.emitBoxedElem(r)
-				l.emit(goir.Op{Code: goir.OpStelemRef})
+			} else {
+				l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(s.Results))})
+				l.emit(goir.Op{Code: goir.OpNewObjArray})
+				for i, r := range s.Results {
+					l.emit(goir.Op{Code: goir.OpDup})
+					l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+					l.emitBoxedElem(r)
+					l.emit(goir.Op{Code: goir.OpStelemRef})
+				}
 			}
 		case l.closureRet != goir.TVoid:
 			l.emitBoxedElem(s.Results[0])
