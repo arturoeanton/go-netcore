@@ -112,14 +112,28 @@ public static class Json
 
     private static void WriteStruct(StringBuilder sb, object v)
     {
-        var t = v.GetType();
-        var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
         sb.Append('{');
         bool first = true;
-        foreach (var f in fields)
+        WriteStructFields(sb, v, ref first);
+        sb.Append('}');
+    }
+
+    // Emit a struct's fields, promoting embedded (anonymous) fields inline.
+    private static void WriteStructFields(StringBuilder sb, object v, ref bool first)
+    {
+        var t = v.GetType();
+        foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.Instance))
         {
             if (f.Name.Length == 0 || !char.IsUpper(f.Name[0])) continue; // unexported
-            string tag = Reflect.TagGet(Reflect.TagFor(t.Name, f.Name), "json");
+            string rawTag = Reflect.TagFor(t.Name, f.Name);
+            string tag = Reflect.TagGet(rawTag, "json");
+            // Embedded struct (field name == its type name) with no json tag: flatten.
+            var val = f.GetValue(v);
+            if (tag.Length == 0 && f.Name == f.FieldType.Name && val != null && f.FieldType.IsValueType && IsGoStruct(f.FieldType))
+            {
+                WriteStructFields(sb, val, ref first);
+                continue;
+            }
             string name = f.Name;
             bool omitempty = false;
             if (tag.Length > 0)
@@ -129,14 +143,15 @@ public static class Json
                 if (parts[0].Length > 0) name = parts[0];
                 for (int i = 1; i < parts.Length; i++) if (parts[i] == "omitempty") omitempty = true;
             }
-            var val = f.GetValue(v);
             if (omitempty && IsEmpty(val)) continue;
             if (!first) sb.Append(',');
             first = false;
             WriteString(sb, name); sb.Append(':'); Write(sb, val);
         }
-        sb.Append('}');
     }
+
+    private static bool IsGoStruct(System.Type t) =>
+        t.IsValueType && t != typeof(GoSlice) && t != typeof(GoComplex) && !t.IsPrimitive && t != typeof(GoString);
 
     private static bool IsEmpty(object? v) => v switch
     {
@@ -289,6 +304,8 @@ public static class Json
     {
         if (v == null) return target.IsValueType ? System.Activator.CreateInstance(target) : null;
         if (target.IsInstanceOfType(v)) return v;
+        // *T struct/field pointers use the non-generic GoPtr cell.
+        if (target == typeof(GoPtr)) return new GoPtr { Value = v };
         if (target.IsGenericType && target.GetGenericTypeDefinition() == typeof(GoPtr<>))
         {
             var elem = target.GetGenericArguments()[0];

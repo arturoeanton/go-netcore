@@ -33,6 +33,12 @@ func (l *funcLowerer) expr(e ast.Expr) {
 	switch e := e.(type) {
 	case *ast.Ident:
 		if e.Name == "nil" {
+			// A nil flowing into a slice slot must be the value-type nil slice
+			// (default GoSlice), not a null reference.
+			if t, ok := l.goType(l.pkg.TypesInfo.TypeOf(e)); ok && t.Kind == goir.KSlice {
+				l.emitZeroValue(t)
+				return
+			}
 			l.emit(goir.Op{Code: goir.OpLdNull})
 			return
 		}
@@ -130,7 +136,7 @@ func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 			return goir.TVoid
 		}
 		l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
-		l.expr(val)
+		l.exprCoerced(val, s.Fields[fi].Type)
 		l.emit(goir.Op{Code: goir.OpStFld, Struct: s, Field: fi})
 	}
 
@@ -222,6 +228,23 @@ func (l *funcLowerer) binaryExpr(e *ast.BinaryExpr) {
 		return
 	case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
 		opType := l.cmpOperandType(e.X, e.Y)
+		// A slice is a value type and can only be compared against nil; test its
+		// backing array rather than emitting an invalid `ceq` on the struct.
+		if opType.Kind == goir.KSlice {
+			operand := e.X
+			if isNilIdent(e.X) {
+				operand = e.Y
+			}
+			l.expr(operand)
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "SliceIsNil",
+				Params: []goir.Type{opType}, Ret: goir.TBool,
+			}})
+			if e.Op == token.NEQ {
+				l.emit(goir.Op{Code: goir.OpNot})
+			}
+			return
+		}
 		l.expr(e.X)
 		l.expr(e.Y)
 		l.compare(e.Op, opType)

@@ -180,6 +180,11 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 // interface ({}/any -> object).
 func (l *funcLowerer) exprCoerced(e ast.Expr, target goir.Type) {
 	if isNilIdent(e) {
+		// nil into a slice slot is the value-type nil slice, not a null reference.
+		if target.Kind == goir.KSlice {
+			l.emitZeroValue(target)
+			return
+		}
 		l.emit(goir.Op{Code: goir.OpLdNull})
 		return
 	}

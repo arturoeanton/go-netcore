@@ -51,10 +51,12 @@ func (l *funcLowerer) emitZeroValue(t goir.Type) {
 		l.emit(goir.Op{Code: goir.OpInitObj, Struct: t.Struct})
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 	case goir.KSlice:
-		l.emit(goir.Op{Code: goir.OpLdcI8, Int: 0})
-		l.emit(goir.Op{Code: goir.OpLdcI8, Int: 0})
-		l.emitBoxedZero(*t.Elem)
-		l.emit(goir.Op{Code: goir.OpSliceMake})
+		// The zero value of a slice is nil (a GoSlice with a null backing array),
+		// so `var s []T; s == nil` is true, matching Go.
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "NilSlice",
+			Params: []goir.Type{}, Ret: t,
+		}})
 	case goir.KComplex:
 		// Zero complex is 0+0i — a real object (null would break arithmetic).
 		l.emit(goir.Op{Code: goir.OpLdcR8, Float: 0})
