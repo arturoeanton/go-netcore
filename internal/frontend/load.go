@@ -106,7 +106,7 @@ func Load(cfg LoadConfig) (*Result, error) {
 			TypesInfo:  lp.TypesInfo,
 			Imports:    map[string]*Package{},
 			Errors:     lp.Errors,
-			IsStdlib:   isStdlibPath(lp.PkgPath),
+			IsStdlib:   isStdlibPkg(lp),
 		}
 		res.All[lp.PkgPath] = p
 		if lp.Fset != nil && fset == nil {
