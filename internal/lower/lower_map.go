@@ -19,8 +19,10 @@ func (l *funcLowerer) mapLit(e *ast.CompositeLit, mt goir.Type) goir.Type {
 			return goir.TVoid
 		}
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		// Keys stay unwrapped (map[Money]int must compare keys by value); values into
+		// a map[K]any are tagged so they keep their dynamic type when read back.
 		l.emitBoxedElem(kv.Key)
-		l.emitBoxedElem(kv.Value)
+		l.emitBoxedElemInto(kv.Value, *mt.Val)
 		l.emit(goir.Op{Code: goir.OpMapSet})
 	}
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})

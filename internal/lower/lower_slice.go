@@ -51,6 +51,18 @@ func (l *funcLowerer) emitBoxedElem(v ast.Expr) {
 	l.emitBox(t)
 }
 
+// emitBoxedElemInto lowers a container element value, boxes it, and — when the
+// container's element type is an interface (`[]any`, `map[K]any`, a variadic
+// `...any`) — tags it with its named-type identity so the stored value keeps its
+// dynamic type for fmt/dispatch/%T. For concrete element types it is exactly
+// emitBoxedElem (no wrapping, so e.g. `[]Money` stays comparable/indexable).
+func (l *funcLowerer) emitBoxedElemInto(v ast.Expr, elemType goir.Type) {
+	l.emitBoxedElem(v)
+	if elemType.Kind == goir.KObject && !isNilIdent(v) {
+		l.maybeWrapNamed(l.pkg.TypesInfo.TypeOf(v))
+	}
+}
+
 // emitZeroValue pushes the unboxed zero value of any supported type.
 func (l *funcLowerer) emitZeroValue(t goir.Type) {
 	switch t.Kind {
@@ -256,7 +268,7 @@ func (l *funcLowerer) sliceLit(e *ast.CompositeLit, st goir.Type) goir.Type {
 	for _, it := range items {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: it.idx})
-		l.emitBoxedElem(it.val)
+		l.emitBoxedElemInto(it.val, elem)
 		l.emit(goir.Op{Code: goir.OpSliceSet})
 	}
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})

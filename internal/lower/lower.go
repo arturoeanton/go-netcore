@@ -55,6 +55,12 @@ type lowerCtx struct {
 	// stringers holds generated String()/Error() dispatch closures to register
 	// with the fmt runtime at startup.
 	stringers []stringerReg
+	// namedIds assigns each identity-bearing named type (non-struct underlying with
+	// a method set) a stable per-build id so a boxed value can carry its Go named-
+	// type identity — the typed box (see runtime GoNamed). namedNames maps id ->
+	// display name ("pkg.Type") for %T / reflect, registered at startup.
+	namedIds   map[*types.Named]int64
+	namedNames map[int64]string
 }
 
 // varInit is a package-level variable initializer to run during program startup.
@@ -93,6 +99,8 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		monoInsts:          map[string]*goir.Method{},
 		prefixOf:           map[*types.Package]string{},
 		globals:            map[*types.Var]int{},
+		namedIds:           map[*types.Named]int64{},
+		namedNames:         map[int64]string{},
 		bag:                bag,
 	}
 	prog := &goir.Program{}
@@ -278,7 +286,7 @@ func (c *lowerCtx) taggedStructs() []*goir.Struct {
 // then each init() function. Returns nil if there is nothing to do.
 func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	tagged := c.taggedStructs()
-	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 {
+	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.namedNames) == 0 {
 		return nil, true
 	}
 	// The package-var initializers and tag registrations are emitted into a series
@@ -306,7 +314,9 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	}
 
 	cl := newChunk()
-	// Register String()/Error() dispatch closures so fmt can format custom types.
+	// Register named-type display names (for %T / reflect) and String()/Error()
+	// dispatch closures so fmt can format custom types.
+	cl.emitRegisterNamedTypes()
 	cl.emitStringerRegistrations()
 	// Register struct field tags first so reflect/json see them everywhere.
 	regExt := &goir.Extern{

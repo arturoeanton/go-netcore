@@ -16,9 +16,12 @@ public static class Fmt
     // (and a value receiver reached through *T) by the struct's runtime type id.
     private static readonly System.Collections.Generic.Dictionary<string, GoClosure> _valStringers = new();
     private static readonly System.Collections.Generic.Dictionary<long, GoClosure> _ptrStringers = new();
+    // Named non-struct types (the typed box): keyed by GoNamed type id.
+    private static readonly System.Collections.Generic.Dictionary<long, GoClosure> _namedStringers = new();
 
     public static void RegisterValStringer(GoString name, GoClosure fn) => _valStringers[name.ToDotNetString()] = fn;
     public static void RegisterPtrStringer(long id, GoClosure fn) => _ptrStringers[id] = fn;
+    public static void RegisterNamedStringer(long id, GoClosure fn) => _namedStringers[id] = fn;
 
     // TryStringer invokes a registered String()/Error() method for v's concrete type,
     // returning its text. Used for the %v and %s verbs (not %#v / %T / %d / %p).
@@ -26,7 +29,9 @@ public static class Fmt
     {
         s = "";
         GoClosure? fn = null;
-        if (v is GoPtr p && p.TypeId != 0)
+        if (v is GoNamed nm)
+            _namedStringers.TryGetValue(nm.TypeId, out fn);
+        else if (v is GoPtr p && p.TypeId != 0)
             _ptrStringers.TryGetValue(p.TypeId, out fn);
         else if (v != null && v.GetType().IsValueType && IsStructVal(v))
             _valStringers.TryGetValue(v.GetType().Name, out fn);
@@ -189,6 +194,11 @@ public static class Fmt
     {
         if (ReferenceEquals(v, MissingArg)) return "%!" + sp.Verb + "(MISSING)";
         char verb = sp.Verb;
+        // A typed-box value dispatches its Stringer for %v/%s and names itself for
+        // %T (handled downstream); every other verb formats the underlying value —
+        // unwrap here so the numeric/char/quote paths never see the wrapper (and so
+        // a Stringer that itself uses %d can't recurse infinitely).
+        if (v is GoNamed gn && verb != 'v' && verb != 's' && verb != 'T') v = gn.Value;
         switch (verb)
         {
             case 'd': return IntVerb(v, sp, 10, false);
@@ -366,14 +376,26 @@ public static class Fmt
         GoSlice => "[]interface {}",
         GoMap => "map[string]interface {}",
         GoPtr p => "*" + GoTypeName(p.Value),
+        GoNamed nm => NamedTypeNameOr(nm),
         _ => "main." + v.GetType().Name,
     };
+
+    // %T of a typed-box value: its registered Go display name (e.g. "main.Money",
+    // "sort.StringSlice"), falling back to the underlying value's name.
+    private static string NamedTypeNameOr(GoNamed nm)
+    {
+        var name = Rt.NamedTypeName(nm.TypeId);
+        return name.Length > 0 ? name : GoTypeName(nm.Value);
+    }
 
     private static string Format(object? v, char verb, bool plus, bool hash)
     {
         // A type's String()/Error() method governs %v and %s output (but not the
         // Go-syntax %#v, nor numeric/bool/pointer-address verbs).
         if (!hash && (verb == 'v' || verb == 's') && TryStringer(v, out var sv)) return sv;
+        // For every other verb a named value formats by its underlying value
+        // (e.g. %d on a `type Money int64`).
+        if (v is GoNamed nm) v = nm.Value;
         switch (v)
         {
             case null: return "<nil>";

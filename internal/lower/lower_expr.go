@@ -865,7 +865,9 @@ func (l *funcLowerer) packVariadic(args []ast.Expr, elemType goir.Type) {
 	for i, a := range args {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(i)})
-		l.emitBoxedElem(a)
+		// Into a variadic ...any / ...interface (e.g. fmt's args), tag named values
+		// with their identity so fmt can dispatch String()/Error() and print %T.
+		l.emitBoxedElemInto(a, elemType)
 		l.emit(goir.Op{Code: goir.OpSliceSet})
 	}
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})

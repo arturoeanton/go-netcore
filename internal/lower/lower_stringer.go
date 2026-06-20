@@ -13,8 +13,9 @@ import (
 // value receivers reached through *T).
 type stringerReg struct {
 	byPtr     bool   // register under the pointee type id rather than the CLR name
-	name      string // struct CLR name (byPtr == false)
-	id        int64  // struct type id (byPtr == true)
+	byNamedId bool   // register under a typed-box named id (named non-struct types)
+	name      string // struct CLR name (byPtr == false && !byNamedId)
+	id        int64  // struct type id (byPtr) or named-type id (byNamedId)
 	closureID int
 }
 
@@ -23,9 +24,10 @@ type stringerReg struct {
 type recvSource int
 
 const (
-	valDirect recvSource = iota // arg is a boxed struct value
-	ptrDeref                    // arg is a GoPtr; dereference to the struct value
-	ptrDirect                   // arg is a GoPtr; pass it as the pointer receiver
+	valDirect   recvSource = iota // arg is a boxed struct value
+	ptrDeref                      // arg is a GoPtr; dereference to the struct value
+	ptrDirect                     // arg is a GoPtr; pass it as the pointer receiver
+	namedUnwrap                   // arg is a GoNamed; unwrap, then unbox to the underlying value
 )
 
 // collectStringers finds every struct type with a String() or Error() method and
@@ -52,6 +54,28 @@ func (c *lowerCtx) collectStringers() {
 				stringerReg{name: st.Name, closureID: c.buildStringerClosure(m, valDirect)},
 				stringerReg{byPtr: true, id: int64(st.Id), closureID: c.buildStringerClosure(m, ptrDeref)})
 		}
+	}
+
+	// Named non-struct types with a String()/Error() method (the typed box): a
+	// value of such a type carries a GoNamed tag when boxed, so fmt dispatches by
+	// type id. Only the identity-bearing named types that were actually boxed into
+	// an interface (and thus appear in namedIds) can reach fmt this way.
+	for named, id := range c.namedIds {
+		fn, ok := stringerMethod(named)
+		if !ok {
+			continue
+		}
+		if isPointerType(fn.Type().(*types.Signature).Recv().Type()) {
+			continue // pointer-receiver stringer on a named non-struct: rare, deferred
+		}
+		m := c.byFunc[fn]
+		if m == nil || len(m.Params) == 0 {
+			continue
+		}
+		c.needsInvoker = true
+		c.invokeMethod()
+		c.stringers = append(c.stringers,
+			stringerReg{byNamedId: true, id: id, closureID: c.buildStringerClosure(m, namedUnwrap)})
 	}
 }
 
@@ -110,6 +134,9 @@ func (c *lowerCtx) buildStringerClosure(m *goir.Method, src recvSource) int {
 		cl.emitUnbox(recvType)
 	case ptrDirect:
 		cl.emitUnbox(recvType) // recvType is *T
+	case namedUnwrap:
+		cl.emitUnwrapNamed()   // GoNamed -> inner boxed underlying value
+		cl.emitUnbox(recvType) // unbox to the underlying representation (e.g. i8)
 	}
 	cl.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
 	cl.emitBox(m.Ret)
@@ -125,15 +152,21 @@ func (l *funcLowerer) emitStringerRegistrations() {
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(sr.closureID)})
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
 		l.emit(goir.Op{Code: goir.OpNewObjArray})
-		if sr.byPtr {
-			// RegisterPtrStringer(id, fn): id is pushed before the closure.
+		if sr.byPtr || sr.byNamedId {
+			// id-keyed registration: id is pushed before the closure. Pointer-receiver
+			// struct stringers register by pointee type id; named non-struct stringers
+			// register by typed-box named id.
+			method := "RegisterPtrStringer"
+			if sr.byNamedId {
+				method = "RegisterNamedStringer"
+			}
 			idLoc := l.addLocal(nil, goir.TFunc)
 			l.emit(goir.Op{Code: goir.OpClosNew})
 			l.emit(goir.Op{Code: goir.OpStLoc, Local: idLoc})
 			l.emit(goir.Op{Code: goir.OpLdcI8, Int: sr.id})
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: idLoc})
 			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Fmt", Method: "RegisterPtrStringer",
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Fmt", Method: method,
 				Params: []goir.Type{goir.TInt64, goir.TFunc}, Ret: goir.TVoid,
 			}})
 			continue

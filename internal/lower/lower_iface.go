@@ -90,12 +90,20 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 	labels := make([]int, len(impls))
 	ctypes := make([]goir.Type, len(impls)) // boxed value type (value impl) or pointee type (ptr impl)
 	callees := make([]*goir.Method, len(impls))
+	// A value implementer whose named type is a non-struct (e.g. a named slice
+	// satisfying sort.Interface) is carried in the interface as a GoNamed (the typed
+	// box): match it by type id, not by representation isinst. namedId[i] != 0 marks
+	// such implementers. Struct value implementers keep their distinct CLR type, and
+	// pointer implementers keep their GoPtr type id — both unchanged.
+	namedId := make([]int64, len(impls))
 	for i, impl := range impls {
 		labels[i] = l.label()
 		ctypes[i], _ = l.goType(impl.named)
 		recv := types.Type(impl.named)
 		if impl.viaPtr {
 			recv = types.NewPointer(impl.named)
+		} else if id, ok := l.namedIdentity(impl.named); ok {
+			namedId[i] = id
 		}
 		obj, _, _ := types.LookupFieldOrMethod(recv, true, l.pkg.Types, ifaceMethod.Name())
 		fn, _ := obj.(*types.Func)
@@ -127,6 +135,15 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 
 	for i, impl := range impls {
 		if !impl.viaPtr {
+			if namedId[i] != 0 {
+				// Typed-box value implementer: match by named-type id.
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.namedIdExtern()})
+				l.emit(goir.Op{Code: goir.OpLdcI8, Int: namedId[i]})
+				l.emit(goir.Op{Code: goir.OpCeq})
+				l.emit(goir.Op{Code: goir.OpBrTrue, Label: labels[i]})
+				continue
+			}
 			// Value implementer: the boxed concrete value's .NET type is the struct.
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
 			l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: ctypes[i]})
@@ -164,6 +181,9 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 		if impl.viaPtr {
 			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])}) // the GoPtr receiver
 		} else {
+			if namedId[i] != 0 {
+				l.emitUnwrapNamed() // GoNamed -> inner boxed representation
+			}
 			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
 		}
 		for _, at := range argTmps {
@@ -206,6 +226,9 @@ func (l *funcLowerer) exprCoerced(e ast.Expr, target goir.Type) {
 	l.expr(e)
 	if target.Kind == goir.KObject {
 		l.emitBox(l.exprType(e))
+		// Converting a named non-struct value into an interface tags it with its
+		// named-type identity (the typed box), so dispatch/fmt/%T can recover it.
+		l.maybeWrapNamed(l.pkg.TypesInfo.TypeOf(e))
 		return
 	}
 	// Copying an array value (assignment, argument, return, field/element store)

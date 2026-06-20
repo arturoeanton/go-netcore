@@ -6,6 +6,27 @@ using GoCLR.Runtime;
 /// to inspect a value-type's internals, like a slice's nil backing array).</summary>
 public static class Rt
 {
+    // --- named-type identity (the typed box; see GoNamed) ---------------------
+
+    // Display name per type id, e.g. 1 -> "main.Money". Populated at startup by
+    // RegisterNamedType so fmt %T and reflect can name a wrapped value.
+    private static readonly System.Collections.Generic.Dictionary<long, string> _namedNames = new();
+
+    /// <summary>Records a named type's display name (called once per type at startup).</summary>
+    public static void RegisterNamedType(long id, GoString name) => _namedNames[id] = name.ToDotNetString();
+
+    /// <summary>Go display name ("pkg.Type") for a type id, or "" if unknown.</summary>
+    public static string NamedTypeName(long id) => _namedNames.TryGetValue(id, out var n) ? n : "";
+
+    /// <summary>Wraps a boxed value with its named-type identity for interface storage.</summary>
+    public static object? MakeNamed(object? value, long id) => new GoNamed(id, value);
+
+    /// <summary>Unwraps a GoNamed to its underlying boxed value; pass-through otherwise.</summary>
+    public static object? Unwrap(object? v) => v is GoNamed n ? n.Value : v;
+
+    /// <summary>The named-type id of a boxed value, or 0 if it carries no identity.</summary>
+    public static long NamedId(object? v) => v is GoNamed n ? n.TypeId : 0;
+
     /// <summary>A slice is nil iff its backing array is null (Go's `s == nil`).</summary>
     public static bool SliceIsNil(GoSlice s) => s.Data == null;
 
