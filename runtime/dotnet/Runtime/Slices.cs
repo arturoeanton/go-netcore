@@ -29,9 +29,28 @@ public static class GoSlices
         if (n < 0 || c < n)
             throw new GoPanicException(GoString.FromDotNetString("runtime error: makeslice: len out of range"));
         var data = c == 0 ? System.Array.Empty<object?>() : new object?[c];
-        for (int i = 0; i < n; i++) data[i] = zero;
+        // Zero the whole backing [0, cap), like Go: code may reslice into the capacity
+        // region (s[len:cap]) and read those elements, which must hold the element's
+        // zero value (e.g. an empty GoString), not a null reference.
+        if (zero != null) { for (int i = 0; i < c; i++) data[i] = zero; }
         return new GoSlice { Data = data, Off = 0, Len = n, Cap = c };
     }
+
+    // The boxed zero value matching v's runtime type, for filling a grown slice's
+    // capacity region. Reference-typed elements (null is their zero) and types whose
+    // zero we don't synthesize here return null (left as the array default).
+    private static object? ZeroLike(object? v) => v switch
+    {
+        GoString => GoString.FromDotNetString(""),
+        long => 0L,
+        int => 0,
+        ulong => (ulong)0,
+        uint => (uint)0,
+        double => 0.0,
+        float => 0f,
+        bool => false,
+        _ => null,
+    };
 
     public static long Len(GoSlice s) => s.Len;
     public static long Cap(GoSlice s) => s.Cap;
@@ -64,6 +83,12 @@ public static class GoSlices
         var data = new object?[newCap];
         if (s.Data != null) System.Array.Copy(s.Data, s.Off, data, 0, s.Len);
         data[s.Len] = v;
+        // Zero the grown capacity region [need, newCap), like Go: code may reslice
+        // into it (s[len:cap]) and read those elements, which must be the element's
+        // zero value (e.g. an empty GoString), not a null reference. The element type
+        // is erased here, so infer the zero from the appended value.
+        object? zero = ZeroLike(v);
+        if (zero != null) { for (int i = need; i < newCap; i++) data[i] = zero; }
         return new GoSlice { Data = data, Off = 0, Len = need, Cap = newCap };
     }
 
