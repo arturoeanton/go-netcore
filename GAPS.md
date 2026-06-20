@@ -143,3 +143,34 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 Shortest path to first demonstrable value: **M0** (emit `println` end-to-end) →
 conformance runner → language features (M1) → big overlays. The `emit` backend is
 the bottleneck: nothing else is verifiable until a `.dll` runs under `dotnet`.
+
+## goja end-to-end status (2026-06)
+
+`goja` now **compiles** to a ~15 MB ECMA-335 `.dll`, the assembly **loads and JITs
+cleanly** (ilverify-clean `Main`), and package **init runs** through most of x/text.
+Reaching this required fixing a long series of codegen-correctness bugs (all with
+conformance fixtures): the **4-byte metadata heap-index keystone** (heaps exceed
+64 KiB in a program this large), generic instantiations introduced by package-var
+initializers being left with empty bodies, the trailing `ret` of a non-void
+panic-terminated function, the fat-header `InitLocals` flag, variadic interface
+dispatch, **methods promoted from an embedded concrete field** in interface
+dispatch, `nil` assigned to a GoSlice/GoMap struct field, and fixed-array struct
+fields zeroing to a nil slice. Shim signatures were matched to the Go-derived
+externs (atomic Int32 ops, reflect, time, runtime).
+
+Remaining known blockers on the `RunString("1+2")` path (x/text locale init), in
+order encountered:
+
+1. **Identical-layout named-struct conversion through a pointer.** `type Tag
+   compact.Tag` makes `language.Tag` and `compact.Tag` distinct CLR structs (correct
+   for interface dispatch), but Go converts between them as a no-op
+   (`(*compact.Tag)(t)`). goclr emits no field reinterpretation, so the method call
+   does `unbox.any compact.Tag` on a boxed `language.Tag` → `InvalidCastException`.
+   Fix: the struct→struct / *struct→*struct conversion must copy/reinterpret fields
+   (or re-box) when source and target share a layout but differ in CLR type.
+2. **Struct value-semantics for fixed-array fields on copy.** Returning a struct by
+   value should clone its fixed-array field; goclr keeps the backing shared (a slice
+   field aliasing the array still observes the original after the copy). Edge case,
+   surfaced by the scanner repro (conformance 358 covers the in-function path).
+
+These are the next x/text-init items before the JS evaluator itself is exercised.
