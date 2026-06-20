@@ -18,6 +18,8 @@ public sealed class GoPanicException : Exception
         : base(DescribeValue(value))
     {
         Value = value;
+        if (System.Environment.GetEnvironmentVariable("GOCLR_PANIC_TRACE") != null)
+            System.Console.Error.WriteLine("[panic-trace] " + DescribeValue(value) + "\n" + System.Environment.StackTrace);
     }
 
     private static string DescribeValue(object? value) => value switch

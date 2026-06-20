@@ -138,12 +138,23 @@ func (l *funcLowerer) multiAssignCall(s *ast.AssignStmt) {
 			l.fail(lhs.Pos(), "multi-assignment element type")
 			return
 		}
+		// Unbox to the TARGET's type, not the result's: a result element boxed as a
+		// concrete type (e.g. strconv.ParseInt's int64) assigned to an interface{} LHS
+		// must stay boxed, not be unboxed into the interface slot (which would store the
+		// raw bits as a garbage reference). emitUnbox to an interface (KObject) is a
+		// no-op, to a concrete type it unboxes.
+		target := rt
+		if id, isIdent := lhs.(*ast.Ident); !isIdent || id.Name != "_" {
+			if lt, ok := l.goType(l.pkg.TypesInfo.TypeOf(lhs)); ok && lt.Kind == goir.KObject {
+				target = lt
+			}
+		}
 		idx := i
-		l.assignToTarget(s, lhs, rt, func() {
+		l.assignToTarget(s, lhs, target, func() {
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(idx)})
 			l.emit(goir.Op{Code: goir.OpLdElemRef})
-			l.emitUnbox(rt)
+			l.emitUnbox(target)
 		})
 	}
 }

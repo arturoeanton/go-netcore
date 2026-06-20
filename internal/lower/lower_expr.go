@@ -763,6 +763,30 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 		l.expr(e.Args[0]) // string(string) identity
 		return target
 	}
+	// A conversion between two named struct types with the same underlying layout
+	// (type Tag compact.Tag) is a no-op in Go, but goclr gives them distinct CLR
+	// types, so the bytes must be reinterpreted field-by-field. Covers both the value
+	// form B(a) and the pointer form (*B)(p).
+	srcT := l.exprType(e.Args[0])
+	if target.Kind == goir.KStruct && srcT.Kind == goir.KStruct && srcT.Struct != target.Struct {
+		l.expr(e.Args[0])
+		l.emitStructReinterpret(srcT, target)
+		return target
+	}
+	if target.Kind == goir.KPtr && target.Elem.Kind == goir.KStruct &&
+		srcT.Kind == goir.KPtr && srcT.Elem.Kind == goir.KStruct && srcT.Elem.Struct != target.Elem.Struct {
+		// (*B)(p): read the pointee, reinterpret it as B, and box into a fresh cell.
+		// Aliasing is not preserved (a new cell), which suffices for the read-only
+		// punning these conversions perform (e.g. (*compact.Tag)(t).IsCompact()).
+		l.expr(e.Args[0])
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(*srcT.Elem)
+		l.emitStructReinterpret(*srcT.Elem, *target.Elem)
+		l.emitBox(*target.Elem)
+		l.ptrNew(*target.Elem)
+		return target
+	}
+
 	l.expr(e.Args[0])
 	switch target.Kind {
 	case goir.KInt64:
@@ -783,6 +807,28 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 	// Converting to a sub-word integer truncates to its width (uint8(300) == 44).
 	l.truncateInt(target)
 	return target
+}
+
+// emitStructReinterpret converts a struct value of srcT (on the stack) to an
+// identical-layout struct value of dstT, copying each field across the two distinct
+// CLR types. The field lists match (the types share an underlying *types.Struct).
+func (l *funcLowerer) emitStructReinterpret(srcT, dstT goir.Type) {
+	sTmp := l.addLocal(nil, srcT)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: sTmp})
+	dTmp := l.addLocal(nil, dstT)
+	l.emit(goir.Op{Code: goir.OpLdLocA, Local: dTmp})
+	l.emit(goir.Op{Code: goir.OpInitObj, Struct: dstT.Struct})
+	n := len(dstT.Struct.Fields)
+	if len(srcT.Struct.Fields) < n {
+		n = len(srcT.Struct.Fields)
+	}
+	for i := 0; i < n; i++ {
+		l.emit(goir.Op{Code: goir.OpLdLocA, Local: dTmp})
+		l.emit(goir.Op{Code: goir.OpLdLocA, Local: sTmp})
+		l.emit(goir.Op{Code: goir.OpLdFld, Struct: srcT.Struct, Field: i})
+		l.emit(goir.Op{Code: goir.OpStFld, Struct: dstT.Struct, Field: i})
+	}
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: dTmp})
 }
 
 // lenCall lowers len(s) for strings (byte length) and slices.

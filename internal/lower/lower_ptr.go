@@ -301,8 +301,15 @@ func (l *funcLowerer) derefWrite(e *ast.StarExpr, rhs ast.Expr) {
 		return
 	}
 	l.expr(e.X)
-	l.expr(rhs)
-	l.emitBox(*pt.Elem)
+	if pt.Elem.Kind == goir.KObject {
+		// *p = v where *p is an interface: box v by its OWN type (and tag a named
+		// value), not by the interface target — emitBox(object) would leave a value
+		// type unboxed in the cell (e.g. *instruction = loadThisStash(idx)).
+		l.exprCoerced(rhs, *pt.Elem)
+	} else {
+		l.expr(rhs)
+		l.emitBox(*pt.Elem)
+	}
 	l.emit(goir.Op{Code: goir.OpPtrSet})
 }
 
@@ -797,6 +804,16 @@ func (l *funcLowerer) writeBackEmbed(tmp int, baseType goir.Type, cellLoc int, e
 func (l *funcLowerer) storeBaseThroughCell(sel *ast.SelectorExpr, tmp int, baseType goir.Type) {
 	if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: idx})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emitBox(baseType)
+		l.emit(goir.Op{Code: goir.OpPtrSet})
+		return
+	}
+	// The receiver is a pointer (r.M() where r is *T and M is a pointer-receiver
+	// method promoted from an embedded value field): store the mutated base back
+	// through the pointer so the caller observes the mutation.
+	if l.exprType(sel.X).Kind == goir.KPtr {
+		l.expr(sel.X) // the GoPtr
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		l.emitBox(baseType)
 		l.emit(goir.Op{Code: goir.OpPtrSet})
