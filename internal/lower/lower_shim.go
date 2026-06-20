@@ -67,6 +67,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"os/exec":        {"Command": {"Exec", "Command"}},
 	"container/list": {"New": {"List", "New"}},
 	"encoding/csv":   {"NewReader": {"Csv", "NewReader"}, "NewWriter": {"Csv", "NewWriter"}},
+	"crypto/aes":     {"NewCipher": {"Aes", "NewCipher"}},
+	"crypto/cipher":  {"NewGCM": {"Aes", "NewGCM"}},
 	"compress/gzip":  {"NewWriter": {"Compress", "GzipNewWriter"}, "NewReader": {"Compress", "GzipNewReader"}},
 	"compress/zlib":  {"NewWriter": {"Compress", "ZlibNewWriter"}, "NewReader": {"Compress", "ZlibNewReader"}},
 	"compress/flate": {"NewWriter": {"Compress", "FlateNewWriter"}, "NewReader": {"Compress", "FlateNewReader"}},
@@ -238,6 +240,8 @@ var opaqueShimTypes = map[string]bool{
 	"compress/gzip.Reader":         true,
 	"compress/zlib.Writer":         true,
 	"compress/flate.Writer":        true,
+	"crypto/cipher.Block":          true,
+	"crypto/cipher.AEAD":           true,
 	"math/big.Int":                 true,
 	"encoding/base32.Encoding":     true,
 	"strings.Reader":               true,
@@ -446,6 +450,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"compress/flate.Writer": {
 		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"},
+	},
+	"crypto/cipher.AEAD": {
+		"Seal": {"Aes", "GCM_Seal"}, "Open": {"Aes", "GCM_Open"}, "NonceSize": {"Aes", "GCM_NonceSize"}, "Overhead": {"Aes", "GCM_Overhead"},
 	},
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
