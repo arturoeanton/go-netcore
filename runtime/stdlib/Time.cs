@@ -142,6 +142,8 @@ public static class Time
     public static long Time_YearDay(object t) => ZeroDate(t, dt => dt.DayOfYear, 1);
     // UTC-only: the zone is always UTC with a zero offset.
     public static object?[] Time_Zone(object t) => new object?[] { GoString.FromDotNetString("UTC"), 0L };
+    public static object Time_In(object t, object loc) => t;       // UTC-only: location is ignored
+    public static object Time_Location(object t) => UTC();
     public static long Time_Month(object t) => ZeroDate(t, dt => dt.Month, 1);
     public static long Time_Day(object t) => ZeroDate(t, dt => dt.Day, 1);
     public static long Time_Hour(object t) => ZeroDate(t, dt => dt.Hour, 0);
