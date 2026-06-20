@@ -45,7 +45,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"New": {"Reflect", "New"},
 	},
 	"encoding/json": {
-		"Marshal": {"Json", "Marshal"},
+		"Marshal": {"Json", "Marshal"}, "MarshalIndent": {"Json", "MarshalIndent"},
 	},
 	"encoding/hex": {
 		"EncodeToString": {"Hex", "EncodeToString"}, "DecodeString": {"Hex", "DecodeString"},

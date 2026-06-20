@@ -713,7 +713,7 @@ func (c *lowerCtx) structForAnon(st *types.Struct) *goir.Struct {
 			c.unsupported(f.Pos(), "anonymous struct field type")
 			ft = goir.TVoid
 		}
-		s.Fields = append(s.Fields, goir.Field{Name: f.Name(), Type: ft})
+		s.Fields = append(s.Fields, goir.Field{Name: f.Name(), Type: ft, Tag: st.Tag(i)})
 	}
 	return s
 }

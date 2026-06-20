@@ -19,6 +19,55 @@ public static class Json
         return new object?[] { Bytes(sb.ToString()), null };
     }
 
+    // json.MarshalIndent(v, prefix, indent): compact-marshal, then re-indent.
+    public static object?[] MarshalIndent(object? v, GoString prefix, GoString indent)
+    {
+        var sb = new StringBuilder();
+        try { Write(sb, v); }
+        catch (System.Exception e) { return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("json: " + e.Message)) }; }
+        return new object?[] { Bytes(IndentJson(sb.ToString(), prefix.ToDotNetString(), indent.ToDotNetString())), null };
+    }
+
+    // Re-indents compact JSON the way Go's json.Indent does: a newline + prefix +
+    // depth*indent after '{'/'['/',', before '}'/']', and ": " after object keys.
+    // Empty {} and [] stay on one line. String contents are passed through verbatim.
+    private static string IndentJson(string s, string prefix, string indent)
+    {
+        var sb = new StringBuilder();
+        int depth = 0;
+        bool inStr = false;
+        void NewLine()
+        {
+            sb.Append('\n').Append(prefix);
+            for (int k = 0; k < depth; k++) sb.Append(indent);
+        }
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (inStr)
+            {
+                sb.Append(c);
+                if (c == '\\' && i + 1 < s.Length) sb.Append(s[++i]);
+                else if (c == '"') inStr = false;
+                continue;
+            }
+            switch (c)
+            {
+                case '"': inStr = true; sb.Append(c); break;
+                case '{':
+                case '[':
+                    if (i + 1 < s.Length && (s[i + 1] == '}' || s[i + 1] == ']')) { sb.Append(c).Append(s[++i]); break; }
+                    sb.Append(c); depth++; NewLine(); break;
+                case '}':
+                case ']': depth--; NewLine(); sb.Append(c); break;
+                case ',': sb.Append(c); NewLine(); break;
+                case ':': sb.Append(": "); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
+    }
+
     private static GoSlice Bytes(string s)
     {
         var b = Encoding.UTF8.GetBytes(s);

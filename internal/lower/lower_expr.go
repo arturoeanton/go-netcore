@@ -176,12 +176,30 @@ func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 		}
 		l.fail(e.Pos(), "composite literal of "+t.Shim)
 		return goir.TVoid
+	case goir.KPtr:
+		// An elided &-pointer struct literal, e.g. []*T{{...}} or map[K]*T{k: {...}}:
+		// build the pointee struct and take its address.
+		if t.Elem != nil && t.Elem.Kind == goir.KStruct {
+			l.structLit(e, *t.Elem)
+			l.emitBox(*t.Elem)
+			l.ptrNew(*t.Elem)
+			return t
+		}
+		l.fail(e.Pos(), "composite literal (pointer)")
+		return goir.TVoid
 	default:
 		l.fail(e.Pos(), "composite literal (only struct, slice and map literals are supported)")
 		return goir.TVoid
 	}
-	s := t.Struct
-	tmp := l.addLocal(nil, t)
+	l.structLit(e, t)
+	return t
+}
+
+// structLit builds a struct composite literal of type st (keyed or positional),
+// leaving the struct value on the stack.
+func (l *funcLowerer) structLit(e *ast.CompositeLit, st goir.Type) {
+	s := st.Struct
+	tmp := l.addLocal(nil, st)
 	l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
 	l.emit(goir.Op{Code: goir.OpInitObj, Struct: s})
 
@@ -192,7 +210,7 @@ func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 			key, ok := kv.Key.(*ast.Ident)
 			if !ok {
 				l.fail(kv.Pos(), "composite literal key")
-				return goir.TVoid
+				return
 			}
 			fi = s.FieldIndex(key.Name)
 			val = kv.Value
@@ -202,15 +220,13 @@ func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 		}
 		if fi < 0 || fi >= len(s.Fields) {
 			l.fail(elt.Pos(), "composite literal field")
-			return goir.TVoid
+			return
 		}
 		l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
 		l.exprCoerced(val, s.Fields[fi].Type)
 		l.emit(goir.Op{Code: goir.OpStFld, Struct: s, Field: fi})
 	}
-
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
-	return t
 }
 
 // indexExpr lowers s[i] for strings (yielding the byte) and slices.
