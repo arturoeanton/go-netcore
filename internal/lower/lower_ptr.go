@@ -532,7 +532,14 @@ func (l *funcLowerer) ptrRootedReceiver(recv ast.Expr) (int, func(), bool) {
 		return 0, nil, false
 	}
 	recvT := l.exprType(sel)
-	if recvT.Kind != goir.KStruct {
+	// The RMW boxes the field value into a GoPtr for the call and writes it back, so
+	// it works for any value-type field (a struct, or a named primitive like a
+	// `type streamSafe uint8` with a pointer-receiver method) — but not reference
+	// kinds whose receiver semantics differ.
+	switch recvT.Kind {
+	case goir.KStruct, goir.KInt64, goir.KInt32, goir.KUint64, goir.KUint32,
+		goir.KFloat64, goir.KFloat32, goir.KBool, goir.KString:
+	default:
 		return 0, nil, false
 	}
 
