@@ -90,6 +90,10 @@ public static class GoRuntime
     /// <summary>Invoke a closure value synchronously (for stdlib shims like sync.Once.Do).</summary>
     public static object? Invoke(GoClosure c) => _invoker?.Invoke(c, System.Array.Empty<object?>());
 
+    /// <summary>Invoke a closure with arguments (for func-taking shims like
+    /// sort.Search, strings.Map, strings.IndexFunc).</summary>
+    public static object? InvokeArgs(GoClosure c, params object?[] args) => _invoker?.Invoke(c, args);
+
     /// <summary>go f() where the goroutine body is a closure value.</summary>
     public static void Go(GoClosure c)
     {

@@ -26,6 +26,13 @@ public static class BytesBuffer
 
     public static object?[] WriteString(object b, GoString s) { var by = s.Bytes; G(b).B.AddRange(by); return new object?[] { (long)by.Length, null }; }
     public static object? WriteByte(object b, int c) { G(b).B.Add((byte)c); return null; }
+    public static object?[] WriteRune(object b, int r)
+    {
+        var rune = System.Text.Rune.IsValid(r) ? new System.Text.Rune(r) : System.Text.Rune.ReplacementChar;
+        var by = Encoding.UTF8.GetBytes(rune.ToString());
+        G(b).B.AddRange(by);
+        return new object?[] { (long)by.Length, null };
+    }
     public static object?[] Write(object b, GoSlice p)
     {
         var g = G(b);

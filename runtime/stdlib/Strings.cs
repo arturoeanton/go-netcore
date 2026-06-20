@@ -134,4 +134,62 @@ public static class Strings
         }
         return GoString.FromDotNetString(sb.ToString());
     }
+
+    // strings.Cut(s, sep) -> (before, after, found).
+    public static object?[] Cut(GoString s, GoString sep)
+    {
+        string str = s.ToDotNetString(), sp = sep.ToDotNetString();
+        int idx = str.IndexOf(sp, StringComparison.Ordinal);
+        if (idx < 0) return new object?[] { s, GoString.FromDotNetString(""), false };
+        return new object?[] { GoString.FromDotNetString(str.Substring(0, idx)), GoString.FromDotNetString(str.Substring(idx + sp.Length)), true };
+    }
+
+    public static long IndexRune(GoString s, int r) => IndexBytes(s.Bytes, GoString.FromDotNetString(char.ConvertFromUtf32(r)).Bytes);
+    public static bool ContainsRune(GoString s, int r) => IndexRune(s, r) >= 0;
+    public static bool ContainsAny(GoString s, GoString chars) => IndexAny(s, chars) >= 0;
+    public static long IndexAny(GoString s, GoString chars)
+    {
+        string str = s.ToDotNetString(), set = chars.ToDotNetString();
+        for (int i = 0; i < str.Length;)
+        {
+            int cp = char.ConvertToUtf32(str, i);
+            string ch = char.ConvertFromUtf32(cp);
+            if (set.Contains(ch, StringComparison.Ordinal)) return System.Text.Encoding.UTF8.GetByteCount(str.Substring(0, i));
+            i += ch.Length;
+        }
+        return -1;
+    }
+    public static long LastIndexByte(GoString s, int c)
+    {
+        byte[] b = s.Bytes;
+        for (int i = b.Length - 1; i >= 0; i--) if (b[i] == (byte)c) return i;
+        return -1;
+    }
+
+    public static GoString ToTitle(GoString s) => GoString.FromDotNetString(s.ToDotNetString().ToUpperInvariant());
+
+    public static GoSlice SplitAfter(GoString s, GoString sep)
+    {
+        string str = s.ToDotNetString(), sp = sep.ToDotNetString();
+        var parts = new System.Collections.Generic.List<string>();
+        if (sp.Length == 0) { foreach (var r in str.EnumerateRunes()) parts.Add(r.ToString()); return Slice(parts.ToArray()); }
+        int start = 0, idx;
+        while ((idx = str.IndexOf(sp, start, StringComparison.Ordinal)) >= 0)
+        { parts.Add(str.Substring(start, idx + sp.Length - start)); start = idx + sp.Length; }
+        parts.Add(str.Substring(start));
+        return Slice(parts.ToArray());
+    }
+
+    // strings.Map(mapping func(rune) rune, s).
+    public static GoString Map(GoClosure mapping, GoString s)
+    {
+        var c = mapping;
+        var sb = new System.Text.StringBuilder();
+        foreach (var r in s.ToDotNetString().EnumerateRunes())
+        {
+            long nr = System.Convert.ToInt64(GoRuntime.InvokeArgs(c, r.Value));
+            if (nr >= 0) sb.Append(char.ConvertFromUtf32((int)nr));
+        }
+        return GoString.FromDotNetString(sb.ToString());
+    }
 }

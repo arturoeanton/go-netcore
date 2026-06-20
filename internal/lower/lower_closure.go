@@ -48,6 +48,11 @@ func (c *lowerCtx) litFreeVars(lit *ast.FuncLit) []*types.Var {
 // method and, at the literal site, allocates a GoClosure holding the captured
 // cells.
 func (l *funcLowerer) closureLit(lit *ast.FuncLit) goir.Type {
+	// A closure value may be invoked through the dispatcher (directly, via a
+	// goroutine/defer, or after being handed to a stdlib shim like sort.Slice),
+	// so ensure the dispatcher exists and is registered at startup.
+	l.needsInvoker = true
+	l.invokeMethod()
 	captured := l.litFreeVars(lit)
 	id := len(l.closures)
 

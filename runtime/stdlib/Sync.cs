@@ -49,4 +49,13 @@ public static class Sync
     public static object?[] Map_Load(object m, object key) =>
         ((GoSyncMap)m).D.TryGetValue(key, out var v) ? new object?[] { v, true } : new object?[] { null, false };
     public static void Map_Delete(object m, object key) => ((GoSyncMap)m).D.TryRemove(key, out _);
+    public static object?[] Map_LoadOrStore(object m, object key, object? val)
+    {
+        var d = ((GoSyncMap)m).D;
+        bool loaded = true;
+        var actual = d.GetOrAdd(key, _ => { loaded = false; return val; });
+        return new object?[] { actual, loaded };
+    }
+    public static object?[] Map_LoadAndDelete(object m, object key) =>
+        ((GoSyncMap)m).D.TryRemove(key, out var v) ? new object?[] { v, true } : new object?[] { null, false };
 }
