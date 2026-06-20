@@ -599,6 +599,8 @@ func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 			return l.makeCall(e)
 		case "append":
 			return l.appendCall(e)
+		case "copy":
+			return l.copyCall(e)
 		case "delete":
 			return l.deleteCall(e)
 		case "new":

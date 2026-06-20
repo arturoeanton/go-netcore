@@ -101,6 +101,24 @@ func (l *funcLowerer) emitBoxedZero(t goir.Type) {
 	l.emitBox(t)
 }
 
+// copyCall lowers copy(dst, src): copies min(len(dst), len(src)) elements and
+// returns the count. copy([]byte, string) copies the string's bytes.
+func (l *funcLowerer) copyCall(e *ast.CallExpr) goir.Type {
+	dstT := l.exprType(e.Args[0])
+	srcT := l.exprType(e.Args[1])
+	l.expr(e.Args[0])
+	l.expr(e.Args[1])
+	method, srcParam := "Copy", dstT
+	if srcT.Kind == goir.KString {
+		method, srcParam = "CopyString", goir.TString
+	}
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: method,
+		Params: []goir.Type{dstT, srcParam}, Ret: goir.TInt64,
+	}})
+	return goir.TInt64
+}
+
 // makeCall lowers make([]T, len[, cap]) and make(map[K]V).
 func (l *funcLowerer) makeCall(e *ast.CallExpr) goir.Type {
 	st := l.exprType(e)

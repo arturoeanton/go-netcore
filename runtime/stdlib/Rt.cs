@@ -55,6 +55,28 @@ public static class Rt
         return new GoSlice { Data = d, Off = 0, Len = s.Len, Cap = s.Len };
     }
 
+    /// <summary>copy(dst, src): copy min(len) elements; returns the count.</summary>
+    public static long Copy(GoSlice dst, GoSlice src)
+    {
+        if (dst.Data == null || src.Data == null) return 0;
+        int n = System.Math.Min(dst.Len, src.Len);
+        // Copy forward into a temp first so overlapping ranges behave like Go's copy.
+        var tmp = new object?[n];
+        for (int i = 0; i < n; i++) tmp[i] = src.Data[src.Off + i];
+        for (int i = 0; i < n; i++) dst.Data[dst.Off + i] = tmp[i];
+        return n;
+    }
+
+    /// <summary>copy(dst []byte, src string): copy the string's UTF-8 bytes.</summary>
+    public static long CopyString(GoSlice dst, GoString src)
+    {
+        if (dst.Data == null) return 0;
+        byte[] b = src.Bytes;
+        int n = System.Math.Min(dst.Len, b.Length);
+        for (int i = 0; i < n; i++) dst.Data[dst.Off + i] = (int)b[i];
+        return n;
+    }
+
     /// <summary>clear(m): remove all entries from a map.</summary>
     public static void ClearMap(GoMap? m) => m?.Data?.Clear();
 
