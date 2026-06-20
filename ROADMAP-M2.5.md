@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**123 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
+**128 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
 hardened** (an adversarial multi-agent sweep over all 20 packages found and fixed
 ~30 divergences: fmt verb engine + flags/width + no-crash type handling, strconv
 ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embedded/
@@ -33,7 +33,7 @@ local type/const decls, and broad method coverage). Deferred edges are tracked i
 `net/url` (escapes **+ Parse** with field reads), `regexp` (.NET Regex), `log`,
 `math/big` (Int), `bufio.Scanner` + `io.ReadAll/Copy` + `strings`/`bytes` readers
 + `os.Stdin`, and the **`net/http` client** (`http.Get`/`Post` → `*Response` with
-`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 123 conformance
+`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 128 conformance
 fixtures. Enablers added: `GoRuntime.InvokeArgs` (shims call Go funcs),
 native-closure-to-shim, `new(opaqueShim)` yields the shim object, and **shim
 struct-field reads** (`u.Host`, `resp.StatusCode` → getter externs).
@@ -51,25 +51,38 @@ P2 (tag `0.0.9.p2`): `encoding/csv`, `compress/gzip·zlib·flate`,
 `math/big` (Euclidean Div + Quo/Rem/GCD).
 
 P3 (started): the **hash family** — `hash/fnv` (32/32a/64/64a), `hash/crc32`
-(IEEE), `hash/adler32`. **123 conformance fixtures byte-exact.**
+(IEEE), `hash/adler32`. **128 conformance fixtures byte-exact.**
 
-**Language hardening pass** (fixtures 315–323) — bugs found by stress-testing
-diverse real Go programs, each fixed + fixtured:
+**Language hardening pass** (fixtures 315–328) — bugs found by stress-testing
+diverse real Go programs, each fixed + fixtured. Several were *silently wrong*
+output (the worst class), not errors:
+- **Struct / array value equality** (`==`/`!=`) — compared by reference, so
+  `Point{1,2} == Point{1,2}` was `false`. Now value-wise via `Rt.ValueEqual`.
+- **Array value semantics** — `y := x`, passing/returning an array, and storing it
+  in a container shared the backing instead of copying (mutating one changed the
+  other). Now cloned at copy points; slicing (`a[:]`) still shares.
+- **Go 1.22 per-iteration loop variables** (`for` and `range`) — captured `for`
+  vars were `3 3 3`; captured `range` vars *crashed*.
 - **Stdlib classification by module** — a module whose path has no dot (`myapp/sub`)
-  had its subpackages skipped, so every cross-package call into them failed. Fixed
-  via `go/packages` Module info; multi-package projects outside the repo now compile.
-- **Embedded-struct promotion** — promoted field read/write/op-assign and
-  value/pointer-receiver methods, through value and pointer embeds, multi-level.
-- **Go 1.22 per-iteration loop variables** (`for` and `range`) — was silently wrong
-  for captured `for` vars (`3 3 3`) and *crashed* on captured `range` vars.
-- **Cross-package generics** — instantiating a generic from a dependency/subpackage
-  crashed (template resolved against the caller's type info); now works, including
-  the `S ~[]E` constraint-derived element-type shape.
-- **`defer` of a shimmed/compiled package free function** (`defer fmt.Println(...)`),
-  **`errors.As`** (descriptor-driven target matching), **`clear`** builtin.
+  had its subpackages skipped, so every cross-package call into them failed.
+- **Embedded-struct promotion** — field read/write/op-assign and value/pointer
+  receiver methods, through value and pointer embeds, multi-level.
+- **Generics**: cross-package instantiation (functions and methods, incl. the
+  `S ~[]E` constraint-derived shape) and **explicit type arguments** (`Fn[T]()`).
+- **Multi-result function values** (`f := func()(int,error)`) and **`f(g())`**
+  spreading a multi-result call across parameters (incl. variadic).
+- **`defer fmt.Println(...)`** (shimmed free function), **`errors.As`**, **`clear`**.
 - Backend: **long-form local opcodes** (256+ locals no longer corrupt addresses),
   **chunked package-var init** (64 KB-per-method IL limit), `unicode`/`sort` from
   source overlays, `&slice[i]`, `&^`, keyed/fixed-array literals.
+
+**Compiler made application-agnostic + quality infra.** goja/Echo are validation
+targets, not products: the compiler no longer embeds any dependency-specific
+overlays — third-party overlays live in the project's `goclr.overlays/` and the
+compiler applies whatever it finds (the embedded overlays are now stdlib-only). CI
+(`.github/workflows/ci.yml`: gofmt/vet/golangci-lint, unit tests, full conformance),
+`.golangci.yml`, and unit tests for the previously-untested packages (`analysis`,
+`frontend`, `goir`) landed. `go vet` and `staticcheck` are clean tree-wide.
 
 ### What the remaining P1/P2/P3/P4 still need (infrastructure, not shims)
 
