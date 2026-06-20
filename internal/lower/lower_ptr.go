@@ -224,6 +224,12 @@ func (l *funcLowerer) newCall(e *ast.CallExpr) goir.Type {
 		l.fail(e.Pos(), "new(T) type")
 		return goir.TVoid
 	}
+	// For an opaque value-type shim, *T and T share one runtime handle, so
+	// new(T) just produces a fresh opaque object (no GoPtr cell).
+	if t.Kind == goir.KObject && t.Shim != "" {
+		l.emitZeroValue(t)
+		return t
+	}
 	l.emitBoxedZero(t)
 	l.ptrNew(t)
 	return goir.PtrType(t)

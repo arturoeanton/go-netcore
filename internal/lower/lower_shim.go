@@ -68,6 +68,15 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Compile": {"Regexp", "Compile"}, "MustCompile": {"Regexp", "MustCompile"},
 		"MatchString": {"Regexp", "MatchString"}, "QuoteMeta": {"Regexp", "QuoteMeta"},
 	},
+	"log": {
+		"Print": {"Log", "Print"}, "Println": {"Log", "Println"}, "Printf": {"Log", "Printf"},
+		"Fatal": {"Log", "Fatal"}, "Fatalf": {"Log", "Fatalf"}, "Fatalln": {"Log", "Fatalln"},
+		"Panic": {"Log", "Panic"}, "Panicf": {"Log", "Panicf"},
+		"SetFlags": {"Log", "SetFlags"}, "SetPrefix": {"Log", "SetPrefix"}, "Flags": {"Log", "Flags"}, "Prefix": {"Log", "Prefix"},
+	},
+	"math/big": {
+		"NewInt": {"Big", "NewInt"},
+	},
 	"path": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
@@ -191,6 +200,8 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/binary.bigEndian":    true,
 	"encoding/binary.ByteOrder":    true,
 	"regexp.Regexp":                true,
+	"math/big.Int":                 true,
+	"encoding/base32.Encoding":     true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
@@ -206,6 +217,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/base64.RawURLEncoding": {"Base64", "RawURLEncoding"},
 	"encoding/binary.LittleEndian":   {"Binary", "LittleEndian"},
 	"encoding/binary.BigEndian":      {"Binary", "BigEndian"},
+	"encoding/base32.StdEncoding":    {"Base32", "StdEncoding"},
 	"context.Canceled":               {"Context", "Canceled"},
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 }
@@ -239,6 +251,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"strings.Builder": {"StringsBuilder", "New"},
 	"bytes.Buffer":    {"BytesBuffer", "New"},
 	"time.Time":       {"Time", "TimeZero"},
+	"math/big.Int":    {"Big", "IntZero"},
 }
 
 // shimZeroExtern returns the zero-value constructor extern for an opaque value
@@ -295,6 +308,16 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"FindStringSubmatch": {"Regexp", "Re_FindStringSubmatch"}, "FindAllString": {"Regexp", "Re_FindAllString"},
 		"ReplaceAllString": {"Regexp", "Re_ReplaceAllString"}, "Split": {"Regexp", "Re_Split"},
 		"String": {"Regexp", "Re_String"},
+	},
+	"encoding/base32.Encoding": {
+		"EncodeToString": {"Base32", "EncodeToString"}, "DecodeString": {"Base32", "DecodeString"},
+	},
+	"math/big.Int": {
+		"Add": {"Big", "Int_Add"}, "Sub": {"Big", "Int_Sub"}, "Mul": {"Big", "Int_Mul"},
+		"Div": {"Big", "Int_Div"}, "Mod": {"Big", "Int_Mod"}, "Neg": {"Big", "Int_Neg"},
+		"Abs": {"Big", "Int_Abs"}, "Exp": {"Big", "Int_Exp"}, "Set": {"Big", "Int_Set"},
+		"Cmp": {"Big", "Int_Cmp"}, "Sign": {"Big", "Int_Sign"}, "Int64": {"Big", "Int_Int64"},
+		"String": {"Big", "Int_String"}, "SetString": {"Big", "Int_SetString"},
 	},
 	"strings.Builder": {
 		"WriteString": {"StringsBuilder", "WriteString"}, "WriteByte": {"StringsBuilder", "WriteByte"},
