@@ -35,6 +35,30 @@ public static class Regexp
     public static bool Re_MatchString(object r, GoString s) => ((GoRegexp)r).Re.IsMatch(s.ToDotNetString());
     public static GoString Re_FindString(object r, GoString s) { var m = ((GoRegexp)r).Re.Match(s.ToDotNetString()); return GoString.FromDotNetString(m.Success ? m.Value : ""); }
     public static GoString Re_String(object r) => GoString.FromDotNetString(((GoRegexp)r).Re.ToString());
+    public static GoSlice Re_FindAllStringSubmatchIndex(object r, GoString gs, long n)
+    {
+        var str = gs.ToDotNetString();
+        var rows = new System.Collections.Generic.List<object?>();
+        foreach (Match m in ((GoRegexp)r).Re.Matches(str))
+        {
+            if (n >= 0 && rows.Count >= n) break;
+            var idxs = new System.Collections.Generic.List<object?>();
+            for (int g = 0; g < m.Groups.Count; g++)
+            {
+                var grp = m.Groups[g];
+                if (grp.Success)
+                {
+                    int start = System.Text.Encoding.UTF8.GetByteCount(str.Substring(0, grp.Index));
+                    int end = start + System.Text.Encoding.UTF8.GetByteCount(grp.Value);
+                    idxs.Add((long)start); idxs.Add((long)end);
+                }
+                else { idxs.Add(-1L); idxs.Add(-1L); }
+            }
+            rows.Add(new GoSlice { Data = idxs.ToArray(), Off = 0, Len = idxs.Count, Cap = idxs.Count });
+        }
+        if (rows.Count == 0) return new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 }; // nil
+        return new GoSlice { Data = rows.ToArray(), Off = 0, Len = rows.Count, Cap = rows.Count };
+    }
     public static GoSlice Re_FindStringIndex(object r, GoString gs)
     {
         var str = gs.ToDotNetString();
