@@ -76,7 +76,7 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | M3 | goja: array callbacks (`map`/`reduce`), `JSON.stringify` | 🚧 |
 | M3 | `goclr test` (real `testing.T`); CI conformance matrix; stable compatibility report | 🚧 |
 
-**165 conformance fixtures pass byte-for-byte vs `go run`.** Tags
+**168 conformance fixtures pass byte-for-byte vs `go run`.** Tags
 `0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`.
 
 ## Milestones

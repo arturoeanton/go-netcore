@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**165 conformance fixtures pass, all byte-exact vs `go run`.** P0 + P1 + P2 stdlib
+**168 conformance fixtures pass, all byte-exact vs `go run`.** P0 + P1 + P2 stdlib
 are complete and hardened, the typed-box keystone (M3) is in place, and the headline
 validation target — **goja — now compiles, loads, JITs, runs init, and evaluates a
 large JavaScript subset** (see `GAPS.md`, `GOJA-STRATEGY.md`, `examples/demo_goja`).

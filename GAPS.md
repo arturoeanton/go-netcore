@@ -69,7 +69,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Time (Duration + time.Time/Format), Console/GoFunc/struct value helpers | 🟡 | M | ✅ |
 | select runtime, ASCII fast-path, intern pool | 🚧 | M | 🟡 |
 
-## 4. Stdlib overlay (C# shim mechanism live; 165 conformance fixtures byte-exact; P0/P1/P2 hardened, typed-box + goja running)
+## 4. Stdlib overlay (C# shim mechanism live; 168 conformance fixtures byte-exact; P0/P1/P2 hardened, typed-box + goja running)
 
 | Package(s) | State | Effort | MVP? |
 |---|---|---|---|
@@ -113,7 +113,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Item | State | Effort | MVP? |
 |---|---|---|---|
 | Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
-| 165 conformance fixtures (000–365), all byte-exact vs `go run` | ✅ | M | ✅ |
+| 168 conformance fixtures (000–368), all byte-exact vs `go run` | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |
@@ -204,15 +204,28 @@ With these, goja evaluates a **large** JavaScript subset on the CLR: arithmetic,
 strings and string methods (`toUpperCase`/`slice`), `Math`, objects and property
 access, function calls/closures, and `for`/`while` loops (see `examples/demo_goja`).
 
-Still open (the remaining frontier):
+### Update — the remaining frontier is closed (array callbacks + JSON)
 
-1. Array callbacks — `[].map`/`reduce` — nil-deref in `toLength` reading `this.length`
-   inside the native prototype method (the JS-function-as-callback + native-call
-   boundary).
-2. `JSON.stringify` of objects.
-3. `fmt` formatting a non-nil `*goja.Exception` crashes in `Exception.String` (only
-   hit when surfacing an error); and a typed-nil pointer in an interface compares
-   `== nil` true (Go: false) — a known representation gap.
+The three frontier items now evaluate byte-identically to `go run` (each with a
+conformance fixture):
+
+1. **Array callbacks** — `[].map`/`filter`/`reduce`/`sort(comparator)` work. Root
+   cause: a field-alias `&a.prop` GoPtr carried no type id, so goja's
+   `prop.(*valueProperty)` assertion failed (a typed nil). Field aliases now tag the
+   pointee struct's type id (`Rt.FieldPtr(getter, setter, typeId)`, conformance 366).
+2. **`JSON.stringify`** — objects, nested arrays, round-trips. Root cause: a type
+   switch `case String:` matched `*Object` because `isinst object` matches every
+   reference; the match now tests interface satisfaction (conformance 367).
+3. **`JSON.parse`** — nested objects/arrays. Root cause: `tok.(json.Delim)` (both
+   comma-ok and single-value) failed for the typed-box `json.Delim` — the assertion
+   used `isinst` on the int32 representation and never matched the `GoNamed` wrapper.
+   Type assertion to a named non-struct type now matches the wrapper id
+   (conformance 368).
+
+`examples/demo_goja` exercises all of these. The one true remaining representation
+gap (orthogonal to goja's evaluator, no longer on the goja path): a typed-nil pointer
+stored in an interface compares `== nil` true where Go yields false. Tracked in
+LIMITATIONS.md.
 
 `GOCLR_PANIC_TRACE=1` makes the runtime print a panic's throw-site .NET stack — the
 key tool for locating these (a `recover()` otherwise masks the origin).

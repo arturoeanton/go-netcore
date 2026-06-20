@@ -162,14 +162,27 @@ The load-bearing ones:
   promoted from embedded value fields, `*p = v` / `a,b = f()` / `return s, nil`
   boxing, and matching shim signatures (atomic Int32, reflect, time, runtime).
 
-### Still open (the remaining frontier)
+### The remaining frontier — closed
 
-1. **Array callbacks** — `[].map`/`reduce`: a typed-nil pointer crosses the
-   JS-callback ↔ native-function boundary (`getStr("length")` returns a typed nil),
-   tied to the typed-nil-in-interface representation gap.
-2. **`JSON.stringify`** of objects.
-3. `fmt` formatting a non-nil `*goja.Exception` (`Exception.String`), only hit when
-   surfacing one of the above as an error.
+All three items previously listed here now evaluate identically to `go run`:
+
+1. **Array callbacks** — `[].map`/`filter`/`reduce`/`sort(comparator)` work. The
+   crash was a field-alias `&a.prop` GoPtr that carried no type id, so the
+   `prop.(*valueProperty)` assertion inside goja failed (the typed nil). Field
+   aliases now tag the pointee type id (`Rt.FieldPtr(getter, setter, typeId)`).
+2. **`JSON.stringify`** works (objects, nested arrays, round-trips). The crash was a
+   type switch `case String:` matching `*Object` because `isinst object` matches
+   every reference; the match now tests interface satisfaction, not just `isinst`.
+3. **`JSON.parse`** works (nested objects/arrays). The crash was `tok.(json.Delim)`
+   (both comma-ok and single-value) failing for the typed-box `json.Delim`: the
+   assertion used `isinst` on the int32 representation and never matched the
+   `GoNamed` wrapper. Type assertion to a named non-struct type now matches the
+   wrapper id. (conformance 368)
+
+`examples/demo_goja` exercises all of these — arithmetic, string/`Math` methods,
+`for` sums, `filter().map()`, `sort(comparator)`, `Object.keys`, and
+`JSON.stringify`/`JSON.parse` — with output byte-identical to `go run`.
 
 Tagged milestones: `0.0.21.goja-compiles-loads-jits`, `0.0.22.goja-runs-1plus2`,
-`0.0.23.goja-evaluates-js`, `0.0.24.goja-loops-arrays-objects`.
+`0.0.23.goja-evaluates-js`, `0.0.24.goja-loops-arrays-objects`,
+`0.0.27.goja-json-array-callbacks`.

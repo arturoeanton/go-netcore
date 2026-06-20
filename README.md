@@ -47,7 +47,7 @@ being completed: array callbacks (`map`/`reduce`) and `JSON.stringify` — track
 ## Status
 
 The compiler runs end-to-end: front half + the ECMA-335 emitter + the .NET runtime
-+ a stdlib overlay. **165 conformance fixtures pass byte-for-byte vs `go run`.**
++ a stdlib overlay. **168 conformance fixtures pass byte-for-byte vs `go run`.**
 See [ROADMAP.md](ROADMAP.md) / [ROADMAP-M2.5.md](ROADMAP-M2.5.md) for the milestone
 breakdown and [LIMITATIONS.md](LIMITATIONS.md) / [GAPS.md](GAPS.md) for the tracked
 gaps.
@@ -80,7 +80,7 @@ gaps.
 go build -o bin/goclr ./cmd/goclr
 bin/goclr doctor                          # verify Go + .NET environment
 bin/goclr run ./tests/conformance/015_fib # fib(0..9), matches `go run`
-go test ./tests/conformance/              # all 165 fixtures vs `go run`
+go test ./tests/conformance/              # all 168 fixtures vs `go run`
 ```
 
 The first `build`/`run` compiles the `GoCLR.Runtime` and `GoCLR.Stdlib` C# projects
