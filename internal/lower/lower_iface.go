@@ -357,6 +357,27 @@ func (l *funcLowerer) typeAssert(e *ast.TypeAssertExpr) {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		return
 	}
+	// x.(NamedType) where NamedType is a typed box (named non-struct): match the
+	// GoNamed wrapper's id, then unwrap before unboxing the representation.
+	if id, ok := l.namedIdentity(l.pkg.TypesInfo.TypeOf(e.Type)); ok {
+		tmp := l.addLocal(nil, goir.TObject)
+		l.expr(e.X)
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+		good := l.label()
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.namedIdExtern()})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
+		l.emit(goir.Op{Code: goir.OpCeq})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: good})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: "interface conversion: interface does not implement the requested interface"})
+		l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
+		l.emit(goir.Op{Code: goir.OpCallPanic})
+		l.mark(good)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emitUnwrapNamed()
+		l.emitUnbox(t)
+		return
+	}
 	l.expr(e.X)
 	l.emitUnbox(t)
 }
@@ -483,6 +504,30 @@ func (l *funcLowerer) typeAssertOK(s *ast.AssignStmt) {
 	// (isinst against the representation would match everything).
 	if iface, ok := l.assertIface(ta.Type); ok {
 		l.emitInterfaceAssert(func() { l.expr(ta.X) }, iface, isTmp)
+		l.bindAssertResults(s, isTmp, t)
+		return
+	}
+
+	// v, ok := x.(NamedType) where NamedType is a typed box: ok is whether the
+	// GoNamed wrapper's id matches; the bound value is the unwrapped representation.
+	if id, ok := l.namedIdentity(l.pkg.TypesInfo.TypeOf(ta.Type)); ok {
+		valTmp := l.addLocal(nil, goir.TObject)
+		l.expr(ta.X)
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
+		matched, done := l.label(), l.label()
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.namedIdExtern()})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
+		l.emit(goir.Op{Code: goir.OpCeq})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
+		l.emit(goir.Op{Code: goir.OpLdNull})
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: isTmp})
+		l.emit(goir.Op{Code: goir.OpBr, Label: done})
+		l.mark(matched)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp})
+		l.emitUnwrapNamed() // GoNamed -> the boxed representation bindAssertResults unboxes
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: isTmp})
+		l.mark(done)
 		l.bindAssertResults(s, isTmp, t)
 		return
 	}
