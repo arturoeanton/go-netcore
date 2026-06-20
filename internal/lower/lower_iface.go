@@ -65,8 +65,10 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 	if sig.Results().Len() == 1 {
 		retType, _ = l.goType(sig.Results().At(0).Type())
 	} else if sig.Results().Len() > 1 {
-		l.fail(e.Pos(), "interface method with multiple results")
-		return goir.TVoid
+		// Multiple results: the lowered method returns a boxed object[] tuple, which
+		// the caller spreads (it sees a *types.Tuple). Dispatch stores/returns it
+		// like any single reference result.
+		retType = goir.TObjectArray
 	}
 
 	// Evaluate arguments once into temps (coerced to the method's param types).
