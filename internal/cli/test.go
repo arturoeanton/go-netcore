@@ -21,7 +21,7 @@ func cmdTest(args []string) int {
 	}
 
 	// Load with tests so *_test.go files participate in compatibility analysis.
-	res, err := frontend.Load(frontend.LoadConfig{Dir: ".", Patterns: patterns, Tests: true})
+	res, err := frontend.Load(frontend.LoadConfig{Dir: ".", Patterns: normalizePatterns(patterns), Tests: true})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "goclr test: %v\n", err)
 		return 1

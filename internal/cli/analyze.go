@@ -24,7 +24,7 @@ func cmdAnalyze(args []string) int {
 		patterns = []string{"./..."}
 	}
 
-	res, err := frontend.Load(frontend.LoadConfig{Dir: ".", Patterns: patterns})
+	res, err := frontend.Load(frontend.LoadConfig{Dir: ".", Patterns: normalizePatterns(patterns)})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "goclr analyze: %v\n", err)
 		return 1

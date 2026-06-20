@@ -85,6 +85,7 @@ func cmdBuild(args []string) int {
 // ROADMAP.md. Until it lands, build performs a real compatibility gate and then
 // reports clearly that emission is pending, rather than producing a broken DLL.
 func buildToAssembly(patterns []string, bf *buildFlags, out string) (int, string) {
+	patterns = normalizePatterns(patterns)
 	res, err := frontend.Load(frontend.LoadConfig{Dir: ".", Patterns: patterns})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "goclr build: %v\n", err)
@@ -156,4 +157,25 @@ func defaultOutput(pattern string) string {
 		base = "out"
 	}
 	return filepath.Join("bin", base+".dll")
+}
+
+// normalizePatterns makes a bare local file/directory path usable as a go/packages
+// pattern. `go/packages` treats `examples/demo` (no `./`) as an import path, not a
+// directory, so `goclr run examples/demo` failed with "no main package found" even
+// though `goclr run ./examples/demo` (and the explicit `.../main.go` file) worked.
+// A pattern that names an existing on-disk path and isn't already in package-pattern
+// form gets a `./` prefix; import paths and `./...` wildcards are left untouched.
+func normalizePatterns(patterns []string) []string {
+	out := make([]string, len(patterns))
+	for i, p := range patterns {
+		out[i] = p
+		if p == "" || strings.HasPrefix(p, ".") || strings.HasPrefix(p, "/") ||
+			strings.Contains(p, "...") || filepath.IsAbs(p) {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			out[i] = "." + string(filepath.Separator) + p
+		}
+	}
+	return out
 }
