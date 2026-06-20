@@ -79,3 +79,50 @@ reinterpret-casts with the `encoding/binary` shim through goclr build-tagged
 overlays.** The primitive exists and is verified; what's left is the overlay
 mechanism plus three mechanical file rewrites, then driving the backend over the
 (pure-Go) goja evaluator. That is the M3 milestone.
+
+---
+
+## STATUS UPDATE — the unsafe path is done; the wall is the runtime type system
+
+Everything in the section above is **complete and verified**:
+
+- **Overlay mechanism — DONE.** `internal/frontend/overlays.go` applies goclr-safe
+  replacements to the **vendored** copies of the unsafe files (`go mod vendor` +
+  `ApplyOverlays`), plus a virtual `go/packages` overlay (`StdlibOverlay`) for
+  stdlib source. The `goclr,clr,net8` build tags are on by default.
+- **Three safe overlays — DONE.** `typedarrays.go`, `builtin_typedarrays.go`,
+  `unistring/string.go`, `regexp2helpers/indexof.go`, and goja `value.go` are
+  rewritten with `encoding/binary` byte access. goja now **runs correctly under
+  `go run`** with these overlays (typed arrays, DataView, UTF-16, JSON all exact).
+- **`goclr analyze ./cmd/_gojamin` → OK.** The unsafe blockers are gone.
+- Driving the **backend** over goja surfaced and fixed a long series of real
+  language gaps (now in `main`): fixed arrays, int8/16/32, `unsafe.Pointer`→object,
+  `&slice[i]`, `&^`, keyed array/slice literals, **long-form local opcodes**
+  (256+ locals), **chunked package-var init** (64KB IL limit), `unicode` compiled
+  from real source, **cross-package interface dispatch**, and `sort` compiled from
+  a reflectlite-free overlay (interface `Sort`/`Stable`/`Search`/`Find`).
+
+### The actual remaining blocker: a runtime type system (still M3)
+
+goja compilation through the backend now stops on two things that are the **same
+root cause** — goclr erases per-value runtime type identity:
+
+1. **`reflect`** (the big one). goja's Go↔JS interop is built on `reflect.ValueOf`,
+   `MakeSlice`, `MakeMap`, `New`, and field/method access by name across ~25 files.
+   goclr compiles *every* function in a package, so these are reached even by a bare
+   `vm.RunString("1+2")`. A faithful `reflect` needs runtime type descriptors.
+2. **Representation-keyed interface dispatch.** `sort.StringSlice` (pulled in by
+   goja's `golang.org/x/text/collate` dependency) and any other named-slice
+   `sort.Interface` implementer box to one indistinguishable `GoSlice`. See
+   LIMITATIONS.md → "Interface dispatch keys on the boxed representation."
+
+Both are dissolved by the same M3 feature: **per-value type tags / an itable**, so
+that (a) an interface value carries its concrete type, and (b) `reflect` can read
+it. Until then, goja **compiles partway but cannot run**. This is an architectural
+milestone, deliberately not rushed — a half-implemented `reflect` would be silent,
+dangerous tech debt (see the project's "sin deuda técnica" rule).
+
+**Recommendation for M3:** add a `TypeId` (and a small type-descriptor table) to
+*every* boxed value, not just `GoPtr`; route interface dispatch and a new `reflect`
+shim through it. That single foundation unblocks goja, precise `%T`/`%#v`, nil-map
+formatting, and multi-named-slice interface dispatch at once.
