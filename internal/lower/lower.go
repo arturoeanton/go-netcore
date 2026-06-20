@@ -52,6 +52,9 @@ type lowerCtx struct {
 	globals   map[*types.Var]int
 	varInits  []varInit      // package-var initializers, in init order
 	initFuncs []*goir.Method // package init() functions, in order
+	// stringers holds generated String()/Error() dispatch closures to register
+	// with the fmt runtime at startup.
+	stringers []stringerReg
 }
 
 // varInit is a package-level variable initializer to run during program startup.
@@ -194,6 +197,10 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		}
 	}
 
+	// Generate String()/Error() dispatch closures for fmt (after all methods are
+	// shelled, so byFunc is populated; before buildInit emits their registration).
+	c.collectStringers()
+
 	// Startup: run package-var initializers and init() functions before main.
 	if init, ok := c.buildInit(); !ok {
 		return nil, false
@@ -271,7 +278,7 @@ func (c *lowerCtx) taggedStructs() []*goir.Struct {
 // then each init() function. Returns nil if there is nothing to do.
 func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	tagged := c.taggedStructs()
-	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 {
+	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 {
 		return nil, true
 	}
 	// The package-var initializers and tag registrations are emitted into a series
@@ -299,6 +306,8 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	}
 
 	cl := newChunk()
+	// Register String()/Error() dispatch closures so fmt can format custom types.
+	cl.emitStringerRegistrations()
 	// Register struct field tags first so reflect/json see them everywhere.
 	regExt := &goir.Extern{
 		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Reflect", Method: "RegisterTag",

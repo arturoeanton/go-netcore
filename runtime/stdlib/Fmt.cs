@@ -11,6 +11,30 @@ public static class Fmt
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+    // Stringer/Error dispatch tables, populated at startup by the compiler. A value
+    // receiver's method is keyed by the struct's CLR type name; a pointer receiver's
+    // (and a value receiver reached through *T) by the struct's runtime type id.
+    private static readonly System.Collections.Generic.Dictionary<string, GoClosure> _valStringers = new();
+    private static readonly System.Collections.Generic.Dictionary<long, GoClosure> _ptrStringers = new();
+
+    public static void RegisterValStringer(GoString name, GoClosure fn) => _valStringers[name.ToDotNetString()] = fn;
+    public static void RegisterPtrStringer(long id, GoClosure fn) => _ptrStringers[id] = fn;
+
+    // TryStringer invokes a registered String()/Error() method for v's concrete type,
+    // returning its text. Used for the %v and %s verbs (not %#v / %T / %d / %p).
+    private static bool TryStringer(object? v, out string s)
+    {
+        s = "";
+        GoClosure? fn = null;
+        if (v is GoPtr p && p.TypeId != 0)
+            _ptrStringers.TryGetValue(p.TypeId, out fn);
+        else if (v != null && v.GetType().IsValueType && IsStructVal(v))
+            _valStringers.TryGetValue(v.GetType().Name, out fn);
+        if (fn == null) return false;
+        s = GoRuntime.InvokeArgs(fn, v) is GoString gs ? gs.ToDotNetString() : "";
+        return true;
+    }
+
     private static object?[] Args(GoSlice a)
     {
         var r = new object?[a.Len];
@@ -347,6 +371,9 @@ public static class Fmt
 
     private static string Format(object? v, char verb, bool plus, bool hash)
     {
+        // A type's String()/Error() method governs %v and %s output (but not the
+        // Go-syntax %#v, nor numeric/bool/pointer-address verbs).
+        if (!hash && (verb == 'v' || verb == 's') && TryStringer(v, out var sv)) return sv;
         switch (v)
         {
             case null: return "<nil>";
