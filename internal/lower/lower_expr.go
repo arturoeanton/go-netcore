@@ -202,6 +202,7 @@ func (l *funcLowerer) structLit(e *ast.CompositeLit, st goir.Type) {
 	tmp := l.addLocal(nil, st)
 	l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
 	l.emit(goir.Op{Code: goir.OpInitObj, Struct: s})
+	l.emitStructOpaqueInits(s, func() { l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp}) })
 
 	for i, elt := range e.Elts {
 		var fi int

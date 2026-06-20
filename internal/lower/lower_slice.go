@@ -58,6 +58,7 @@ func (l *funcLowerer) emitZeroValue(t goir.Type) {
 		tmp := l.addLocal(nil, t)
 		l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
 		l.emit(goir.Op{Code: goir.OpInitObj, Struct: t.Struct})
+		l.emitStructOpaqueInits(t.Struct, func() { l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp}) })
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 	case goir.KSlice:
 		// The zero value of a slice is nil (a GoSlice with a null backing array),
@@ -93,6 +94,48 @@ func (l *funcLowerer) emitArrayZero(elem goir.Type, n int64) {
 	l.emit(goir.Op{Code: goir.OpLdcI8, Int: n})
 	l.emitBoxedZero(elem)
 	l.emit(goir.Op{Code: goir.OpSliceMake})
+}
+
+// structNeedsOpaqueInit reports whether a struct has (recursively) any opaque
+// value-type shim field (sync.Mutex, strings.Builder, …) whose zero value must be a
+// fresh runtime object — initobj would otherwise leave it null and crash on use.
+func structNeedsOpaqueInit(st *goir.Struct) bool {
+	for _, f := range st.Fields {
+		if f.Type.Kind == goir.KObject && f.Type.Shim != "" {
+			if _, ok := shimZeroExtern(f.Type.Shim); ok {
+				return true
+			}
+		}
+		if f.Type.Kind == goir.KStruct && structNeedsOpaqueInit(f.Type.Struct) {
+			return true
+		}
+	}
+	return false
+}
+
+// emitStructOpaqueInits, after a struct's initobj, sets each opaque-shim field to a
+// fresh runtime object (and recurses into struct fields). emitAddr pushes the
+// managed address of the struct being initialized.
+func (l *funcLowerer) emitStructOpaqueInits(st *goir.Struct, emitAddr func()) {
+	if !structNeedsOpaqueInit(st) {
+		return
+	}
+	for fi, f := range st.Fields {
+		switch {
+		case f.Type.Kind == goir.KObject && f.Type.Shim != "":
+			if _, ok := shimZeroExtern(f.Type.Shim); ok {
+				emitAddr()
+				l.emitZeroValue(f.Type) // calls the shim's zero constructor
+				l.emit(goir.Op{Code: goir.OpStFld, Struct: st, Field: fi})
+			}
+		case f.Type.Kind == goir.KStruct && structNeedsOpaqueInit(f.Type.Struct):
+			i := fi
+			l.emitStructOpaqueInits(f.Type.Struct, func() {
+				emitAddr()
+				l.emit(goir.Op{Code: goir.OpLdFldA, Struct: st, Field: i})
+			})
+		}
+	}
 }
 
 // emitBoxedZero pushes the boxed zero value (for make / slice / map element zero).
