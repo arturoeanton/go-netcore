@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**86 conformance fixtures pass, all byte-exact vs `go run`.**
+**87 conformance fixtures pass, all byte-exact vs `go run`.**
 
 Foundations (§0.1) — **DONE**: multi-package lowering (main + transitive non-stdlib
 closure → one assembly), package-level vars + `init()` (`__goclr_init`), the C# shim /
@@ -49,9 +49,12 @@ P0 packages shimmed (byte-exact): `math`, `strings` (+`Builder`), `bytes` (+`Buf
 (Background/TODO/WithValue/WithCancel/WithTimeout + Done/Err/Value). String
 conversions and the `error` model (IGoError fallback) done.
 
+Float ftoa parity (§0.4) — **DONE**: a shortest-round-trip formatter (`GoFtoa`)
+drives `%v`/`%g`/`%e`/`%E`/`println`/`strconv.FormatFloat`, matching Go's
+`exp<-4 || exp>=6` layout, lowercase `e`, and ≥2-digit signed exponent.
+
 P0 remaining: the general `reflect` write-path (`reflect.Value.Set*`/`New`/`Elem`)
-for code using reflect directly, and float shortest-round-trip (`strconv` ftoa)
-parity for exact `%g`/`%v`.
+for code using reflect directly (json.Unmarshal is already covered via descriptors).
 
 Documented limitations: `time.Time` is UTC-only (use `.UTC()` for determinism;
 Go uses Local); a named numeric type with `String()` (e.g. `time.Duration`) passed to

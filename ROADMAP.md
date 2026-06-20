@@ -228,10 +228,13 @@ context.CancelFunc) done.
 maps, primitives, and `interface{}` via a compiler-emitted type descriptor (the
 runtime erases slice/map element types), writing back through the GoPtr cell.
 
+Float formatting is Go-exact: a shortest-round-trip ftoa (`GoFtoa`) drives `%v`,
+`%g`, `%e`/`%E`, `println`, and `strconv.FormatFloat` (Go's `exp<-4 || exp>=6`
+layout rule, lowercase `e`, ≥2-digit signed exponent).
+
 P0 remaining:
 - 🚧 general `reflect` write-path (`reflect.Value.Set*`/`New`/`Elem`) for code
   using reflect directly (json.Unmarshal already covered via descriptors)
-- 🚧 float shortest-round-trip (`strconv` ftoa) parity for exact `%g`/`%v`
 
 Known documented limitations:
 - `time.Time` operates in **UTC** (Go uses Local in `time.Unix`/`Now`); use `.UTC()`

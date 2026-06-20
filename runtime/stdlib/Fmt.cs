@@ -106,8 +106,9 @@ public static class Fmt
         'q' => "\"" + (v is GoString gq ? gq.ToDotNetString() : Format(v, 'v', false, false)) + "\"",
         'c' => char.ConvertFromUtf32((int)System.Convert.ToInt64(v ?? 0L)),
         'f' => System.Convert.ToDouble(v ?? 0.0).ToString("F" + (prec < 0 ? 6 : prec), Inv),
-        'e' => System.Convert.ToDouble(v ?? 0.0).ToString("e" + (prec < 0 ? 6 : prec), Inv),
-        'g' => System.Convert.ToDouble(v ?? 0.0).ToString("R", Inv),
+        'e' => GoFtoa.FormatE(System.Convert.ToDouble(v ?? 0.0), prec < 0 ? 6 : prec),
+        'E' => GoFtoa.FormatE(System.Convert.ToDouble(v ?? 0.0), prec < 0 ? 6 : prec, 'E'),
+        'g' => GoFtoa.Shortest(System.Convert.ToDouble(v ?? 0.0)),
         'T' => TypeName(v),
         'v' => Format(v, 'v', plus, hash),
         _ => Format(v, 'v', plus, hash),
@@ -140,9 +141,7 @@ public static class Fmt
         }
     }
 
-    private static string FormatFloatV(double d) =>
-        d == System.Math.Floor(d) && !double.IsInfinity(d) && System.Math.Abs(d) < 1e21
-            ? d.ToString("0", Inv) : d.ToString("R", Inv);
+    private static string FormatFloatV(double d) => GoFtoa.Shortest(d);
 
     private static string FormatSlice(GoSlice s, bool plus, bool hash)
     {

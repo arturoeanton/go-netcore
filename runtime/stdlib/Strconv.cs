@@ -44,8 +44,8 @@ public static class Strconv
         string s = c switch
         {
             'f' => p < 0 ? f.ToString("0.0###############", Inv) : f.ToString("F" + p, Inv),
-            'e' => f.ToString((p < 0 ? "e" : "e" + p), Inv),
-            'g' => p < 0 ? f.ToString("R", Inv) : f.ToString("G" + p, Inv),
+            'e' => GoFtoa.FormatE(f, p),
+            'g' => p < 0 ? GoFtoa.Shortest(f) : f.ToString("G" + p, Inv),
             _ => f.ToString(Inv),
         };
         return GoString.FromDotNetString(s);

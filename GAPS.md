@@ -22,8 +22,8 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 
 | Feature | State | Effort | MVP? |
 |---|---|---|---|
-| Basic types + mapping (int/int32/bool done; rest pending) | 🟡 | S | ✅ |
-| Package init order + init() + globals | 🚧 | M | ✅ |
+| Basic types + mapping (int/int32/int64/uint*/float*/bool/string/byte/rune) | ✅ | S | ✅ |
+| Package init order + init() + globals (static fields, __goclr_init) | ✅ | M | ✅ |
 | Funcs (recursion) ✅; methods (value + pointer receivers) ✅ | ✅ | M | ✅ |
 | Multiple return values + multiple/parallel assignment (object[] tuples) | ✅ | M | ✅ |
 | Closures + function values (lambda-lift + GoClosure, by-ref capture) | ✅ | M | ✅ |
@@ -61,11 +61,11 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Time (Duration + time.Time/Format), Console/GoFunc/struct value helpers | 🟡 | M | ✅ |
 | select runtime, ASCII fast-path, intern pool | 🚧 | M | 🟡 |
 
-## 4. Stdlib overlay (C# shim mechanism live; 82 conformance fixtures byte-exact)
+## 4. Stdlib overlay (C# shim mechanism live; 87 conformance fixtures byte-exact)
 
 | Package(s) | State | Effort | MVP? |
 |---|---|---|---|
-| errors/fmt/strconv/strings/bytes/sort/math/math-bits | 🟡 (shimmed; float ftoa parity pending) | M | ✅ |
+| errors/fmt/strconv/strings/bytes/sort/math/math-bits (float ftoa Go-exact) | ✅ | M | ✅ |
 | strings.Builder / bytes.Buffer / io.WriteString / fmt.Fprint* | ✅ | M | ✅ |
 | context (Background/WithValue/WithCancel/WithTimeout) ✅; io ifaces/bufio 🚧 | 🟡 | M | ✅ |
 | encoding/json — Marshal + Unmarshal (descriptor-driven write-path) | ✅ | L | ✅ |
@@ -105,7 +105,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Item | State | Effort | MVP? |
 |---|---|---|---|
 | Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
-| 86 conformance fixtures (000–286), all byte-exact vs `go run` | ✅ | M | ✅ |
+| 87 conformance fixtures (000–287), all byte-exact vs `go run` | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |

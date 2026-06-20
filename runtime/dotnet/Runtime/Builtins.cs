@@ -63,8 +63,8 @@ public static class Builtins
         bool b => b ? "true" : "false",
         GoString gs => gs.ToDotNetString(),
         IGoError e => e.Error().ToDotNetString(),
-        double d => d.ToString("g", CultureInfo.InvariantCulture),
-        float f => f.ToString("g", CultureInfo.InvariantCulture),
+        double d => GoFtoa.Shortest(d),
+        float f => GoFtoa.Shortest(f),
         _ => v.ToString() ?? "<nil>",
     };
 }
