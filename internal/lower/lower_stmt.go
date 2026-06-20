@@ -367,6 +367,12 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 	if l.pointerRootedFieldWrite(sel, rhs) {
 		return
 	}
+	// global.field = v : a field of a package-level struct global is reached via
+	// ldsfld, not ldloca; RMW through the global.
+	if gi, ok := l.globalRef(sel.X); ok {
+		l.globalFieldModify(gi, bt, fi, func(ft goir.Type) { l.exprCoerced(rhs, ft) })
+		return
+	}
 	l.lvalueAddr(sel.X)
 	l.expr(rhs)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
@@ -1158,6 +1164,16 @@ func (l *funcLowerer) modifyField(sel *ast.SelectorExpr, binTok token.Token, emi
 		emitOperand(pft)
 		l.emitArith(binTok, pft)
 	}) {
+		return
+	}
+	// global.field op= e : RMW through the package-level struct global.
+	if gi, ok := l.globalRef(sel.X); ok {
+		l.globalFieldModify(gi, bt, fi, func(gft goir.Type) {
+			l.emit(goir.Op{Code: goir.OpDup})
+			l.emit(goir.Op{Code: goir.OpLdFld, Struct: bt.Struct, Field: fi})
+			emitOperand(gft)
+			l.emitArith(binTok, gft)
+		})
 		return
 	}
 	l.lvalueAddr(sel.X)
