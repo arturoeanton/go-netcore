@@ -16,6 +16,7 @@ const (
 	goChanCoded    = 0x59 // (22<<2)|1
 	goInvokerCoded = 0x65 // (25<<2)|1
 	goComplexCoded = 0x6D // (27<<2)|1
+	goErrorCoded   = 0x79 // (30<<2)|1
 )
 
 // appendTypeSig appends the signature encoding of a goir.Type. Most types are a
@@ -177,6 +178,8 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	sGoComplex := h.addString("GoComplex")
 	sGoComplexs := h.addString("GoComplexs")
 	sGoDefers := h.addString("GoDefers")
+	sGoError := h.addString("IGoError")
+	sGoErrors := h.addString("GoErrors")
 	sRuntimeNS := h.addString(runtimeNamespace)
 	sModuleType := h.addString("<Module>")
 	sProgram := h.addString("Program")
@@ -373,14 +376,14 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 
 	// Row counts, ascending table id.
 	w.u32(1)                                            // Module
-	w.u32(uint32(29 + len(ext.types)))                  // TypeRef (fixed + shim types)
+	w.u32(uint32(fixedTypeRefs + len(ext.types)))       // TypeRef (fixed + shim types)
 	w.u32(uint32(2 + len(prog.Structs)))                // TypeDef (<Module>, Program, structs)
 	if hasFields {
 		w.u32(uint32(len(fieldRows))) // Field
 	}
 	w.u32(uint32(len(prog.Methods))) // MethodDef
-	// MemberRef: 60 fixed (Println/Print + runtime helpers) + shim methods.
-	w.u32(uint32(2 + len(strMembers) + len(sliceMembers) + len(mapMembers) + len(ptrMembers) + 4 + 3 + len(chanMembers) + 3 + 1 + 1 + 9 + 3 + len(ext.methods)))
+	// MemberRef: fixed (Println/Print + runtime helpers + GoErrors.Error) + shim methods.
+	w.u32(uint32(fixedMemberRefs + len(ext.methods)))
 	if hasLocals {
 		w.u32(uint32(len(sigBlobOffsets))) // StandAloneSig
 	}
@@ -425,7 +428,9 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	typeRef(scopeGoclrRuntime, sGoComplex, sRuntimeNS)   // [27] GoComplex
 	typeRef(scopeGoclrRuntime, sGoComplexs, sRuntimeNS)  // [28] GoComplexs
 	typeRef(scopeGoclrRuntime, sGoDefers, sRuntimeNS)    // [29] GoDefers
-	for _, et := range extTypes {                        // [30+] shim types
+	typeRef(scopeGoclrRuntime, sGoError, sRuntimeNS)     // [30] GoError
+	typeRef(scopeGoclrRuntime, sGoErrors, sRuntimeNS)    // [31] GoErrors
+	for _, et := range extTypes {                        // [32+] shim types
 		typeRef(et.scope, et.name, et.ns)
 	}
 
@@ -587,7 +592,21 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.u16(parentGoDefers)
 	w.u16(h.addString("Run"))
 	w.u16(h.addBlob([]byte{0x00, 0x01, 0x01, 0x0A})) // void(i8)
-	for _, em := range extMembers { // [61+] shim methods
+	// [61] GoErrors.Error(GoError) -> GoString.
+	w.u16(uint16(31<<3 | 1)) // MemberRefParent -> TypeRef[31] GoErrors
+	w.u16(h.addString("Error"))
+	w.u16(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x12, goErrorCoded})) // GoString(GoError)
+	// [62..64] GoStrings.FromRune/FromBytes/FromRunes.
+	w.u16(parentGoStrings)
+	w.u16(h.addString("FromRune"))
+	w.u16(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x0A})) // GoString(i8)
+	w.u16(parentGoStrings)
+	w.u16(h.addString("FromBytes"))
+	w.u16(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x11, goSliceCoded})) // GoString(sl)
+	w.u16(parentGoStrings)
+	w.u16(h.addString("FromRunes"))
+	w.u16(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x11, goSliceCoded})) // GoString(sl)
+	for _, em := range extMembers { // [65+] shim methods
 		w.u16(em.parent)
 		w.u16(em.name)
 		w.u16(em.sig)

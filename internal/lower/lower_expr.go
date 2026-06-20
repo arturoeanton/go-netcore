@@ -480,6 +480,29 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 	if target.Kind == goir.KSlice && l.exprType(e.Args[0]) == goir.TString {
 		return l.strToSliceConversion(e, target)
 	}
+	// string(x): from a rune/int code point, []byte, or []rune.
+	if target.Kind == goir.KString {
+		argT := l.pkg.TypesInfo.TypeOf(e.Args[0])
+		if sl, ok := argT.Underlying().(*types.Slice); ok {
+			l.expr(e.Args[0])
+			if b, ok := sl.Elem().Underlying().(*types.Basic); ok && b.Kind() == types.Uint8 {
+				l.emit(goir.Op{Code: goir.OpStrFromBytes})
+			} else {
+				l.emit(goir.Op{Code: goir.OpStrFromRunes})
+			}
+			return target
+		}
+		if b, ok := argT.Underlying().(*types.Basic); ok && b.Info()&types.IsInteger != 0 {
+			l.expr(e.Args[0])
+			if k := l.exprType(e.Args[0]).Kind; k == goir.KInt32 || k == goir.KUint32 {
+				l.emit(goir.Op{Code: goir.OpConvI8})
+			}
+			l.emit(goir.Op{Code: goir.OpStrFromRune})
+			return target
+		}
+		l.expr(e.Args[0]) // string(string) identity
+		return target
+	}
 	l.expr(e.Args[0])
 	switch target.Kind {
 	case goir.KInt64:

@@ -392,6 +392,21 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 		case goir.OpCallExtern:
 			b.u8(0x28) // call
 			b.u32(tok.extern(op.Extern))
+		case goir.OpIsInstGoError:
+			b.u8(0x75) // isinst
+			b.u32(tokGoErrorType)
+		case goir.OpErrorError:
+			b.u8(0x28) // call GoErrors.Error
+			b.u32(tokErrError)
+		case goir.OpStrFromRune:
+			b.u8(0x28)
+			b.u32(tokStrFromRune)
+		case goir.OpStrFromBytes:
+			b.u8(0x28)
+			b.u32(tokStrFromBytes)
+		case goir.OpStrFromRunes:
+			b.u8(0x28)
+			b.u32(tokStrFromRunes)
 		case goir.OpLdGlobal:
 			b.u8(0x7E) // ldsfld
 			b.u32(tok.global(int(op.Int)))

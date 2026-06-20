@@ -3,9 +3,11 @@ package emit
 import "github.com/arturoeanton/go-netcore/internal/goir"
 
 // Fixed table sizes the dynamic shim references are appended after.
+// TypeRefs 1..29 runtime/System + 30 IGoError + 31 GoErrors.
+// MemberRefs 1..60 runtime helpers + 61 GoErrors.Error + 62..64 GoStrings.From*.
 const (
-	fixedTypeRefs    = 29
-	fixedMemberRefs  = 60
+	fixedTypeRefs    = 31
+	fixedMemberRefs  = 64
 	fixedAssemblyRef = 2
 )
 

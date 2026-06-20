@@ -93,6 +93,15 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 		}
 	}
 
+	// Runtime errors (errors.New, fmt.Errorf, stdlib returns) are GoError values,
+	// not Go-package types, so add a fallback branch for the error interface's
+	// Error() method.
+	isErrorMethod := ifaceMethod.Name() == "Error" && sig.Params().Len() == 0 && retType == goir.TString
+	goErrLabel := -1
+	if isErrorMethod {
+		goErrLabel = l.label()
+	}
+
 	// The result is computed into a temp so that every dispatch branch occurs at
 	// the same evaluation-stack depth (important when the dispatch is itself a
 	// sub-expression, e.g. a call argument).
@@ -123,6 +132,11 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 		l.emit(goir.Op{Code: goir.OpBrTrue, Label: labels[i]})
 		l.mark(skip)
 	}
+	if goErrLabel >= 0 {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+		l.emit(goir.Op{Code: goir.OpIsInstGoError})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: goErrLabel})
+	}
 	// No match => nil interface method call.
 	l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: invalid memory address or nil pointer dereference"})
 	l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
@@ -144,6 +158,14 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, sel *ast.SelectorExpr, 
 		if resultTmp >= 0 {
 			l.emit(goir.Op{Code: goir.OpStLoc, Local: resultTmp})
 		}
+		l.emit(goir.Op{Code: goir.OpBr, Label: end})
+	}
+	if goErrLabel >= 0 {
+		l.mark(goErrLabel)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+		l.emit(goir.Op{Code: goir.OpIsInstGoError}) // value typed as GoError
+		l.emit(goir.Op{Code: goir.OpErrorError})    // -> GoString
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: resultTmp})
 		l.emit(goir.Op{Code: goir.OpBr, Label: end})
 	}
 	l.mark(end)

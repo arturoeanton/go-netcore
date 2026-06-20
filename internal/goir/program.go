@@ -286,6 +286,13 @@ const (
 
 	OpCallExtern // call an external (shim) static method described by Op.Extern
 
+	OpIsInstGoError // object -> object typed as GoError, or null (isinst GoError)
+	OpErrorError    // GoError -> GoString (GoErrors.Error: the error interface's Error())
+
+	OpStrFromRune  // i8 -> GoString (string(rune))
+	OpStrFromBytes // GoSlice -> GoString (string([]byte))
+	OpStrFromRunes // GoSlice -> GoString (string([]rune))
+
 	OpLdGlobal // -> value of global Op.Int (ldsfld)
 	OpStGlobal // value -> ; store into global Op.Int (stsfld)
 

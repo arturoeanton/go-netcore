@@ -103,6 +103,13 @@ const (
 	tokDeferMark uint32 = 0x0A00003A
 	tokDeferPush uint32 = 0x0A00003B
 	tokDeferRun  uint32 = 0x0A00003C
+	// GoError TypeRef (row 30) + GoErrors.Error MemberRef (row 61).
+	tokGoErrorType uint32 = 0x0100001E // TypeRef GoCLR.Runtime.GoError
+	tokErrError    uint32 = 0x0A00003D // GoErrors.Error(GoError) -> GoString
+	// GoStrings reverse conversions (rows 62..64).
+	tokStrFromRune  uint32 = 0x0A00003E
+	tokStrFromBytes uint32 = 0x0A00003F
+	tokStrFromRunes uint32 = 0x0A000040
 	methodBase uint32 = 0x06000000
 	sigBase        uint32 = 0x11000000
 	typeDefBase    uint32 = 0x02000000

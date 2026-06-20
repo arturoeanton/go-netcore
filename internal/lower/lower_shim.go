@@ -34,6 +34,28 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"IsNaN": {"Math", "IsNaN"}, "IsInf": {"Math", "IsInf"}, "NaN": {"Math", "NaN"},
 		"Inf": {"Math", "Inf"},
 	},
+	"errors": {
+		"New": {"Errors", "New"}, "Unwrap": {"Errors", "Unwrap"}, "Is": {"Errors", "Is"},
+	},
+	"unicode": {
+		"IsDigit": {"Unicode", "IsDigit"}, "IsNumber": {"Unicode", "IsNumber"}, "IsLetter": {"Unicode", "IsLetter"},
+		"IsSpace": {"Unicode", "IsSpace"}, "IsUpper": {"Unicode", "IsUpper"}, "IsLower": {"Unicode", "IsLower"},
+		"IsPunct": {"Unicode", "IsPunct"}, "IsControl": {"Unicode", "IsControl"}, "IsPrint": {"Unicode", "IsPrint"},
+		"IsGraphic": {"Unicode", "IsGraphic"}, "ToUpper": {"Unicode", "ToUpper"}, "ToLower": {"Unicode", "ToLower"},
+		"ToTitle": {"Unicode", "ToTitle"},
+	},
+	"strconv": {
+		"Itoa": {"Strconv", "Itoa"}, "Atoi": {"Strconv", "Atoi"},
+		"FormatInt": {"Strconv", "FormatInt"}, "FormatUint": {"Strconv", "FormatUint"},
+		"FormatBool": {"Strconv", "FormatBool"}, "FormatFloat": {"Strconv", "FormatFloat"},
+		"ParseInt": {"Strconv", "ParseInt"}, "ParseUint": {"Strconv", "ParseUint"},
+		"ParseFloat": {"Strconv", "ParseFloat"}, "ParseBool": {"Strconv", "ParseBool"},
+		"Quote": {"Strconv", "Quote"},
+	},
+	"unicode/utf8": {
+		"RuneCountInString": {"Utf8", "RuneCountInString"}, "RuneCount": {"Utf8", "RuneCount"},
+		"ValidString": {"Utf8", "ValidString"}, "ValidRune": {"Utf8", "ValidRune"}, "RuneLen": {"Utf8", "RuneLen"},
+	},
 	"strings": {
 		"ToUpper": {"Strings", "ToUpper"}, "ToLower": {"Strings", "ToLower"}, "Title": {"Strings", "Title"},
 		"Contains": {"Strings", "Contains"}, "HasPrefix": {"Strings", "HasPrefix"}, "HasSuffix": {"Strings", "HasSuffix"},
@@ -85,7 +107,9 @@ func (l *funcLowerer) shimExtern(fn *types.Func) (*goir.Extern, bool) {
 			return nil, false
 		}
 	default:
-		return nil, false // multi-result shims not supported yet
+		// Multi-result (e.g. (int, error)): the shim returns a boxed object[]
+		// tuple, which multiAssignCall unpacks per the Go result types.
+		ret = goir.TObjectArray
 	}
 	return &goir.Extern{
 		Assembly:  shimAssembly,

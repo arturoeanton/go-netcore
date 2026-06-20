@@ -56,4 +56,33 @@ public static class GoStrings
         for (int i = 0; i < r.Length; i++) data[i] = r[i];
         return new GoSlice { Data = data, Off = 0, Len = r.Length, Cap = r.Length };
     }
+
+    /// <summary>string(r): a single-rune string (invalid code points become U+FFFD).</summary>
+    public static GoString FromRune(long r)
+    {
+        int cp = (int)r;
+        if (!System.Text.Rune.IsValid(cp)) cp = 0xFFFD;
+        return GoString.FromDotNetString(char.ConvertFromUtf32(cp));
+    }
+
+    /// <summary>string(b) for b []byte.</summary>
+    public static GoString FromBytes(GoSlice b)
+    {
+        var bytes = new byte[b.Len];
+        for (int i = 0; i < b.Len; i++) bytes[i] = (byte)System.Convert.ToInt32(b.Data[b.Off + i]);
+        return GoString.FromBytesOwned(bytes);
+    }
+
+    /// <summary>string(rs) for rs []rune.</summary>
+    public static GoString FromRunes(GoSlice rs)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < rs.Len; i++)
+        {
+            int cp = System.Convert.ToInt32(rs.Data[rs.Off + i]);
+            if (!System.Text.Rune.IsValid(cp)) cp = 0xFFFD;
+            sb.Append(char.ConvertFromUtf32(cp));
+        }
+        return GoString.FromDotNetString(sb.ToString());
+    }
 }
