@@ -410,17 +410,17 @@ func (l *funcLowerer) shimVarExtern(e ast.Expr) (*goir.Extern, bool) {
 // opaqueZeroCtor maps an opaque value-type shim to the constructor producing its
 // (non-null) zero value; types absent here zero to null (e.g. reflect handles).
 var opaqueZeroCtor = map[string]shimFunc{
-	"sync.Mutex":      {"Sync", "NewMutex"},
-	"sync.RWMutex":    {"Sync", "NewRWMutex"},
-	"sync.WaitGroup":  {"Sync", "NewWaitGroup"},
-	"sync.Once":       {"Sync", "NewOnce"},
-	"sync.Map":        {"Sync", "NewMap"},
-	"sync.Pool":       {"Sync", "NewPool"},
-	"strings.Builder": {"StringsBuilder", "New"},
-	"bytes.Buffer":    {"BytesBuffer", "New"},
-	"time.Time":       {"Time", "TimeZero"},
-	"math/big.Int":    {"Big", "IntZero"},
-	"math/big.Float":  {"Big", "FloatZero"},
+	"sync.Mutex":        {"Sync", "NewMutex"},
+	"sync.RWMutex":      {"Sync", "NewRWMutex"},
+	"sync.WaitGroup":    {"Sync", "NewWaitGroup"},
+	"sync.Once":         {"Sync", "NewOnce"},
+	"sync.Map":          {"Sync", "NewMap"},
+	"sync.Pool":         {"Sync", "NewPool"},
+	"strings.Builder":   {"StringsBuilder", "New"},
+	"bytes.Buffer":      {"BytesBuffer", "New"},
+	"time.Time":         {"Time", "TimeZero"},
+	"math/big.Int":      {"Big", "IntZero"},
+	"math/big.Float":    {"Big", "FloatZero"},
 	"hash/maphash.Hash": {"MapHash", "New"},
 }
 

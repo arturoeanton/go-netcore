@@ -47,6 +47,8 @@ type Type struct {
 	// slice-backed). Unlike a slice, an array has value semantics: copying it (on
 	// assignment, argument passing, return) duplicates its backing storage.
 	Array bool
+	// ArrayLen is the element count of a fixed-size [N]T array (Array == true).
+	ArrayLen int
 	// TruncOp, when non-zero, is the conversion applied after arithmetic to wrap a
 	// sub-word integer (int8/int16/uint8/uint16) back to its width, since those are
 	// stored in a 32-bit slot. OpNop/0 means no truncation (int32/int64/… already

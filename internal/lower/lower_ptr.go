@@ -193,9 +193,15 @@ func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 	}
 	switch x := unparen(e.X).(type) {
 	case *ast.Ident:
-		if !l.emitAddr(x) {
-			l.fail(e.Pos(), "address of "+x.Name)
+		if l.emitAddr(x) {
+			return
 		}
+		// &globalVar: a pointer aliasing the package-level variable (ldsfld/stsfld).
+		if gi, ok := l.globalRef(x); ok {
+			l.emitGlobalAlias(gi, l.exprType(x))
+			return
+		}
+		l.fail(e.Pos(), "address of "+x.Name)
 	case *ast.SelectorExpr:
 		// &s.field: a struct field has no standalone storage, so build a field-alias
 		// pointer that reads/writes the field through its stable container.

@@ -73,8 +73,15 @@ func (l *funcLowerer) emitZeroValue(t goir.Type) {
 		l.emitStructOpaqueInits(t.Struct, func() { l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp}) })
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 	case goir.KSlice:
-		// The zero value of a slice is nil (a GoSlice with a null backing array),
-		// so `var s []T; s == nil` is true, matching Go.
+		// A fixed-size array [N]T zeroes to a length-N backing with zeroed elements;
+		// a slice zeroes to nil (so `var s []T; s == nil` is true, matching Go).
+		if t.Array {
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(t.ArrayLen)})
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(t.ArrayLen)})
+			l.emitBoxedZero(*t.Elem)
+			l.emit(goir.Op{Code: goir.OpSliceMake})
+			return
+		}
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
 			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "NilSlice",
 			Params: []goir.Type{}, Ret: t,

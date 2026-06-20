@@ -603,6 +603,7 @@ func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
 		// Array flag drives copy-on-assignment in exprCoerced.
 		at := goir.SliceType(et)
 		at.Array = true
+		at.ArrayLen = int(arr.Len())
 		return at, true
 	}
 	if mp, ok := t.Underlying().(*types.Map); ok {
