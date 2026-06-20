@@ -40,6 +40,11 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"go/ast": {
 		"IsExported": {"Ast", "IsExported"},
 	},
+	"runtime": {
+		"FuncForPC": {"Goruntime", "FuncForPC"}, "GOMAXPROCS": {"Goruntime", "GOMAXPROCS"},
+		"NumCPU": {"Goruntime", "NumCPU"}, "NumGoroutine": {"Goruntime", "NumGoroutine"},
+		"GC": {"Goruntime", "GC"}, "Gosched": {"Goruntime", "Gosched"},
+	},
 	"errors": {
 		"New": {"Errors", "New"}, "Unwrap": {"Errors", "Unwrap"}, "Is": {"Errors", "Is"},
 	},
@@ -128,6 +133,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
+		"Float64": {"Rand", "Float64"}, "Int63": {"Rand", "Int63"}, "Int": {"Rand", "Int"},
+		"Int63n": {"Rand", "Int63n"}, "Intn": {"Rand", "Intn"}, "Perm": {"Rand", "Perm"}, "Seed": {"Rand", "Seed"},
 	},
 	"sync/atomic": {
 		"AddInt64": {"Atomic", "AddInt64"}, "AddInt32": {"Atomic", "AddInt32"}, "AddUint64": {"Atomic", "AddUint64"},
@@ -278,6 +285,7 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/json.Encoder":        true,
 	"reflect.StructField":          true,
 	"reflect.Method":               true,
+	"runtime.Func":                 true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
@@ -525,6 +533,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"reflect.StructTag": {
 		"Get": {"Reflect", "StructTag_Get"}, "Lookup": {"Reflect", "StructTag_Lookup"},
 	},
+	"runtime.Func": {
+		"Name": {"Goruntime", "Func_Name"}, "FileLine": {"Goruntime", "Func_FileLine"},
+		"Entry": {"Goruntime", "Func_Entry"},
+	},
 	"bufio.Scanner": {
 		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"}, "Err": {"Bufio", "Scanner_Err"},
 	},
@@ -597,6 +609,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"FindStringSubmatch": {"Regexp", "Re_FindStringSubmatch"}, "FindAllString": {"Regexp", "Re_FindAllString"},
 		"ReplaceAllString": {"Regexp", "Re_ReplaceAllString"}, "Split": {"Regexp", "Re_Split"},
 		"String": {"Regexp", "Re_String"}, "FindStringIndex": {"Regexp", "Re_FindStringIndex"}, "FindAllStringSubmatchIndex": {"Regexp", "Re_FindAllStringSubmatchIndex"},
+		"SubexpNames": {"Regexp", "Re_SubexpNames"}, "NumSubexp": {"Regexp", "Re_NumSubexp"},
+		"FindStringSubmatchIndex": {"Regexp", "Re_FindStringSubmatchIndex"},
+		"FindReaderSubmatchIndex": {"Regexp", "Re_FindReaderSubmatchIndex"},
 	},
 	"encoding/base32.Encoding": {
 		"EncodeToString": {"Base32", "EncodeToString"}, "DecodeString": {"Base32", "DecodeString"},

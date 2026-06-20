@@ -24,6 +24,14 @@ func (c *lowerCtx) litFreeVars(lit *ast.FuncLit) []*types.Var {
 				defined[v] = true
 			}
 		}
+		// A type-switch binding (switch v := x.(type)) declares one implicit *types.Var
+		// per case, recorded in Implicits, not Defs — count those as defined-within so
+		// they aren't mistaken for captured free variables.
+		if cc, ok := n.(*ast.CaseClause); ok {
+			if v, ok := c.pkg.TypesInfo.Implicits[cc].(*types.Var); ok {
+				defined[v] = true
+			}
+		}
 		return true
 	})
 	var free []*types.Var

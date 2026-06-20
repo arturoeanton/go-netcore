@@ -59,6 +59,83 @@ public static class Regexp
         if (rows.Count == 0) return new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 }; // nil
         return new GoSlice { Data = rows.ToArray(), Off = 0, Len = rows.Count, Cap = rows.Count };
     }
+    // FindStringSubmatchIndex: the first match's group byte-offset pairs as a flat
+    // []int (g0.start,g0.end, g1.start,g1.end, ...), or nil if no match.
+    public static GoSlice Re_FindStringSubmatchIndex(object r, GoString gs)
+    {
+        var str = gs.ToDotNetString();
+        var m = ((GoRegexp)r).Re.Match(str);
+        if (!m.Success) return new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 };
+        var idxs = new System.Collections.Generic.List<object?>();
+        for (int g = 0; g < m.Groups.Count; g++)
+        {
+            var grp = m.Groups[g];
+            if (grp.Success)
+            {
+                int start = System.Text.Encoding.UTF8.GetByteCount(str.Substring(0, grp.Index));
+                int end = start + System.Text.Encoding.UTF8.GetByteCount(grp.Value);
+                idxs.Add((long)start); idxs.Add((long)end);
+            }
+            else { idxs.Add(-1L); idxs.Add(-1L); }
+        }
+        return new GoSlice { Data = idxs.ToArray(), Off = 0, Len = idxs.Count, Cap = idxs.Count };
+    }
+
+    // SubexpNames: index 0 is "" (the whole match); each i is group i's name, or ""
+    // when the group is unnamed (matching Go's ordering for purely numbered groups).
+    public static GoSlice Re_SubexpNames(object r)
+    {
+        var re = ((GoRegexp)r).Re;
+        var nums = re.GetGroupNumbers();
+        var names = new object?[nums.Length];
+        for (int i = 0; i < nums.Length; i++)
+        {
+            string nm = re.GroupNameFromNumber(nums[i]);
+            // .NET names an unnamed group with its number; Go reports "".
+            names[i] = GoString.FromDotNetString(nm == nums[i].ToString(System.Globalization.CultureInfo.InvariantCulture) ? "" : nm);
+        }
+        return new GoSlice { Data = names, Off = 0, Len = names.Length, Cap = names.Length };
+    }
+
+    public static long Re_NumSubexp(object r) => ((GoRegexp)r).Re.GetGroupNumbers().Length - 1;
+
+    // FindReaderSubmatchIndex: match against an io.RuneReader and return rune-offset
+    // group index pairs. The reader is drained through the runtime's reader protocol;
+    // a custom RuneReader the runtime can't drain yields no match (see LIMITATIONS.md
+    // — this only affects full-Unicode RE2 matching over non-standard readers).
+    public static GoSlice Re_FindReaderSubmatchIndex(object r, object? reader)
+    {
+        var bytes = Readers.Drain(reader);
+        string str = System.Text.Encoding.UTF8.GetString(bytes);
+        var m = ((GoRegexp)r).Re.Match(str);
+        if (!m.Success) return new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 };
+        var idxs = new System.Collections.Generic.List<object?>();
+        for (int g = 0; g < m.Groups.Count; g++)
+        {
+            var grp = m.Groups[g];
+            // Rune offsets: count code points up to the UTF-16 index.
+            if (grp.Success)
+            {
+                long start = RuneIndex(str, grp.Index);
+                long end = start + RuneIndex(grp.Value, grp.Value.Length);
+                idxs.Add(start); idxs.Add(end);
+            }
+            else { idxs.Add(-1L); idxs.Add(-1L); }
+        }
+        return new GoSlice { Data = idxs.ToArray(), Off = 0, Len = idxs.Count, Cap = idxs.Count };
+    }
+
+    private static long RuneIndex(string s, int utf16Index)
+    {
+        long runes = 0;
+        for (int i = 0; i < utf16Index && i < s.Length; i++)
+        {
+            if (char.IsHighSurrogate(s[i]) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1])) i++;
+            runes++;
+        }
+        return runes;
+    }
+
     public static GoSlice Re_FindStringIndex(object r, GoString gs)
     {
         var str = gs.ToDotNetString();

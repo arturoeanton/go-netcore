@@ -279,6 +279,17 @@ public static class Rand
     public static object NewSource(long seed) => new GoRandSource(seed);
     public static object New(object source) => new GoRand(source);
 
+    // Package-level helpers backed by a shared default source (math/rand's global
+    // functions). Seeded deterministically (Go's pre-1.20 default seed is 1).
+    private static readonly GoRand Global = new(new GoRandSource(1));
+    public static double Float64() => Global.Float64();
+    public static long Int63() => Global.Int63();
+    public static long Int() => Global.Int();
+    public static long Int63n(long n) => Global.Int63n(n);
+    public static long Intn(long n) => Global.Intn(n);
+    public static GoSlice Perm(long n) => Global.Perm(n);
+    public static void Seed(long seed) { }
+
     // *rand.Rand method shims (receiver as first arg).
     public static long Rand_Int63(object r) => ((GoRand)r).Int63();
     public static long Rand_Int(object r) => ((GoRand)r).Int();
