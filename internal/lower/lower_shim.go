@@ -55,6 +55,11 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"EncodeToString": {"Hex", "EncodeToString"}, "DecodeString": {"Hex", "DecodeString"},
 		"EncodedLen": {"Hex", "EncodedLen"}, "DecodedLen": {"Hex", "DecodedLen"},
 	},
+	"crypto/sha256": {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}},
+	"crypto/sha1":   {"New": {"Crypto", "Sha1New"}},
+	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}},
+	"crypto/md5":    {"New": {"Crypto", "Md5New"}},
+	"crypto/rand":   {"Read": {"Crypto", "RandRead"}},
 	"path": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
@@ -255,6 +260,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
+	},
+	"hash.Hash": {
+		"Write": {"Crypto", "Hash_Write"}, "Sum": {"Crypto", "Hash_Sum"}, "Reset": {"Crypto", "Hash_Reset"},
+		"Size": {"Crypto", "Hash_Size"}, "BlockSize": {"Crypto", "Hash_BlockSize"},
 	},
 	"strings.Builder": {
 		"WriteString": {"StringsBuilder", "WriteString"}, "WriteByte": {"StringsBuilder", "WriteByte"},

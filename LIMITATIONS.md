@@ -51,6 +51,14 @@ special-case expansions (e.g. `İ` U+0130 → `i` + combining dot) are not appli
 `time.Time` operates in UTC. Go's `time.Now()`/`time.Unix()` use the local zone;
 for cross-runtime-deterministic output use `.UTC()` and `time.Date(..., time.UTC)`.
 
+## Fixed-size arrays
+
+`[N]T` fixed-size array types (e.g. `var a [4]byte`, `[32]byte`) are not yet
+supported (use slices). Consequence: `sha256.Sum256(data)` (returns `[32]byte`)
+is unavailable — use `h := sha256.New(); h.Write(data); h.Sum(nil)` ([]byte). And
+`hmac.New(sha256.New, key)` needs a shim function value (see above), so HMAC via
+the func-constructor is deferred.
+
 ## Multi-value call as an argument list
 
 `f(g())` where `g` returns multiple values (e.g. `fmt.Println(strconv.Atoi(s))`)
