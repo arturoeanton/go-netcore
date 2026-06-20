@@ -70,12 +70,15 @@ func Load(cfg LoadConfig) (*Result, error) {
 		packages.NeedTypesInfo |
 		packages.NeedModule
 
+	env := append(envBase(), "CGO_ENABLED=0")
+	// Replace any vendored unsafe.Pointer dep files with goclr-safe versions.
+	ApplyOverlays(cfg.Dir, env)
 	pcfg := &packages.Config{
 		Mode:       mode,
 		Dir:        cfg.Dir,
 		Tests:      cfg.Tests,
 		BuildFlags: []string{"-tags=" + joinTags(tags)},
-		Env:        append(envBase(), "CGO_ENABLED=0"),
+		Env:        env,
 	}
 
 	loaded, err := packages.Load(pcfg, cfg.Patterns...)
