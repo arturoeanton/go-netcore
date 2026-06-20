@@ -83,6 +83,14 @@ func (l *funcLowerer) fieldRead(e *ast.SelectorExpr) {
 		l.ptrStructFieldRead(e, bt)
 		return
 	}
+	// Field read on an opaque stdlib shim type (e.g. url.URL.Host) -> getter extern.
+	if bt.Kind == goir.KObject && bt.Shim != "" {
+		if ext, ok := shimFieldExtern(bt.Shim, e.Sel.Name, l.exprType(e)); ok {
+			l.expr(e.X)
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+			return
+		}
+	}
 	if bt.Kind != goir.KStruct {
 		l.fail(e.Pos(), "selector (only struct field access is supported)")
 		return

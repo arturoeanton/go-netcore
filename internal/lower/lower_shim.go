@@ -63,6 +63,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"net/url": {
 		"QueryEscape": {"Url", "QueryEscape"}, "PathEscape": {"Url", "PathEscape"},
 		"QueryUnescape": {"Url", "QueryUnescape"}, "PathUnescape": {"Url", "PathUnescape"},
+		"Parse": {"Url", "Parse"},
 	},
 	"regexp": {
 		"Compile": {"Regexp", "Compile"}, "MustCompile": {"Regexp", "MustCompile"},
@@ -97,6 +98,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"bufio": {
 		"NewScanner": {"Bufio", "NewScanner"},
+	},
+	"net/http": {
+		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
 	},
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
@@ -204,6 +208,8 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/binary.bigEndian":    true,
 	"encoding/binary.ByteOrder":    true,
 	"regexp.Regexp":                true,
+	"net/url.URL":                  true,
+	"net/http.Response":            true,
 	"math/big.Int":                 true,
 	"encoding/base32.Encoding":     true,
 	"strings.Reader":               true,
@@ -228,6 +234,33 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/base32.StdEncoding":    {"Base32", "StdEncoding"},
 	"context.Canceled":               {"Context", "Canceled"},
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
+}
+
+// shimFieldRegistry maps "importpath.Type" to its readable fields, each lowering
+// to a getter (the C# method takes the opaque object as its only argument).
+var shimFieldRegistry = map[string]map[string]shimFunc{
+	"net/url.URL": {
+		"Scheme": {"Url", "URL_Scheme"}, "Host": {"Url", "URL_Host"}, "Path": {"Url", "URL_Path"},
+		"RawQuery": {"Url", "URL_RawQuery"}, "Fragment": {"Url", "URL_Fragment"},
+		"User": {"Url", "URL_User"}, "RawPath": {"Url", "URL_Path"}, "Opaque": {"Url", "URL_Opaque"},
+	},
+	"net/http.Response": {
+		"StatusCode": {"Http", "Resp_StatusCode"}, "Status": {"Http", "Resp_Status"},
+		"Body": {"Http", "Resp_Body"}, "ContentLength": {"Http", "Resp_ContentLength"},
+	},
+}
+
+// shimFieldExtern returns the getter extern for a shim type's readable field.
+func shimFieldExtern(shim, field string, ret goir.Type) (*goir.Extern, bool) {
+	fm, ok := shimFieldRegistry[shim]
+	if !ok {
+		return nil, false
+	}
+	sf, ok := fm[field]
+	if !ok {
+		return nil, false
+	}
+	return &goir.Extern{Assembly: shimAssembly, Namespace: shimAssembly, Type: sf.csType, Method: sf.csMethod, Params: []goir.Type{goir.TObject}, Ret: ret}, true
 }
 
 // shimVarExtern returns the accessor extern for a shimmed stdlib package variable
@@ -303,6 +336,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"bufio.Scanner": {
 		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"},
+	},
+	"io.ReadCloser": {
+		"Close": {"Http", "Body_Close"},
 	},
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
