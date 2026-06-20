@@ -683,6 +683,12 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 		l.fail(e.Pos(), "conversion target type")
 		return goir.TVoid
 	}
+	// T(nil) — e.g. []rune(nil), map[K]V(nil) — is the target's zero value. Handle
+	// before exprType(arg), which has no type for the untyped nil.
+	if isNilIdent(e.Args[0]) {
+		l.emitZeroValue(target)
+		return target
+	}
 	// []byte(s) / []rune(s).
 	if target.Kind == goir.KSlice && l.exprType(e.Args[0]) == goir.TString {
 		return l.strToSliceConversion(e, target)
