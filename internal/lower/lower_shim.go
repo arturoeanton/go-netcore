@@ -44,6 +44,24 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"IsGraphic": {"Unicode", "IsGraphic"}, "ToUpper": {"Unicode", "ToUpper"}, "ToLower": {"Unicode", "ToLower"},
 		"ToTitle": {"Unicode", "ToTitle"},
 	},
+	"math/bits": {
+		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
+		"LeadingZeros": {"MathBits", "LeadingZeros"}, "LeadingZeros64": {"MathBits", "LeadingZeros64"},
+		"TrailingZeros": {"MathBits", "TrailingZeros"}, "TrailingZeros64": {"MathBits", "TrailingZeros64"},
+		"Len": {"MathBits", "Len"}, "Len64": {"MathBits", "Len64"}, "RotateLeft64": {"MathBits", "RotateLeft64"},
+		"Reverse64": {"MathBits", "Reverse64"}, "ReverseBytes64": {"MathBits", "ReverseBytes64"},
+	},
+	"os": {
+		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"},
+		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
+	},
+	"bytes": {
+		"Equal": {"Bytes", "Equal"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
+		"HasPrefix": {"Bytes", "HasPrefix"}, "HasSuffix": {"Bytes", "HasSuffix"}, "Index": {"Bytes", "Index"},
+		"IndexByte": {"Bytes", "IndexByte"}, "Count": {"Bytes", "Count"}, "ToUpper": {"Bytes", "ToUpper"},
+		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Repeat": {"Bytes", "Repeat"},
+		"Split": {"Bytes", "Split"}, "Join": {"Bytes", "Join"},
+	},
 	"strconv": {
 		"Itoa": {"Strconv", "Itoa"}, "Atoi": {"Strconv", "Atoi"},
 		"FormatInt": {"Strconv", "FormatInt"}, "FormatUint": {"Strconv", "FormatUint"},
