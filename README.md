@@ -20,15 +20,18 @@ special cases in the compiler.
 To show the same generality on the everyday target classes, [`tests/validation/`](tests/validation/)
 holds whole idiomatic apps — a business/JSON service, a CLI/ETL job, an
 interface-driven rules engine, an HTTP service — each byte-exact under `go run`
-vs `goclr run`. goja stays the hard target: it is blocked on the **typed-box
-keystone** (per-value runtime type identity), designed in
-[`docs/DESIGN-typed-box.md`](docs/DESIGN-typed-box.md) — the single foundation
-that also delivers precise `%T`, reflect, and named-primitive `Stringer`s.
+vs `goclr run`. The **typed box** ([`docs/DESIGN-typed-box.md`](docs/DESIGN-typed-box.md))
+gives every named non-struct value its runtime type identity, so named-primitive
+`Stringer`s, `%T`, and interface dispatch over representation-sharing types all
+work — which resolved goja's headline blocker. goja now compiles through `sort`,
+`cmp`, `slices`, and most of `regexp2`; the remaining tail (addressable struct
+fields for `sync/atomic`, then goja's `reflect`-based interop) is tracked in
+[LIMITATIONS.md](LIMITATIONS.md).
 
 ## Status
 
 The compiler runs end-to-end: front half + the ECMA-335 emitter + the .NET runtime
-+ a stdlib overlay. **139 conformance fixtures pass byte-for-byte vs `go run`.**
++ a stdlib overlay. **144 conformance fixtures pass byte-for-byte vs `go run`.**
 See [ROADMAP.md](ROADMAP.md) / [ROADMAP-M2.5.md](ROADMAP-M2.5.md) for the milestone
 breakdown and [LIMITATIONS.md](LIMITATIONS.md) for the tracked gaps.
 
@@ -55,7 +58,7 @@ actionable `GCLR0301`. Try it:
 go build -o bin/goclr ./cmd/goclr
 bin/goclr run ./tests/conformance/015_fib            # fib(0..9), matches `go run`
 bin/goclr run ./tests/conformance/286_json_unmarshal # struct/slice/map decode
-go test ./tests/conformance/                         # all 139 fixtures vs `go run`
+go test ./tests/conformance/                         # all 144 fixtures vs `go run`
 ```
 
 ## Install / build

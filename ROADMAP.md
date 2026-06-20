@@ -209,7 +209,7 @@ Full plan + live progress in `ROADMAP-M2.5.md` (overlay mechanism, missing core
 pkgs, reflect keystone, semantic-parity hazards, priority matrix). Delivery
 mechanism + P0 (hardened) + P1 (incl. net/http client+server, net TCP, crypto) +
 P2 (encoding/compress/aes) + P3 hash family done — each verified byte-exact vs
-`go run`. **139 conformance fixtures pass.** Tags `0.0.2.p0full` →
+`go run`. **144 conformance fixtures pass.** Tags `0.0.2.p0full` →
 `0.0.10.p3-hash`. See `LIMITATIONS.md` for tracked gaps and `GOJA-STRATEGY.md` for
 the goja/unsafe.Pointer plan (M3).
 

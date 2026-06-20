@@ -18,21 +18,26 @@ one; these don't yet):
 - **`%v` of a nil map** prints `<nil>` instead of `map[]` (a nil map boxes to a
   null reference, indistinguishable from other nils). Nil slices are correct (`[]`).
 
-## Stringer/Error in fmt — named *primitive* types only
+## Stringer/Error of named types — the typed box (largely implemented)
 
-Custom **struct and pointer** types that implement `fmt.Stringer` or `error` now
-format via their `String()`/`Error()` method under `%v`/`%s` (and inside slices and
-maps) — see the dispatch tables registered at startup.
+Custom **struct and pointer** types that implement `fmt.Stringer`/`error` format
+via their method under `%v`/`%s`. A named **non-struct** type with a method set
+(`type Money int64` with `String()`, an `int` enum, a named slice) now also carries
+its identity through interfaces via the **typed box** (`GoNamed`, see
+`docs/DESIGN-typed-box.md`): top-level `%v`/`%s`/`%T` dispatch correctly, and
+interface dispatch distinguishes named types that share a representation (so two
+named slices both satisfying `sort.Interface` dispatch to their own methods — the
+representation collapse that blocked goja is resolved).
 
-The remaining case is a named **primitive** type with a `String()`/`Error()` method
-(e.g. `time.Duration`, `time.Month`, `time.Weekday`, an `int`-based enum) passed to
-fmt **as `any`**: it boxes to a bare primitive, so fmt can't recover the named type
-and prints the underlying value. **Workaround:** call `.String()` explicitly. A
-general fix needs type-tagged boxing of named primitives at interface conversions
-(the same per-value type identity that precise `%T` and `reflect` need — M3). This
-is the **typed-box keystone**; its execution-ready design is in
-`docs/DESIGN-typed-box.md`, and it also unblocks the `%#v`/`%T`/nil-map cases above
-and the goja validation target (below).
+Remaining edges (documented, not silent):
+- A named-type value **nested inside a concrete container** (`[]Money`, a struct
+  field) formats by its underlying value under `%v` — Go calls `String()` per
+  element. Top-level args and `[]any`/`map[K]any` elements are tagged and dispatch
+  correctly; concrete containers are not (they must stay comparable/indexable).
+- `%T`/`%#v` of a **method-less** named type, and of a slice/map element type,
+  still print the underlying representation (only method-bearing named types get an
+  identity tag so far).
+- `%v` of a **nil map** prints `<nil>` instead of `map[]`.
 
 ## Uncaught panic output format
 
@@ -44,16 +49,25 @@ the top of a goroutine prints the .NET unhandled-exception format
 and message are correct; the surrounding framing and the stack trace are not
 reproduced. (Conformance compares recovered panics, whose output is exact.)
 
+## Atomic / addressable struct fields (`&s.field` for sync/atomic)
+
+Taking the address of a **struct field** (`&t.v`, e.g. to call
+`atomic.LoadInt64(&t.v)`) is unsupported: goclr boxes struct values, so a field has
+no independent, stable, addressable storage that a `GoPtr` could alias and that
+`atomic.*` could mutate in place with correct cross-goroutine semantics. Addresses
+of locals (`&x`), composite literals (`&T{...}`), and slice elements (`&s[i]`) work;
+field addresses do not. A correct fix needs field-aliasing pointers with a shared
+lock rooted at the containing object — deferred rather than shipped half-correct.
+
 ## goja validation target
 
-The pure-Go JavaScript engine `goja` does not yet compile under goclr: it pulls in
-`golang.org/x/text/collate`, which uses `sort.StringSlice` through `sort.Sort`.
-Dispatching `sort.Interface` to `sort.StringSlice` requires per-value type identity
-(every named slice type currently collapses to one `GoSlice`, so slice-based
-`Interface` implementers are mutually indistinguishable). This is the
-representation-collapse problem solved by the typed-box keystone
-(`docs/DESIGN-typed-box.md`); `cmp` and a few `x/text` support overlays are also
-needed. `examples/demo_goja` and `tests/validation/goja` track this target.
+The typed box resolved goja's headline blocker (the `sort.StringSlice` /
+representation-collapse dispatch), and goja now compiles through `sort`, `cmp`,
+`slices`, and most of the `regexp2` dependency. It does **not** yet run end-to-end:
+`regexp2`'s `fastclock` uses `atomic.LoadInt64(&field)` (the struct-field-address
+gap above), and goja's Go↔JS interop is heavily `reflect`-based (a large surface
+beyond the current reflect shim). `examples/demo_goja` and `tests/validation/goja`
+track this target; the harness reports it skipped until it runs.
 
 ## Function values of shimmed stdlib functions
 

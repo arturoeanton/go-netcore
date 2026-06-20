@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**139 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
+**144 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
 hardened** (an adversarial multi-agent sweep over all 20 packages found and fixed
 ~30 divergences: fmt verb engine + flags/width + no-crash type handling, strconv
 ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embedded/
@@ -33,7 +33,7 @@ local type/const decls, and broad method coverage). Deferred edges are tracked i
 `net/url` (escapes **+ Parse** with field reads), `regexp` (.NET Regex), `log`,
 `math/big` (Int), `bufio.Scanner` + `io.ReadAll/Copy` + `strings`/`bytes` readers
 + `os.Stdin`, and the **`net/http` client** (`http.Get`/`Post` → `*Response` with
-`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 139 conformance
+`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 144 conformance
 fixtures. Enablers added: `GoRuntime.InvokeArgs` (shims call Go funcs),
 native-closure-to-shim, `new(opaqueShim)` yields the shim object, and **shim
 struct-field reads** (`u.Host`, `resp.StatusCode` → getter externs).
@@ -51,7 +51,7 @@ P2 (tag `0.0.9.p2`): `encoding/csv`, `compress/gzip·zlib·flate`,
 `math/big` (Euclidean Div + Quo/Rem/GCD).
 
 P3 (started): the **hash family** — `hash/fnv` (32/32a/64/64a), `hash/crc32`
-(IEEE), `hash/adler32`. **139 conformance fixtures byte-exact.**
+(IEEE), `hash/adler32`. **144 conformance fixtures byte-exact.**
 
 **Language hardening pass** (fixtures 315–328) — bugs found by stress-testing
 diverse real Go programs, each fixed + fixtured. Several were *silently wrong*
@@ -93,6 +93,8 @@ assembly and cgo remain as limitations:
 - Builtins/stdlib: **`copy`** (slices + `[]byte`←string), **`time.After`** (select
 - **Critical concurrency fix**: a `sync.Mutex`/`RWMutex`/`WaitGroup`/`Once` or `strings.Builder` as a STRUCT FIELD was left null by initobj — the first use NRE'd, and in a goroutine that silently killed it so `WaitGroup.Wait()` hung forever (every concurrent struct embeds a mutex). Opaque-shim fields now zero-init to a fresh object. Plus **nested field writes through a pointer** (`p.A.B.x = v`, `++`, `op=`). Fixtures 336/337.
   timeouts), **`strings.NewReplacer`**, **`json.MarshalIndent`**.
+
+**Typed-box keystone IMPLEMENTED + driving goja (fixtures 340-344).** Per-value named-type identity is built and generic (not goja-specific): a named non-struct type with a method set (type Money int64 with String(), an int enum, a named slice) carries a GoNamed{TypeId,Value} tag when converted to an interface. Delivers: named-primitive Stringer dispatch in fmt (%v/%s/%T), and — the headline — interface dispatch that distinguishes named types sharing a representation, so two named slices both satisfying sort.Interface dispatch to their own methods (the representation collapse that blocked goja). Implemented in the lowerer keyed by *types.Named (no goir.Type change, no fixed-token plumbing); consumers (interface dispatch, fmt) recover identity via Rt.NamedId/Unwrap. Then drove goja forward by fixing a long run of general gaps it surfaced: max/min builtins; sort.{String,Int,Float64}Slice + cmp + slices via compile-from-source; the cmp.Compare/slices.Compare generic name-collision (templates now keyed by origin *types.Func); pointer-receiver methods on value fields reached through a pointer/local/global (RMW); top-level function-as-value; T(nil) conversions; return f() tuple spread; bytes.Buffer.Truncate; field write/op=/incDec on struct globals. goja now compiles through sort/cmp/slices/most of regexp2; it stops at atomic.LoadInt64(&structField) (the addressable-field gap) and, beyond that, goja's reflect-heavy interop. See docs/DESIGN-typed-box.md + LIMITATIONS.md.
 
 **Toward generality + the typed-box keystone (fixtures 338-339, validation suite).** Stress-testing whole real apps drove the work, not stdlib breadth:
 - **Integer divide/modulo by zero** now panics with Go's recoverable runtime error instead of an uncatchable CLR `DivideByZeroException` (recover() sees it; float division still yields ±Inf/NaN). Fixture 338.
