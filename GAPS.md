@@ -61,7 +61,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Time (Duration + time.Time/Format), Console/GoFunc/struct value helpers | 🟡 | M | ✅ |
 | select runtime, ASCII fast-path, intern pool | 🚧 | M | 🟡 |
 
-## 4. Stdlib overlay (C# shim mechanism live; 99 conformance fixtures byte-exact; P0 hardened)
+## 4. Stdlib overlay (C# shim mechanism live; 114 conformance fixtures byte-exact; P0 hardened, P1+P2+P3 partial)
 
 | Package(s) | State | Effort | MVP? |
 |---|---|---|---|

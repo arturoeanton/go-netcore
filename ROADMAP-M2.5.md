@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**99 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
+**114 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete and
 hardened** (an adversarial multi-agent sweep over all 20 packages found and fixed
 ~30 divergences: fmt verb engine + flags/width + no-crash type handling, strconv
 ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embedded/
