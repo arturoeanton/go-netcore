@@ -126,6 +126,24 @@ public static class Bytes
         return Slices(parts.ToArray());
     }
 
+    public static GoSlice SplitAfterN(GoSlice s, GoSlice sep, long n)
+    {
+        if (n == 0) return Slices(System.Array.Empty<byte[]>());
+        byte[] b = B(s), sb = B(sep);
+        var parts = new System.Collections.Generic.List<byte[]>();
+        int start = 0;
+        while (sb.Length > 0 && (n < 0 || parts.Count < n - 1))
+        {
+            long k = Idx(b.AsSpan(start).ToArray(), sb);
+            if (k < 0) break;
+            int end = start + (int)k + sb.Length;
+            parts.Add(b.AsSpan(start, end - start).ToArray());
+            start = end;
+        }
+        parts.Add(b.AsSpan(start).ToArray());
+        return Slices(parts.ToArray());
+    }
+
     public static GoSlice Join(GoSlice elems, GoSlice sep)
     {
         byte[] sb = B(sep);

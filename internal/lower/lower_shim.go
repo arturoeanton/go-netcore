@@ -167,7 +167,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"LastIndex": {"Bytes", "LastIndex"}, "LastIndexByte": {"Bytes", "LastIndexByte"},
 		"IndexByte": {"Bytes", "IndexByte"}, "Count": {"Bytes", "Count"}, "ToUpper": {"Bytes", "ToUpper"},
 		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Repeat": {"Bytes", "Repeat"},
-		"Split": {"Bytes", "Split"}, "Join": {"Bytes", "Join"},
+		"Split": {"Bytes", "Split"}, "SplitAfterN": {"Bytes", "SplitAfterN"}, "Join": {"Bytes", "Join"},
 		"NewReader": {"Readers", "NewBytesReader"}, "NewBuffer": {"BytesBuffer", "NewBuffer"}, "NewBufferString": {"BytesBuffer", "NewBufferString"},
 	},
 	"strconv": {
