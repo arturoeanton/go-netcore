@@ -136,6 +136,20 @@ two named types that share one runtime representation:
 
 A precise fix needs per-value runtime type tags (an itable), which is M3 scope.
 
+### Incidental implementers whose method is a shim-type method
+
+A large program's import closure contains many types that *incidentally* satisfy a
+common interface (`io.Reader`, `io.ByteReader`, `fmt.Stringer`, …). When such an
+implementer's method belongs to a C# shim type — it has no lowered Go body and no
+shim extern — goclr cannot emit a real call for it. Rather than fail the whole
+compilation, the dispatch still *matches* that type but its case body panics
+("interface method X on T is not supported (shim type method)"). This is a guarded,
+diagnosable failure that fires only if such a value actually reaches that call site
+(it usually cannot — e.g. `*bufConn` in `x/net/http2/h2c` promotes `ReadByte` from
+an embedded `*bufio.Reader` and is enumerated as an `io.ByteReader` implementer,
+yet never flows into one). If a real program hits the panic, the fix is to register
+that shim type's method as an extern (`shimMethodRegistry`).
+
 ## goja / JavaScript evaluation
 
 goja now **compiles, loads, JITs, runs init, and evaluates a large JavaScript
