@@ -9,6 +9,16 @@ public static class Rt
     /// <summary>A slice is nil iff its backing array is null (Go's `s == nil`).</summary>
     public static bool SliceIsNil(GoSlice s) => s.Data == null;
 
+    /// <summary>clear(m): remove all entries from a map.</summary>
+    public static void ClearMap(GoMap? m) => m?.Data?.Clear();
+
+    /// <summary>clear(s): set every live element of a slice to its zero value.</summary>
+    public static void ClearSlice(GoSlice s, object? zero)
+    {
+        if (s.Data == null) return;
+        for (int i = 0; i < s.Len; i++) s.Data[s.Off + i] = zero;
+    }
+
     /// <summary>&amp;s[i] — a pointer aliasing element i of the slice's backing array,
     /// so the slice and the pointer share storage.</summary>
     public static GoPtr ElemAddr(GoSlice s, long i)

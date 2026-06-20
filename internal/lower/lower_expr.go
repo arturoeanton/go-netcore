@@ -556,6 +556,8 @@ func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 			l.expr(e.Args[0])
 			l.emit(goir.Op{Code: goir.OpComplexImag})
 			return goir.TFloat64
+		case "clear":
+			return l.clearCall(e)
 		default:
 			l.fail(e.Pos(), "builtin "+o.Name())
 			return goir.TVoid
@@ -815,6 +817,31 @@ func (l *funcLowerer) emitArith(tok token.Token, operandType goir.Type) {
 		}
 	}
 	l.emit(goir.Op{Code: op})
+}
+
+// clearCall lowers the clear builtin: clear(m) empties a map; clear(s) zeroes the
+// elements of a slice.
+func (l *funcLowerer) clearCall(e *ast.CallExpr) goir.Type {
+	arg := e.Args[0]
+	t := l.exprType(arg)
+	switch t.Kind {
+	case goir.KMap:
+		l.expr(arg)
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ClearMap",
+			Params: []goir.Type{t}, Ret: goir.TVoid,
+		}})
+	case goir.KSlice:
+		l.expr(arg)
+		l.emitBoxedZero(*t.Elem)
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ClearSlice",
+			Params: []goir.Type{t, goir.TObject}, Ret: goir.TVoid,
+		}})
+	default:
+		l.fail(e.Pos(), "clear (only maps and slices are supported)")
+	}
+	return goir.TVoid
 }
 
 func arithOp(tok token.Token) (goir.Opcode, bool) {
