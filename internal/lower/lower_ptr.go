@@ -275,14 +275,19 @@ func (l *funcLowerer) newCall(e *ast.CallExpr) goir.Type {
 func (l *funcLowerer) ptrStructFieldRead(e *ast.SelectorExpr, pt goir.Type) {
 	st := *pt.Elem
 	fi := st.Struct.FieldIndex(e.Sel.Name)
-	if fi < 0 {
-		l.fail(e.Pos(), "unknown field "+e.Sel.Name)
-		return
-	}
 	l.expr(e.X)
 	l.emit(goir.Op{Code: goir.OpPtrGet})
 	l.emitUnbox(st)
-	l.emit(goir.Op{Code: goir.OpLdFld, Struct: st.Struct, Field: fi})
+	if fi >= 0 {
+		l.emit(goir.Op{Code: goir.OpLdFld, Struct: st.Struct, Field: fi})
+		return
+	}
+	// Promoted field through embedded fields (p.f where f is in an embed).
+	if path, ok := l.promotedFieldPath(e); ok {
+		l.emitFieldChain(st, path)
+		return
+	}
+	l.fail(e.Pos(), "unknown field "+e.Sel.Name)
 }
 
 // ptrStructFieldWrite lowers p.f = v where p is *struct: unbox the struct from
@@ -290,9 +295,15 @@ func (l *funcLowerer) ptrStructFieldRead(e *ast.SelectorExpr, pt goir.Type) {
 func (l *funcLowerer) ptrStructFieldWrite(e *ast.SelectorExpr, pt goir.Type, rhs ast.Expr) {
 	st := *pt.Elem
 	fi := st.Struct.FieldIndex(e.Sel.Name)
+	var path []int
 	if fi < 0 {
-		l.fail(e.Pos(), "unknown field "+e.Sel.Name)
-		return
+		// Promoted field through embedded fields (p.f where f is in an embed).
+		p, ok := l.promotedFieldPath(e)
+		if !ok {
+			l.fail(e.Pos(), "unknown field "+e.Sel.Name)
+			return
+		}
+		path = p
 	}
 	pTmp := l.addLocal(nil, pt)
 	l.expr(e.X)
@@ -305,8 +316,22 @@ func (l *funcLowerer) ptrStructFieldWrite(e *ast.SelectorExpr, pt goir.Type, rhs
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: sTmp})
 
 	l.emit(goir.Op{Code: goir.OpLdLocA, Local: sTmp})
+	cur := st
+	if path != nil {
+		// Navigate value embeds to the struct that directly holds the field.
+		for _, idx := range path[:len(path)-1] {
+			ft := cur.Struct.Fields[idx].Type
+			if ft.Kind != goir.KStruct {
+				l.fail(e.Pos(), "promoted field write through a pointer embed")
+				return
+			}
+			l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: idx})
+			cur = ft
+		}
+		fi = path[len(path)-1]
+	}
 	l.expr(rhs)
-	l.emit(goir.Op{Code: goir.OpStFld, Struct: st.Struct, Field: fi})
+	l.emit(goir.Op{Code: goir.OpStFld, Struct: cur.Struct, Field: fi})
 
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: pTmp})
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: sTmp})
