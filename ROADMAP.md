@@ -62,6 +62,12 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | M2.5 | reflect read + settable write path; compiler-emitted type/tag descriptors | ✅ |
 | M2.5 | Go-exact float formatting (shortest ftoa: %v/%g/%e/println/strconv) | ✅ |
 | M2.5 | encoding/json Marshal + Unmarshal (descriptor-driven) | ✅ |
+| M2.5 | Embedded-struct promotion: field read/write/op-assign + value & pointer-receiver methods, value & pointer embeds, multi-level | ✅ |
+| M2.5 | Go 1.22 per-iteration loop variables (`for` and `range`, captured by closures) | ✅ |
+| M2.5 | Cross-package generic instantiation (a dependency's/subpackage's generic, incl. `S ~[]E` constraint-derived params) | ✅ |
+| M2.5 | Stdlib classification by module (modules whose path has no dot now lower their subpackages) | ✅ |
+| M2.5 | `unicode` + `sort` compiled from goclr source overlays; `&slice[i]`; `&^`/`&^=`; keyed array/slice literals; fixed `[N]T` arrays; `clear` builtin; `errors.As` | ✅ |
+| M2.5 | Long-form local opcodes (256+ locals) + chunked package-var init (64 KB IL limit) | ✅ |
 
 ## Milestones
 

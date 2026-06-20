@@ -53,6 +53,24 @@ P2 (tag `0.0.9.p2`): `encoding/csv`, `compress/gzip·zlib·flate`,
 P3 (started): the **hash family** — `hash/fnv` (32/32a/64/64a), `hash/crc32`
 (IEEE), `hash/adler32`. **123 conformance fixtures byte-exact.**
 
+**Language hardening pass** (fixtures 315–323) — bugs found by stress-testing
+diverse real Go programs, each fixed + fixtured:
+- **Stdlib classification by module** — a module whose path has no dot (`myapp/sub`)
+  had its subpackages skipped, so every cross-package call into them failed. Fixed
+  via `go/packages` Module info; multi-package projects outside the repo now compile.
+- **Embedded-struct promotion** — promoted field read/write/op-assign and
+  value/pointer-receiver methods, through value and pointer embeds, multi-level.
+- **Go 1.22 per-iteration loop variables** (`for` and `range`) — was silently wrong
+  for captured `for` vars (`3 3 3`) and *crashed* on captured `range` vars.
+- **Cross-package generics** — instantiating a generic from a dependency/subpackage
+  crashed (template resolved against the caller's type info); now works, including
+  the `S ~[]E` constraint-derived element-type shape.
+- **`defer` of a shimmed/compiled package free function** (`defer fmt.Println(...)`),
+  **`errors.As`** (descriptor-driven target matching), **`clear`** builtin.
+- Backend: **long-form local opcodes** (256+ locals no longer corrupt addresses),
+  **chunked package-var init** (64 KB-per-method IL limit), `unicode`/`sort` from
+  source overlays, `&slice[i]`, `&^`, keyed/fixed-array literals.
+
 ### What the remaining P1/P2/P3/P4 still need (infrastructure, not shims)
 
 - **Third-party ecosystem** (GORM, redis, testify, gRPC, JWT libs, validator,

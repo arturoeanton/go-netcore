@@ -45,7 +45,10 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Defer/panic/recover (CIL exception-handling clauses, LIFO defers) | ✅ | M | ✅ |
 | Goroutines lowering | ✅ | S | ✅ |
 | Channels + select lowering | ✅ | M | 🟡 |
-| Generics | ✅ | L | ✅ |
+| Generics (same-package AND cross-package instantiation) | ✅ | L | ✅ |
+| Embedded-struct promotion (field + method, value/pointer embeds, multi-level) | ✅ | M | ✅ |
+| Go 1.22 per-iteration loop variables (for + range, closure capture) | ✅ | M | ✅ |
+| `clear` builtin; `&slice[i]`; `&^`/`&^=`; keyed/fixed-array literals | ✅ | S | ✅ |
 | Reflection lowering + struct-tag descriptors (read + write path) | ✅ | L | ✅ |
 | Multi-package lowering + globals + init() + C# shim/extern mechanism | ✅ | XL | ✅ |
 

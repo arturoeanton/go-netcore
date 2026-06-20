@@ -25,7 +25,8 @@ breakdown and [LIMITATIONS.md](LIMITATIONS.md) for the tracked gaps.
 | Frontend loader (`go/packages`, type info, build tags) | ✅ functional |
 | .NET runtime core (GoString, slices, maps, pointers, interfaces, defer/panic, goroutines, channels, closures) | ✅ runs on `net8.0` |
 | **M1 + M2 language** (control flow, funcs/methods, structs, slices, maps, pointers, multi-return, interfaces, defer/panic/recover, closures, generics, goroutines/channels/select, complex) | ✅ **closed** |
-| **M2.5 overlay** — multi-package, globals/`init`, C# shim/extern mechanism | ✅ |
+| **Language hardening** — embedded-struct field/method promotion (value + pointer embeds), Go 1.22 per-iteration loop vars (`for` + `range`), **cross-package generics**, fixed arrays/keyed literals, `&slice[i]`, `&^`, `clear`, long-form local opcodes (256+ locals) | ✅ |
+| **M2.5 overlay** — multi-package (incl. modules with no dot in the path), globals/`init`, C# shim/extern mechanism, source overlays (`unicode`/`sort`) | ✅ |
 | **P0 stdlib** (20 pkgs, hardened) — fmt/strconv/strings/bytes/unicode/utf8/sort/math/errors/reflect(r+w)/encoding-json(M+U)/time/sync/math-rand/context/io/os | ✅ byte-exact |
 | **P1 stdlib** — net/http **client + server**, net TCP, crypto (sha/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio/io, log, math/big, container/list, os/exec, mime | ✅ |
 | **P2 stdlib** — encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM | ✅ |
