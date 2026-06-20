@@ -306,6 +306,134 @@ public static class Reflect
         var f = Fields(obj)![(int)i];
         return new GoStructField { Name = f.Name, Tag = TagFor(obj!.GetType().Name, f.Name), FieldType = f.FieldType };
     }
+
+    // --- reflect.Type: more descriptor queries -----------------------------
+    // The sample model carries a representative value, so element/key types are
+    // recovered from a live element when present. Method-set and func-signature
+    // queries return the conservative empty answer (the runtime does not retain
+    // those descriptors); see LIMITATIONS.md.
+    public static object Type_Key(object t)
+    {
+        var s = ((GoReflectType)t).Sample;
+        if (s is GoMap m && m.Data != null)
+            foreach (var k in m.Data.Keys) return new GoReflectType { Sample = k };
+        return new GoReflectType { Sample = null };
+    }
+    public static long Type_NumMethod(object t) => 0;
+    public static long Type_NumIn(object t) => 0;
+    public static long Type_NumOut(object t) => 0;
+    public static object Type_In(object t, long i) => new GoReflectType { Sample = null };
+    public static object Type_Out(object t, long i) => new GoReflectType { Sample = null };
+    public static GoString Type_PkgPath(object t) => GoString.FromDotNetString("");
+    public static bool Type_Comparable(object t)
+    {
+        var k = KindOf(((GoReflectType)t).Sample);
+        return k != KSlice && k != KMap && k != 18 /*func*/;
+    }
+    public static bool Type_AssignableTo(object a, object b) =>
+        KindOf(((GoReflectType)a).Sample) == KindOf(((GoReflectType)b).Sample);
+    public static bool Type_ConvertibleTo(object a, object b) => Type_AssignableTo(a, b);
+    public static bool Type_Implements(object a, object iface) => false;
+
+    // --- reflect: free constructors ---------------------------------------
+    public static object PointerTo(object t) =>
+        new GoReflectType { Sample = new GoPtr { Value = ((GoReflectType)t).Sample } };
+
+    // reflect.MakeFunc(typ, fn): fn is a GoReflectValue wrapping the implementing
+    // closure; return a Value carrying that callable so Call() can invoke it.
+    public static object MakeFunc(object typ, object fn) =>
+        new GoReflectValue { V = ((GoReflectValue)fn).V };
+
+    public static long Copy(object dst, object src)
+    {
+        if (RVal(dst) is not GoSlice dl || RVal(src) is not GoSlice sl || dl.Data == null || sl.Data == null) return 0;
+        int n = System.Math.Min(dl.Len, sl.Len);
+        for (int i = 0; i < n; i++) dl.Data[dl.Off + i] = sl.Data[sl.Off + i];
+        return n;
+    }
+
+    public static object Indirect(object v)
+    {
+        var x = RVal(v);
+        if (x is GoPtr p) return new GoReflectValue { V = p.Value, Setter = nv => p.Value = nv };
+        return v;
+    }
+
+    public static object Append(object v, GoSlice elems)
+    {
+        GoSlice s = RVal(v) is GoSlice gs ? gs : default;
+        for (int i = 0; i < elems.Len; i++)
+            s = GoCLR.Runtime.GoSlices.AppendOne(s, RVal(elems.Data![elems.Off + i]));
+        return new GoReflectValue { V = s };
+    }
+
+    // --- reflect.Value: more accessors / mutators --------------------------
+    public static void Value_SetMapIndex(object v, object key, object elem)
+    {
+        var m = (GoMap)RVal(v)!;
+        var k = RVal(key);
+        // A zero (invalid) elem Value deletes the entry, as Go specifies.
+        if (((GoReflectValue)elem).V == null && ((GoReflectValue)elem).Setter == null && !Value_IsValid(elem))
+            { m.Data?.Remove(k!); return; }
+        m.Data![k!] = RVal(elem);
+    }
+    public static object Value_Convert(object v, object t)
+    {
+        var src = RVal(v);
+        var k = KindOf(((GoReflectType)t).Sample);
+        object? conv = k switch
+        {
+            KInt or 3 or 4 or 5 or 6 => System.Convert.ToInt64(src ?? 0L),
+            KUint or 8 or 9 or 10 or 11 => System.Convert.ToUInt64(src ?? (ulong)0),
+            13 or KFloat64 => System.Convert.ToDouble(src ?? 0.0),
+            KString => src is GoString ? src : GoString.FromDotNetString(System.Convert.ToString(src) ?? ""),
+            _ => src,
+        };
+        return new GoReflectValue { V = conv };
+    }
+    public static object Value_Addr(object v)
+    {
+        var rv = (GoReflectValue)v;
+        var ptr = new GoPtr { FGet = MakeGet(() => rv.V), FSet = MakeSet(nv => { rv.V = nv; rv.Setter?.Invoke(nv); }) };
+        return new GoReflectValue { V = ptr };
+    }
+    public static long Value_Cap(object? v) { var x = RVal(v); return x is GoSlice s ? s.Cap : 0; }
+    public static void Value_SetLen(object v, long n)
+    {
+        if (RVal(v) is GoSlice s) { s.Len = (int)n; DoSet(v, s); }
+    }
+    public static void Value_SetCap(object v, long n)
+    {
+        if (RVal(v) is GoSlice s) { s.Cap = (int)n; DoSet(v, s); }
+    }
+    public static object Value_Slice(object v, long lo, long hi)
+    {
+        var s = (GoSlice)RVal(v)!;
+        return new GoReflectValue { V = GoCLR.Runtime.GoSlices.Slice(s, lo, hi) };
+    }
+    public static long Value_Pointer(object? v)
+    {
+        var x = RVal(v);
+        return x == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(x);
+    }
+    public static long Value_NumMethod(object? v) => 0;
+    public static bool Value_CanInterface(object? v) => true;
+    public static object Value_FieldByName(object? v, GoString name)
+    {
+        var obj = RVal(v);
+        var f = obj?.GetType().GetField(name.ToDotNetString(), BindingFlags.Public | BindingFlags.Instance);
+        if (f == null) return new GoReflectValue { V = null };
+        var parent = (GoReflectValue)v!;
+        var fv = new GoReflectValue { V = f.GetValue(obj) };
+        if (parent.Setter != null)
+            fv.Setter = nv => { f.SetValue(obj, Coerce(nv, f.FieldType)); parent.Setter(obj); };
+        return fv;
+    }
+
+    private static GoClosure MakeGet(System.Func<object?> g) =>
+        new GoClosure { Id = -1, Native = _ => g() };
+    private static GoClosure MakeSet(System.Action<object?> sset) =>
+        new GoClosure { Id = -1, Native = a => { sset(a != null && a.Length > 0 ? a[0] : null); return null; } };
 }
 
 /// <summary>reflect.StructField handle (the subset code commonly reads).</summary>

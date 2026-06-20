@@ -184,6 +184,40 @@ func (l *funcLowerer) emitAddr(e ast.Expr) bool {
 	return true
 }
 
+// emitAddressable leaves a GoPtr aliasing e on the stack, for any addressable
+// form (an address-taken local cell, a struct field reached directly or through a
+// pointer, a package global, or a slice element). Reports false if e cannot be
+// addressed. It is the bool-returning core that addrOf and method-value receivers
+// share.
+func (l *funcLowerer) emitAddressable(e ast.Expr) bool {
+	switch x := unparen(e).(type) {
+	case *ast.Ident:
+		if l.emitAddr(x) {
+			return true
+		}
+		if gi, ok := l.globalRef(x); ok {
+			l.emitGlobalAlias(gi, l.exprType(x))
+			return true
+		}
+		return false
+	case *ast.SelectorExpr:
+		return l.buildFieldAlias(x)
+	case *ast.IndexExpr:
+		xt := l.exprType(x.X)
+		if xt.Kind != goir.KSlice {
+			return false
+		}
+		l.expr(x.X)
+		l.expr(x.Index)
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ElemAddr",
+			Params: []goir.Type{xt, goir.TInt64}, Ret: goir.PtrType(*xt.Elem),
+		}})
+		return true
+	}
+	return false
+}
+
 // addrOf lowers &operand, leaving a GoPtr on the stack.
 func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 	// &opaqueShimValue is the same runtime object (it is already a reference).

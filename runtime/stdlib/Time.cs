@@ -219,11 +219,15 @@ public static class Time
     // time.UTC / time.Local package variables (locations are treated as UTC).
     public static object UTC() => UtcLoc;
     public static object Local() => UtcLoc;
+    // time.FixedZone(name, offsetSeconds): a Location at a constant UTC offset.
+    public static object FixedZone(GoString name, long offsetSec) =>
+        new GoLocation { Name = name.ToDotNetString(), OffsetSeconds = (int)offsetSec };
     private static readonly object UtcLoc = new GoLocation();
 }
 
 /// <summary>A time.Time value: Unix nanoseconds in UTC, plus a Go zero-value flag.</summary>
 public sealed class GoTime { public long N; public bool IsZero; }
 
-/// <summary>Placeholder for a *time.Location (treated as UTC).</summary>
-public sealed class GoLocation { }
+/// <summary>A *time.Location: UTC by default, or a fixed-offset zone from
+/// time.FixedZone (Name + OffsetSeconds).</summary>
+public sealed class GoLocation { public string Name = "UTC"; public int OffsetSeconds; }

@@ -34,6 +34,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"IsNaN": {"Math", "IsNaN"}, "IsInf": {"Math", "IsInf"}, "NaN": {"Math", "NaN"},
 		"Inf":         {"Math", "Inf"},
 		"Float64bits": {"Math", "Float64bits"}, "Float64frombits": {"Math", "Float64frombits"}, "Float32bits": {"Math", "Float32bits"}, "Float32frombits": {"Math", "Float32frombits"},
+		"Acosh": {"Math", "Acosh"}, "Asinh": {"Math", "Asinh"}, "Atanh": {"Math", "Atanh"},
+		"Expm1": {"Math", "Expm1"}, "Log1p": {"Math", "Log1p"},
 	},
 	"errors": {
 		"New": {"Errors", "New"}, "Unwrap": {"Errors", "Unwrap"}, "Is": {"Errors", "Is"},
@@ -42,7 +44,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	// lower.go), not shimmed — it provides RangeTable/Is/In and the full tables.
 	"reflect": {
 		"TypeOf": {"Reflect", "TypeOf"}, "ValueOf": {"Reflect", "ValueOf"}, "DeepEqual": {"Reflect", "DeepEqual"}, "MakeSlice": {"Reflect", "MakeSlice"}, "MakeMap": {"Reflect", "MakeMap"}, "Zero": {"Reflect", "Zero"},
-		"New": {"Reflect", "New"},
+		"New": {"Reflect", "New"}, "PointerTo": {"Reflect", "PointerTo"}, "PtrTo": {"Reflect", "PointerTo"},
+		"MakeFunc": {"Reflect", "MakeFunc"}, "Copy": {"Reflect", "Copy"}, "Indirect": {"Reflect", "Indirect"},
+		"Append": {"Reflect", "Append"},
 	},
 	"encoding/json": {
 		"Marshal": {"Json", "Marshal"}, "MarshalIndent": {"Json", "MarshalIndent"},
@@ -144,6 +148,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"time": {
 		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},
 		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
+		"FixedZone": {"Time", "FixedZone"},
 	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
@@ -483,7 +488,13 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"reflect.Type": {
 		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},
 		"String": {"Reflect", "Type_String"}, "NumField": {"Reflect", "Type_NumField"},
-		"Elem": {"Reflect", "Type_Elem"},
+		"Elem": {"Reflect", "Type_Elem"}, "Key": {"Reflect", "Type_Key"},
+		"Field": {"Reflect", "Type_Field"}, "NumMethod": {"Reflect", "Type_NumMethod"},
+		"NumIn": {"Reflect", "Type_NumIn"}, "NumOut": {"Reflect", "Type_NumOut"},
+		"In": {"Reflect", "Type_In"}, "Out": {"Reflect", "Type_Out"},
+		"AssignableTo": {"Reflect", "Type_AssignableTo"}, "ConvertibleTo": {"Reflect", "Type_ConvertibleTo"},
+		"Comparable": {"Reflect", "Type_Comparable"}, "Implements": {"Reflect", "Type_Implements"},
+		"PkgPath": {"Reflect", "Type_PkgPath"},
 	},
 	"reflect.Kind": {
 		"String": {"Reflect", "Kind_String"},
@@ -660,6 +671,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetInt": {"Reflect", "Value_SetInt"}, "SetUint": {"Reflect", "Value_SetUint"},
 		"SetFloat": {"Reflect", "Value_SetFloat"}, "SetBool": {"Reflect", "Value_SetBool"},
 		"SetString": {"Reflect", "Value_SetString"}, "Set": {"Reflect", "Value_Set"},
+		"SetMapIndex": {"Reflect", "Value_SetMapIndex"}, "Convert": {"Reflect", "Value_Convert"},
+		"Addr": {"Reflect", "Value_Addr"}, "Cap": {"Reflect", "Value_Cap"},
+		"SetLen": {"Reflect", "Value_SetLen"}, "SetCap": {"Reflect", "Value_SetCap"},
+		"Slice": {"Reflect", "Value_Slice"}, "Pointer": {"Reflect", "Value_Pointer"},
+		"NumMethod": {"Reflect", "Value_NumMethod"}, "CanInterface": {"Reflect", "Value_CanInterface"},
+		"FieldByName": {"Reflect", "Value_FieldByName"},
 	},
 }
 

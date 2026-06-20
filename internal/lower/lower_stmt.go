@@ -1185,12 +1185,52 @@ func (l *funcLowerer) modifyField(sel *ast.SelectorExpr, binTok token.Token, emi
 		})
 		return
 	}
+	// s[i].field op= e : RMW the struct element of a slice/array in place (the
+	// element has no standalone storage, so re-box and store it back).
+	if ix, ok := unparen(sel.X).(*ast.IndexExpr); ok && l.exprType(ix.X).Kind == goir.KSlice {
+		l.sliceElemFieldModify(ix, bt, fi, func(eft goir.Type) {
+			l.emit(goir.Op{Code: goir.OpDup})
+			l.emit(goir.Op{Code: goir.OpLdFld, Struct: bt.Struct, Field: fi})
+			emitOperand(eft)
+			l.emitArith(binTok, eft)
+		})
+		return
+	}
 	l.lvalueAddr(sel.X)
 	l.emit(goir.Op{Code: goir.OpDup})
 	l.emit(goir.Op{Code: goir.OpLdFld, Struct: bt.Struct, Field: fi})
 	emitOperand(ft)
 	l.emitArith(binTok, ft)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+}
+
+// sliceElemFieldModify read-modify-writes field fi of the struct element s[i]:
+// load the element, run pushValue (which leaves the new field value after a
+// ldloca of the element struct), store the field, then re-box and SliceSet so the
+// mutation lands in the backing array.
+func (l *funcLowerer) sliceElemFieldModify(ix *ast.IndexExpr, st goir.Type, fi int, pushValue func(ft goir.Type)) {
+	ft := st.Struct.Fields[fi].Type
+	xt := l.exprType(ix.X)
+	xTmp := l.addLocal(nil, xt)
+	iTmp := l.addLocal(nil, goir.TInt64)
+	sTmp := l.addLocal(nil, st)
+	l.expr(ix.X)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: xTmp})
+	l.expr(ix.Index)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: iTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: xTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+	l.emit(goir.Op{Code: goir.OpSliceGet})
+	l.emitUnbox(st)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: sTmp})
+	l.emit(goir.Op{Code: goir.OpLdLocA, Local: sTmp})
+	pushValue(ft)
+	l.emit(goir.Op{Code: goir.OpStFld, Struct: st.Struct, Field: fi})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: xTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: sTmp})
+	l.emitBox(st)
+	l.emit(goir.Op{Code: goir.OpSliceSet})
 }
 
 // modifyIndex lowers a[i] OP= rhs / m[k] OP= rhs via a read-modify-write.

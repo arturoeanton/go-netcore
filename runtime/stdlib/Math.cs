@@ -15,8 +15,13 @@ public static class Math
     public static double Copysign(double x, double y) => SM.CopySign(x, y);
     public static double Cos(double x) => SM.Cos(x);
     public static double Cosh(double x) => SM.Cosh(x);
+    public static double Acosh(double x) => SM.Acosh(x);
+    public static double Asinh(double x) => SM.Asinh(x);
+    public static double Atanh(double x) => SM.Atanh(x);
     public static double Exp(double x) => SM.Exp(x);
     public static double Exp2(double x) => SM.Pow(2, x);
+    public static double Expm1(double x) => SM.Exp(x) - 1.0;
+    public static double Log1p(double x) => SM.Log(1.0 + x);
     public static double Floor(double x) => SM.Floor(x);
     public static double Hypot(double p, double q) => SM.Sqrt(p * p + q * q);
     public static double Log(double x) => SM.Log(x);

@@ -339,7 +339,7 @@ func (l *funcLowerer) emitMethodReceiver(sel *ast.SelectorExpr, fn *types.Func, 
 	case recvIsPtr && baseIsPtr:
 		l.expr(sel.X)
 	case recvIsPtr && !baseIsPtr:
-		if !l.emitAddr(sel.X) {
+		if !l.emitAddressable(sel.X) {
 			l.fail(sel.Pos(), "method value needs an addressable receiver")
 			return
 		}

@@ -169,8 +169,17 @@ func (l *funcLowerer) interfaceDispatch(e *ast.CallExpr, emitRecv func(), ifaceM
 			l.emit(goir.Op{Code: goir.OpBrTrue, Label: labels[i]})
 			continue
 		}
-		// Pointer implementer: it is a GoPtr; disambiguate by the cell's type id.
+		// Pointer-to-non-struct implementer (e.g. method on *MyInt): the cell carries
+		// no struct id, so disambiguate only as a GoPtr. Ambiguous when several such
+		// pointer types implement the same interface (rare); see LIMITATIONS.md.
 		ptrType := goir.PtrType(ctypes[i])
+		if ctypes[i].Kind != goir.KStruct {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+			l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: ptrType})
+			l.emit(goir.Op{Code: goir.OpBrTrue, Label: labels[i]})
+			continue
+		}
+		// Pointer-to-struct implementer: it is a GoPtr; disambiguate by the cell's id.
 		skip := l.label()
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
 		l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: ptrType}) // isinst GoPtr
@@ -318,6 +327,11 @@ func (l *funcLowerer) emitInterfaceAssert(valEmit func(), iface *types.Interface
 	for _, impl := range l.implementers(iface) {
 		ct, _ := l.goType(impl.named)
 		switch {
+		case impl.viaPtr && ct.Kind != goir.KStruct:
+			// Pointer to a non-struct: identify only as a GoPtr (no cell struct id).
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
+			l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: goir.PtrType(ct)})
+			l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
 		case impl.viaPtr:
 			skip := l.label()
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
