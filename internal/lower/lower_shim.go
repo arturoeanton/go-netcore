@@ -504,6 +504,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"WriteRune": {"BytesBuffer", "WriteRune"},
 		"Write":     {"BytesBuffer", "Write"}, "String": {"BytesBuffer", "String"},
 		"Bytes": {"BytesBuffer", "Bytes"}, "Len": {"BytesBuffer", "Len"}, "Reset": {"BytesBuffer", "Reset"},
+		"Truncate": {"BytesBuffer", "Truncate"}, "Grow": {"BytesBuffer", "Grow"},
 		"ReadByte": {"BytesBuffer", "ReadByte"}, "ReadRune": {"BytesBuffer", "ReadRune"}, "Next": {"BytesBuffer", "Next"},
 	},
 	"sync.Mutex": {

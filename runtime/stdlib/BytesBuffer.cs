@@ -17,6 +17,19 @@ public static class BytesBuffer
     public static long Len(object b) { var g = G(b); return g.B.Count - g.Pos; }
     public static void Reset(object b) { var g = G(b); g.B.Clear(); g.Pos = 0; }
 
+    // Truncate discards all but the first n unread bytes (Go panics if n is out of
+    // range; n == 0 is equivalent to Reset).
+    public static void Truncate(object b, long n)
+    {
+        var g = G(b);
+        if (n == 0) { g.B.Clear(); g.Pos = 0; return; }
+        int keep = g.Pos + (int)n;
+        if (keep < g.B.Count) g.B.RemoveRange(keep, g.B.Count - keep);
+    }
+
+    // Grow is a capacity hint; the List-backed buffer grows on demand, so no-op.
+    public static void Grow(object b, long n) { }
+
     public static GoSlice Bytes(object b)
     {
         var g = G(b);
