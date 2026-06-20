@@ -3,9 +3,9 @@
 // ECMA-335 IL and runs on the CLR with `dotnet`. No C#, no JS host: a Go JS engine
 // running as managed .NET code.
 //
-// NOTE: goja support is in progress. This demo uses the subset that already runs
-// end-to-end on the CLR (arithmetic, string concatenation, a function call). Richer
-// features (string/array methods, for-loops inside functions) are tracked in GAPS.md.
+// goja support is in progress; this demo uses the (already large) subset that runs
+// end-to-end on the CLR. Some advanced paths (array map/reduce callbacks,
+// JSON.stringify) are still being completed — see ../../GAPS.md.
 package main
 
 import (
@@ -19,19 +19,29 @@ func main() {
 
 	scripts := []string{
 		`1 + 2 * 3`,
-		`(7 - 1) / 2`,
-		`2 * (3 + 4) - 5`,
 		`"Hello, " + "goclr" + "!"`,
-		`"a" + "b" + "c" + "d"`,
-		`(function (x) { return x * x + 1; })(9)`,
+		`"saas platform".toUpperCase()`,
+		`"abcdef".slice(1, 4)`,
+		`Math.max(3, 9, 4) + Math.floor(2.7)`,
+		`var o = { x: 10, y: 32 }; o.x + o.y`,
+		`var s = 0; for (var i = 1; i <= 100; i++) s += i; s`,
+		`var n = 6, f = 1; while (n > 1) { f *= n; n--; } f`,
+		`(function (n) { var a = 0, b = 1; for (var i = 0; i < n; i++) { var t = a + b; a = b; b = t; } return a; })(15)`,
 	}
 
 	for _, src := range scripts {
 		v, err := vm.RunString(src)
 		if err != nil {
-			fmt.Printf("%-32s ok=false\n", src)
+			fmt.Printf("%-40s ERROR\n", clip(src))
 			continue
 		}
-		fmt.Printf("%-32s => %v\n", src, v.Export())
+		fmt.Printf("%-40s => %v\n", clip(src), v.Export())
 	}
+}
+
+func clip(s string) string {
+	if len(s) > 38 {
+		return s[:35] + "..."
+	}
+	return s
 }

@@ -7,26 +7,29 @@ on `dotnet`. No C# host, no JS runtime: a Go JS engine executing as managed CLR
 code.
 
 ```sh
-# build to a .NET dll and run it
-goclr run .
+goclr run .          # build to a .NET dll and run it
 ```
 
-Expected output (identical to `go run .`):
+Output (identical to `go run .`):
 
 ```
-1 + 2 * 3                        => 7
-(7 - 1) / 2                      => 3
-2 * (3 + 4) - 5                  => 9
-"Hello, " + "goclr" + "!"        => Hello, goclr!
-"a" + "b" + "c" + "d"            => abcd
-(function (x) { return x * x + 1; })(9) => 82
+1 + 2 * 3                                => 7
+"Hello, " + "goclr" + "!"                => Hello, goclr!
+"saas platform".toUpperCase()            => SAAS PLATFORM
+"abcdef".slice(1, 4)                     => bcd
+Math.max(3, 9, 4) + Math.floor(2.7)      => 11
+var o = { x: 10, y: 32 }; o.x + o.y      => 42
+var s = 0; for (var i = 1; i <= 100...   => 5050
+var n = 6, f = 1; while (n > 1) { f...   => 720
+(function (n) { var a = 0, b = 1; f...   => 610
 ```
 
 ## Status
 
-goja **compiles** (a ~15 MB IL assembly), **loads and JITs cleanly**, runs its full
-package init, parses and compiles JavaScript, and **evaluates** the subset above
-(arithmetic, string concatenation, function calls). Richer features — string/array
-prototype methods, `for`-loops inside functions, `Math.*`, JSON — reach further
-runtime gaps tracked in `../../GAPS.md`. Getting a dependency this heavy to run at
-all exercises a very large surface of the compiler, so most lighter libraries work.
+goja **compiles** (a ~15 MB IL assembly), **loads and JITs cleanly**, runs full
+package init, and **evaluates a large JavaScript subset**: arithmetic, strings and
+string methods (`toUpperCase`, `slice`), `Math`, objects and property access,
+function calls/closures, and `for`/`while` loops. Some advanced paths — array
+callbacks (`map`/`reduce`), `JSON.stringify` — are still being completed; see
+`../../GAPS.md`. Getting a dependency this heavy to run exercises a very large
+surface of the compiler and runtime, so most lighter libraries work.
