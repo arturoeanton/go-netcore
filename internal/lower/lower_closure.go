@@ -204,6 +204,59 @@ func (l *funcLowerer) funcValueCall(e *ast.CallExpr) goir.Type {
 	return retType
 }
 
+// funcValue lowers a reference to a named top-level function used as a value (not
+// called) — e.g. passed to slices.SortFunc — producing a GoClosure whose lifted
+// body invokes the function with the call's arguments. Returns ok=false if fn is
+// not a lowered function (e.g. a shimmed stdlib func, handled elsewhere).
+func (l *funcLowerer) funcValue(fn *types.Func) (goir.Type, bool) {
+	m := l.byFunc[fn]
+	if m == nil {
+		return goir.TFunc, false
+	}
+	l.needsInvoker = true
+	l.invokeMethod()
+
+	id := len(l.closures)
+	method := &goir.Method{
+		Name:    "__fvalue_" + itoa(id),
+		GoName:  "__fvalue_" + itoa(id),
+		Params:  []goir.Type{goir.TObjectArray, goir.TObjectArray}, // env (unused), args
+		Ret:     goir.TObject,
+		Results: []goir.Type{goir.TObject},
+	}
+	l.closures = append(l.closures, &closureInfo{id: id, method: method})
+	l.prog.Methods = append(l.prog.Methods, method)
+
+	// Lifted body: args from args[]; call the function; box the result.
+	cl := &funcLowerer{lowerCtx: l.lowerCtx, m: method, ok: true}
+	cl.typeSubst = l.typeSubst
+	cl.locals = map[types.Object]int{}
+	cl.cells = map[int]goir.Type{}
+	for i, pt := range m.Params {
+		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
+		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+		cl.emit(goir.Op{Code: goir.OpLdElemRef})
+		cl.emitUnbox(pt)
+	}
+	cl.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
+	if m.Ret == goir.TVoid {
+		cl.emit(goir.Op{Code: goir.OpLdNull})
+	} else {
+		cl.emitBox(m.Ret)
+	}
+	cl.emit(goir.Op{Code: goir.OpRet})
+	if !cl.ok {
+		l.ok = false
+	}
+
+	// At the site: empty env; GoClosures.New(id, env).
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(id)})
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+	l.emit(goir.Op{Code: goir.OpNewObjArray})
+	l.emit(goir.Op{Code: goir.OpClosNew})
+	return goir.TFunc, true
+}
+
 // methodValue lowers a bound method value `recv.M` (not called): it captures the
 // receiver and produces a GoClosure whose lifted body invokes the method with the
 // captured receiver, so the value can be called or passed like any func value.

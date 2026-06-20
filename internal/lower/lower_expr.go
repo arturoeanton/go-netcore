@@ -47,6 +47,12 @@ func (l *funcLowerer) expr(e ast.Expr) {
 			l.emit(goir.Op{Code: goir.OpLdNull})
 			return
 		}
+		// A top-level function used as a value (not called) becomes a func value.
+		if fn, ok := l.pkg.TypesInfo.ObjectOf(e).(*types.Func); ok && fn.Type().(*types.Signature).Recv() == nil {
+			if _, ok := l.funcValue(fn); ok {
+				return
+			}
+		}
 		idx, _, ok := l.lookupVar(e)
 		if ok {
 			l.loadVar(idx)
