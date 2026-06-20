@@ -183,6 +183,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ValidString": {"Utf8", "ValidString"}, "ValidRune": {"Utf8", "ValidRune"}, "RuneLen": {"Utf8", "RuneLen"},
 		"Valid": {"Utf8", "Valid"}, "EncodeRune": {"Utf8", "EncodeRune"},
 		"DecodeRuneInString": {"Utf8", "DecodeRuneInString"}, "DecodeRune": {"Utf8", "DecodeRune"},
+		"DecodeLastRuneInString": {"Utf8", "DecodeLastRuneInString"}, "DecodeLastRune": {"Utf8", "DecodeLastRune"},
 	},
 	"strings": {
 		"ToUpper": {"Strings", "ToUpper"}, "ToLower": {"Strings", "ToLower"}, "Title": {"Strings", "Title"},

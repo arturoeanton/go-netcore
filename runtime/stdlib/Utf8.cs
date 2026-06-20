@@ -70,5 +70,22 @@ public static class Utf8
         return DecodeRuneInString(GoString.FromBytes(bytes));
     }
 
+    public static object?[] DecodeLastRuneInString(GoString s)
+    {
+        var str = s.ToDotNetString();
+        bool any = false;
+        System.Text.Rune last = default;
+        foreach (var r in str.EnumerateRunes()) { last = r; any = true; }
+        if (!any) return new object?[] { (int)0xFFFD, 0L };
+        return new object?[] { last.Value, (long)last.Utf8SequenceLength };
+    }
+
+    public static object?[] DecodeLastRune(GoSlice b)
+    {
+        var bytes = new byte[b.Len];
+        for (int i = 0; i < b.Len; i++) bytes[i] = (byte)System.Convert.ToInt64(b.Data[b.Off + i]);
+        return DecodeLastRuneInString(GoString.FromBytes(bytes));
+    }
+
     public static long RuneCountInString2(GoString s) => RuneCountInString(s);
 }
