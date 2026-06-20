@@ -15,6 +15,20 @@ public static class Time
         System.Threading.Thread.Sleep((int)(d / Millisecond));
     }
 
+    // time.After(d) <-chan Time: a buffered channel that receives the current time
+    // after d, driven by a background timer.
+    public static GoChan After(long d)
+    {
+        var ch = GoChans.Make(1);
+        int ms = d <= 0 ? 0 : (int)(d / Millisecond);
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            if (ms > 0) System.Threading.Thread.Sleep(ms);
+            GoChans.Send(ch, Now());
+        });
+        return ch;
+    }
+
     // time.Month / time.Weekday String() (named int types).
     public static GoString Month_String(long m) => GoString.FromDotNetString(m >= 1 && m <= 12 ? MonthsLong[m - 1] : "%!Month(" + m + ")");
     public static GoString Weekday_String(long w) => GoString.FromDotNetString(w >= 0 && w <= 6 ? DaysLong[w] : "%!Weekday(" + w + ")");

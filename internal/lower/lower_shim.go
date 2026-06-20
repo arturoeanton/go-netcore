@@ -140,8 +140,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Search": {"Sort", "Search"}, "Slice": {"Sort", "Slice"},
 	},
 	"time": {
-		"Sleep": {"Time", "Sleep"},
-		"Now":   {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
+		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},
+		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
 	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
