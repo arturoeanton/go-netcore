@@ -305,7 +305,11 @@ func (l *funcLowerer) sliceIndexRead(e *ast.IndexExpr, st goir.Type) {
 func (l *funcLowerer) sliceIndexWrite(e *ast.IndexExpr, st goir.Type, rhs ast.Expr) {
 	l.expr(e.X)
 	l.expr(e.Index)
-	l.emitBoxedElem(rhs)
+	// Box by the element type so a named value stored into an interface-element slice
+	// (e.g. code[pc] = jne(target), where code is []instruction and jne is a named
+	// int32) is tagged with its typed-box identity — otherwise interface dispatch on
+	// that element finds no implementer.
+	l.emitBoxedElemInto(rhs, *st.Elem)
 	l.emit(goir.Op{Code: goir.OpSliceSet})
 }
 
