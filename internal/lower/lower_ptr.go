@@ -489,6 +489,11 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 		if fsel, ok := unparen(sel.X).(*ast.SelectorExpr); ok && l.buildFieldAlias(fsel) {
 			break
 		}
+		// A package-level global value g.Method(): alias the global directly.
+		if gi, ok := l.globalRef(sel.X); ok {
+			l.emitGlobalAlias(gi, l.exprType(sel.X))
+			break
+		}
 		// A slice element s[i].Method(): &s[i] aliases the backing array element.
 		if ix, ok := unparen(sel.X).(*ast.IndexExpr); ok && l.exprType(ix.X).Kind == goir.KSlice {
 			xt := l.exprType(ix.X)

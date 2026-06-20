@@ -154,6 +154,25 @@ func (l *funcLowerer) fieldPath(root goir.Type, names []string, leaf *ast.Select
 	return nil, goir.Type{}, false
 }
 
+// emitGlobalAlias builds a pointer aliasing a package-level variable directly
+// (&global): the getter reads it via ldsfld and the setter writes it via stsfld, so
+// a pointer-receiver method called on a global observes and mutates the live value.
+func (l *funcLowerer) emitGlobalAlias(gi int, t goir.Type) {
+	l.buildAccessorClosure(nil, func(cl *funcLowerer) {
+		cl.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
+		cl.emitBox(t)
+	})
+	l.buildAccessorClosure(nil, func(cl *funcLowerer) {
+		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
+		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+		cl.emit(goir.Op{Code: goir.OpLdElemRef})
+		cl.emitUnbox(t)
+		cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(gi)})
+		cl.emit(goir.Op{Code: goir.OpLdNull})
+	})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.fieldPtrExtern(t)})
+}
+
 // emitLdfldaChain, given the address of a root struct on the stack, emits a ldflda
 // chain through path[:last] (value embeds) and returns the struct that directly
 // holds the final field.
