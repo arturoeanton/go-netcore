@@ -62,13 +62,18 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
 	},
+	"context": {
+		"Background": {"Context", "Background"}, "TODO": {"Context", "TODO"},
+		"WithValue": {"Context", "WithValue"}, "WithCancel": {"Context", "WithCancel"},
+		"WithTimeout": {"Context", "WithTimeout"},
+	},
 	"sort": {
 		"Ints": {"Sort", "Ints"}, "Float64s": {"Sort", "Float64s"}, "Strings": {"Sort", "Strings"},
 		"IntsAreSorted": {"Sort", "IntsAreSorted"}, "SearchInts": {"Sort", "SearchInts"},
 	},
 	"time": {
 		"Sleep": {"Time", "Sleep"},
-		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
+		"Now":   {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
 	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
@@ -116,29 +121,31 @@ var shimRegistry = map[string]map[string]shimFunc{
 // opaqueShimTypes are stdlib types represented at runtime as opaque object
 // handles (not lowered structures); method calls on them dispatch to shims.
 var opaqueShimTypes = map[string]bool{
-	"reflect.Type":      true,
-	"reflect.Value":     true,
-	"sync.Mutex":        true,
-	"sync.RWMutex":      true,
-	"sync.WaitGroup":    true,
-	"sync.Once":         true,
-	"sync.Map":          true,
-	"strings.Builder":   true,
-	"bytes.Buffer":      true,
-	"os.File":           true,
-	"time.Time":         true,
-	"time.Location":     true,
-	"math/rand.Rand":    true,
-	"math/rand.Source":  true,
+	"reflect.Type":     true,
+	"reflect.Value":    true,
+	"sync.Mutex":       true,
+	"sync.RWMutex":     true,
+	"sync.WaitGroup":   true,
+	"sync.Once":        true,
+	"sync.Map":         true,
+	"strings.Builder":  true,
+	"bytes.Buffer":     true,
+	"os.File":          true,
+	"time.Time":        true,
+	"time.Location":    true,
+	"math/rand.Rand":   true,
+	"math/rand.Source": true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
 // no-argument accessor returning the runtime object.
 var shimVarRegistry = map[string]shimFunc{
-	"os.Stdout":  {"Os", "Stdout"},
-	"os.Stderr":  {"Os", "Stderr"},
-	"time.UTC":   {"Time", "UTC"},
-	"time.Local": {"Time", "Local"},
+	"os.Stdout":                {"Os", "Stdout"},
+	"os.Stderr":                {"Os", "Stderr"},
+	"time.UTC":                 {"Time", "UTC"},
+	"time.Local":               {"Time", "Local"},
+	"context.Canceled":         {"Context", "Canceled"},
+	"context.DeadlineExceeded": {"Context", "DeadlineExceeded"},
 }
 
 // shimVarExtern returns the accessor extern for a shimmed stdlib package variable
@@ -230,6 +237,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"math/rand.Rand": {
 		"Int63": {"Rand", "Rand_Int63"}, "Int": {"Rand", "Rand_Int"}, "Int63n": {"Rand", "Rand_Int63n"},
 		"Intn": {"Rand", "Rand_Intn"}, "Float64": {"Rand", "Rand_Float64"}, "Perm": {"Rand", "Rand_Perm"},
+	},
+	"context.Context": {
+		"Value": {"Context", "Context_Value"}, "Err": {"Context", "Context_Err"},
+		"Done": {"Context", "Context_Done"},
 	},
 	"time.Time": {
 		"Unix": {"Time", "Time_Unix"}, "UnixNano": {"Time", "Time_UnixNano"}, "UnixMilli": {"Time", "Time_UnixMilli"},

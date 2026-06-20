@@ -230,7 +230,16 @@ func (c *lowerCtx) finishInvoke() {
 			goir.Op{Code: goir.OpLabel, Label: skip},
 		)
 	}
-	m.Code = append(m.Code, goir.Op{Code: goir.OpLdNull}, goir.Op{Code: goir.OpRet})
+	// Fallback: a function value with no lifted Id is a native (runtime/stdlib)
+	// closure (e.g. context.CancelFunc); dispatch to its delegate.
+	m.Code = append(m.Code,
+		goir.Op{Code: goir.OpLdArg, Arg: 0},
+		goir.Op{Code: goir.OpLdArg, Arg: 1},
+		goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "NativeClosures", Method: "InvokeNative",
+			Params: []goir.Type{goir.TFunc, goir.TObjectArray}, Ret: goir.TObject,
+		}},
+		goir.Op{Code: goir.OpRet})
 }
 
 func itoa(n int) string {

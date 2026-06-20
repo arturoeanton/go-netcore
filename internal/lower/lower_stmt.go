@@ -63,6 +63,14 @@ func (l *funcLowerer) stmt(s ast.Stmt) {
 }
 
 func (l *funcLowerer) exprStmt(s *ast.ExprStmt) {
+	// A bare receive `<-ch` used as a statement: receive and discard the value.
+	if u, ok := s.X.(*ast.UnaryExpr); ok && u.Op == token.ARROW {
+		l.expr(u)
+		if l.ok {
+			l.emit(goir.Op{Code: goir.OpPop})
+		}
+		return
+	}
 	call, ok := s.X.(*ast.CallExpr)
 	if !ok {
 		l.fail(s.Pos(), "expression statement")

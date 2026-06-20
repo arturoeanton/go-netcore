@@ -276,7 +276,7 @@ func (l *funcLowerer) goStmt(s *ast.GoStmt) {
 	}
 	// go func(a){...}(x) / go closureVar(args) — capture the func value + args in
 	// a thunk and start it.
-	if _, isLit := call.Fun.(*ast.FuncLit); isLit || l.exprType(call.Fun).Kind == goir.KFunc {
+	if _, isLit := call.Fun.(*ast.FuncLit); isLit || l.isFuncValue(call.Fun) {
 		l.buildFuncValueThunk(call)
 		l.emit(goir.Op{Code: goir.OpGoStart})
 		return
