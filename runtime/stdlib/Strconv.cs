@@ -21,6 +21,23 @@ public static class Strconv
     public static GoString FormatUint(ulong i, long b) => GoString.FromDotNetString(ToBaseU(i, (int)b));
     public static GoString FormatBool(bool v) => GoString.FromDotNetString(v ? "true" : "false");
 
+    // CanBackquote reports whether s can be represented unchanged as a single-line
+    // backquoted string (no backquote, no control char except tab, no BOM/DEL,
+    // valid UTF-8).
+    public static bool CanBackquote(GoString s)
+    {
+        var str = s.ToDotNetString();
+        foreach (var r in str.EnumerateRunes())
+        {
+            int v = r.Value;
+            if (v == 0xFEFF) return false;            // BOM
+            if (r == System.Text.Rune.ReplacementChar) return false;
+            if (v < ' ' && v != '\t') return false;   // control chars (tab ok)
+            if (v == '`' || v == 0x7F) return false;  // backquote, DEL
+        }
+        return true;
+    }
+
     public static GoString Quote(GoString s)
     {
         var sb = new System.Text.StringBuilder("\"");
