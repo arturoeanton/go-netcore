@@ -33,7 +33,7 @@ local type/const decls, and broad method coverage). Deferred edges are tracked i
 `net/url` (escapes **+ Parse** with field reads), `regexp` (.NET Regex), `log`,
 `math/big` (Int), `bufio.Scanner` + `io.ReadAll/Copy` + `strings`/`bytes` readers
 + `os.Stdin`, and the **`net/http` client** (`http.Get`/`Post` → `*Response` with
-`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 106 conformance
+`StatusCode`/`Body`; `io.ReadAll(resp.Body)` works, verified live). 114 conformance
 fixtures. Enablers added: `GoRuntime.InvokeArgs` (shims call Go funcs),
 native-closure-to-shim, `new(opaqueShim)` yields the shim object, and **shim
 struct-field reads** (`u.Host`, `resp.StatusCode` → getter externs).
