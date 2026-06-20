@@ -459,7 +459,12 @@ func (l *funcLowerer) ptrRootedReceiver(recv ast.Expr) (int, func(), bool) {
 		if fi < 0 {
 			return 0, nil, false
 		}
-		if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
+		if gi, ok := l.globalRef(sel.X); ok {
+			// g.field where g is a package-level struct global: RMW through the global.
+			writeback = func(p int) {
+				l.globalFieldModify(gi, bt, fi, func(ft goir.Type) { pushFromCell(p) })
+			}
+		} else if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
 			// r.cc where r is a cell-held local struct: RMW through the cell.
 			cfi := elem.Struct.FieldIndex(sel.Sel.Name)
 			if cfi < 0 {

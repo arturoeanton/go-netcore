@@ -463,6 +463,21 @@ func (l *funcLowerer) cellFieldModify(idx int, st goir.Type, fi int, pushValue f
 	l.emit(goir.Op{Code: goir.OpPtrSet})
 }
 
+// globalFieldModify performs a read-modify-write of field fi of a package-level
+// struct global gi: load the global into a temp, set the field (pushValue leaves
+// the new value after a ldloca), and store the temp back.
+func (l *funcLowerer) globalFieldModify(gi int, st goir.Type, fi int, pushValue func(ft goir.Type)) {
+	ft := st.Struct.Fields[fi].Type
+	sTmp := l.addLocal(nil, st)
+	l.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: sTmp})
+	l.emit(goir.Op{Code: goir.OpLdLocA, Local: sTmp})
+	pushValue(ft)
+	l.emit(goir.Op{Code: goir.OpStFld, Struct: st.Struct, Field: fi})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: sTmp})
+	l.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(gi)})
+}
+
 // lvalueAddr emits the managed address of an addressable expression (a local or
 // a chain of struct field selectors rooted at a local).
 func (l *funcLowerer) lvalueAddr(e ast.Expr) {
