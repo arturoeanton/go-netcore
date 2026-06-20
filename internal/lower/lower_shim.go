@@ -64,6 +64,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"QueryEscape": {"Url", "QueryEscape"}, "PathEscape": {"Url", "PathEscape"},
 		"QueryUnescape": {"Url", "QueryUnescape"}, "PathUnescape": {"Url", "PathUnescape"},
 	},
+	"regexp": {
+		"Compile": {"Regexp", "Compile"}, "MustCompile": {"Regexp", "MustCompile"},
+		"MatchString": {"Regexp", "MatchString"}, "QuoteMeta": {"Regexp", "QuoteMeta"},
+	},
 	"path": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
@@ -186,6 +190,7 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/binary.littleEndian": true,
 	"encoding/binary.bigEndian":    true,
 	"encoding/binary.ByteOrder":    true,
+	"regexp.Regexp":                true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
@@ -284,6 +289,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"hash.Hash": {
 		"Write": {"Crypto", "Hash_Write"}, "Sum": {"Crypto", "Hash_Sum"}, "Reset": {"Crypto", "Hash_Reset"},
 		"Size": {"Crypto", "Hash_Size"}, "BlockSize": {"Crypto", "Hash_BlockSize"},
+	},
+	"regexp.Regexp": {
+		"MatchString": {"Regexp", "Re_MatchString"}, "FindString": {"Regexp", "Re_FindString"},
+		"FindStringSubmatch": {"Regexp", "Re_FindStringSubmatch"}, "FindAllString": {"Regexp", "Re_FindAllString"},
+		"ReplaceAllString": {"Regexp", "Re_ReplaceAllString"}, "Split": {"Regexp", "Re_Split"},
+		"String": {"Regexp", "Re_String"},
 	},
 	"strings.Builder": {
 		"WriteString": {"StringsBuilder", "WriteString"}, "WriteByte": {"StringsBuilder", "WriteByte"},
