@@ -431,12 +431,16 @@ func (l *funcLowerer) typeSwitch(s *ast.TypeSwitchStmt) {
 		if hasBinding {
 			if obj := l.pkg.TypesInfo.Implicits[c.cc]; obj != nil {
 				vt, _ := l.goType(obj.Type())
-				vLocal := l.addLocal(obj, vt)
-				l.emit(goir.Op{Code: goir.OpLdLoc, Local: xTmp})
-				if len(c.cc.List) == 1 && !isNilIdent(c.cc.List[0]) && vt.Kind != goir.KObject {
-					l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: vt})
-				}
-				l.emit(goir.Op{Code: goir.OpStLoc, Local: vLocal})
+				// declareLocal makes the binding a GoPtr cell when it is address-taken
+				// (e.g. a pointer-receiver method called on it), so &v works.
+				cc := c.cc
+				vLocal, _ := l.declareLocal(obj, vt)
+				l.initLocal(vLocal, func() {
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: xTmp})
+					if len(cc.List) == 1 && !isNilIdent(cc.List[0]) && vt.Kind != goir.KObject {
+						l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: vt})
+					}
+				})
 			}
 		}
 		for _, st := range c.cc.Body {
