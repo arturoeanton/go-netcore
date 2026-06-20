@@ -375,6 +375,13 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 	}
 	sig := fn.Type().(*types.Signature)
 	recvIsPtr := isPointerType(sig.Recv().Type())
+
+	// Promoted method: go/types' selection index lists the embedded field path
+	// (all but the last element, which is the method) to reach the receiver.
+	if idx := seln.Index(); len(idx) > 1 {
+		return l.promotedMethodCall(e, sel, fn, m, idx[:len(idx)-1], recvIsPtr, sig)
+	}
+
 	baseType := l.exprType(sel.X)
 	baseIsPtr := baseType.Kind == goir.KPtr
 
@@ -400,4 +407,143 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 	l.emitCallArgs(e.Args, m.Params[1:], sig.Variadic(), e.Ellipsis.IsValid())
 	l.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
 	return m.Ret
+}
+
+// promotedMethodCall lowers recv.M(args) where M is promoted from an embedded
+// field: embedPath is the chain of field indices to the embedded value/pointer
+// that actually owns M. The embedded receiver is loaded by walking the field
+// chain, then adapted to the method's value/pointer receiver.
+func (l *funcLowerer) promotedMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr, fn *types.Func, m *goir.Method, embedPath []int, recvIsPtr bool, sig *types.Signature) goir.Type {
+	baseType := l.exprType(sel.X)
+
+	// A pointer-receiver method promoted through a *value* embed needs the address
+	// of the embedded field, which a boxed value-type does not expose stably. Walk
+	// the path on an addressable copy and write it back through the cell.
+	if recvIsPtr {
+		// Determine the embedded receiver type by walking the path on types only.
+		embT := baseType
+		if embT.Kind == goir.KPtr {
+			embT = *embT.Elem
+		}
+		for _, idx := range embedPath {
+			if embT.Kind == goir.KPtr {
+				embT = *embT.Elem
+			}
+			embT = embT.Struct.Fields[idx].Type
+		}
+		if embT.Kind != goir.KPtr {
+			// value embed + pointer receiver: needs &embedded with write-back.
+			return l.promotedPtrRecvValueEmbed(e, sel, m, embedPath, sig)
+		}
+		// Pointer embed: the chain yields the pointer itself — pass it through.
+	}
+
+	// Load the base value (dereferencing a pointer base), then walk to the embed.
+	if baseType.Kind == goir.KPtr {
+		l.expr(sel.X)
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(*baseType.Elem)
+		baseType = *baseType.Elem
+	} else {
+		l.expr(sel.X)
+	}
+	embType := l.emitFieldChain(baseType, embedPath)
+	if !recvIsPtr && embType.Kind == goir.KPtr {
+		// value receiver, pointer embed: dereference to the value.
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(*embType.Elem)
+	}
+
+	l.emitCallArgs(e.Args, m.Params[1:], sig.Variadic(), e.Ellipsis.IsValid())
+	l.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
+	return m.Ret
+}
+
+// promotedPtrRecvValueEmbed handles u.M() where M has a pointer receiver promoted
+// through value-typed embedded field(s). goclr pointer receivers are GoPtr cells,
+// not CLR byrefs, so it: copies the base into a local, lifts the embedded value
+// into a fresh GoPtr cell, calls M on that cell (mutating it), writes the mutated
+// value back into the base local (ldflda chain), then stores the base back through
+// the receiver's own cell so the mutation is observed by the caller.
+func (l *funcLowerer) promotedPtrRecvValueEmbed(e *ast.CallExpr, sel *ast.SelectorExpr, m *goir.Method, embedPath []int, sig *types.Signature) goir.Type {
+	baseType := l.exprType(sel.X)
+	baseIsPtr := baseType.Kind == goir.KPtr
+	if baseIsPtr {
+		baseType = *baseType.Elem
+	}
+	// Only all-value embed paths are addressable inside the local; a pointer embed
+	// in the path would alias differently — keep that out of this path.
+	cur := baseType
+	for _, idx := range embedPath {
+		if cur.Kind != goir.KStruct {
+			l.fail(e.Pos(), "promoted pointer-receiver method through a mixed embed")
+			return goir.TVoid
+		}
+		cur = cur.Struct.Fields[idx].Type
+	}
+	embType := cur
+
+	tmp := l.addLocal(nil, baseType)
+	l.expr(sel.X)
+	if baseIsPtr {
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(baseType)
+	}
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+
+	// Lift the embedded value into a GoPtr cell.
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+	l.emitFieldChain(baseType, embedPath)
+	l.emitBox(embType)
+	l.ptrNew(embType)
+	cellLoc := l.addLocal(nil, goir.PtrType(embType))
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: cellLoc})
+
+	// Call M with the cell as receiver.
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: cellLoc})
+	l.emitCallArgs(e.Args, m.Params[1:], sig.Variadic(), e.Ellipsis.IsValid())
+	l.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
+	ret := m.Ret
+	if ret != goir.TVoid {
+		// Stash the result; the write-back must run before we leave it on the stack.
+		rtmp := l.addLocal(nil, ret)
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: rtmp})
+		l.writeBackEmbed(tmp, baseType, cellLoc, embType, embedPath)
+		l.storeBaseThroughCell(sel, tmp, baseType)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: rtmp})
+		return ret
+	}
+	l.writeBackEmbed(tmp, baseType, cellLoc, embType, embedPath)
+	l.storeBaseThroughCell(sel, tmp, baseType)
+	return ret
+}
+
+// writeBackEmbed stores the (possibly mutated) embedded value held in cellLoc back
+// into the embedded field of the base struct in local tmp, via a ldflda chain.
+func (l *funcLowerer) writeBackEmbed(tmp int, baseType goir.Type, cellLoc int, embType goir.Type, embedPath []int) {
+	l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
+	cur := baseType
+	for i, idx := range embedPath {
+		if i == len(embedPath)-1 {
+			// Push the mutated embedded value, then stfld into the parent struct.
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: cellLoc})
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emitUnbox(embType)
+			l.emit(goir.Op{Code: goir.OpStFld, Struct: cur.Struct, Field: idx})
+			return
+		}
+		l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: idx})
+		cur = cur.Struct.Fields[idx].Type
+	}
+}
+
+// storeBaseThroughCell writes the base struct in local tmp back through the
+// receiver's GoPtr cell, when the receiver is an addressable struct local.
+func (l *funcLowerer) storeBaseThroughCell(sel *ast.SelectorExpr, tmp int, baseType goir.Type) {
+	if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: idx})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emitBox(baseType)
+		l.emit(goir.Op{Code: goir.OpPtrSet})
+	}
 }

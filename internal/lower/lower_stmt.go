@@ -216,6 +216,95 @@ func (l *funcLowerer) assign(s *ast.AssignStmt) {
 	}
 }
 
+// promotedFieldWrite lowers u.f = v where f is promoted through embedded fields.
+// Value embeds are navigated by a ldflda chain; a pointer embed is dereferenced
+// into a temp whose mutated value is written back through the GoPtr (the pointee
+// is shared, so this is observable). An address-taken (cell) base is copied out,
+// mutated, and copied back through its cell.
+func (l *funcLowerer) promotedFieldWrite(sel *ast.SelectorExpr, bt goir.Type, path []int, rhs ast.Expr) {
+	last := path[len(path)-1]
+	l.promotedFieldWriteVal(sel, bt, path, func(parent goir.Type) {
+		l.exprCoerced(rhs, parent.Struct.Fields[last].Type)
+	})
+}
+
+// promotedFieldWriteVal is promotedFieldWrite with the stored value supplied by
+// emitVal (given the container struct type), enabling both plain writes and
+// op-assigns to share the embedded-field navigation + pointer write-back.
+func (l *funcLowerer) promotedFieldWriteVal(sel *ast.SelectorExpr, bt goir.Type, path []int, emitVal func(parent goir.Type)) {
+	// writeBacks defers the PtrSet for each pointer embed crossed (innermost last).
+	type wb struct {
+		gp, tmp int
+		t       goir.Type
+	}
+	var backs []wb
+
+	// emitToContainer leaves a managed pointer to the struct that directly holds
+	// the final field, after walking path[:last]; baseAddr seeds the chain.
+	emitToContainer := func(baseAddr func()) goir.Type {
+		baseAddr()
+		cur := bt
+		for _, idx := range path[:len(path)-1] {
+			ft := cur.Struct.Fields[idx].Type
+			if ft.Kind == goir.KPtr {
+				// Pointer embed: load the GoPtr, deref to a temp, continue in the temp.
+				gp := l.addLocal(nil, ft)
+				l.emit(goir.Op{Code: goir.OpLdFld, Struct: cur.Struct, Field: idx})
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: gp})
+				pointee := *ft.Elem
+				tmp := l.addLocal(nil, pointee)
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: gp})
+				l.emit(goir.Op{Code: goir.OpPtrGet})
+				l.emitUnbox(pointee)
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+				backs = append(backs, wb{gp: gp, tmp: tmp, t: pointee})
+				l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
+				cur = pointee
+				continue
+			}
+			l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: idx})
+			cur = ft
+		}
+		return cur
+	}
+
+	finish := func() {
+		// Write each crossed pointer's temp back through its GoPtr (innermost first).
+		for i := len(backs) - 1; i >= 0; i-- {
+			b := backs[i]
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: b.gp})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: b.tmp})
+			l.emitBox(b.t)
+			l.emit(goir.Op{Code: goir.OpPtrSet})
+		}
+	}
+
+	// Address-taken cell base: copy out, mutate, copy back through the cell.
+	if cidx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
+		ctmp := l.addLocal(nil, elem)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: cidx})
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(elem)
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: ctmp})
+		parent := emitToContainer(func() { l.emit(goir.Op{Code: goir.OpLdLocA, Local: ctmp}) })
+		last := path[len(path)-1]
+		emitVal(parent)
+		l.emit(goir.Op{Code: goir.OpStFld, Struct: parent.Struct, Field: last})
+		finish()
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: cidx})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: ctmp})
+		l.emitBox(elem)
+		l.emit(goir.Op{Code: goir.OpPtrSet})
+		return
+	}
+
+	parent := emitToContainer(func() { l.lvalueAddr(sel.X) })
+	last := path[len(path)-1]
+	emitVal(parent)
+	l.emit(goir.Op{Code: goir.OpStFld, Struct: parent.Struct, Field: last})
+	finish()
+}
+
 // fieldAssign lowers p.f = v: address of the struct, value, stfld.
 func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 	bt := l.exprType(sel.X)
@@ -229,6 +318,11 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 	}
 	fi := bt.Struct.FieldIndex(sel.Sel.Name)
 	if fi < 0 {
+		// Promoted field write through embedded fields (u.ID = v).
+		if path, ok := l.promotedFieldPath(sel); ok {
+			l.promotedFieldWrite(sel, bt, path, rhs)
+			return
+		}
 		l.fail(sel.Pos(), "unknown field "+sel.Sel.Name)
 		return
 	}
@@ -369,7 +463,7 @@ func (l *funcLowerer) ifStmt(s *ast.IfStmt) {
 	if s.Else != nil {
 		endLbl = l.label()
 	}
-	l.expr(s.Cond)               // bool on stack
+	l.expr(s.Cond) // bool on stack
 	l.emit(goir.Op{Code: goir.OpBrFalse, Label: elseLbl})
 	l.block(s.Body)
 	if s.Else != nil {
@@ -462,8 +556,8 @@ func (l *funcLowerer) switchStmt(s *ast.SwitchStmt) {
 	}
 
 	type clause struct {
-		body  *ast.CaseClause
-		lbl   int
+		body *ast.CaseClause
+		lbl  int
 	}
 	var clauses []clause
 	defaultLbl := -1
@@ -792,6 +886,22 @@ func (l *funcLowerer) compoundAssignLValue(lhs ast.Expr, binTok token.Token, rhs
 // type).
 func (l *funcLowerer) modifyField(sel *ast.SelectorExpr, binTok token.Token, emitOperand func(ft goir.Type)) {
 	bt := l.exprType(sel.X)
+	// Promoted field op-assign (u.ID += v) through embedded fields: navigate to the
+	// container (handling cells + pointer embeds via promotedFieldWriteVal) and do
+	// the read-modify-write against the duplicated container pointer.
+	if bt.Kind == goir.KStruct && bt.Struct.FieldIndex(sel.Sel.Name) < 0 {
+		if path, ok := l.promotedFieldPath(sel); ok {
+			last := path[len(path)-1]
+			l.promotedFieldWriteVal(sel, bt, path, func(parent goir.Type) {
+				ft := parent.Struct.Fields[last].Type
+				l.emit(goir.Op{Code: goir.OpDup})
+				l.emit(goir.Op{Code: goir.OpLdFld, Struct: parent.Struct, Field: last})
+				emitOperand(ft)
+				l.emitArith(binTok, ft)
+			})
+			return
+		}
+	}
 	// Captured/address-taken struct local (a GoPtr cell): op= through the cell.
 	if idx, elem, isCell := l.identCell(sel.X); isCell && elem.Kind == goir.KStruct {
 		fi := elem.Struct.FieldIndex(sel.Sel.Name)

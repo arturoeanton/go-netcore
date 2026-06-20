@@ -101,12 +101,55 @@ func (l *funcLowerer) fieldRead(e *ast.SelectorExpr) {
 		return
 	}
 	fi := bt.Struct.FieldIndex(e.Sel.Name)
-	if fi < 0 {
-		l.fail(e.Pos(), "unknown field "+e.Sel.Name)
+	if fi >= 0 {
+		l.expr(e.X)
+		l.emit(goir.Op{Code: goir.OpLdFld, Struct: bt.Struct, Field: fi})
 		return
 	}
-	l.expr(e.X)
-	l.emit(goir.Op{Code: goir.OpLdFld, Struct: bt.Struct, Field: fi})
+	// Promoted field reached through one or more embedded (anonymous) fields:
+	// go/types gives the full index path; emit a ldfld chain through it.
+	if path, ok := l.promotedFieldPath(e); ok {
+		l.expr(e.X)
+		l.emitFieldChain(bt, path)
+		return
+	}
+	l.fail(e.Pos(), "unknown field "+e.Sel.Name)
+}
+
+// promotedFieldPath returns the chain of (shallow) field indices that go/types
+// computed to reach a promoted field selector, if e selects a field.
+func (l *funcLowerer) promotedFieldPath(e *ast.SelectorExpr) ([]int, bool) {
+	sel := l.pkg.TypesInfo.Selections[e]
+	if sel == nil || sel.Kind() != types.FieldVal {
+		return nil, false
+	}
+	idx := sel.Index()
+	if len(idx) < 2 {
+		return nil, false
+	}
+	return idx, true
+}
+
+// emitFieldChain emits a ldfld chain that walks `path` (shallow field indices)
+// starting from a struct value already on the stack, dereferencing any embedded
+// pointer field along the way. The final field's value is left on the stack, and
+// its type is returned.
+func (l *funcLowerer) emitFieldChain(structType goir.Type, path []int) goir.Type {
+	cur := structType
+	for _, idx := range path {
+		if cur.Kind == goir.KPtr {
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emitUnbox(*cur.Elem)
+			cur = *cur.Elem
+		}
+		if cur.Kind != goir.KStruct || idx >= len(cur.Struct.Fields) {
+			l.fail(0, "promoted field path")
+			return goir.TVoid
+		}
+		l.emit(goir.Op{Code: goir.OpLdFld, Struct: cur.Struct, Field: idx})
+		cur = cur.Struct.Fields[idx].Type
+	}
+	return cur
 }
 
 // compositeLit lowers a struct composite literal Point{...} (keyed or positional)
