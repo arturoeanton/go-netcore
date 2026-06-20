@@ -139,6 +139,9 @@ public static class Time
     public static long Time_UnixNano(object t) => ((GoTime)t).N;
     public static long Time_UnixMilli(object t) => ((GoTime)t).N / Millisecond;
     public static long Time_Year(object t) => ZeroDate(t, dt => dt.Year, 1);
+    public static long Time_YearDay(object t) => ZeroDate(t, dt => dt.DayOfYear, 1);
+    // UTC-only: the zone is always UTC with a zero offset.
+    public static object?[] Time_Zone(object t) => new object?[] { GoString.FromDotNetString("UTC"), 0L };
     public static long Time_Month(object t) => ZeroDate(t, dt => dt.Month, 1);
     public static long Time_Day(object t) => ZeroDate(t, dt => dt.Day, 1);
     public static long Time_Hour(object t) => ZeroDate(t, dt => dt.Hour, 0);

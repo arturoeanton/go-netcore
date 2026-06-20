@@ -619,6 +619,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Before": {"Time", "Time_Before"}, "After": {"Time", "Time_After"}, "Equal": {"Time", "Time_Equal"},
 		"IsZero": {"Time", "Time_IsZero"}, "UTC": {"Time", "Time_UTC"}, "Local": {"Time", "Time_Local"},
 		"String": {"Time", "Time_String"}, "Format": {"Time", "Time_Format"},
+		"Zone": {"Time", "Time_Zone"}, "YearDay": {"Time", "Time_YearDay"},
 	},
 	"time.Month": {
 		"String": {"Time", "Month_String"},
