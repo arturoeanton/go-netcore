@@ -9,6 +9,44 @@ public sealed class GoByteOrder { public bool Big; }
 /// Uint/Put helpers over a []byte (GoSlice).</summary>
 public static class Binary
 {
+    // Varint (LEB128) codecs.
+    public static long PutUvarint(GoSlice buf, ulong x)
+    {
+        int i = 0;
+        while (x >= 0x80) { buf.Data![buf.Off + i] = (int)(byte)(x | 0x80); x >>= 7; i++; }
+        buf.Data![buf.Off + i] = (int)(byte)x;
+        return i + 1;
+    }
+    public static object?[] Uvarint(GoSlice buf)
+    {
+        ulong x = 0; int s = 0;
+        for (int i = 0; i < buf.Len; i++)
+        {
+            ulong b = (ulong)(System.Convert.ToInt64(buf.Data![buf.Off + i]) & 0xff);
+            if (b < 0x80)
+            {
+                if (i > 9 || (i == 9 && b > 1)) return new object?[] { (ulong)0, (long)(-(i + 1)) };
+                return new object?[] { x | (b << s), (long)(i + 1) };
+            }
+            x |= (b & 0x7f) << s; s += 7;
+        }
+        return new object?[] { (ulong)0, 0L };
+    }
+    public static long PutVarint(GoSlice buf, long v)
+    {
+        ulong ux = (ulong)v << 1;
+        if (v < 0) ux = ~ux;
+        return PutUvarint(buf, ux);
+    }
+    public static object?[] Varint(GoSlice buf)
+    {
+        var r = Uvarint(buf);
+        ulong ux = (ulong)r[0]!;
+        long x = (long)(ux >> 1);
+        if ((ux & 1) != 0) x = ~x;
+        return new object?[] { x, r[1] };
+    }
+
     public static object LittleEndian() => new GoByteOrder { Big = false };
     public static object BigEndian() => new GoByteOrder { Big = true };
 

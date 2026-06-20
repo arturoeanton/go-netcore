@@ -62,7 +62,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"os/exec":         {"Command": {"Exec", "Command"}},
 	"container/list":  {"New": {"List", "New"}},
 	"encoding/csv":    {"NewReader": {"Csv", "NewReader"}, "NewWriter": {"Csv", "NewWriter"}},
-	"encoding/binary": {"Write": {"Binary", "Write"}, "Read": {"Binary", "Read"}, "Size": {"Binary", "Size"}},
+	"encoding/binary": {"Write": {"Binary", "Write"}, "Read": {"Binary", "Read"}, "Size": {"Binary", "Size"}, "PutUvarint": {"Binary", "PutUvarint"}, "Uvarint": {"Binary", "Uvarint"}, "PutVarint": {"Binary", "PutVarint"}, "Varint": {"Binary", "Varint"}},
 	"crypto/aes":      {"NewCipher": {"Aes", "NewCipher"}},
 	"crypto/cipher":   {"NewGCM": {"Aes", "NewGCM"}},
 	"hash/fnv":        {"New32": {"Hashes", "Fnv32"}, "New32a": {"Hashes", "Fnv32a"}, "New64": {"Hashes", "Fnv64"}, "New64a": {"Hashes", "Fnv64a"}},
