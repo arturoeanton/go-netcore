@@ -61,7 +61,15 @@ func (l *funcLowerer) emitZeroValue(t goir.Type) {
 		l.emit(goir.Op{Code: goir.OpLdcR8, Float: 0})
 		l.emit(goir.Op{Code: goir.OpComplexMake})
 	case goir.KMap, goir.KPtr, goir.KObject, goir.KObjectArray, goir.KChan, goir.KFunc:
-		l.emit(goir.Op{Code: goir.OpLdNull}) // reference types zero to nil
+		// An opaque value-type shim (sync.WaitGroup, strings.Builder, …) zeroes to
+		// a fresh runtime object; other reference types zero to nil.
+		if t.Shim != "" {
+			if ext, ok := shimZeroExtern(t.Shim); ok {
+				l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+				return
+			}
+		}
+		l.emit(goir.Op{Code: goir.OpLdNull})
 	default:
 		l.emitZero(t)
 	}

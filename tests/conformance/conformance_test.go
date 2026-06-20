@@ -83,12 +83,12 @@ func run(t *testing.T, name string, args ...string) (string, int) {
 // stderr alone (used to detect unsupported-subset skips).
 func runGoclr(t *testing.T, goclr, pkg string) (combined string, code int, stderr string) {
 	t.Helper()
-	var sout, serr strings.Builder
+	// Use CombinedOutput so stdout/stderr interleave in real (program) order, the
+	// same way the `go run` baseline is captured — otherwise a program mixing
+	// fmt (stdout) and println (stderr) would compare against a reordered stream.
 	cmd := exec.Command(goclr, "run", pkg)
-	cmd.Stdout = &sout
-	cmd.Stderr = &serr
-	err := cmd.Run()
-	return sout.String() + serr.String(), exitCode(err), serr.String()
+	out, err := cmd.CombinedOutput()
+	return string(out), exitCode(err), string(out)
 }
 
 func exitCode(err error) int {

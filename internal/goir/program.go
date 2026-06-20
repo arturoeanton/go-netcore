@@ -39,6 +39,10 @@ type Type struct {
 	Elem   *Type
 	Key    *Type
 	Val    *Type
+	// Shim names an opaque stdlib value type backed by a runtime reference object
+	// (e.g. "sync.WaitGroup"); Kind is KObject. Its zero value is a fresh object
+	// built by a registered constructor rather than null.
+	Shim string
 }
 
 // Predeclared primitive types. They are package-level values (not consts) so

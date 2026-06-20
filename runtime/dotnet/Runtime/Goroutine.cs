@@ -87,6 +87,9 @@ public static class GoRuntime
     /// <summary>The registered closure dispatcher (used by goroutines and defers).</summary>
     internal static GoInvoker? Invoker => _invoker;
 
+    /// <summary>Invoke a closure value synchronously (for stdlib shims like sync.Once.Do).</summary>
+    public static object? Invoke(GoClosure c) => _invoker?.Invoke(c, System.Array.Empty<object?>());
+
     /// <summary>go f() where the goroutine body is a closure value.</summary>
     public static void Go(GoClosure c)
     {

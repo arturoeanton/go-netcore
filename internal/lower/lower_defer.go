@@ -184,6 +184,10 @@ func (l *funcLowerer) deferStmt(s *ast.DeferStmt) {
 		return
 	case *ast.SelectorExpr:
 		if seln := l.pkg.TypesInfo.Selections[fun]; seln != nil && seln.Kind() == types.MethodVal {
+			if ext, ok := l.shimMethodExtern(seln); ok {
+				l.deferShimMethod(call, fun, ext)
+				return
+			}
 			l.deferMethod(call, fun, seln)
 			return
 		}
@@ -380,6 +384,40 @@ func (l *funcLowerer) deferMethod(call *ast.CallExpr, sel *ast.SelectorExpr, sel
 // deferFuncValue lowers `defer fv(args)` where fv is a function value, capturing
 // the closure and arguments and re-dispatching through __invoke at unwind.
 func (l *funcLowerer) deferFuncValue(call *ast.CallExpr) {
+	l.buildFuncValueThunk(call)
+	l.emit(goir.Op{Code: goir.OpDeferPush})
+}
+
+// deferShimMethod lowers `defer recv.Method(args)` where Method is a shimmed
+// stdlib method: capture the receiver and args, then call the extern at unwind.
+func (l *funcLowerer) deferShimMethod(call *ast.CallExpr, sel *ast.SelectorExpr, ext *goir.Extern) {
+	captures := make([]thunkCapture, 0, len(call.Args)+1)
+	captures = append(captures, thunkCapture{emit: func() { l.expr(sel.X) }, typ: ext.Params[0]})
+	for i, a := range call.Args {
+		arg := a
+		pt := goir.TObject
+		if i+1 < len(ext.Params) {
+			pt = ext.Params[i+1]
+		}
+		captures = append(captures, thunkCapture{emit: func() { l.exprCoerced(arg, pt) }, typ: pt})
+	}
+	l.buildThunk(captures, func(cl *funcLowerer) {
+		for i, pt := range ext.Params {
+			cl.emitEnvArg(i, pt)
+		}
+		cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+		if ext.Ret != goir.TVoid {
+			cl.emit(goir.Op{Code: goir.OpPop})
+		}
+	})
+	l.emit(goir.Op{Code: goir.OpDeferPush})
+}
+
+// buildFuncValueThunk builds a zero-arg thunk that invokes a func-value call
+// (a func literal or closure variable called with arguments), capturing the
+// closure and the evaluated argument values, and leaves the thunk GoClosure on
+// the stack. Used by both `defer` and `go`.
+func (l *funcLowerer) buildFuncValueThunk(call *ast.CallExpr) {
 	captures := make([]thunkCapture, 0, len(call.Args)+1)
 	captures = append(captures, thunkCapture{emit: func() { l.expr(call.Fun) }, typ: goir.TFunc})
 	for _, a := range call.Args {
@@ -402,5 +440,4 @@ func (l *funcLowerer) deferFuncValue(call *ast.CallExpr) {
 		cl.emit(goir.Op{Code: goir.OpCallMethod, Callee: cl.invokeMethod()})
 		cl.emit(goir.Op{Code: goir.OpPop})
 	})
-	l.emit(goir.Op{Code: goir.OpDeferPush})
 }

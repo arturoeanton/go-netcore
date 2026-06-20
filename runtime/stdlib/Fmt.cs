@@ -43,9 +43,10 @@ public static class Fmt
     public static GoString Sprintf(GoString format, GoSlice args) =>
         GoString.FromDotNetString(DoSprintf(format.ToDotNetString(), Args(args)));
 
-    public static object?[] Print(GoSlice args) { var s = Sprint(args); System.Console.Out.Write(s.ToDotNetString()); return new object?[] { (long)s.Len, null }; }
-    public static object?[] Println(GoSlice args) { var s = Sprintln(args); System.Console.Out.Write(s.ToDotNetString()); return new object?[] { (long)s.Len, null }; }
-    public static object?[] Printf(GoString format, GoSlice args) { var s = DoSprintf(format.ToDotNetString(), Args(args)); System.Console.Out.Write(s); return new object?[] { (long)Encoding.UTF8.GetByteCount(s), null }; }
+    private static void Out(string s) { System.Console.Out.Write(s); System.Console.Out.Flush(); }
+    public static object?[] Print(GoSlice args) { var s = Sprint(args); Out(s.ToDotNetString()); return new object?[] { (long)s.Len, null }; }
+    public static object?[] Println(GoSlice args) { var s = Sprintln(args); Out(s.ToDotNetString()); return new object?[] { (long)s.Len, null }; }
+    public static object?[] Printf(GoString format, GoSlice args) { var s = DoSprintf(format.ToDotNetString(), Args(args)); Out(s); return new object?[] { (long)Encoding.UTF8.GetByteCount(s), null }; }
 
     public static object Errorf(GoString format, GoSlice args) =>
         new GoError(GoString.FromDotNetString(DoSprintf(format.ToDotNetString(), Args(args))));

@@ -55,6 +55,13 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Print": {"Fmt", "Print"}, "Println": {"Fmt", "Println"}, "Printf": {"Fmt", "Printf"},
 		"Errorf": {"Fmt", "Errorf"},
 	},
+	"sort": {
+		"Ints": {"Sort", "Ints"}, "Float64s": {"Sort", "Float64s"}, "Strings": {"Sort", "Strings"},
+		"IntsAreSorted": {"Sort", "IntsAreSorted"}, "SearchInts": {"Sort", "SearchInts"},
+	},
+	"time": {
+		"Sleep": {"Time", "Sleep"},
+	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
 		"LeadingZeros": {"MathBits", "LeadingZeros"}, "LeadingZeros64": {"MathBits", "LeadingZeros64"},
@@ -101,8 +108,37 @@ var shimRegistry = map[string]map[string]shimFunc{
 // opaqueShimTypes are stdlib types represented at runtime as opaque object
 // handles (not lowered structures); method calls on them dispatch to shims.
 var opaqueShimTypes = map[string]bool{
-	"reflect.Type":  true,
-	"reflect.Value": true,
+	"reflect.Type":      true,
+	"reflect.Value":     true,
+	"sync.Mutex":        true,
+	"sync.RWMutex":      true,
+	"sync.WaitGroup":    true,
+	"sync.Once":         true,
+	"sync.Map":          true,
+	"strings.Builder":   true,
+	"bytes.Buffer":      true,
+}
+
+// opaqueZeroCtor maps an opaque value-type shim to the constructor producing its
+// (non-null) zero value; types absent here zero to null (e.g. reflect handles).
+var opaqueZeroCtor = map[string]shimFunc{
+	"sync.Mutex":      {"Sync", "NewMutex"},
+	"sync.RWMutex":    {"Sync", "NewRWMutex"},
+	"sync.WaitGroup":  {"Sync", "NewWaitGroup"},
+	"sync.Once":       {"Sync", "NewOnce"},
+	"sync.Map":        {"Sync", "NewMap"},
+	"strings.Builder": {"StringsBuilder", "New"},
+	"bytes.Buffer":    {"BytesBuffer", "New"},
+}
+
+// shimZeroExtern returns the zero-value constructor extern for an opaque value
+// type shim, if it has one.
+func shimZeroExtern(shim string) (*goir.Extern, bool) {
+	sf, ok := opaqueZeroCtor[shim]
+	if !ok {
+		return nil, false
+	}
+	return &goir.Extern{Assembly: shimAssembly, Namespace: shimAssembly, Type: sf.csType, Method: sf.csMethod, Ret: goir.TObject}, true
 }
 
 // isOpaqueShimType reports whether a named type is an opaque shim handle.
@@ -122,6 +158,28 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},
 		"String": {"Reflect", "Type_String"}, "NumField": {"Reflect", "Type_NumField"},
 		"Elem": {"Reflect", "Type_Elem"},
+	},
+	"sync.Mutex": {
+		"Lock": {"Sync", "Mutex_Lock"}, "Unlock": {"Sync", "Mutex_Unlock"}, "TryLock": {"Sync", "Mutex_TryLock"},
+	},
+	"sync.RWMutex": {
+		"Lock": {"Sync", "RWMutex_Lock"}, "Unlock": {"Sync", "RWMutex_Unlock"},
+		"RLock": {"Sync", "RWMutex_RLock"}, "RUnlock": {"Sync", "RWMutex_RUnlock"},
+	},
+	"sync.WaitGroup": {
+		"Add": {"Sync", "WaitGroup_Add"}, "Done": {"Sync", "WaitGroup_Done"}, "Wait": {"Sync", "WaitGroup_Wait"},
+	},
+	"sync.Once": {
+		"Do": {"Sync", "Once_Do"},
+	},
+	"sync.Map": {
+		"Store": {"Sync", "Map_Store"}, "Load": {"Sync", "Map_Load"}, "Delete": {"Sync", "Map_Delete"},
+	},
+	"time.Duration": {
+		"Seconds": {"Time", "Duration_Seconds"}, "Minutes": {"Time", "Duration_Minutes"},
+		"Hours": {"Time", "Duration_Hours"}, "Nanoseconds": {"Time", "Duration_Nanoseconds"},
+		"Microseconds": {"Time", "Duration_Microseconds"}, "Milliseconds": {"Time", "Duration_Milliseconds"},
+		"String": {"Time", "Duration_String"},
 	},
 	"reflect.Value": {
 		"Kind": {"Reflect", "Value_Kind"}, "Type": {"Reflect", "Value_Type"},
@@ -156,7 +214,13 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 		return nil, false
 	}
 	sig := fn.Type().(*types.Signature)
-	params := []goir.Type{goir.TObject} // receiver handle
+	// Receiver IR type: opaque handle (object) for reflect.Type/Value, or the
+	// underlying type for named primitives (e.g. time.Duration -> i8).
+	recvIR := goir.TObject
+	if rt, ok := l.lowerCtx.goType(recv); ok {
+		recvIR = rt
+	}
+	params := []goir.Type{recvIR}
 	for i := 0; i < sig.Params().Len(); i++ {
 		pt, ok := l.lowerCtx.goType(sig.Params().At(i).Type())
 		if !ok {

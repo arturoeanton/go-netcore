@@ -461,8 +461,14 @@ func main() {
 func TestLowerUnsupported(t *testing.T) {
 	pkg := loadMain(t, `package main
 
+type T struct{}
+
+func (t T) M() int { return 1 }
+
 func main() {
-	go func(x int) { _ = x }(5)
+	t := T{}
+	f := t.M // bound method value, not yet supported
+	_ = f
 }
 `)
 	bag := &diagnostics.Bag{}

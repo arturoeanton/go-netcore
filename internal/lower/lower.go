@@ -479,10 +479,10 @@ func (c *lowerCtx) recvTypeName(fd *ast.FuncDecl) string {
 // goType maps a go/types.Type to a goir.Type, registering struct types on demand.
 func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
 	if named, ok := t.(*types.Named); ok {
-		// Opaque shim types (reflect.Type, reflect.Value, …) are handles, not
-		// lowered structures: represent them as plain objects.
+		// Opaque shim types (reflect.Type/Value, sync.*, …) are handles backed by
+		// runtime reference objects, not lowered structures.
 		if isOpaqueShimType(named) {
-			return goir.TObject, true
+			return goir.Type{Kind: goir.KObject, Shim: named.Obj().Pkg().Path() + "." + named.Obj().Name()}, true
 		}
 		if _, isStruct := named.Underlying().(*types.Struct); isStruct {
 			return goir.StructType(c.structFor(named)), true

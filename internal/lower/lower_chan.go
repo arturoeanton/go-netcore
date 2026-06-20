@@ -268,14 +268,16 @@ func (l *funcLowerer) goStmt(s *ast.GoStmt) {
 	l.invokeMethod()
 	call := s.Call
 
-	// go func(){ body }() — lower the literal to a closure (capturing free vars as
-	// cells) and start it. Arguments to the literal are not supported yet.
-	if lit, ok := call.Fun.(*ast.FuncLit); ok {
-		if len(call.Args) != 0 {
-			l.fail(s.Pos(), "go func literal with arguments")
-			return
-		}
+	// go func(){ body }() — no args: start the literal's closure directly.
+	if lit, ok := call.Fun.(*ast.FuncLit); ok && len(call.Args) == 0 {
 		l.closureLit(lit) // leaves a GoClosure on the stack
+		l.emit(goir.Op{Code: goir.OpGoStart})
+		return
+	}
+	// go func(a){...}(x) / go closureVar(args) — capture the func value + args in
+	// a thunk and start it.
+	if _, isLit := call.Fun.(*ast.FuncLit); isLit || l.exprType(call.Fun).Kind == goir.KFunc {
+		l.buildFuncValueThunk(call)
 		l.emit(goir.Op{Code: goir.OpGoStart})
 		return
 	}
