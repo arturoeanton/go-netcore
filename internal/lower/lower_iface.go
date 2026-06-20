@@ -277,8 +277,99 @@ func (l *funcLowerer) typeAssert(e *ast.TypeAssertExpr) {
 		l.fail(e.Pos(), "type assertion target")
 		return
 	}
+	// x.(I) where I is a non-empty interface: the result is x re-typed as I if its
+	// dynamic type implements I, else a panic.
+	if iface, ok := l.assertIface(e.Type); ok {
+		tmp := l.addLocal(nil, goir.TObject)
+		l.emitInterfaceAssert(func() { l.expr(e.X) }, iface, tmp)
+		ok2, bad := l.label(), l.label()
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: ok2})
+		l.mark(bad)
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: "interface conversion: interface does not implement the requested interface"})
+		l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
+		l.emit(goir.Op{Code: goir.OpCallPanic})
+		l.mark(ok2)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		return
+	}
 	l.expr(e.X)
 	l.emitUnbox(t)
+}
+
+// assertIface reports the underlying *types.Interface of a type-assertion target
+// when it is a non-empty interface (so the assert checks interface satisfaction,
+// not a concrete representation).
+func (l *funcLowerer) assertIface(typeExpr ast.Expr) (*types.Interface, bool) {
+	iface, ok := l.pkg.TypesInfo.TypeOf(typeExpr).Underlying().(*types.Interface)
+	if !ok || iface.NumMethods() == 0 {
+		return nil, false
+	}
+	return iface, true
+}
+
+// emitInterfaceAssert stores into resTmp the value (from valEmit) re-typed as the
+// interface if its dynamic type implements iface, else null — the matched/not form
+// the comma-ok and single-value assertions both build on.
+func (l *funcLowerer) emitInterfaceAssert(valEmit func(), iface *types.Interface, resTmp int) {
+	valEmit()
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: resTmp})
+	matched, done := l.label(), l.label()
+	for _, impl := range l.implementers(iface) {
+		ct, _ := l.goType(impl.named)
+		switch {
+		case impl.viaPtr:
+			skip := l.label()
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
+			l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: goir.PtrType(ct)})
+			l.emit(goir.Op{Code: goir.OpBrFalse, Label: skip})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
+			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ct)})
+			l.emit(goir.Op{Code: goir.OpPtrTypeId})
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(ct.Struct.Id)})
+			l.emit(goir.Op{Code: goir.OpCeq})
+			l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
+			l.mark(skip)
+		default:
+			if id, ok := l.namedIdentity(impl.named); ok {
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
+				l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.namedIdExtern()})
+				l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
+				l.emit(goir.Op{Code: goir.OpCeq})
+				l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
+			} else {
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
+				l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: ct})
+				l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
+			}
+		}
+	}
+	// A runtime/stdlib GoError satisfies an interface whose method set is Error().
+	if ifaceIsError(iface) {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
+		l.emit(goir.Op{Code: goir.OpIsInstGoError})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
+	}
+	l.emit(goir.Op{Code: goir.OpLdNull})
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: resTmp})
+	l.emit(goir.Op{Code: goir.OpBr, Label: done})
+	l.mark(matched)
+	l.mark(done)
+}
+
+// ifaceIsError reports whether iface's method set is exactly the error interface's
+// (an Error() string method), so a runtime GoError satisfies it.
+func ifaceIsError(iface *types.Interface) bool {
+	if iface.NumMethods() != 1 {
+		return false
+	}
+	m := iface.Method(0)
+	sig, ok := m.Type().(*types.Signature)
+	if !ok || m.Name() != "Error" || sig.Params().Len() != 0 || sig.Results().Len() != 1 {
+		return false
+	}
+	b, ok := sig.Results().At(0).Type().Underlying().(*types.Basic)
+	return ok && b.Kind() == types.String
 }
 
 // typeAssertOK lowers the comma-ok form v, ok := x.(T) using isinst.
@@ -291,6 +382,15 @@ func (l *funcLowerer) typeAssertOK(s *ast.AssignStmt) {
 	}
 
 	isTmp := l.addLocal(nil, goir.TObject)
+
+	// x.(I) where I is a non-empty interface: match by interface satisfaction
+	// (isinst against the representation would match everything).
+	if iface, ok := l.assertIface(ta.Type); ok {
+		l.emitInterfaceAssert(func() { l.expr(ta.X) }, iface, isTmp)
+		l.bindAssertResults(s, isTmp, t)
+		return
+	}
+
 	l.expr(ta.X)
 	l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: t})
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: isTmp})
@@ -312,6 +412,12 @@ func (l *funcLowerer) typeAssertOK(s *ast.AssignStmt) {
 		l.mark(lok)
 	}
 
+	l.bindAssertResults(s, isTmp, t)
+}
+
+// bindAssertResults binds the comma-ok results: ok = (isTmp != null), and the value
+// = unbox(isTmp) to type t (the matched value), or t's zero value when isTmp is null.
+func (l *funcLowerer) bindAssertResults(s *ast.AssignStmt, isTmp int, t goir.Type) {
 	vIdx := l.assignTarget(s, s.Lhs[0], t)
 	okIdx := l.assignTarget(s, s.Lhs[1], goir.TBool)
 
