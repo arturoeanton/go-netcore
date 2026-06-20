@@ -33,7 +33,7 @@ public static class Big
     }
     public static object?[] Float_SetString(object z, GoString s)
     {
-        if (double.TryParse(s.ToDotNetString(), System.Globalization.NumberStyles.Float, Inv, out double v))
+        if (double.TryParse(s.ToDotNetString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
         { ((GoBigFloat)z).V = v; return new object?[] { z, true }; }
         return new object?[] { null, false };
     }
