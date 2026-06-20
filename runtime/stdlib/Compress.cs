@@ -1,0 +1,75 @@
+namespace GoCLR.Stdlib;
+
+using System.IO;
+using System.IO.Compression;
+using GoCLR.Runtime;
+
+/// <summary>A gzip/zlib/flate writer that buffers and emits on Close.</summary>
+public sealed class GoCompWriter { public object? W; public MemoryStream Mem = new(); public Stream Z = null!; public int Kind; }
+
+/// <summary>Shim for compress/gzip, compress/zlib, compress/flate (.NET streams).</summary>
+public static class Compress
+{
+    private static Stream Wrap(MemoryStream mem, int kind) => kind switch
+    {
+        1 => new ZLibStream(mem, CompressionMode.Compress, true),
+        2 => new DeflateStream(mem, CompressionMode.Compress, true),
+        _ => new GZipStream(mem, CompressionMode.Compress, true),
+    };
+    public static object GzipNewWriter(object? w) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 0), Kind = 0 }; }
+    public static object ZlibNewWriter(object? w) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 1), Kind = 1 }; }
+    public static object FlateNewWriter(object? w, long level) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 2), Kind = 2 }; }
+
+    public static object?[] CompW_Write(object wo, GoSlice p)
+    {
+        var w = (GoCompWriter)wo;
+        var buf = new byte[p.Len];
+        for (int i = 0; i < p.Len; i++) buf[i] = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
+        w.Z.Write(buf, 0, buf.Length);
+        return new object?[] { (long)p.Len, null };
+    }
+    public static object? CompW_Close(object wo)
+    {
+        var w = (GoCompWriter)wo;
+        w.Z.Dispose();
+        WriteRaw(w.W, w.Mem.ToArray());
+        return null;
+    }
+    public static object? CompW_Flush(object wo) { ((GoCompWriter)wo).Z.Flush(); return null; }
+
+    // Write raw (binary) bytes to a writer the runtime understands.
+    internal static void WriteRaw(object? w, byte[] data)
+    {
+        switch (w)
+        {
+            case GoBuffer buf: buf.B.AddRange(data); break;
+            case GoReader gr: { var n = new byte[gr.Data.Length + data.Length]; gr.Data.CopyTo(n, 0); data.CopyTo(n, gr.Data.Length); gr.Data = n; break; }
+            default: Fmt.WriteTo(w, System.Text.Encoding.UTF8.GetString(data)); break;
+        }
+    }
+
+    private static GoSlice Bytes(byte[] b)
+    {
+        var d = new object?[b.Length];
+        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
+    }
+    private static object DecompReader(object? r, int kind)
+    {
+        byte[] data = Readers.Drain(r);
+        using var input = new MemoryStream(data);
+        Stream z = kind switch
+        {
+            1 => new ZLibStream(input, CompressionMode.Decompress),
+            2 => new DeflateStream(input, CompressionMode.Decompress),
+            _ => new GZipStream(input, CompressionMode.Decompress),
+        };
+        using var outp = new MemoryStream();
+        z.CopyTo(outp);
+        return new GoReader { Data = outp.ToArray() };
+    }
+    public static object?[] GzipNewReader(object? r) => new object?[] { DecompReader(r, 0), null };
+    public static object ZlibNewReaderObj(object? r) => DecompReader(r, 1);
+    public static object?[] ZlibNewReader(object? r) => new object?[] { DecompReader(r, 1), null };
+    public static object FlateNewReader(object? r) => DecompReader(r, 2);
+}

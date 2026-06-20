@@ -66,6 +66,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"mime":           {"TypeByExtension": {"Mime", "TypeByExtension"}},
 	"os/exec":        {"Command": {"Exec", "Command"}},
 	"container/list": {"New": {"List", "New"}},
+	"encoding/csv":   {"NewReader": {"Csv", "NewReader"}, "NewWriter": {"Csv", "NewWriter"}},
+	"compress/gzip":  {"NewWriter": {"Compress", "GzipNewWriter"}, "NewReader": {"Compress", "GzipNewReader"}},
+	"compress/zlib":  {"NewWriter": {"Compress", "ZlibNewWriter"}, "NewReader": {"Compress", "ZlibNewReader"}},
+	"compress/flate": {"NewWriter": {"Compress", "FlateNewWriter"}, "NewReader": {"Compress", "FlateNewReader"}},
 	"net/url": {
 		"QueryEscape": {"Url", "QueryEscape"}, "PathEscape": {"Url", "PathEscape"},
 		"QueryUnescape": {"Url", "QueryUnescape"}, "PathUnescape": {"Url", "PathUnescape"},
@@ -228,6 +232,12 @@ var opaqueShimTypes = map[string]bool{
 	"os/exec.Cmd":                  true,
 	"container/list.List":          true,
 	"container/list.Element":       true,
+	"encoding/csv.Reader":          true,
+	"encoding/csv.Writer":          true,
+	"compress/gzip.Writer":         true,
+	"compress/gzip.Reader":         true,
+	"compress/zlib.Writer":         true,
+	"compress/flate.Writer":        true,
 	"math/big.Int":                 true,
 	"encoding/base32.Encoding":     true,
 	"strings.Reader":               true,
@@ -421,6 +431,21 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"container/list.Element": {
 		"Next": {"List", "Element_Next"}, "Prev": {"List", "Element_Prev"},
+	},
+	"encoding/csv.Reader": {
+		"ReadAll": {"Csv", "ReadAll"},
+	},
+	"encoding/csv.Writer": {
+		"Write": {"Csv", "Write"}, "Flush": {"Csv", "Flush"},
+	},
+	"compress/gzip.Writer": {
+		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"},
+	},
+	"compress/zlib.Writer": {
+		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"},
+	},
+	"compress/flate.Writer": {
+		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"},
 	},
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
