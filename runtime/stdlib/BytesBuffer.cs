@@ -57,6 +57,24 @@ public static class BytesBuffer
 
     public static object?[] WriteString(object b, GoString s) { var by = s.Bytes; G(b).B.AddRange(by); return new object?[] { (long)by.Length, null }; }
     public static object? WriteByte(object b, int c) { G(b).B.Add((byte)c); return null; }
+    // WriteTo(w io.Writer) (n int64, err error): drain the unread bytes into w and
+    // empty the buffer, like Go. Writes raw bytes to a buffer; otherwise routes text
+    // through the shared writer dispatch (stdout/stderr/builder/response writer).
+    public static object?[] WriteTo(object b, object? w)
+    {
+        var g = G(b);
+        var data = g.B.GetRange(g.Pos, g.B.Count - g.Pos).ToArray();
+        long n = data.Length;
+        switch (w)
+        {
+            case GoBuffer buf: buf.B.AddRange(data); break;
+            case GoStringBuilder sb: sb.SB.Append(Encoding.UTF8.GetString(data)); break;
+            default: Fmt.WriteTo(w, Encoding.UTF8.GetString(data)); break;
+        }
+        g.B.Clear();
+        g.Pos = 0;
+        return new object?[] { n, null };
+    }
     public static object?[] WriteRune(object b, int r)
     {
         var rune = System.Text.Rune.IsValid(r) ? new System.Text.Rune(r) : System.Text.Rune.ReplacementChar;

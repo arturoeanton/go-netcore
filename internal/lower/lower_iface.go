@@ -141,6 +141,15 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 	// valueNull's, so the dispatch must pass the embedded valueNull, not the outer
 	// value). Empty for a directly-declared method.
 	recvPath := make([][]int, len(impls))
+	// unsupported[i] marks an implementer reachable only because it incidentally
+	// satisfies the interface (the closure of a large program has many such types),
+	// whose method goclr can neither lower (it belongs to a C# shim type) nor map to
+	// a shim extern — e.g. *bufConn in x/net/http2/h2c promoting ReadByte from an
+	// embedded *bufio.Reader, enumerated as an io.ByteReader implementer though it
+	// never flows to one. The type is still matched, but its case body panics: a
+	// guarded, diagnosable failure only if such a value ever reaches this call site,
+	// rather than aborting the whole compilation. Tracked in LIMITATIONS.md.
+	unsupported := make([]bool, len(impls))
 	for i, impl := range impls {
 		labels[i] = l.label()
 		embedField[i] = -1
@@ -169,8 +178,10 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 				}
 			}
 			if embedField[i] < 0 {
-				l.fail(ifaceMethod.Pos(), "interface method "+ifaceMethod.Name()+" on "+impl.named.Obj().Name())
-				return goir.TVoid
+				// The method resolves to a shim type's method with no lowered body and
+				// no shim extern. Keep this implementer matchable but give it a panic
+				// body instead of failing the whole compilation (see unsupported above).
+				unsupported[i] = true
 			}
 		}
 	}
@@ -250,6 +261,17 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 
 	for i, impl := range impls {
 		l.mark(labels[i])
+		// Incidental implementer whose method goclr cannot dispatch (shim type method,
+		// no extern): panic if such a value ever reaches this site. It is matched so the
+		// failure is precise, not silently routed to another branch.
+		if unsupported[i] {
+			l.emit(goir.Op{Code: goir.OpStrConst, Str: "goclr: interface method " + ifaceMethod.Name() +
+				" on " + impl.named.Obj().Name() + " is not supported (shim type method)"})
+			l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
+			l.emit(goir.Op{Code: goir.OpCallPanic})
+			l.emit(goir.Op{Code: goir.OpBr, Label: end})
+			continue
+		}
 		// Embedded-interface implementer: unwrap to the embedded interface value and
 		// re-dispatch (the method is promoted from that field).
 		if embedField[i] >= 0 {

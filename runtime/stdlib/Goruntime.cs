@@ -16,6 +16,13 @@ public static class Goruntime
         new object?[] { GoString.FromDotNetString(""), 0L };
     public static ulong Func_Entry(object f) => (ulong)((GoRuntimeFunc)f).Pc;          // returns uintptr
 
+    // Caller(skip) (pc uintptr, file string, line int, ok bool): goclr keeps no
+    // reflectable call stack (no PDB/source map), so caller info is unavailable —
+    // the honest answer is ok=false with empty file/line, which callers like
+    // gommon/log handle by simply omitting the source position.
+    public static object?[] Caller(long skip) =>
+        new object?[] { (ulong)0, GoString.FromDotNetString(""), 0L, false };
+
     public static long GOMAXPROCS(long n) => System.Environment.ProcessorCount;
     public static long NumCPU() => System.Environment.ProcessorCount;
     public static long NumGoroutine() => 1;

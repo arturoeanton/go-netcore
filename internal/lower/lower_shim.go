@@ -41,7 +41,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"IsExported": {"Ast", "IsExported"},
 	},
 	"runtime": {
-		"FuncForPC": {"Goruntime", "FuncForPC"}, "GOMAXPROCS": {"Goruntime", "GOMAXPROCS"},
+		"FuncForPC": {"Goruntime", "FuncForPC"}, "GOMAXPROCS": {"Goruntime", "GOMAXPROCS"}, "Caller": {"Goruntime", "Caller"},
 		"NumCPU": {"Goruntime", "NumCPU"}, "NumGoroutine": {"Goruntime", "NumGoroutine"},
 		"GC": {"Goruntime", "GC"}, "Gosched": {"Goruntime", "Gosched"},
 	},
@@ -660,6 +660,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Bytes": {"BytesBuffer", "Bytes"}, "Len": {"BytesBuffer", "Len"}, "Reset": {"BytesBuffer", "Reset"},
 		"Truncate": {"BytesBuffer", "Truncate"}, "Grow": {"BytesBuffer", "Grow"},
 		"ReadByte": {"BytesBuffer", "ReadByte"}, "ReadRune": {"BytesBuffer", "ReadRune"}, "Next": {"BytesBuffer", "Next"},
+		"WriteTo": {"BytesBuffer", "WriteTo"},
+	},
+	"os.File": {
+		"Fd": {"Os", "File_Fd"},
 	},
 	"sync.Mutex": {
 		"Lock": {"Sync", "Mutex_Lock"}, "Unlock": {"Sync", "Mutex_Unlock"}, "TryLock": {"Sync", "Mutex_TryLock"},

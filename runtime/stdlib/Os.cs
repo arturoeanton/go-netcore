@@ -16,6 +16,18 @@ public static class Os
     public static object Stderr() => StderrFile;
     public static object Stdin() => StdinFile;
 
+    // (*os.File).Fd() uintptr: the conventional descriptor number (stdin 0, stdout 1,
+    // stderr 2). Consumers use it only to ask isatty whether the stream is a terminal;
+    // under goclr isatty always reports false, so the exact value just needs to be the
+    // standard fd for the stream.
+    public static ulong File_Fd(object f)
+    {
+        var gf = (GoFile)f;
+        if (gf.IsStdin) return 0;
+        if (gf.IsStderr) return 2;
+        return 1;
+    }
+
     public static GoString Getenv(GoString key) =>
         GoString.FromDotNetString(System.Environment.GetEnvironmentVariable(key.ToDotNetString()) ?? "");
 

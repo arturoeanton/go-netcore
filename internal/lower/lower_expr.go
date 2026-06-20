@@ -110,8 +110,17 @@ func (l *funcLowerer) fieldRead(e *ast.SelectorExpr) {
 		return
 	}
 	// Field read on an opaque stdlib shim type (e.g. url.URL.Host) -> getter extern.
-	if bt.Kind == goir.KObject && bt.Shim != "" {
-		if ext, ok := shimFieldExtern(bt.Shim, e.Sel.Name, l.exprType(e)); ok {
+	// A *shimType is represented by the same opaque handle as the value (a shim
+	// pointer carries no separate cell), so a field read through it uses the same
+	// getter — e.g. (*http.Response).Header.
+	shim := ""
+	if bt.Kind == goir.KObject {
+		shim = bt.Shim
+	} else if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KObject {
+		shim = bt.Elem.Shim
+	}
+	if shim != "" {
+		if ext, ok := shimFieldExtern(shim, e.Sel.Name, l.exprType(e)); ok {
 			l.expr(e.X)
 			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
 			return
