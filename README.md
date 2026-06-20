@@ -13,31 +13,34 @@ endpoint runs JavaScript through goja — see [`cmd/server`](cmd/server/main.go)
 
 ## Status
 
-This repository currently implements the **front half** of the pipeline plus the
-.NET runtime core. See [ROADMAP.md](ROADMAP.md) for the milestone breakdown and
-exactly what works today vs. what is under construction.
+The compiler runs end-to-end: front half + the ECMA-335 emitter + the .NET runtime
++ a stdlib overlay. **114 conformance fixtures pass byte-for-byte vs `go run`.**
+See [ROADMAP.md](ROADMAP.md) / [ROADMAP-M2.5.md](ROADMAP-M2.5.md) for the milestone
+breakdown and [LIMITATIONS.md](LIMITATIONS.md) for the tracked gaps.
 
 | Area | State |
 | --- | --- |
 | CLI (`build`/`run`/`analyze`/`test`/`doctor`/`clean`) | ✅ wired |
-| `doctor`, `clean` | ✅ functional |
 | `analyze` (cgo/asm/unsafe + echo-goja profile, human + JSON) | ✅ functional |
 | Frontend loader (`go/packages`, type info, build tags) | ✅ functional |
-| Diagnostics (`GCLRxxxx`, actionable, located) | ✅ functional |
-| .NET runtime core types (GoString, slices, maps, interfaces, defer/panic, goroutines, channels) | ✅ compiles (`net8.0`) |
-| Lower → emit (ECMA-335 managed PE) | 🟡 **M1 closed + M2 nearly done**: control flow, funcs/methods, strings, structs, slices, maps, pointers, multi-return, interfaces, defer/panic/recover, closures — all run on `dotnet` |
-| Conformance runner (`goclr run` vs `go run`) | ✅ functional |
-| stdlib overlay (net/http, encoding/json, …) | 🚧 in progress |
+| .NET runtime core (GoString, slices, maps, pointers, interfaces, defer/panic, goroutines, channels, closures) | ✅ runs on `net8.0` |
+| **M1 + M2 language** (control flow, funcs/methods, structs, slices, maps, pointers, multi-return, interfaces, defer/panic/recover, closures, generics, goroutines/channels/select, complex) | ✅ **closed** |
+| **M2.5 overlay** — multi-package, globals/`init`, C# shim/extern mechanism | ✅ |
+| **P0 stdlib** (20 pkgs, hardened) — fmt/strconv/strings/bytes/unicode/utf8/sort/math/errors/reflect(r+w)/encoding-json(M+U)/time/sync/math-rand/context/io/os | ✅ byte-exact |
+| **P1 stdlib** — net/http **client + server**, net TCP, crypto (sha/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio/io, log, math/big, container/list, os/exec, mime | ✅ |
+| **P2 stdlib** — encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM | ✅ |
+| **P3 stdlib** — hash (fnv/crc32/adler32) | 🟡 started |
+| goja (M3), Echo (M5), AOT/perf (P4) | 🚧 see [GOJA-STRATEGY.md](GOJA-STRATEGY.md) |
 
-`goclr build`/`goclr run` emit and execute a real `.dll` for the implemented
-language subset: functions (with recursion), int/int32/bool variables and
-constants, arithmetic/comparison/logical/bitwise operators, `if`/`for`/`switch`
-with `break`/`continue`, and `println`/`print`. Anything beyond that is rejected
-with an actionable `GCLR0301` until later increments. Try it:
+`goclr build`/`goclr run` emit and execute a real `.dll`. The implemented surface
+is most of Go plus a growing stdlib; anything beyond it is rejected with an
+actionable `GCLR0301`. Try it:
 
 ```bash
 go build -o bin/goclr ./cmd/goclr
-bin/goclr run ./tests/conformance/015_fib   # -> fib(0..9), matches `go run`
+bin/goclr run ./tests/conformance/015_fib            # fib(0..9), matches `go run`
+bin/goclr run ./tests/conformance/286_json_unmarshal # struct/slice/map decode
+go test ./tests/conformance/                         # all 114 fixtures vs `go run`
 ```
 
 ## Install / build

@@ -198,11 +198,14 @@ just those two libs). Remaining LANGUAGE work — ALL required to close M2:
 gaps are a few stdlib-format niceties (float/complex println exact formatting,
 handled once fmt is overlaid). Next: **M2.5 stdlib overlay** → M3 goja.
 
-### M2.5 — stdlib overlay 🟡 (P0 ✅ CLOSED; P1+ pending)
-Full plan in `ROADMAP-M2.5.md` (overlay mechanism, missing core pkgs, reflect
-keystone, semantic-parity hazards, priority matrix). Delivery mechanism + all P0
-packages done, each verified byte-exact vs `go run` via the conformance harness.
-**88 conformance fixtures pass.** Tagged `0.0.2.p0full`.
+### M2.5 — stdlib overlay 🟡 (P0 ✅ hardened; P1 ✅; P2 ✅; P3 started)
+Full plan + live progress in `ROADMAP-M2.5.md` (overlay mechanism, missing core
+pkgs, reflect keystone, semantic-parity hazards, priority matrix). Delivery
+mechanism + P0 (hardened) + P1 (incl. net/http client+server, net TCP, crypto) +
+P2 (encoding/compress/aes) + P3 hash family done — each verified byte-exact vs
+`go run`. **114 conformance fixtures pass.** Tags `0.0.2.p0full` →
+`0.0.10.p3-hash`. See `LIMITATIONS.md` for tracked gaps and `GOJA-STRATEGY.md` for
+the goja/unsafe.Pointer plan (M3).
 
 Foundations (the "how"):
 - ✅ **multi-package lowering** — compiles main + its transitive non-stdlib
