@@ -11,7 +11,10 @@ func main() {
 	fmt.Printf("[%d][%5d][%-5d][%05d][%+d][% d]\n", 42, 42, 42, 42, 42, 42)
 	fmt.Printf("%x %X %#x %o %#o %b\n", 255, 255, 255, 8, 8, 5)
 	fmt.Printf("%d %x\n", uint64(18446744073709551615), uint64(18446744073709551615))
-	fmt.Printf("%d %s %v\n", "oops", 42, true)
+	// bad-verb cases through interface{} so `go vet` stays quiet
+	var bs interface{} = "oops"
+	var bi interface{} = 42
+	fmt.Printf("%d %s %v\n", bs, bi, true)
 	fmt.Printf("[%5s][%-5s][%.2s]\n", "ab", "ab", "abcdef")
 	fmt.Printf("%f %.2f %8.3f %e %.3e %g\n", 3.14159, 3.14159, 3.14159, 1234.5, 1234.5, 0.0001)
 	fmt.Printf("%f %f %g %e\n", math.Inf(1), math.Inf(-1), math.NaN(), math.Inf(1))
