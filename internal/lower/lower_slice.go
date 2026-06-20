@@ -164,6 +164,29 @@ func (l *funcLowerer) sliceIndexWrite(e *ast.IndexExpr, st goir.Type, rhs ast.Ex
 // sliceExpr lowers s[lo:hi].
 func (l *funcLowerer) sliceExpr(e *ast.SliceExpr) {
 	st := l.exprType(e.X)
+	// s[low:high] on a string yields the byte subrange.
+	if st.Kind == goir.KString {
+		tmp := l.addLocal(nil, goir.TString)
+		l.expr(e.X)
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		if e.Low != nil {
+			l.expr(e.Low)
+		} else {
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: 0})
+		}
+		if e.High != nil {
+			l.expr(e.High)
+		} else {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+			l.emit(goir.Op{Code: goir.OpStrLen})
+		}
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "StrSlice",
+			Params: []goir.Type{goir.TString, goir.TInt64, goir.TInt64}, Ret: goir.TString,
+		}})
+		return
+	}
 	if st.Kind != goir.KSlice {
 		l.fail(e.Pos(), "slice expression (only slices are supported)")
 		return
@@ -199,8 +222,26 @@ func (l *funcLowerer) appendCall(e *ast.CallExpr) goir.Type {
 		return goir.TVoid
 	}
 	if e.Ellipsis.IsValid() {
-		l.fail(e.Pos(), "append with ... spread")
-		return goir.TVoid
+		// append(s, other...) — spread the second argument's elements.
+		if len(e.Args) != 2 {
+			l.fail(e.Pos(), "append spread takes exactly two arguments")
+			return goir.TVoid
+		}
+		l.expr(e.Args[0])
+		argT := l.exprType(e.Args[1])
+		method := "AppendSlice"
+		paramT := st
+		if argT.Kind == goir.KString {
+			// append([]byte, str...) — append the string's bytes.
+			method = "AppendString"
+			paramT = goir.TString
+		}
+		l.expr(e.Args[1])
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: method,
+			Params: []goir.Type{st, paramT}, Ret: st,
+		}})
+		return st
 	}
 	l.expr(e.Args[0])
 	for _, a := range e.Args[1:] {

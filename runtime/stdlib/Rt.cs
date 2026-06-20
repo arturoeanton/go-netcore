@@ -12,4 +12,30 @@ public static class Rt
     /// <summary>The nil slice value (zero value of every slice type): a GoSlice with
     /// a null backing array, so `s == nil` is true and append still works.</summary>
     public static GoSlice NilSlice() => default;
+
+    /// <summary>append(s, other...) — append all of other's elements.</summary>
+    public static GoSlice AppendSlice(GoSlice s, GoSlice other)
+    {
+        for (int i = 0; i < other.Len; i++) s = GoSlices.AppendOne(s, other.Data![other.Off + i]);
+        return s;
+    }
+
+    /// <summary>append(b, str...) where b is []byte — append the string's bytes.</summary>
+    public static GoSlice AppendString(GoSlice s, GoString str)
+    {
+        foreach (byte b in str.Bytes) s = GoSlices.AppendOne(s, (int)b);
+        return s;
+    }
+
+    /// <summary>s[low:high] for a string — the byte subrange (Go slices strings by
+    /// byte offset). Panics out of range, like Go.</summary>
+    public static GoString StrSlice(GoString s, long low, long high)
+    {
+        byte[] b = s.Bytes;
+        if (low < 0 || high < low || high > b.Length)
+            throw new GoPanicException(GoString.FromDotNetString("runtime error: slice bounds out of range"));
+        var r = new byte[high - low];
+        System.Array.Copy(b, (int)low, r, 0, (int)(high - low));
+        return GoString.FromBytes(r);
+    }
 }

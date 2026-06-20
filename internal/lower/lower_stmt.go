@@ -295,7 +295,16 @@ func (l *funcLowerer) lvalueAddr(e ast.Expr) {
 
 func (l *funcLowerer) declStmt(s *ast.DeclStmt) {
 	gd, ok := s.Decl.(*ast.GenDecl)
-	if !ok || gd.Tok != token.VAR {
+	if !ok {
+		l.fail(s.Pos(), "declaration")
+		return
+	}
+	// Local type declarations are registered in go/types and resolved lazily when
+	// used (structFor); local consts are folded at their use sites. Both are no-ops.
+	if gd.Tok == token.TYPE || gd.Tok == token.CONST {
+		return
+	}
+	if gd.Tok != token.VAR {
 		l.fail(s.Pos(), "declaration")
 		return
 	}
