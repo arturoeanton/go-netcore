@@ -19,7 +19,7 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**87 conformance fixtures pass, all byte-exact vs `go run`.**
+**88 conformance fixtures pass, all byte-exact vs `go run`. P0 is complete.**
 
 Foundations (§0.1) — **DONE**: multi-package lowering (main + transitive non-stdlib
 closure → one assembly), package-level vars + `init()` (`__goclr_init`), the C# shim /
@@ -53,8 +53,14 @@ Float ftoa parity (§0.4) — **DONE**: a shortest-round-trip formatter (`GoFtoa
 drives `%v`/`%g`/`%e`/`%E`/`println`/`strconv.FormatFloat`, matching Go's
 `exp<-4 || exp>=6` layout, lowercase `e`, and ≥2-digit signed exponent.
 
-P0 remaining: the general `reflect` write-path (`reflect.Value.Set*`/`New`/`Elem`)
-for code using reflect directly (json.Unmarshal is already covered via descriptors).
+reflect write-path (§5 phase 3) — **DONE**: settable `reflect.Value` over the GoPtr
+cell — `ValueOf(&x).Elem()` + `Set`/`SetInt`/`SetUint`/`SetFloat`/`SetBool`/
+`SetString`, settable struct `Field(i)` (threading writes back through parent
+structs), `CanSet`/`CanAddr`, and `reflect.New`.
+
+**P0 is complete.** Next: M3 (goja). Remaining tracks are P1+ (net/http+Kestrel,
+net TCP/UDP, crypto/bcrypt+jwt, database/sql, regexp, io/bufio, log/slog, …) per
+the priority matrix below.
 
 Documented limitations: `time.Time` is UTC-only (use `.UTC()` for determinism;
 Go uses Local); a named numeric type with `String()` (e.g. `time.Duration`) passed to

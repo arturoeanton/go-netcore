@@ -232,9 +232,13 @@ Float formatting is Go-exact: a shortest-round-trip ftoa (`GoFtoa`) drives `%v`,
 `%g`, `%e`/`%E`, `println`, and `strconv.FormatFloat` (Go's `exp<-4 || exp>=6`
 layout rule, lowercase `e`, ≥2-digit signed exponent).
 
-P0 remaining:
-- 🚧 general `reflect` write-path (`reflect.Value.Set*`/`New`/`Elem`) for code
-  using reflect directly (json.Unmarshal already covered via descriptors)
+The `reflect` **write-path** is done: `reflect.ValueOf(&x).Elem()` is settable and
+`Value.Set/SetInt/SetUint/SetFloat/SetBool/SetString`, settable struct `Field(i)`,
+`CanSet`, and `reflect.New` write back through the GoPtr cell (threading through
+parent structs for nested field sets).
+
+**P0 is complete.** Remaining stdlib work is P1+ (net/http, net, crypto, database/sql,
+…) tracked in `ROADMAP-M2.5.md`. Next: **M3 goja**.
 
 Known documented limitations:
 - `time.Time` operates in **UTC** (Go uses Local in `time.Unix`/`Now`); use `.UTC()`

@@ -46,7 +46,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Goroutines lowering | ✅ | S | ✅ |
 | Channels + select lowering | ✅ | M | 🟡 |
 | Generics | ✅ | L | ✅ |
-| Reflection lowering + emitted struct-tag descriptors (read-path) | 🟡 | L | ✅ |
+| Reflection lowering + struct-tag descriptors (read + write path) | ✅ | L | ✅ |
 | Multi-package lowering + globals + init() + C# shim/extern mechanism | ✅ | XL | ✅ |
 
 ## 3. .NET runtime (`GoCLR.Runtime`)
@@ -57,11 +57,11 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | sync: Mutex/RWMutex/Once/WaitGroup/Map (Pool/Cond pending) | 🟡 | M | ✅ |
 | sync/atomic | 🚧 | S | ✅ |
 | complex64/128 ✅; GoArray, Bytes helpers | 🟡 | S | 🟡 |
-| reflect runtime (read-path: kinds/fields/tags/values; write-path pending) | 🟡 | L | ✅ |
+| reflect runtime (read-path + settable write-path: Set*/Field/New) | ✅ | L | ✅ |
 | Time (Duration + time.Time/Format), Console/GoFunc/struct value helpers | 🟡 | M | ✅ |
 | select runtime, ASCII fast-path, intern pool | 🚧 | M | 🟡 |
 
-## 4. Stdlib overlay (C# shim mechanism live; 87 conformance fixtures byte-exact)
+## 4. Stdlib overlay (C# shim mechanism live; 88 conformance fixtures byte-exact)
 
 | Package(s) | State | Effort | MVP? |
 |---|---|---|---|
@@ -73,7 +73,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | net/url, mime, mime/multipart | 🚧 | M | ✅ |
 | regexp (+ syntax) | 🚧 | L | ✅ |
 | unicode/utf8 ✅; utf16 | 🟡 | S | ✅ |
-| reflect (read-path: kinds/fields/tags/values) ✅; settable write-path 🚧 | 🟡 | L | ✅ |
+| reflect (read-path + settable write-path: Set*/Field/New) | ✅ | L | ✅ |
 | time (Duration + time.Time/Format) ✅; runtime/log/slog 🚧 | 🟡 | M | ✅ |
 | os (env/exit/getpid/Stdout/Stderr) ✅; path/filepath 🚧 | 🟡 | M | ✅ |
 | math/rand (seeded, deterministic — Go rngSource port) | ✅ | M | ✅ |
@@ -105,7 +105,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Item | State | Effort | MVP? |
 |---|---|---|---|
 | Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
-| 87 conformance fixtures (000–287), all byte-exact vs `go run` | ✅ | M | ✅ |
+| 88 conformance fixtures (000–288), all byte-exact vs `go run` | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |

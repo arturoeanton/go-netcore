@@ -9,8 +9,11 @@ using GoCLR.Runtime;
 /// TypeDef).</summary>
 public sealed class GoReflectType { public object? Sample; }
 
-/// <summary>reflect.Value handle: wraps a (boxed) value.</summary>
-public sealed class GoReflectValue { public object? V; }
+/// <summary>reflect.Value handle: wraps a (boxed) value. When settable (reached via
+/// Elem of a pointer, or a Field of a settable struct), Setter writes a new boxed
+/// value back into the underlying storage (the GoPtr cell, threading through parent
+/// structs as needed).</summary>
+public sealed class GoReflectValue { public object? V; public System.Action<object?>? Setter; }
 
 /// <summary>Shim for a subset of Go's <c>reflect</c> package (the read path used
 /// by fmt and encoding/json).</summary>
@@ -115,14 +118,67 @@ public static class Reflect
         new GoReflectValue { V = GoCLR.Runtime.GoSlices.Get((GoSlice)((GoReflectValue)v).V!, i) };
     public static object Value_Field(object v, long i)
     {
-        var obj = ((GoReflectValue)v).V!;
+        var parent = (GoReflectValue)v;
+        var obj = parent.V!;
         var f = Fields(obj)![(int)i];
-        return new GoReflectValue { V = f.GetValue(obj) };
+        var fv = new GoReflectValue { V = f.GetValue(obj) };
+        if (parent.Setter != null)
+            fv.Setter = nv => { f.SetValue(obj, Coerce(nv, f.FieldType)); parent.Setter(obj); };
+        return fv;
     }
     public static object Value_Elem(object v)
     {
         var x = ((GoReflectValue)v).V;
-        return new GoReflectValue { V = x is GoPtr p ? p.Value : x };
+        if (x is GoPtr p)
+            return new GoReflectValue { V = p.Value, Setter = nv => p.Value = nv };
+        return new GoReflectValue { V = x };
+    }
+
+    // --- reflect.Value write path (settable values) ---
+    public static bool Value_CanSet(object v) => ((GoReflectValue)v).Setter != null;
+    public static bool Value_CanAddr(object v) => ((GoReflectValue)v).Setter != null;
+    private static void DoSet(object v, object? nv)
+    {
+        var rv = (GoReflectValue)v;
+        if (rv.Setter == null) throw new GoPanicException(GoString.FromDotNetString("reflect: reflect.Value.Set using unaddressable value"));
+        rv.Setter(nv);
+        rv.V = nv;
+    }
+    public static void Value_SetInt(object v, long n) => DoSet(v, Coerce(n, ((GoReflectValue)v).V?.GetType() ?? typeof(long)));
+    public static void Value_SetUint(object v, ulong n) => DoSet(v, Coerce(n, ((GoReflectValue)v).V?.GetType() ?? typeof(ulong)));
+    public static void Value_SetFloat(object v, double n) => DoSet(v, Coerce(n, ((GoReflectValue)v).V?.GetType() ?? typeof(double)));
+    public static void Value_SetBool(object v, bool b) => DoSet(v, b);
+    public static void Value_SetString(object v, GoString s) => DoSet(v, s);
+    public static void Value_Set(object v, object other) => DoSet(v, ((GoReflectValue)other).V);
+
+    // Coerce a boxed numeric/value to a concrete CLR type (int widths, GoPtr<>).
+    private static object? Coerce(object? v, System.Type target)
+    {
+        if (v == null) return target.IsValueType ? System.Activator.CreateInstance(target) : null;
+        if (target.IsInstanceOfType(v)) return v;
+        if (target == typeof(long) || target == typeof(int) || target == typeof(short) || target == typeof(sbyte)
+            || target == typeof(ulong) || target == typeof(uint) || target == typeof(ushort) || target == typeof(byte)
+            || target == typeof(double) || target == typeof(float))
+            return System.Convert.ChangeType(v, target);
+        return v;
+    }
+
+    // reflect.New(t): a Value holding a pointer to a freshly zeroed t.
+    public static object New(object t)
+    {
+        var sample = ((GoReflectType)t).Sample;
+        object? zero = sample switch
+        {
+            null => null,
+            bool => false,
+            long => (long)0,
+            int => 0,
+            ulong => (ulong)0,
+            double => (double)0,
+            GoString => GoString.FromDotNetString(""),
+            _ => sample.GetType().IsValueType ? System.Activator.CreateInstance(sample.GetType()) : null,
+        };
+        return new GoReflectValue { V = new GoPtr { Value = zero } };
     }
     public static GoSlice Value_MapKeys(object v) => GoCLR.Runtime.GoMaps.Keys((GoMap)((GoReflectValue)v).V!);
     public static object Value_MapIndex(object v, object keyVal)

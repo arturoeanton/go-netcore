@@ -46,6 +46,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"reflect": {
 		"TypeOf": {"Reflect", "TypeOf"}, "ValueOf": {"Reflect", "ValueOf"}, "DeepEqual": {"Reflect", "DeepEqual"},
+		"New": {"Reflect", "New"},
 	},
 	"encoding/json": {
 		"Marshal": {"Json", "Marshal"},
@@ -268,6 +269,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"IsNil": {"Reflect", "Value_IsNil"}, "IsZero": {"Reflect", "Value_IsZero"},
 		"IsValid": {"Reflect", "Value_IsValid"}, "Elem": {"Reflect", "Value_Elem"},
 		"MapKeys": {"Reflect", "Value_MapKeys"}, "MapIndex": {"Reflect", "Value_MapIndex"},
+		"CanSet": {"Reflect", "Value_CanSet"}, "CanAddr": {"Reflect", "Value_CanAddr"},
+		"SetInt": {"Reflect", "Value_SetInt"}, "SetUint": {"Reflect", "Value_SetUint"},
+		"SetFloat": {"Reflect", "Value_SetFloat"}, "SetBool": {"Reflect", "Value_SetBool"},
+		"SetString": {"Reflect", "Value_SetString"}, "Set": {"Reflect", "Value_Set"},
 	},
 }
 
