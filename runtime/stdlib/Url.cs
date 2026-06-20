@@ -46,6 +46,12 @@ public static class Url
     public static GoString URL_Opaque(object u) => GoString.FromDotNetString(((GoUrl)u).Opaque);
     public static object? URL_User(object u) => ((GoUrl)u).User.Length == 0 ? null : GoString.FromDotNetString(((GoUrl)u).User);
 
+    public static object URL_Clone(object uo)
+    {
+        var u = (GoUrl)uo;
+        return new GoUrl { Scheme = u.Scheme, Host = u.Host, Path = u.Path, RawQuery = u.RawQuery, Fragment = u.Fragment, Opaque = u.Opaque, User = u.User };
+    }
+
     public static void URL_SetPath(object u, GoString v) => ((GoUrl)u).Path = v.ToDotNetString();
     public static void URL_SetScheme(object u, GoString v) => ((GoUrl)u).Scheme = v.ToDotNetString();
     public static void URL_SetHost(object u, GoString v) => ((GoUrl)u).Host = v.ToDotNetString();

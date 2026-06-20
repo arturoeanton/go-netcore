@@ -348,6 +348,12 @@ func shimFieldExtern(shim, field string, ret goir.Type) (*goir.Extern, bool) {
 
 // shimFieldSetRegistry maps "importpath.Type" to its writable fields, each lowering
 // to a setter (object receiver, value) -> void extern.
+// opaqueShimClone maps an opaque mutable shim to its value-copy cloner, used when
+// *p produces a value copy (u := *p) that must not alias the original.
+var opaqueShimClone = map[string]shimFunc{
+	"net/url.URL": {"Url", "URL_Clone"},
+}
+
 var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"net/url.URL": {
 		"Path": {"Url", "URL_SetPath"}, "Scheme": {"Url", "URL_SetScheme"},

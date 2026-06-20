@@ -231,6 +231,19 @@ func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 // derefRead lowers *p (read), leaving the pointee value.
 func (l *funcLowerer) derefRead(e *ast.StarExpr) {
 	pt := l.exprType(e.X)
+	// *opaqueShimPtr: *url.URL and url.URL are the same opaque object, so a deref
+	// produces a value copy — clone it (when a cloner is registered) to preserve
+	// Go value semantics (u := *p; u.field = x must not mutate *p).
+	if pt.Kind == goir.KObject && pt.Shim != "" {
+		l.expr(e.X)
+		if cf, ok := opaqueShimClone[pt.Shim]; ok {
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: cf.csType, Method: cf.csMethod,
+				Params: []goir.Type{goir.TObject}, Ret: pt,
+			}})
+		}
+		return
+	}
 	if pt.Kind != goir.KPtr {
 		l.fail(e.Pos(), "dereference of non-pointer")
 		return
