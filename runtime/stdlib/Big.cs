@@ -36,6 +36,16 @@ public static class Big
         ((GoBigInt)z).V = r; return z;
     }
     public static object Int_Set(object z, object x) { ((GoBigInt)z).V = V(x); return z; }
+    // DivMod sets z to the Euclidean quotient and m to the (non-negative) modulus,
+    // returning (z, m).
+    public static object?[] Int_DivMod(object z, object x, object y, object m)
+    {
+        BigInteger q = BigInteger.DivRem(V(x), V(y), out BigInteger r);
+        if (r.Sign < 0) { if (V(y).Sign > 0) { q -= 1; r += V(y); } else { q += 1; r -= V(y); } }
+        ((GoBigInt)z).V = q; ((GoBigInt)m).V = r;
+        return new object?[] { z, m };
+    }
+
     public static object Int_SetInt64(object z, long x) { ((GoBigInt)z).V = x; return z; }
     public static object Int_SetUint64(object z, ulong x) { ((GoBigInt)z).V = x; return z; }
     public static object Int_Lsh(object z, object x, ulong n) { ((GoBigInt)z).V = V(x) << (int)n; return z; }
