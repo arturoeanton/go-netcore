@@ -46,6 +46,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/json": {
 		"Marshal": {"Json", "Marshal"}, "MarshalIndent": {"Json", "MarshalIndent"},
+		"NewDecoder": {"Json", "NewDecoder"}, "NewEncoder": {"Json", "NewEncoder"},
+		"Valid": {"Json", "Valid"},
 	},
 	"encoding/hex": {
 		"EncodeToString": {"Hex", "EncodeToString"}, "DecodeString": {"Hex", "DecodeString"},
@@ -261,6 +263,8 @@ var opaqueShimTypes = map[string]bool{
 	"strings.Reader":               true,
 	"bytes.Reader":                 true,
 	"bufio.Scanner":                true,
+	"encoding/json.Decoder":        true,
+	"encoding/json.Encoder":        true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
@@ -455,6 +459,15 @@ var binaryMethods = map[string]shimFunc{
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
+	"encoding/json.Decoder": {
+		"Token": {"Json", "Decoder_Token"}, "More": {"Json", "Decoder_More"},
+		"Decode": {"Json", "Decoder_Decode"}, "UseNumber": {"Json", "Decoder_UseNumber"},
+		"Buffered": {"Json", "Decoder_Buffered"},
+	},
+	"encoding/json.Encoder": {
+		"Encode": {"Json", "Encoder_Encode"}, "SetIndent": {"Json", "Encoder_SetIndent"},
+		"SetEscapeHTML": {"Json", "Encoder_SetEscapeHTML"},
+	},
 	"net/url.URL": {
 		"IsAbs": {"Url", "URL_IsAbs"}, "String": {"Url", "URL_String"},
 		"ResolveReference": {"Url", "URL_ResolveReference"},

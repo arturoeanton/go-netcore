@@ -11,9 +11,26 @@ public static class Rt
     // Display name per type id, e.g. 1 -> "main.Money". Populated at startup by
     // RegisterNamedType so fmt %T and reflect can name a wrapped value.
     private static readonly System.Collections.Generic.Dictionary<long, string> _namedNames = new();
+    // Reverse map so a precompiled shim can produce a typed box (GoNamed) carrying
+    // the build's id for a named type it knows only by display name (e.g. the
+    // encoding/json tokenizer minting "json.Delim" tokens for a Go type switch).
+    private static readonly System.Collections.Generic.Dictionary<string, long> _namedIds = new();
 
     /// <summary>Records a named type's display name (called once per type at startup).</summary>
-    public static void RegisterNamedType(long id, GoString name) => _namedNames[id] = name.ToDotNetString();
+    public static void RegisterNamedType(long id, GoString name)
+    {
+        var n = name.ToDotNetString();
+        _namedNames[id] = n;
+        _namedIds[n] = id;
+    }
+
+    /// <summary>The build's type id for a named type known by display name, or 0.</summary>
+    public static long NamedIdByName(string name) => _namedIds.TryGetValue(name, out var id) ? id : 0;
+
+    /// <summary>Wraps a value as a typed box for a named type known only by display
+    /// name; pass-through (no box) if that name was never registered this build.</summary>
+    public static object? MakeNamedByName(string name, object? value) =>
+        _namedIds.TryGetValue(name, out var id) ? new GoNamed(id, value) : value;
 
     /// <summary>Go display name ("pkg.Type") for a type id, or "" if unknown.</summary>
     public static string NamedTypeName(long id) => _namedNames.TryGetValue(id, out var n) ? n : "";

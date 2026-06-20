@@ -1,5 +1,6 @@
 namespace GoCLR.Stdlib;
 
+using System.Buffers;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
@@ -381,4 +382,209 @@ public static class Json
         TypeCache[name] = found;
         return found;
     }
+
+    // ---- Streaming Decoder / Encoder --------------------------------------
+    //
+    // json.Decoder is used as a pull tokenizer: Token() returns one of json.Delim
+    // ('{','}','[',']'), string, float64 (or json.Number under UseNumber), bool, or
+    // nil, with io.EOF past the end — and the caller (e.g. a JS engine's JSON.parse)
+    // type-switches on the dynamic type. We tokenize the whole input once with
+    // System.Text.Json and replay it; the Delim/Number named types are minted as
+    // typed boxes (GoNamed) carrying this build's id so the Go type switch matches.
+
+    public static object? NewDecoder(object? reader)
+    {
+        var d = new GoJsonDecoder();
+        d.Tokenize(Readers.Drain(reader));
+        return d;
+    }
+
+    public static void Decoder_UseNumber(object dec) => ((GoJsonDecoder)dec).UseNumber = true;
+
+    public static bool Decoder_More(object dec) => ((GoJsonDecoder)dec).More();
+
+    // Buffered() returns an io.Reader over the bytes after the most recent token.
+    public static object? Decoder_Buffered(object dec) => ((GoJsonDecoder)dec).Buffered();
+
+    public static object?[] Decoder_Token(object dec) => ((GoJsonDecoder)dec).Token();
+
+    // Decode(&v) reads the next whole JSON value into v. The compiler can't pass a
+    // type descriptor through a method call, so this decodes into the canonical Go
+    // shape (Go's interface{} mapping) and writes it through the pointer — exact for
+    // map[string]any / []any / *any targets, best-effort widening for sized fields.
+    public static object? Decoder_Decode(object dec, object? target)
+    {
+        try { SetPtr(target, ((GoJsonDecoder)dec).DecodeValue()); return null; }
+        catch (System.Exception e) { return new GoError(GoString.FromDotNetString(e.Message)); }
+    }
+
+    public static object? NewEncoder(object? writer) => new GoJsonEncoder { Writer = writer };
+
+    public static void Encoder_SetIndent(object enc, GoString prefix, GoString indent)
+    {
+        var e = (GoJsonEncoder)enc;
+        e.Prefix = prefix.ToDotNetString();
+        e.Indent = indent.ToDotNetString();
+    }
+
+    public static void Encoder_SetEscapeHTML(object enc, bool on) => ((GoJsonEncoder)enc).EscapeHTML = on;
+
+    public static object? Encoder_Encode(object enc, object? v)
+    {
+        var e = (GoJsonEncoder)enc;
+        var sb = new StringBuilder();
+        try { Write(sb, v); }
+        catch (System.Exception ex) { return new GoError(GoString.FromDotNetString("json: " + ex.Message)); }
+        string s = e.Indent.Length > 0 ? IndentJson(sb.ToString(), e.Prefix, e.Indent) : sb.ToString();
+        Fmt.WriteTo(e.Writer, s + "\n"); // Encoder.Encode always appends a newline
+        return null;
+    }
+
+    // json.Valid(data) reports whether data is well-formed JSON.
+    public static bool Valid(GoSlice data)
+    {
+        try { using var _ = JsonDocument.Parse(SliceToString(data)); return true; }
+        catch { return false; }
+    }
+}
+
+/// <summary>Pull-tokenizer state for json.Decoder: a flat replay of the input's
+/// tokens plus a cursor. Number tokens keep their source text so UseNumber can
+/// choose float64 vs json.Number at read time.</summary>
+public sealed class GoJsonDecoder
+{
+    public bool UseNumber;
+    private readonly List<object?> _toks = new();
+    private readonly List<int> _ends = new(); // byte offset just past each token
+    private byte[] _raw = System.Array.Empty<byte>();
+    private int _pos;
+
+    // A JSON null token, distinct from "end of stream".
+    private static readonly object NullTok = new();
+    // A number token carrying its raw text (resolved to float64/json.Number lazily).
+    private sealed class NumberTok { public string Text = ""; }
+
+    public void Tokenize(byte[] data)
+    {
+        _raw = data;
+        var reader = new Utf8JsonReader(data, isFinalBlock: true, state: default);
+        while (reader.Read())
+        {
+            switch (reader.TokenType)
+            {
+                case JsonTokenType.StartObject: Add(Delim('{'), ref reader); break;
+                case JsonTokenType.EndObject: Add(Delim('}'), ref reader); break;
+                case JsonTokenType.StartArray: Add(Delim('['), ref reader); break;
+                case JsonTokenType.EndArray: Add(Delim(']'), ref reader); break;
+                case JsonTokenType.PropertyName:
+                case JsonTokenType.String: Add(GoString.FromDotNetString(reader.GetString() ?? ""), ref reader); break;
+                case JsonTokenType.Number: Add(new NumberTok { Text = NumberText(ref reader) }, ref reader); break;
+                case JsonTokenType.True: Add(true, ref reader); break;
+                case JsonTokenType.False: Add(false, ref reader); break;
+                case JsonTokenType.Null: Add(NullTok, ref reader); break;
+            }
+        }
+    }
+
+    private void Add(object? tok, ref Utf8JsonReader reader)
+    {
+        _toks.Add(tok);
+        // BytesConsumed is the offset just past the token just read.
+        _ends.Add((int)reader.BytesConsumed);
+    }
+
+    private static string NumberText(ref Utf8JsonReader reader)
+    {
+        if (reader.HasValueSequence)
+        {
+            var seq = reader.ValueSequence;
+            var arr = new byte[(int)seq.Length];
+            seq.CopyTo(arr);
+            return System.Text.Encoding.UTF8.GetString(arr);
+        }
+        return System.Text.Encoding.UTF8.GetString(reader.ValueSpan);
+    }
+
+    private static object? Delim(char c) => Rt.MakeNamedByName("json.Delim", (int)c);
+
+    public object?[] Token()
+    {
+        if (_pos >= _toks.Count) return new object?[] { null, Io.EOFSentinel };
+        var t = _toks[_pos++];
+        if (ReferenceEquals(t, NullTok)) return new object?[] { null, null };
+        if (t is NumberTok n) return new object?[] { ResolveNumber(n.Text), null };
+        return new object?[] { t, null };
+    }
+
+    private object? ResolveNumber(string text) => UseNumber
+        ? Rt.MakeNamedByName("json.Number", GoString.FromDotNetString(text))
+        : double.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
+
+    public bool More()
+    {
+        if (_pos >= _toks.Count) return false;
+        var t = _toks[_pos];
+        // More() is false at the ']' / '}' that closes the current array/object.
+        if (t is GoNamed gn && gn.Value is int ch) return ch != ']' && ch != '}';
+        return true;
+    }
+
+    // Bytes not yet tokenized, as an in-memory reader (io.Reader).
+    public object? Buffered()
+    {
+        int off = _pos > 0 && _pos <= _ends.Count ? _ends[_pos - 1] : 0;
+        int n = _raw.Length - off;
+        var rem = new byte[n < 0 ? 0 : n];
+        if (n > 0) System.Array.Copy(_raw, off, rem, 0, n);
+        return new GoReader { Data = rem };
+    }
+
+    // Decode the next whole JSON value (Go interface{} mapping). Only valid at a
+    // value boundary; intended for Decode() on a freshly created decoder.
+    public object? DecodeValue()
+    {
+        if (_pos >= _toks.Count) throw new System.Exception("EOF");
+        int start = _pos == 0 ? 0 : _ends[_pos - 1];
+        var reader = new Utf8JsonReader(new System.ReadOnlySpan<byte>(_raw, start, _raw.Length - start), isFinalBlock: true, state: default);
+        using var doc = JsonDocument.ParseValue(ref reader);
+        // Advance the token cursor past the consumed value.
+        long consumedEnd = start + reader.BytesConsumed;
+        while (_pos < _ends.Count && _ends[_pos] <= consumedEnd) _pos++;
+        return DecodeElement(doc.RootElement);
+    }
+
+    private static object? DecodeElement(JsonElement j)
+    {
+        switch (j.ValueKind)
+        {
+            case JsonValueKind.True: return true;
+            case JsonValueKind.False: return false;
+            case JsonValueKind.Number: return j.GetDouble();
+            case JsonValueKind.String: return GoString.FromDotNetString(j.GetString() ?? "");
+            case JsonValueKind.Array:
+            {
+                int n = j.GetArrayLength();
+                var d = new object?[n];
+                int i = 0;
+                foreach (var el in j.EnumerateArray()) d[i++] = DecodeElement(el);
+                return new GoSlice { Data = d, Off = 0, Len = n, Cap = n };
+            }
+            case JsonValueKind.Object:
+            {
+                var m = GoMaps.Make();
+                foreach (var p in j.EnumerateObject()) m.Data![GoString.FromDotNetString(p.Name)] = DecodeElement(p.Value);
+                return m;
+            }
+            default: return null;
+        }
+    }
+}
+
+/// <summary>json.Encoder state: the destination writer and indent/escape options.</summary>
+public sealed class GoJsonEncoder
+{
+    public object? Writer;
+    public string Prefix = "";
+    public string Indent = "";
+    public bool EscapeHTML = true;
 }

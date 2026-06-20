@@ -446,7 +446,7 @@ func (l *funcLowerer) bindAssertResults(s *ast.AssignStmt, isTmp int, t goir.Typ
 // emitTypeMatch branches to matchLabel when the value in valLocal dynamically has
 // type t. Pointer-to-struct cases also verify the GoPtr's type id, since all
 // pointers share the GoPtr .NET type.
-func (l *funcLowerer) emitTypeMatch(valLocal int, t goir.Type, matchLabel int) {
+func (l *funcLowerer) emitTypeMatch(valLocal int, gt types.Type, t goir.Type, matchLabel int) {
 	if t.Kind == goir.KPtr && t.Elem.Kind == goir.KStruct {
 		skip := l.label()
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
@@ -459,6 +459,17 @@ func (l *funcLowerer) emitTypeMatch(valLocal int, t goir.Type, matchLabel int) {
 		l.emit(goir.Op{Code: goir.OpCeq})
 		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})
 		l.mark(skip)
+		return
+	}
+	// A named non-struct type (the typed box) carries identity in a GoNamed wrapper,
+	// so its representation alone (KInt32, KSlice, …) can't be distinguished from a
+	// plain value of the underlying type. Match by the wrapper's type id instead.
+	if id, ok := l.namedIdentity(gt); ok {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.namedIdExtern()})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
+		l.emit(goir.Op{Code: goir.OpCeq})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})
 		return
 	}
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
@@ -516,12 +527,13 @@ func (l *funcLowerer) typeSwitch(s *ast.TypeSwitchStmt) {
 				l.emit(goir.Op{Code: goir.OpBrTrue, Label: c.lbl})
 				continue
 			}
-			tt, ok := l.goType(l.pkg.TypesInfo.TypeOf(te))
+			gt := l.pkg.TypesInfo.TypeOf(te)
+			tt, ok := l.goType(gt)
 			if !ok {
 				l.fail(te.Pos(), "type switch case type")
 				return
 			}
-			l.emitTypeMatch(xTmp, tt, c.lbl)
+			l.emitTypeMatch(xTmp, gt, tt, c.lbl)
 		}
 	}
 	if defaultLbl >= 0 {
@@ -544,6 +556,11 @@ func (l *funcLowerer) typeSwitch(s *ast.TypeSwitchStmt) {
 				l.initLocal(vLocal, func() {
 					l.emit(goir.Op{Code: goir.OpLdLoc, Local: xTmp})
 					if len(cc.List) == 1 && !isNilIdent(cc.List[0]) && vt.Kind != goir.KObject {
+						// A typed-box value (named non-struct) is stored as a GoNamed
+						// wrapper; strip it before unboxing to the representation.
+						if _, ok := l.namedIdentity(l.pkg.TypesInfo.TypeOf(cc.List[0])); ok {
+							l.emitUnwrapNamed()
+						}
 						l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: vt})
 					}
 				})
