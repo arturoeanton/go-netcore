@@ -51,6 +51,19 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"encoding/json": {
 		"Marshal": {"Json", "Marshal"},
 	},
+	"encoding/hex": {
+		"EncodeToString": {"Hex", "EncodeToString"}, "DecodeString": {"Hex", "DecodeString"},
+		"EncodedLen": {"Hex", "EncodedLen"}, "DecodedLen": {"Hex", "DecodedLen"},
+	},
+	"path": {
+		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
+		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
+	},
+	"path/filepath": {
+		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
+		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
+		"ToSlash": {"Path", "ToSlash"}, "FromSlash": {"Path", "FromSlash"},
+	},
 	"fmt": {
 		"Sprint": {"Fmt", "Sprint"}, "Sprintln": {"Fmt", "Sprintln"}, "Sprintf": {"Fmt", "Sprintf"},
 		"Print": {"Fmt", "Print"}, "Println": {"Fmt", "Println"}, "Printf": {"Fmt", "Printf"},
@@ -146,31 +159,36 @@ var shimRegistry = map[string]map[string]shimFunc{
 // opaqueShimTypes are stdlib types represented at runtime as opaque object
 // handles (not lowered structures); method calls on them dispatch to shims.
 var opaqueShimTypes = map[string]bool{
-	"reflect.Type":     true,
-	"reflect.Value":    true,
-	"sync.Mutex":       true,
-	"sync.RWMutex":     true,
-	"sync.WaitGroup":   true,
-	"sync.Once":        true,
-	"sync.Map":         true,
-	"strings.Builder":  true,
-	"bytes.Buffer":     true,
-	"os.File":          true,
-	"time.Time":        true,
-	"time.Location":    true,
-	"math/rand.Rand":   true,
-	"math/rand.Source": true,
+	"reflect.Type":             true,
+	"reflect.Value":            true,
+	"sync.Mutex":               true,
+	"sync.RWMutex":             true,
+	"sync.WaitGroup":           true,
+	"sync.Once":                true,
+	"sync.Map":                 true,
+	"strings.Builder":          true,
+	"bytes.Buffer":             true,
+	"os.File":                  true,
+	"time.Time":                true,
+	"time.Location":            true,
+	"math/rand.Rand":           true,
+	"math/rand.Source":         true,
+	"encoding/base64.Encoding": true,
 }
 
 // shimVarRegistry maps "importpath.VarName" stdlib package variables to a
 // no-argument accessor returning the runtime object.
 var shimVarRegistry = map[string]shimFunc{
-	"os.Stdout":                {"Os", "Stdout"},
-	"os.Stderr":                {"Os", "Stderr"},
-	"time.UTC":                 {"Time", "UTC"},
-	"time.Local":               {"Time", "Local"},
-	"context.Canceled":         {"Context", "Canceled"},
-	"context.DeadlineExceeded": {"Context", "DeadlineExceeded"},
+	"os.Stdout":                      {"Os", "Stdout"},
+	"os.Stderr":                      {"Os", "Stderr"},
+	"time.UTC":                       {"Time", "UTC"},
+	"time.Local":                     {"Time", "Local"},
+	"encoding/base64.StdEncoding":    {"Base64", "StdEncoding"},
+	"encoding/base64.URLEncoding":    {"Base64", "URLEncoding"},
+	"encoding/base64.RawStdEncoding": {"Base64", "RawStdEncoding"},
+	"encoding/base64.RawURLEncoding": {"Base64", "RawURLEncoding"},
+	"context.Canceled":               {"Context", "Canceled"},
+	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 }
 
 // shimVarExtern returns the accessor extern for a shimmed stdlib package variable
@@ -235,6 +253,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"reflect.Kind": {
 		"String": {"Reflect", "Kind_String"},
 	},
+	"encoding/base64.Encoding": {
+		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
+	},
 	"strings.Builder": {
 		"WriteString": {"StringsBuilder", "WriteString"}, "WriteByte": {"StringsBuilder", "WriteByte"},
 		"WriteRune": {"StringsBuilder", "WriteRune"}, "Write": {"StringsBuilder", "Write"},
@@ -244,7 +265,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"bytes.Buffer": {
 		"WriteString": {"BytesBuffer", "WriteString"}, "WriteByte": {"BytesBuffer", "WriteByte"},
 		"WriteRune": {"BytesBuffer", "WriteRune"},
-		"Write": {"BytesBuffer", "Write"}, "String": {"BytesBuffer", "String"},
+		"Write":     {"BytesBuffer", "Write"}, "String": {"BytesBuffer", "String"},
 		"Bytes": {"BytesBuffer", "Bytes"}, "Len": {"BytesBuffer", "Len"}, "Reset": {"BytesBuffer", "Reset"},
 	},
 	"sync.Mutex": {
