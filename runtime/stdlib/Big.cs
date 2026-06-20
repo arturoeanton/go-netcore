@@ -17,7 +17,16 @@ public static class Big
     public static object Int_Add(object z, object x, object y) { ((GoBigInt)z).V = V(x) + V(y); return z; }
     public static object Int_Sub(object z, object x, object y) { ((GoBigInt)z).V = V(x) - V(y); return z; }
     public static object Int_Mul(object z, object x, object y) { ((GoBigInt)z).V = V(x) * V(y); return z; }
-    public static object Int_Div(object z, object x, object y) { ((GoBigInt)z).V = BigInteger.Divide(V(x), V(y)); return z; }
+    public static object Int_Div(object z, object x, object y)
+    {
+        // Go's big.Int.Div is Euclidean (remainder always non-negative).
+        BigInteger q = BigInteger.DivRem(V(x), V(y), out BigInteger r);
+        if (r.Sign < 0) q += V(y).Sign > 0 ? -1 : 1;
+        ((GoBigInt)z).V = q; return z;
+    }
+    public static object Int_Quo(object z, object x, object y) { ((GoBigInt)z).V = BigInteger.Divide(V(x), V(y)); return z; }
+    public static object Int_Rem(object z, object x, object y) { ((GoBigInt)z).V = BigInteger.Remainder(V(x), V(y)); return z; }
+    public static object Int_GCD(object z, object a, object b, object x, object y) { ((GoBigInt)z).V = BigInteger.GreatestCommonDivisor(V(x), V(y)); return z; }
     public static object Int_Mod(object z, object x, object y) { var r = V(x) % V(y); if (r.Sign < 0) r += BigInteger.Abs(V(y)); ((GoBigInt)z).V = r; return z; }
     public static object Int_Neg(object z, object x) { ((GoBigInt)z).V = -V(x); return z; }
     public static object Int_Abs(object z, object x) { ((GoBigInt)z).V = BigInteger.Abs(V(x)); return z; }

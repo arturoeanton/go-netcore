@@ -366,6 +366,10 @@ public static class Fmt
             case GoMap m when m.Data == null: return "map[]";
             case GoSlice sl: return FormatSlice(sl, plus, hash);
             case GoMap m: return FormatMap(m, plus, hash);
+            // Shim types that carry their own Go String() representation.
+            case GoBigInt bi: return Big.Int_String(bi).ToDotNetString();
+            case GoTime tm: return Time.Time_String(tm).ToDotNetString();
+            case GoStringBuilder gsb: return gsb.SB.ToString();
             default: return FormatStruct(v, plus, hash);
         }
     }
