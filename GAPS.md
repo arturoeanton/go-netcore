@@ -174,3 +174,29 @@ order encountered:
    surfaced by the scanner repro (conformance 358 covers the in-function path).
 
 These are the next x/text-init items before the JS evaluator itself is exercised.
+
+## goja runs JavaScript (2026-06)
+
+goja now **evaluates JavaScript** through goclr: `vm.RunString` returns correct
+results for arithmetic (`1+2*3` → 7), string concatenation (`"a"+"b"` → "ab"), and
+function calls (`(function(x){return x*x})(9)` → 81). See `examples/demo_goja`.
+This required, beyond the compile-path fixes above, several runtime-correctness
+fixes (each with a conformance fixture): identical-layout named-struct conversion
+(`type Tag compact.Tag`), a pointer-receiver method promoted from an embedded value
+field mutating through a pointer, `*p = v` boxing a value type into an interface
+cell, `a, b = f()` keeping a concrete result boxed for an `interface{}` target, and
+multi-result `return s, nil` boxing a value-type nil as `NilSlice`.
+
+Remaining gaps on richer JS (the next frontier — all in goja's VM/runtime, reached
+in order):
+
+1. `for`-loops inside a function body fail at runtime (variable stash/scope handling
+   in the interpreter loop).
+2. String/array prototype methods (`"x".toUpperCase()`, `[..].map`) crash in
+   `getStringSingleton` / array creation — the per-type prototype singletons are
+   reached via paths that nil-deref.
+3. `fmt` formatting a non-nil `*goja.Exception` crashes in `Exception.String` (only
+   hit when surfacing one of the above errors).
+
+`GOCLR_PANIC_TRACE=1` makes the runtime print a panic's throw-site .NET stack — the
+key tool for locating these (a `recover()` otherwise masks the origin).
