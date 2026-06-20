@@ -180,6 +180,49 @@ public static class Strings
         return Slice(parts.ToArray());
     }
 
+    private static bool RunePred(GoClosure f, int r) => (bool)GoRuntime.InvokeArgs(f, r)!;
+
+    public static GoString TrimFunc(GoString s, GoClosure f) => TrimRightFunc(TrimLeftFunc(s, f), f);
+    public static GoString TrimLeftFunc(GoString s, GoClosure f)
+    {
+        string str = s.ToDotNetString(); int i = 0;
+        while (i < str.Length) { int cp = char.ConvertToUtf32(str, i); if (!RunePred(f, cp)) break; i += char.ConvertFromUtf32(cp).Length; }
+        return GoString.FromDotNetString(str.Substring(i));
+    }
+    public static GoString TrimRightFunc(GoString s, GoClosure f)
+    {
+        var runes = new System.Collections.Generic.List<int>();
+        foreach (var r in s.ToDotNetString().EnumerateRunes()) runes.Add(r.Value);
+        int end = runes.Count;
+        while (end > 0 && RunePred(f, runes[end - 1])) end--;
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < end; i++) sb.Append(char.ConvertFromUtf32(runes[i]));
+        return GoString.FromDotNetString(sb.ToString());
+    }
+    public static long IndexFunc(GoString s, GoClosure f)
+    {
+        string str = s.ToDotNetString();
+        for (int i = 0; i < str.Length;)
+        {
+            int cp = char.ConvertToUtf32(str, i);
+            if (RunePred(f, cp)) return System.Text.Encoding.UTF8.GetByteCount(str.Substring(0, i));
+            i += char.ConvertFromUtf32(cp).Length;
+        }
+        return -1;
+    }
+    public static GoSlice FieldsFunc(GoString s, GoClosure f)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        var cur = new System.Text.StringBuilder();
+        foreach (var r in s.ToDotNetString().EnumerateRunes())
+        {
+            if (RunePred(f, r.Value)) { if (cur.Length > 0) { parts.Add(cur.ToString()); cur.Clear(); } }
+            else cur.Append(r.ToString());
+        }
+        if (cur.Length > 0) parts.Add(cur.ToString());
+        return Slice(parts.ToArray());
+    }
+
     // strings.Map(mapping func(rune) rune, s).
     public static GoString Map(GoClosure mapping, GoString s)
     {
