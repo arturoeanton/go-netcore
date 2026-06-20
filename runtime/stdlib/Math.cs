@@ -39,5 +39,10 @@ public static class Math
     public static bool IsInf(double x, long sign) =>
         (sign >= 0 && double.IsPositiveInfinity(x)) || (sign <= 0 && double.IsNegativeInfinity(x));
     public static double NaN() => double.NaN;
+    public static ulong Float64bits(double f) => unchecked((ulong)System.BitConverter.DoubleToInt64Bits(f));
+    public static double Float64frombits(ulong b) => System.BitConverter.Int64BitsToDouble(unchecked((long)b));
+    public static uint Float32bits(float f) => unchecked((uint)System.BitConverter.SingleToInt32Bits(f));
+    public static float Float32frombits(uint b) => System.BitConverter.Int32BitsToSingle(unchecked((int)b));
+
     public static double Inf(long sign) => sign >= 0 ? double.PositiveInfinity : double.NegativeInfinity;
 }
