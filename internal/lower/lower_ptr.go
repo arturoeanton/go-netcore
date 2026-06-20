@@ -461,6 +461,12 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 			writeback = wb
 			break
 		}
+		// A non-struct field reached through a pointer/global/cell (e.g. a named-slice
+		// field p.items.Method()): a field-alias pointer aliases the live storage, so
+		// the method's mutations persist with no separate writeback.
+		if fsel, ok := unparen(sel.X).(*ast.SelectorExpr); ok && l.buildFieldAlias(fsel) {
+			break
+		}
 		l.fail(e.Pos(), "pointer-receiver method on a non-addressable value")
 		return goir.TVoid
 	case !recvIsPtr && baseIsPtr:
