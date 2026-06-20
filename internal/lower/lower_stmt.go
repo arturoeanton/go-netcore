@@ -1357,7 +1357,12 @@ func (l *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 				for i, r := range s.Results {
 					l.emit(goir.Op{Code: goir.OpDup})
 					l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
-					l.emitBoxedElem(r)
+					// Coerce to the result type so a value-type nil is boxed as the
+					// value-type nil (not a null ref); see the top-level path below.
+					l.exprCoerced(r, l.closureResults[i])
+					if l.closureResults[i].Kind != goir.KObject {
+						l.emitBox(l.closureResults[i])
+					}
 					l.emit(goir.Op{Code: goir.OpStelemRef})
 				}
 			}
@@ -1431,10 +1436,14 @@ func (l *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 			for i, r := range s.Results {
 				l.emit(goir.Op{Code: goir.OpDup})
 				l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
-				// Each slot holds a boxed value; box by the expression's own type (a
-				// concrete value returned as an interface must still be boxed; a nil
-				// interface result becomes null).
-				l.emitBoxedElem(r)
+				// Each slot holds a boxed value coerced to the result type: a concrete
+				// value returned through an interface stays boxed (named values tagged),
+				// and a nil for a value-type result (e.g. a nil []uint16) is the boxed
+				// value-type nil (NilSlice), not a null reference the caller would unbox.
+				l.exprCoerced(r, l.resultTypes[i])
+				if l.resultTypes[i].Kind != goir.KObject {
+					l.emitBox(l.resultTypes[i])
+				}
 				l.emit(goir.Op{Code: goir.OpStelemRef})
 			}
 		}
