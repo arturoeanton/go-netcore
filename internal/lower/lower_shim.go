@@ -562,7 +562,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Cap": {"StringsBuilder", "Cap"}, "Reset": {"StringsBuilder", "Reset"}, "Grow": {"StringsBuilder", "Grow"},
 	},
 	"bytes.Buffer": {
-		"WriteString": {"BytesBuffer", "WriteString"}, "WriteByte": {"BytesBuffer", "WriteByte"},
+		"WriteString": {"BytesBuffer", "WriteString"}, "WriteByte": {"BytesBuffer", "WriteByte"}, "ReadString": {"BytesBuffer", "ReadString"},
 		"WriteRune": {"BytesBuffer", "WriteRune"},
 		"Write":     {"BytesBuffer", "Write"}, "String": {"BytesBuffer", "String"},
 		"Bytes": {"BytesBuffer", "Bytes"}, "Len": {"BytesBuffer", "Len"}, "Reset": {"BytesBuffer", "Reset"},

@@ -15,6 +15,22 @@ public static class BytesBuffer
 
     public static GoString String(object b) { var g = G(b); return GoString.FromBytesOwned(g.B.GetRange(g.Pos, g.B.Count - g.Pos).ToArray()); }
     public static long Len(object b) { var g = G(b); return g.B.Count - g.Pos; }
+
+    // ReadString reads until (and including) the first delim byte, returning
+    // (string, error); io.EOF if delim is not found before the end.
+    public static object?[] ReadString(object b, int delim)
+    {
+        var g = G(b);
+        byte d = (byte)(delim & 0xff);
+        int i = g.Pos;
+        while (i < g.B.Count && g.B[i] != d) i++;
+        bool found = i < g.B.Count;
+        int end = found ? i + 1 : g.B.Count;
+        var bytes = g.B.GetRange(g.Pos, end - g.Pos).ToArray();
+        g.Pos = end;
+        var s = GoString.FromBytesOwned(bytes);
+        return new object?[] { s, found ? null : Io.EOFSentinel };
+    }
     public static void Reset(object b) { var g = G(b); g.B.Clear(); g.Pos = 0; }
 
     // Truncate discards all but the first n unread bytes (Go panics if n is out of
