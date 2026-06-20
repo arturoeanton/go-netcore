@@ -346,6 +346,29 @@ func shimFieldExtern(shim, field string, ret goir.Type) (*goir.Extern, bool) {
 	return &goir.Extern{Assembly: shimAssembly, Namespace: shimAssembly, Type: sf.csType, Method: sf.csMethod, Params: []goir.Type{goir.TObject}, Ret: ret}, true
 }
 
+// shimFieldSetRegistry maps "importpath.Type" to its writable fields, each lowering
+// to a setter (object receiver, value) -> void extern.
+var shimFieldSetRegistry = map[string]map[string]shimFunc{
+	"net/url.URL": {
+		"Path": {"Url", "URL_SetPath"}, "Scheme": {"Url", "URL_SetScheme"},
+		"Host": {"Url", "URL_SetHost"}, "RawQuery": {"Url", "URL_SetRawQuery"},
+		"Fragment": {"Url", "URL_SetFragment"},
+	},
+}
+
+// shimFieldSetExtern returns the setter extern for a writable opaque-shim field.
+func shimFieldSetExtern(shim, field string, valT goir.Type) (*goir.Extern, bool) {
+	fm, ok := shimFieldSetRegistry[shim]
+	if !ok {
+		return nil, false
+	}
+	sf, ok := fm[field]
+	if !ok {
+		return nil, false
+	}
+	return &goir.Extern{Assembly: shimAssembly, Namespace: shimAssembly, Type: sf.csType, Method: sf.csMethod, Params: []goir.Type{goir.TObject, valT}, Ret: goir.TVoid}, true
+}
+
 // shimVarExtern returns the accessor extern for a shimmed stdlib package variable
 // reference (e.g. os.Stdout), if e is one.
 func (l *funcLowerer) shimVarExtern(e ast.Expr) (*goir.Extern, bool) {

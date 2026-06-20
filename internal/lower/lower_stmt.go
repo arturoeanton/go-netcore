@@ -312,6 +312,15 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 		l.ptrStructFieldWrite(sel, bt, rhs)
 		return
 	}
+	// Field write on an opaque stdlib shim (e.g. url.URL.Path = …) -> setter extern.
+	if bt.Kind == goir.KObject && bt.Shim != "" {
+		if ext, ok := shimFieldSetExtern(bt.Shim, sel.Sel.Name, l.exprType(rhs)); ok {
+			l.expr(sel.X)
+			l.exprCoerced(rhs, ext.Params[1])
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+			return
+		}
+	}
 	if bt.Kind != goir.KStruct {
 		l.fail(sel.Pos(), "field assignment to non-struct")
 		return

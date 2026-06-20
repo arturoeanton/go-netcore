@@ -46,6 +46,12 @@ public static class Url
     public static GoString URL_Opaque(object u) => GoString.FromDotNetString(((GoUrl)u).Opaque);
     public static object? URL_User(object u) => ((GoUrl)u).User.Length == 0 ? null : GoString.FromDotNetString(((GoUrl)u).User);
 
+    public static void URL_SetPath(object u, GoString v) => ((GoUrl)u).Path = v.ToDotNetString();
+    public static void URL_SetScheme(object u, GoString v) => ((GoUrl)u).Scheme = v.ToDotNetString();
+    public static void URL_SetHost(object u, GoString v) => ((GoUrl)u).Host = v.ToDotNetString();
+    public static void URL_SetRawQuery(object u, GoString v) => ((GoUrl)u).RawQuery = v.ToDotNetString();
+    public static void URL_SetFragment(object u, GoString v) => ((GoUrl)u).Fragment = v.ToDotNetString();
+
     public static bool URL_IsAbs(object u) => ((GoUrl)u).Scheme.Length > 0;
     public static GoString URL_String(object uo)
     {
