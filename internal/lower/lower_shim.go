@@ -69,6 +69,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"encoding/csv":   {"NewReader": {"Csv", "NewReader"}, "NewWriter": {"Csv", "NewWriter"}},
 	"crypto/aes":     {"NewCipher": {"Aes", "NewCipher"}},
 	"crypto/cipher":  {"NewGCM": {"Aes", "NewGCM"}},
+	"hash/fnv":       {"New32": {"Hashes", "Fnv32"}, "New32a": {"Hashes", "Fnv32a"}, "New64": {"Hashes", "Fnv64"}, "New64a": {"Hashes", "Fnv64a"}},
+	"hash/crc32":     {"ChecksumIEEE": {"Hashes", "Crc32ChecksumIEEE"}},
+	"hash/adler32":   {"Checksum": {"Hashes", "Adler32Checksum"}},
 	"compress/gzip":  {"NewWriter": {"Compress", "GzipNewWriter"}, "NewReader": {"Compress", "GzipNewReader"}},
 	"compress/zlib":  {"NewWriter": {"Compress", "ZlibNewWriter"}, "NewReader": {"Compress", "ZlibNewReader"}},
 	"compress/flate": {"NewWriter": {"Compress", "FlateNewWriter"}, "NewReader": {"Compress", "FlateNewReader"}},
@@ -242,6 +245,8 @@ var opaqueShimTypes = map[string]bool{
 	"compress/flate.Writer":        true,
 	"crypto/cipher.Block":          true,
 	"crypto/cipher.AEAD":           true,
+	"hash.Hash32":                  true,
+	"hash.Hash64":                  true,
 	"math/big.Int":                 true,
 	"encoding/base32.Encoding":     true,
 	"strings.Reader":               true,
@@ -453,6 +458,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"crypto/cipher.AEAD": {
 		"Seal": {"Aes", "GCM_Seal"}, "Open": {"Aes", "GCM_Open"}, "NonceSize": {"Aes", "GCM_NonceSize"}, "Overhead": {"Aes", "GCM_Overhead"},
+	},
+	"hash.Hash32": {
+		"Write": {"Hashes", "H32_Write"}, "Sum32": {"Hashes", "H32_Sum32"}, "Size": {"Hashes", "H32_Size"}, "Reset": {"Hashes", "H32_Reset"},
+	},
+	"hash.Hash64": {
+		"Write": {"Hashes", "H64_Write"}, "Sum64": {"Hashes", "H64_Sum64"}, "Size": {"Hashes", "H64_Size"}, "Reset": {"Hashes", "H64_Reset"},
 	},
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
