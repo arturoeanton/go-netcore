@@ -182,7 +182,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"os": {
 		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"},
 		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
-		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"},
+		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
 	},
 	"bytes": {
 		"Equal": {"Bytes", "Equal"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
@@ -666,7 +666,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"WriteTo": {"BytesBuffer", "WriteTo"},
 	},
 	"os.File": {
-		"Fd": {"Os", "File_Fd"},
+		"Fd": {"Os", "File_Fd"}, "Close": {"Os", "File_Close"},
 	},
 	"sync.Mutex": {
 		"Lock": {"Sync", "Mutex_Lock"}, "Unlock": {"Sync", "Mutex_Unlock"}, "TryLock": {"Sync", "Mutex_TryLock"},

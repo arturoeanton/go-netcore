@@ -28,6 +28,25 @@ public static class Os
         return 1;
     }
 
+    // os.Open(name) (*os.File, error): read the file into a byte reader (the result is
+    // used as an io.Reader). goclr has no streaming file handle, so the whole file is
+    // read up front — adequate for header-sniffing readers like mimetype.
+    public static object?[] Open(GoString name)
+    {
+        try
+        {
+            var bytes = System.IO.File.ReadAllBytes(name.ToDotNetString());
+            return new object?[] { new GoReader { Data = bytes }, null };
+        }
+        catch (System.Exception e)
+        {
+            return new object?[] { null, new GoError("open " + name.ToDotNetString() + ": " + e.Message) };
+        }
+    }
+
+    // (*os.File).Close(): no-op — os.Open already read the file fully.
+    public static object? File_Close(object f) => null;
+
     public static GoString Getenv(GoString key) =>
         GoString.FromDotNetString(System.Environment.GetEnvironmentVariable(key.ToDotNetString()) ?? "");
 
