@@ -74,6 +74,25 @@ func (l *funcLowerer) jsonUnmarshalCall(e *ast.CallExpr) goir.Type {
 	return goir.TObject // error
 }
 
+// jsonDecoderDecode lowers dec.Decode(&v): it passes the target's static-type
+// descriptor (as json.Unmarshal does) so the next value decodes into the concrete
+// struct/slice/map instead of a generic map the cast to the target would reject.
+func (l *funcLowerer) jsonDecoderDecode(e *ast.CallExpr, sel *ast.SelectorExpr) goir.Type {
+	desc := "{\"k\":\"any\"}"
+	if pt, ok := l.pkg.TypesInfo.TypeOf(e.Args[0]).Underlying().(*types.Pointer); ok {
+		desc = l.jsonDescriptor(pt.Elem(), map[string]bool{})
+	}
+	ext := &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Json", Method: "Decoder_DecodeTyped",
+		Params: []goir.Type{goir.TObject, goir.TObject, goir.TString}, Ret: goir.TObject,
+	}
+	l.expr(sel.X)         // the *json.Decoder receiver
+	l.expr(e.Args[0])     // the GoPtr target
+	l.emit(goir.Op{Code: goir.OpStrConst, Str: desc})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+	return goir.TObject // error
+}
+
 // jsonDescriptor builds the compact JSON type descriptor consumed by the C#
 // json decoder. seen guards against recursive struct types.
 func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string {
@@ -103,11 +122,14 @@ func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string 
 	case *types.Map:
 		return `{"k":"map","v":` + l.jsonDescriptor(u.Elem(), seen) + `}`
 	case *types.Struct:
-		named, ok := t.(*types.Named)
-		if !ok {
-			return `{"k":"any"}`
+		// Named struct -> its registered descriptor; an anonymous struct (a common
+		// request-binding shape, `var in struct{ ... }`) gets its synthesized CLR type.
+		var s *goir.Struct
+		if named, ok := t.(*types.Named); ok {
+			s = l.structFor(named)
+		} else {
+			s = l.structForAnon(u)
 		}
-		s := l.structFor(named)
 		if seen[s.Name] {
 			return `{"k":"ptr","e":{"k":"any"}}` // break cycles defensively
 		}

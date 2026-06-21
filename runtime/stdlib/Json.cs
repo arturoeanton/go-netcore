@@ -468,6 +468,47 @@ public static class Json
         catch (System.Exception e) { return new GoError(GoString.FromDotNetString(e.Message)); }
     }
 
+    // Decoder_DecodeTyped is Decode with the target's static-type descriptor, so the
+    // next value decodes into the concrete struct rather than a generic map. When the
+    // static descriptor is the erased "any" (the target was passed as interface{}, as
+    // gin's BindJSON does), the concrete shape is recovered from the target's runtime
+    // type instead.
+    public static object? Decoder_DecodeTyped(object dec, object? target, GoString desc)
+    {
+        string raw;
+        try { raw = ((GoJsonDecoder)dec).NextRawValue(); }
+        catch { return Io.EOFSentinel; }
+        try
+        {
+            string d = desc.ToDotNetString();
+            if (d == "{\"k\":\"any\"}") d = TargetDescriptor(target);
+            using var doc = JsonDocument.Parse(raw);
+            using var ddoc = JsonDocument.Parse(d);
+            SetPtr(target, Decode(doc.RootElement, ddoc.RootElement));
+            return null;
+        }
+        catch (System.Exception e) { return new GoError(GoString.FromDotNetString(e.Message)); }
+    }
+
+    // The json type descriptor recovered from a pointer target's runtime type, used
+    // when the static descriptor was erased (an interface{} destination). A generic
+    // GoPtr&lt;T&gt; carries the concrete pointee in its Value field's declared type; a
+    // non-generic GoPtr carries it only in the current pointee value's runtime type.
+    private static string TargetDescriptor(object? target)
+    {
+        if (target == null) return "{\"k\":\"any\"}";
+        var vf = target.GetType().GetField("Value");
+        if (vf != null && vf.FieldType != typeof(object))
+            return RuntimeDescriptor(vf.FieldType, new HashSet<System.Type>());
+        if (target is GoPtr gp)
+        {
+            object? v = null;
+            try { v = GoPtrs.Get(gp); } catch { }
+            if (v != null) return RuntimeDescriptor(v.GetType(), new HashSet<System.Type>());
+        }
+        return "{\"k\":\"any\"}";
+    }
+
     public static object? NewEncoder(object? writer) => new GoJsonEncoder { Writer = writer };
 
     public static void Encoder_SetIndent(object enc, GoString prefix, GoString indent)
@@ -601,6 +642,19 @@ public sealed class GoJsonDecoder
         long consumedEnd = start + reader.BytesConsumed;
         while (_pos < _ends.Count && _ends[_pos] <= consumedEnd) _pos++;
         return DecodeElement(doc.RootElement);
+    }
+
+    // The raw text of the next whole JSON value, advancing the cursor past it. Lets a
+    // typed Decode re-parse it under a type descriptor. Throws "EOF" at end of stream.
+    public string NextRawValue()
+    {
+        if (_pos >= _toks.Count) throw new System.Exception("EOF");
+        int start = _pos == 0 ? 0 : _ends[_pos - 1];
+        var reader = new Utf8JsonReader(new System.ReadOnlySpan<byte>(_raw, start, _raw.Length - start), isFinalBlock: true, state: default);
+        using var doc = JsonDocument.ParseValue(ref reader);
+        long consumedEnd = start + reader.BytesConsumed;
+        while (_pos < _ends.Count && _ends[_pos] <= consumedEnd) _pos++;
+        return System.Text.Encoding.UTF8.GetString(_raw, start, (int)reader.BytesConsumed);
     }
 
     private static object? DecodeElement(JsonElement j)

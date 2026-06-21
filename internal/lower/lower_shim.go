@@ -195,7 +195,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"IntsAreSorted": {"Sort", "IntsAreSorted"}, "SearchInts": {"Sort", "SearchInts"},
 		"Float64sAreSorted": {"Sort", "Float64sAreSorted"}, "StringsAreSorted": {"Sort", "StringsAreSorted"},
 		"SearchStrings": {"Sort", "SearchStrings"}, "SearchFloat64s": {"Sort", "SearchFloat64s"},
-		"Search": {"Sort", "Search"}, "Slice": {"Sort", "Slice"},
+		"Search": {"Sort", "Search"}, "Slice": {"Sort", "Slice"}, "SliceStable": {"Sort", "SliceStable"}, "SliceIsSorted": {"Sort", "SliceIsSorted"},
 	},
 	"time": {
 		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},
@@ -862,7 +862,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Stop": {"Time", "Ticker_Stop"}, "Reset": {"Time", "Ticker_Reset"},
 	},
 	"time.Timer": {
-		"Stop": {"Time", "Timer_Stop"}, "Reset": {"Time", "Ticker_Reset"},
+		"Stop": {"Time", "Timer_Stop"}, "Reset": {"Time", "Timer_Reset"},
 	},
 	"mime/multipart.FileHeader": {
 		"Open": {"Multipart", "FH_Open"},

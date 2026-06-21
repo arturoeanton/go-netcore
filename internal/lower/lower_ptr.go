@@ -493,6 +493,16 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 		l.fail(e.Pos(), "method call")
 		return goir.TVoid
 	}
+	// json.Decoder.Decode(&v): like json.Unmarshal, the target's static type must be
+	// passed as a descriptor so the value decodes into the concrete struct rather than
+	// a generic map (gin's BindJSON reaches the JSON decoder this way).
+	if fn.Name() == "Decode" && len(e.Args) == 1 {
+		if recv := namedOf(seln.Recv()); recv != nil && recv.Obj() != nil && recv.Obj().Pkg() != nil &&
+			recv.Obj().Pkg().Path() == "encoding/json" && recv.Obj().Name() == "Decoder" {
+			return l.jsonDecoderDecode(e, sel)
+		}
+	}
+
 	// Method on a shimmed stdlib type (reflect.Type.Kind, …) -> external call.
 	if ext, ok := l.shimMethodExtern(seln); ok {
 		return l.shimMethodCall(e, sel, seln, ext)

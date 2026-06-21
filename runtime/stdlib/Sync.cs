@@ -58,6 +58,22 @@ public static class Sync
     // lock for reads is conservative but correct).
     public static object RWMutex_RLocker(object m) => m;
 
+    // LockerDispatch routes a sync.Locker interface call to the right shim when the
+    // boxed value is an opaque shim handle (a *sync.Mutex or *sync.RWMutex, e.g. the
+    // RWMutex returned by RLocker()). Opaque shim handles share the System.Object CLR
+    // type, so the lowered interface dispatch cannot tell them apart by isinst and
+    // falls through to here, where the concrete CLR type discriminates.
+    public static void LockerDispatch(object recv, GoString method)
+    {
+        bool lk = method.ToString() == "Lock";
+        switch (recv)
+        {
+            case GoMutex m: if (lk) m.Sem.Wait(); else m.Sem.Release(); break;
+            case GoRWMutex rw: if (lk) rw.Sem.Wait(); else rw.Sem.Release(); break;
+            default: throw new GoPanicException(GoString.FromDotNetString("runtime error: invalid memory address or nil pointer dereference"));
+        }
+    }
+
     public static void WaitGroup_Add(object w, long delta)
     {
         var g = (GoWaitGroup)w;

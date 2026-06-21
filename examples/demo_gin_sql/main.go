@@ -96,7 +96,10 @@ func main() {
 		var in struct {
 			Text string `json:"text"`
 		}
-		if err := c.BindJSON(&in); err != nil || in.Text == "" {
+		// ShouldBindJSON decodes the body into `in`; we validate the field ourselves
+		// (gin's struct-tag validator is not yet supported under goclr).
+		_ = c.ShouldBindJSON(&in)
+		if in.Text == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "text required"})
 			return
 		}

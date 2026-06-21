@@ -134,6 +134,45 @@ public static class Rt
 
     /// <summary>&amp;s[i] — a pointer aliasing element i of the slice's backing array,
     /// so the slice and the pointer share storage.</summary>
+    // PtrPointeeKind classifies a GoPtr's pointee representation (1=string, 2=slice,
+    // 3=int64, 4=int32, 5=bool, 6=float64, 7=uint64, 8=uint32, 9=float32; 0=other).
+    // Lets a type assertion/switch distinguish *int64 / *string / *[]byte, which share
+    // the one GoPtr cell type — the discrimination database/sql's Scan depends on.
+    public static long PtrPointeeKind(object? p) => GoPtrs.PointeeKind(p);
+
+    // Opaque shim Go-type name -> its concrete CLR value class, for the few cases where
+    // a type switch must tell one shim apart from another. Names absent here fall back
+    // to "any non-primitive object", which still excludes int64/string/[]byte/etc.
+    private static readonly System.Collections.Generic.Dictionary<string, string> _shimClass = new()
+    {
+        ["time.Time"] = "GoTime", ["time.Location"] = "GoLocation",
+        ["sync.Mutex"] = "GoMutex", ["sync.RWMutex"] = "GoRWMutex", ["sync.WaitGroup"] = "GoWaitGroup",
+        ["sync.Once"] = "GoOnce", ["sync.Cond"] = "GoCond", ["sync.Map"] = "GoSyncMap", ["sync.Pool"] = "GoPool",
+        ["os.File"] = "GoFile", ["bytes.Buffer"] = "GoBuffer", ["strings.Builder"] = "GoStringBuilder",
+        ["regexp.Regexp"] = "GoRegexp", ["net/url.URL"] = "GoUrl", ["reflect.Value"] = "GoReflectValue",
+        ["reflect.Type"] = "GoReflectType",
+    };
+
+    // IsShimKind reports whether v is an opaque shim value of the given Go type. An
+    // opaque shim type lowers to System.Object, so `isinst` alone would match every
+    // boxed value — including a plain int64, which is how a type switch `case time.Time`
+    // wrongly captured an integer. Excluding the primitive representations (and checking
+    // the concrete CLR class when known) restores correct matching.
+    public static bool IsShimKind(object? v, GoString goName)
+    {
+        switch (v)
+        {
+            case null:
+            case long: case int: case ulong: case uint:
+            case double: case float: case bool:
+            case GoString: case GoSlice: case GoMap: case GoPtr: case GoClosure:
+                return false;
+        }
+        return _shimClass.TryGetValue(goName.ToDotNetString(), out var cls)
+            ? v!.GetType().Name == cls
+            : true;
+    }
+
     public static GoPtr ElemAddr(GoSlice s, long i)
     {
         if (s.Data == null || i < 0 || i >= s.Len)

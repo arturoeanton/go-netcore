@@ -110,4 +110,31 @@ public static class Sort
         for (int i = 0; i < s.Len; i++) copy[i] = s.Data[s.Off + idx[i]];
         for (int i = 0; i < s.Len; i++) s.Data[s.Off + i] = copy[i];
     }
+
+    // sort.SliceIsSorted(slice, less): is the slice already ordered by less?
+    public static bool SliceIsSorted(object slice, GoClosure less)
+    {
+        var s = (GoSlice)slice;
+        for (int i = 1; i < s.Len; i++)
+            if ((bool)GoRuntime.InvokeArgs(less, (long)i, (long)(i - 1))!) return false;
+        return true;
+    }
+
+    // sort.SliceStable(slice, less): like Slice but ties keep their original order
+    // (the comparator breaks ties by original index, making Array.Sort stable here).
+    public static void SliceStable(object slice, GoClosure less)
+    {
+        var s = (GoSlice)slice;
+        var idx = new int[s.Len];
+        for (int i = 0; i < s.Len; i++) idx[i] = i;
+        System.Array.Sort(idx, (a, b) =>
+        {
+            if ((bool)GoRuntime.InvokeArgs(less, (long)a, (long)b)!) return -1;
+            if ((bool)GoRuntime.InvokeArgs(less, (long)b, (long)a)!) return 1;
+            return a.CompareTo(b);
+        });
+        var copy = new object?[s.Len];
+        for (int i = 0; i < s.Len; i++) copy[i] = s.Data[s.Off + idx[i]];
+        for (int i = 0; i < s.Len; i++) s.Data[s.Off + i] = copy[i];
+    }
 }

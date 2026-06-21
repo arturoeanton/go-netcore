@@ -32,22 +32,39 @@ go run ./cmd/goclr run ./examples/demo_gin_sql
 
 ```sh
 curl localhost:8080/notes
+curl localhost:8080/notes/1
 curl -X POST -d '{"text":"hello"}' localhost:8080/notes
 ```
 
 ## Status
 
-The whole program **compiles** — driving every layer (Gin, `database/sql`, the
-`go-r2-sqlite` engine) through goclr's backend, which surfaced and fixed a long list of
-general compiler features (comma-ok cell capture, pointer-to-value-receiver interface
-dispatch, type-alias method resolution, `defer` of interface/shim methods,
-`&slice[i].field`, range-over-func via a `slices`/`maps`/`iter` overlay, dependency-order
-package init, `database/sql`-needed shims for `sync/atomic` typed integers and pointers,
-and the `os.File` random-access I/O the pager needs). It also runs end to end through
-driver registration, connection, opening the database file, and statement execution.
+The whole program **compiles and runs end to end**, with full CRUD:
 
-Remaining: a SQLite-engine correctness bug under goclr where a `CREATE TABLE` reports
-success but its schema is not visible to the next statement (the table catalog write is
-lost between statements). The same program is byte-correct under `go run`, so this is a
-goclr codegen issue isolated to the engine's catalog/transaction path — under
-investigation. `demo_gin` (Gin alone) runs fully and serves correct responses.
+```
+GET  /notes      -> [{"id":1,"text":"first note"},{"id":2,"text":"second note"}]
+GET  /notes/1    -> {"id":1,"text":"first note"}
+POST /notes      -> {"id":3,"text":"from goclr"}    (persisted, reflected by the next GET)
+POST {} (empty)  -> 400 {"error":"text required"}
+GET  /notes/999  -> 404 {"error":"not found"}
+```
+
+Every layer is exercised through goclr's backend — Gin routing and JSON rendering,
+`database/sql`'s pool/`Rows`/`Scan`, and the `go-r2-sqlite` engine's `CREATE`/`INSERT`/
+`SELECT` with `INTEGER`, `REAL` and `TEXT` columns scanned into their Go types. Driving
+this stack surfaced and fixed a long list of general compiler/runtime features:
+
+- comma-ok assertion results stored into struct fields (the `CREATE TABLE` catalog write),
+- pointer-to-value-receiver interface dispatch and type-alias method resolution,
+- `defer` of interface/shim methods, `&slice[i].field`, range-over-func,
+- dependency-order package init, `sync/atomic` typed integers/pointers, `os.File` I/O,
+- `sort.SliceStable`, `time.Timer.Reset`,
+- `sync.Locker` dispatch on an opaque mutex handle (database/sql's `Rows` read lock),
+- distinguishing `*int64` / `*string` / `*[]byte` and rejecting an opaque shim type
+  (`time.Time`) in a type switch — exactly what `database/sql`'s `convertAssign` needs to
+  scan numbers and strings correctly,
+- `json.Decoder.Decode` / `json.Unmarshal` into anonymous structs and into interface-erased
+  targets (the shape gin's request binding uses).
+
+The one piece not yet supported is gin's struct-tag *validator* (the reflection-heavy
+`go-playground/validator`), so the handler uses `ShouldBindJSON` and validates the
+required field explicitly — see `main.go`.

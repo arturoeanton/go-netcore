@@ -2,7 +2,6 @@ package lower
 
 import (
 	"go/ast"
-	"go/token"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
 )
@@ -81,57 +80,23 @@ func (l *funcLowerer) commaOk(s *ast.AssignStmt) {
 	l.emitBoxedElem(ix.Index)
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: kTmp})
 
-	vIdx := l.assignTarget(s, s.Lhs[0], valT)
-	okIdx := l.assignTarget(s, s.Lhs[1], goir.TBool)
+	// Compute value + ok into temps, then store through assignToTarget (handles
+	// ident/cell, struct-field and slice/map-element targets).
+	valTmp := l.addLocal(nil, valT)
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: mTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: kTmp})
+	l.emitBoxedZero(valT)
+	l.emit(goir.Op{Code: goir.OpMapGet})
+	l.emitUnbox(valT)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
+	l.assignToTarget(s, s.Lhs[0], valT, func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp}) })
 
-	if vIdx >= 0 {
-		l.storeTarget(s, vIdx, func() {
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: mTmp})
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: kTmp})
-			l.emitBoxedZero(valT)
-			l.emit(goir.Op{Code: goir.OpMapGet})
-			l.emitUnbox(valT)
-		})
-	}
-	if okIdx >= 0 {
-		l.storeTarget(s, okIdx, func() {
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: mTmp})
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: kTmp})
-			l.emit(goir.Op{Code: goir.OpMapContains})
-		})
-	}
-}
-
-// assignTarget resolves an assignment LHS to a local index (defining for `:=`),
-// returning -1 for the blank identifier.
-func (l *funcLowerer) assignTarget(s *ast.AssignStmt, e ast.Expr, t goir.Type) int {
-	id, ok := e.(*ast.Ident)
-	if !ok || id.Name == "_" {
-		return -1
-	}
-	if s.Tok == token.DEFINE {
-		if obj := l.pkg.TypesInfo.Defs[id]; obj != nil {
-			// declareLocal (not addLocal) so an address-taken / closure-captured target
-			// becomes a GoPtr cell; storing into it must then go through storeTarget.
-			idx, _ := l.declareLocal(obj, t)
-			return idx
-		}
-	}
-	idx, _, ok := l.lookupVar(id)
-	if !ok {
-		return -1
-	}
-	return idx
-}
-
-// storeTarget stores a value (emitValue pushes it unboxed) into a comma-ok result
-// target, honoring a GoPtr cell when the target is address-taken/captured.
-func (l *funcLowerer) storeTarget(s *ast.AssignStmt, idx int, emitValue func()) {
-	if s.Tok == token.DEFINE {
-		l.initLocal(idx, emitValue)
-	} else {
-		l.assignLocal(idx, emitValue)
-	}
+	okTmp := l.addLocal(nil, goir.TBool)
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: mTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: kTmp})
+	l.emit(goir.Op{Code: goir.OpMapContains})
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: okTmp})
+	l.assignToTarget(s, s.Lhs[1], goir.TBool, func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: okTmp}) })
 }
 
 // rangeMap lowers `for k, v := range m`: iterate the map's keys, fetching each

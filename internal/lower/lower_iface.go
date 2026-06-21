@@ -259,9 +259,9 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		// pointer types implement the same interface (rare); see LIMITATIONS.md.
 		ptrType := goir.PtrType(ctypes[i])
 		if ctypes[i].Kind != goir.KStruct {
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
-			l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: ptrType})
-			l.emit(goir.Op{Code: goir.OpBrTrue, Label: labels[i]})
+			// Refine the plain GoPtr match by the pointee's representation so distinct
+			// pointer-to-non-struct implementers (*MyInt vs *MyString) are told apart.
+			l.emitPtrPointeeMatch(iTmp, ptrType, labels[i])
 			continue
 		}
 		// Pointer-to-struct implementer: it is a GoPtr; disambiguate by the cell's id.
@@ -282,11 +282,25 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		l.emit(goir.Op{Code: goir.OpIsInstGoError})
 		l.emit(goir.Op{Code: goir.OpBrTrue, Label: goErrLabel})
 	}
-	// No match => nil interface method call.
-	l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: invalid memory address or nil pointer dereference"})
-	l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
-	l.emit(goir.Op{Code: goir.OpCallPanic})
-	l.emit(goir.Op{Code: goir.OpBr, Label: end})
+	// A sync.Locker-shaped interface (Lock()/Unlock()) may hold an opaque shim handle
+	// (e.g. the RWMutex that database/sql's Rows iteration locks through RLocker()).
+	// Such handles share the System.Object CLR type, so no isinst branch above matched;
+	// route them to the runtime adapter that discriminates by concrete CLR type.
+	if isLockerIface(iface) {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: ifaceMethod.Name()})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Sync", Method: "LockerDispatch",
+			Params: []goir.Type{goir.TObject, goir.TString}, Ret: goir.TVoid,
+		}})
+		l.emit(goir.Op{Code: goir.OpBr, Label: end})
+	} else {
+		// No match => nil interface method call.
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: invalid memory address or nil pointer dereference"})
+		l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
+		l.emit(goir.Op{Code: goir.OpCallPanic})
+		l.emit(goir.Op{Code: goir.OpBr, Label: end})
+	}
 
 	for i, impl := range impls {
 		l.mark(labels[i])
@@ -508,10 +522,10 @@ func (l *funcLowerer) emitInterfaceAssert(valEmit func(), iface *types.Interface
 		ct, _ := l.goType(impl.named)
 		switch {
 		case impl.viaPtr && ct.Kind != goir.KStruct:
-			// Pointer to a non-struct: identify only as a GoPtr (no cell struct id).
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
-			l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: goir.PtrType(ct)})
-			l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
+			// Pointer to a non-struct (no cell struct id): refine the plain GoPtr match
+			// by the pointee's representation so e.g. a *RawBytes implementer of Scanner
+			// is not matched by a *int64 destination (both are otherwise just GoPtr).
+			l.emitPtrPointeeMatch(resTmp, goir.PtrType(ct), matched)
 		case impl.viaPtr:
 			skip := l.label()
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
@@ -576,6 +590,30 @@ func (l *funcLowerer) emitEmbedNav(start goir.Type, path []int, recvType goir.Ty
 		l.emitBox(cur)
 		l.ptrNew(cur)
 	}
+}
+
+// isLockerIface reports whether iface is sync.Locker-shaped: exactly Lock() and
+// Unlock(), both with no parameters and no results. Such an interface may carry an
+// opaque shim handle (a mutex) that the isinst-based dispatch cannot identify.
+func isLockerIface(iface *types.Interface) bool {
+	if iface.NumMethods() != 2 {
+		return false
+	}
+	var hasLock, hasUnlock bool
+	for i := 0; i < iface.NumMethods(); i++ {
+		m := iface.Method(i)
+		sig, ok := m.Type().(*types.Signature)
+		if !ok || sig.Params().Len() != 0 || sig.Results().Len() != 0 {
+			return false
+		}
+		switch m.Name() {
+		case "Lock":
+			hasLock = true
+		case "Unlock":
+			hasUnlock = true
+		}
+	}
+	return hasLock && hasUnlock
 }
 
 // ifaceIsError reports whether iface's method set is exactly the error interface's
@@ -655,6 +693,22 @@ func (l *funcLowerer) typeAssertOK(s *ast.AssignStmt) {
 		l.emit(goir.Op{Code: goir.OpLdNull})
 		l.emit(goir.Op{Code: goir.OpStLoc, Local: isTmp})
 		l.mark(lok)
+	} else if t.Kind == goir.KPtr {
+		// Pointer to a non-struct: isinst only proves it is some GoPtr. Null isTmp unless
+		// the pointee's representation matches t's (so `dest.(*int64)` rejects a *string).
+		if code, ok := pointeeKindCode(*t.Elem); ok {
+			lok := l.label()
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
+			l.emit(goir.Op{Code: goir.OpBrFalse, Label: lok}) // already null
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: pointeeKindExtern()})
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: code})
+			l.emit(goir.Op{Code: goir.OpCeq})
+			l.emit(goir.Op{Code: goir.OpBrTrue, Label: lok})
+			l.emit(goir.Op{Code: goir.OpLdNull})
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: isTmp})
+			l.mark(lok)
+		}
 	}
 
 	l.bindAssertResults(s, isTmp, t)
@@ -663,34 +717,89 @@ func (l *funcLowerer) typeAssertOK(s *ast.AssignStmt) {
 // bindAssertResults binds the comma-ok results: ok = (isTmp != null), and the value
 // = unbox(isTmp) to type t (the matched value), or t's zero value when isTmp is null.
 func (l *funcLowerer) bindAssertResults(s *ast.AssignStmt, isTmp int, t goir.Type) {
-	vIdx := l.assignTarget(s, s.Lhs[0], t)
-	okIdx := l.assignTarget(s, s.Lhs[1], goir.TBool)
+	// Compute the bound value (matched -> unbox, else zero) into a temp, then store it
+	// through assignToTarget — which handles ident (cell-aware), struct-field and
+	// slice/map-element targets, e.g. `r.typ, _ = vals[0].(string)`.
+	valTmp := l.addLocal(nil, t)
+	lz, lend := l.label(), l.label()
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
+	l.emit(goir.Op{Code: goir.OpBrFalse, Label: lz})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
+	l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: t})
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
+	l.emit(goir.Op{Code: goir.OpBr, Label: lend})
+	l.mark(lz)
+	l.emitZeroValue(t)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
+	l.mark(lend)
+	l.assignToTarget(s, s.Lhs[0], t, func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp}) })
 
-	if okIdx >= 0 {
-		l.storeTarget(s, okIdx, func() {
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
-			l.emit(goir.Op{Code: goir.OpLdNull})
-			l.emit(goir.Op{Code: goir.OpCeq})
-			l.emit(goir.Op{Code: goir.OpNot})
-		})
+	okTmp := l.addLocal(nil, goir.TBool)
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
+	l.emit(goir.Op{Code: goir.OpLdNull})
+	l.emit(goir.Op{Code: goir.OpCeq})
+	l.emit(goir.Op{Code: goir.OpNot})
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: okTmp})
+	l.assignToTarget(s, s.Lhs[1], goir.TBool, func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: okTmp}) })
+}
+
+// pointeeKindCode returns the Rt.PtrPointeeKind code for a non-struct pointee type
+// whose representation is distinguishable at runtime (so *int64, *string and *[]byte
+// can be told apart). ok is false for kinds that share a representation or have none,
+// where the caller keeps the plain GoPtr match.
+func pointeeKindCode(elem goir.Type) (int64, bool) {
+	switch elem.Kind {
+	case goir.KString:
+		return 1, true
+	case goir.KSlice:
+		return 2, true
+	case goir.KInt64:
+		return 3, true
+	case goir.KInt32:
+		return 4, true
+	case goir.KBool:
+		return 5, true
+	case goir.KFloat64:
+		return 6, true
+	case goir.KUint64:
+		return 7, true
+	case goir.KUint32:
+		return 8, true
+	case goir.KFloat32:
+		return 9, true
 	}
-	if vIdx >= 0 {
-		// Compute the bound value (matched -> unbox, else zero) into a temp, then store
-		// it through storeTarget so a captured target's GoPtr cell is preserved.
-		valTmp := l.addLocal(nil, t)
-		lz, lend := l.label(), l.label()
-		l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
-		l.emit(goir.Op{Code: goir.OpBrFalse, Label: lz})
-		l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
-		l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: t})
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
-		l.emit(goir.Op{Code: goir.OpBr, Label: lend})
-		l.mark(lz)
-		l.emitZeroValue(t)
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
-		l.mark(lend)
-		l.storeTarget(s, vIdx, func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp}) })
+	return 0, false
+}
+
+// pointeeKindExtern is the Rt.PtrPointeeKind descriptor.
+func pointeeKindExtern() *goir.Extern {
+	return &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "PtrPointeeKind",
+		Params: []goir.Type{goir.TObject}, Ret: goir.TInt64,
 	}
+}
+
+// emitPtrPointeeMatch branches to matchLabel when valLocal is a GoPtr whose pointee
+// representation matches t (a pointer to a distinguishable non-struct). Falls back to
+// a plain GoPtr isinst when the pointee kind is not distinguishable.
+func (l *funcLowerer) emitPtrPointeeMatch(valLocal int, t goir.Type, matchLabel int) {
+	code, ok := pointeeKindCode(*t.Elem)
+	if !ok {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
+		l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: t})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})
+		return
+	}
+	skip := l.label()
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
+	l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: t}) // isinst GoPtr
+	l.emit(goir.Op{Code: goir.OpBrFalse, Label: skip})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: pointeeKindExtern()})
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: code})
+	l.emit(goir.Op{Code: goir.OpCeq})
+	l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})
+	l.mark(skip)
 }
 
 // emitTypeMatch branches to matchLabel when the value in valLocal dynamically has
@@ -730,6 +839,25 @@ func (l *funcLowerer) emitTypeMatch(valLocal int, gt types.Type, t goir.Type, ma
 		tmp := l.addLocal(nil, goir.TObject)
 		l.emitInterfaceAssert(func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal}) }, iface, tmp)
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})
+		return
+	}
+	// A pointer to a non-struct (e.g. *int64, *string): isinst alone only proves it is
+	// some GoPtr, so refine by the pointee's runtime representation when distinguishable.
+	if t.Kind == goir.KPtr && t.Elem.Kind != goir.KStruct {
+		l.emitPtrPointeeMatch(valLocal, t, matchLabel)
+		return
+	}
+	// An opaque shim type (time.Time, sync.Mutex, …) lowers to System.Object, so
+	// `isinst object` would match *every* boxed value — a type switch `case time.Time`
+	// must not capture a plain int64. Discriminate by the concrete shim CLR class.
+	if t.Kind == goir.KObject && t.Shim != "" {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: t.Shim})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "IsShimKind",
+			Params: []goir.Type{goir.TObject, goir.TString}, Ret: goir.TBool,
+		}})
 		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})
 		return
 	}

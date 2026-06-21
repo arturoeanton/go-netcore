@@ -44,6 +44,34 @@ public static class GoPtrs
     /// <summary>The pointee type id of a cell (0 if untyped or nil).</summary>
     public static long TypeIdOf(GoPtr? p) => p?.TypeId ?? 0;
 
+    /// <summary>
+    /// A small code identifying the runtime representation of a GoPtr's pointee, so a
+    /// type assertion/switch can tell *int64 from *string from *[]byte — pointers to
+    /// non-struct types that otherwise share this one cell type. database/sql's
+    /// convertAssign and Row.Scan rely on exactly these `dest.(*int64)` / `dest.(*string)`
+    /// distinctions. 0 = not a GoPtr or an unclassified pointee (caller keeps the plain
+    /// GoPtr match). *[]byte and *RawBytes still share code 2 (same representation).
+    /// </summary>
+    public static long PointeeKind(object? p)
+    {
+        if (p is not GoPtr gp) return 0;
+        object? v;
+        try { v = Get(gp); } catch { return 0; }
+        return v switch
+        {
+            GoString => 1,
+            GoSlice => 2,
+            long => 3,
+            int => 4,
+            bool => 5,
+            double => 6,
+            ulong => 7,
+            uint => 8,
+            float => 9,
+            _ => 0,
+        };
+    }
+
     /// <summary>*p — the boxed pointee. Panics on a nil pointer.</summary>
     public static object? Get(GoPtr? p)
     {
