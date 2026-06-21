@@ -93,6 +93,13 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/subtle":   {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}},
 	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
 	"net/mail":        {"ParseAddress": {"Mail", "ParseAddress"}},
+	"log/slog": {
+		"New": {"Slog", "New"}, "NewTextHandler": {"Slog", "NewTextHandler"}, "NewJSONHandler": {"Slog", "NewJSONHandler"},
+		"Default": {"Slog", "DefaultLogger"}, "SetDefault": {"Slog", "SetDefault"},
+		"Info": {"Slog", "Info"}, "Debug": {"Slog", "Debug"}, "Warn": {"Slog", "Warn"}, "Error": {"Slog", "Error"},
+		"String": {"Slog", "String"}, "Int": {"Slog", "Int"}, "Int64": {"Slog", "Int64"}, "Uint64": {"Slog", "Uint64"},
+		"Float64": {"Slog", "Float64"}, "Bool": {"Slog", "Bool"}, "Any": {"Slog", "Any"}, "Duration": {"Slog", "Duration"},
+	},
 	"net/http/cookiejar": {"New": {"Cookiejar", "New"}},
 	"net/http/httptest": {
 		"NewServer": {"Httptest", "NewServer"}, "NewTLSServer": {"Httptest", "NewTLSServer"},
@@ -379,6 +386,12 @@ var opaqueShimTypes = map[string]bool{
 	"mime/multipart.File":          true,
 	"net/http.Cookie":              true,
 	"net/http/cookiejar.Jar":       true,
+	"log/slog.Logger":              true,
+	"log/slog.Attr":                true,
+	"log/slog.Handler":             true,
+	"log/slog.HandlerOptions":      true,
+	"log/slog.TextHandler":         true,
+	"log/slog.JSONHandler":         true,
 	"net/http/httptest.Server":            true,
 	"net/http/httptest.ResponseRecorder":  true,
 	"bufio.Writer":                 true,
@@ -397,6 +410,10 @@ var shimVarRegistry = map[string]shimFunc{
 	"os.Stdout":                      {"Os", "Stdout"},
 	"os.Stderr":                      {"Os", "Stderr"},
 	"os.Stdin":                       {"Os", "Stdin"},
+	"log/slog.TimeKey":               {"Slog", "KeyTime"},
+	"log/slog.MessageKey":            {"Slog", "KeyMessage"},
+	"log/slog.LevelKey":              {"Slog", "KeyLevel"},
+	"log/slog.SourceKey":             {"Slog", "KeySource"},
 	"time.UTC":                       {"Time", "UTC"},
 	"time.Local":                     {"Time", "Local"},
 	"encoding/base64.StdEncoding":    {"Base64", "StdEncoding"},
@@ -530,6 +547,9 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"net/http/httptest.ResponseRecorder": {
 		"Code": {"Httptest", "Recorder_Code"}, "Body": {"Httptest", "Recorder_Body"}, "HeaderMap": {"Httptest", "Recorder_HeaderMap"},
 	},
+	"log/slog.Attr": {
+		"Key": {"Slog", "Attr_Key"}, "Value": {"Slog", "Attr_Value"},
+	},
 	"sync.Cond": {
 		"L": {"Sync", "Cond_L"},
 	},
@@ -635,6 +655,9 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"net.UDPAddr": {
 		"IP": {"Net", "UDPAddr_SetIP"}, "Port": {"Net", "UDPAddr_SetPort"},
 	},
+	"log/slog.HandlerOptions": {
+		"Level": {"Slog", "HO_SetLevel"}, "AddSource": {"Slog", "HO_SetAddSource"}, "ReplaceAttr": {"Slog", "HO_SetReplaceAttr"},
+	},
 	"encoding/xml.StartElement": {
 		"Name": {"Xml", "Start_SetName"}, "Attr": {"Xml", "Start_SetAttr"},
 	},
@@ -739,6 +762,8 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"hash/maphash.Hash":          {"MapHash", "New"},
 	"net.IPNet":                  {"Net", "NewIPNet"},
 	"net.UDPAddr":                {"Net", "NewUDPAddr"},
+	"log/slog.Attr":              {"Slog", "NewAttr"},
+	"log/slog.HandlerOptions":    {"Slog", "NewHandlerOptions"},
 	"syscall.Flock_t":            {"Syscall", "NewFlockT"},
 	"encoding/xml.Name":          {"Xml", "NewXmlName"},
 	"encoding/xml.StartElement":  {"Xml", "NewXmlStart"},
@@ -900,6 +925,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http/cookiejar.Jar": {
 		"SetCookies": {"Cookiejar", "Jar_SetCookies"}, "Cookies": {"Cookiejar", "Jar_Cookies"},
+	},
+	"log/slog.Logger": {
+		"Info": {"Slog", "Logger_Info"}, "Debug": {"Slog", "Logger_Debug"}, "Warn": {"Slog", "Logger_Warn"},
+		"Error": {"Slog", "Logger_Error"}, "With": {"Slog", "Logger_With"},
 	},
 	"net/http/httptest.Server": {
 		"Close": {"Httptest", "Server_Close"}, "Client": {"Httptest", "Server_Client"}, "Start": {"Httptest", "Server_Start"},
@@ -1294,6 +1323,24 @@ func (l *funcLowerer) shimMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr, sel
 		l.emitEmbedNav(xt, idx[:len(idx)-1], ext.Params[0])
 	} else {
 		l.expr(sel.X) // receiver handle
+	}
+	// A variadic shim method (e.g. slog.Logger.Info(msg, args ...any)) must pack the
+	// trailing arguments into the final slice parameter, like the free-function path.
+	if sig, ok := seln.Obj().(*types.Func); ok {
+		if s, ok := sig.Type().(*types.Signature); ok && s.Variadic() {
+			nFixed := s.Params().Len() - 1
+			for i := 0; i < nFixed; i++ {
+				l.exprCoerced(e.Args[i], ext.Params[i+1])
+			}
+			sliceParam := ext.Params[len(ext.Params)-1]
+			if e.Ellipsis.IsValid() {
+				l.exprCoerced(e.Args[nFixed], sliceParam) // m.Info(slice...) — passed directly
+			} else {
+				l.packVariadic(e.Args[nFixed:], *sliceParam.Elem)
+			}
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+			return ext.Ret
+		}
 	}
 	for i, a := range e.Args {
 		if i+1 < len(ext.Params) {
