@@ -42,6 +42,7 @@ public static class Compress
     {
         switch (w)
         {
+            case GoFile f when f.Wr != null: f.Wr.Write(data, 0, data.Length); break;
             case GoBuffer buf: buf.B.AddRange(data); break;
             case GoReader gr: { var n = new byte[gr.Data.Length + data.Length]; gr.Data.CopyTo(n, 0); data.CopyTo(n, gr.Data.Length); gr.Data = n; break; }
             default: Fmt.WriteTo(w, System.Text.Encoding.UTF8.GetString(data)); break;
@@ -72,4 +73,22 @@ public static class Compress
     public static object ZlibNewReaderObj(object? r) => DecompReader(r, 1);
     public static object?[] ZlibNewReader(object? r) => new object?[] { DecompReader(r, 1), null };
     public static object FlateNewReader(object? r) => DecompReader(r, 2);
+
+    // compress/gzip.Reader / zlib.Reader / flate Reader methods (receiver is a GoReader
+    // holding the fully-decompressed bytes; reads stream from that snapshot).
+    public static object?[] CompR_Read(object rd, GoSlice p)
+    {
+        var gr = (GoReader)rd;
+        int avail = gr.Data.Length - gr.Pos, n = System.Math.Min(p.Len, avail);
+        for (int i = 0; i < n; i++) p.Data![p.Off + i] = (int)gr.Data[gr.Pos + i];
+        gr.Pos += n;
+        return new object?[] { (long)n, n == 0 ? Io.EOFSentinel : null };
+    }
+    public static object? CompR_Reset(object rd, object? r)
+    {
+        var fresh = (GoReader)DecompReader(r, 0);
+        var gr = (GoReader)rd; gr.Data = fresh.Data; gr.Pos = 0;
+        return null;
+    }
+    public static object? CompR_Close(object rd) => null;
 }

@@ -11,6 +11,12 @@ public sealed class GoScanner
     public byte[] Cur = System.Array.Empty<byte>();
 }
 
+/// <summary>A bufio.Reader over an underlying runtime reader.</summary>
+public sealed class GoBufReader { public object? R; }
+
+/// <summary>A bufio.ReadWriter pairing a Reader and a Writer.</summary>
+public sealed class GoBufReadWriter { public object R = new GoBufReader(); public object W = new GoBufWriter(); }
+
 /// <summary>A bufio.Writer buffering bytes over an underlying writer.</summary>
 public sealed class GoBufWriter
 {
@@ -24,6 +30,27 @@ public sealed class GoBufWriter
 public static class Bufio
 {
     public static object NewScanner(object? r) => new GoScanner { Data = Readers.Drain(r) };
+
+    // bufio.NewReader / NewReaderSize: buffered reader over an underlying reader.
+    public static object NewReader(object? r) => new GoBufReader { R = r };
+    public static object NewReaderSize(object? r, long size) => new GoBufReader { R = r };
+    public static object?[] Reader_Read(object br, GoSlice p) => Io.ReadFull(((GoBufReader)br).R, p);
+    public static object?[] Reader_ReadByte(object br)
+    {
+        var b = (GoBufReader)br;
+        var one = new GoSlice { Data = new object?[1], Off = 0, Len = 1, Cap = 1 };
+        var r = Io.ReadFull(b.R, one);
+        if (r[1] != null) return new object?[] { 0, r[1] };
+        return new object?[] { one.Data![0], null };
+    }
+    public static void Reader_Reset(object br, object? r) => ((GoBufReader)br).R = r;
+    public static long Reader_Buffered(object br) => 0;
+
+    // bufio.ReadWriter (a Reader+Writer pair; h2c prior-knowledge path, dead under goclr).
+    public static object RW_Reader(object rw) => ((GoBufReadWriter)rw).R;
+    public static object RW_Writer(object rw) => ((GoBufReadWriter)rw).W;
+    public static object? RW_Flush(object rw) => Writer_Flush(((GoBufReadWriter)rw).W);
+    public static object?[] RW_Read(object rw, GoSlice p) => Reader_Read(((GoBufReadWriter)rw).R, p);
 
     // bufio.NewWriter / NewWriterSize.
     public static object NewWriter(object? w) => new GoBufWriter { W = w };

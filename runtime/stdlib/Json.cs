@@ -220,6 +220,54 @@ public static class Json
     /// <summary>json.Unmarshal(data, &amp;v). desc is a compact JSON descriptor of
     /// v's static type (emitted by the compiler, since the runtime erases slice/map
     /// element types). The decoded value is written back through the GoPtr cell.</summary>
+    // json.Unmarshal as a func value (e.g. gin's internal/json.Unmarshal = json.Unmarshal):
+    // the compiler cannot inject a static type descriptor through the indirection, so the
+    // descriptor is derived from the target pointer's runtime .NET type. Type-erased
+    // element types (slice/map elements) fall back to a generic decode.
+    public static object? UnmarshalValue(GoSlice data, object? target)
+    {
+        if (target == null) return new GoError(GoString.FromDotNetString("json: Unmarshal(nil)"));
+        var vf = target.GetType().GetField("Value");
+        var elemType = vf?.FieldType ?? typeof(object);
+        string desc = RuntimeDescriptor(elemType, new HashSet<System.Type>());
+        return Unmarshal(data, target, GoString.FromDotNetString(desc));
+    }
+
+    // Build a json type descriptor from a runtime .NET type (mirror of the compiler's
+    // jsonDescriptor; element types of GoSlice/GoMap are erased, hence "any").
+    private static string RuntimeDescriptor(System.Type t, HashSet<System.Type> seen)
+    {
+        if (t == typeof(bool)) return "{\"k\":\"bool\"}";
+        if (t == typeof(long) || t == typeof(int)) return "{\"k\":\"int\"}";
+        if (t == typeof(ulong) || t == typeof(uint)) return "{\"k\":\"uint\"}";
+        if (t == typeof(double) || t == typeof(float)) return "{\"k\":\"float\"}";
+        if (t == typeof(GoString)) return "{\"k\":\"string\"}";
+        if (t == typeof(GoSlice)) return "{\"k\":\"slice\",\"e\":{\"k\":\"any\"}}";
+        if (t == typeof(GoMap)) return "{\"k\":\"map\",\"v\":{\"k\":\"any\"}}";
+        if (t == typeof(GoPtr)) return "{\"k\":\"ptr\",\"e\":{\"k\":\"any\"}}";
+        if (IsGoStruct(t) && !seen.Contains(t))
+        {
+            seen.Add(t);
+            var sb = new StringBuilder();
+            sb.Append("{\"k\":\"struct\",\"n\":\"").Append(t.Name).Append("\",\"f\":[");
+            bool first = true;
+            foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (f.Name.Length == 0 || !char.IsUpper(f.Name[0])) continue;
+                string tag = Reflect.TagGet(Reflect.TagFor(t.Name, f.Name), "json");
+                string key = f.Name;
+                if (tag.Length > 0) { var parts = tag.Split(','); if (parts[0] == "-") continue; if (parts[0].Length > 0) key = parts[0]; }
+                if (!first) sb.Append(',');
+                first = false;
+                sb.Append("{\"j\":\"").Append(key).Append("\",\"c\":\"").Append(f.Name).Append("\",\"t\":").Append(RuntimeDescriptor(f.FieldType, seen)).Append('}');
+            }
+            sb.Append("]}");
+            seen.Remove(t);
+            return sb.ToString();
+        }
+        return "{\"k\":\"any\"}";
+    }
+
     public static object? Unmarshal(GoSlice data, object? target, GoString desc)
     {
         try

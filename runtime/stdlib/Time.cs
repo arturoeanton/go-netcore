@@ -185,6 +185,8 @@ public static class Time
     public static long Time_Nanosecond(object t) => ((GoTime)t).N % Second;
     public static long Time_Weekday(object t) => ZeroDate(t, dt => (int)dt.DayOfWeek, 1);
     public static object Time_Add(object t, long d) => new GoTime { N = ((GoTime)t).N + d, IsZero = false };
+    public static object Time_Round(object t, long d) { var n = ((GoTime)t).N; if (d <= 0) return new GoTime { N = n, IsZero = ((GoTime)t).IsZero }; long r = n % d; long h = d / 2; n = r + r < d ? n - r : n - r + d; return new GoTime { N = n, IsZero = false }; }
+    public static object Time_Truncate(object t, long d) { var n = ((GoTime)t).N; if (d <= 0) return new GoTime { N = n, IsZero = ((GoTime)t).IsZero }; return new GoTime { N = n - n % d, IsZero = false }; }
     public static long Time_Sub(object t, object u) => ((GoTime)t).N - ((GoTime)u).N;
     public static bool Time_Before(object t, object u) => ((GoTime)t).N < ((GoTime)u).N;
     public static bool Time_After(object t, object u) => ((GoTime)t).N > ((GoTime)u).N;

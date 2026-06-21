@@ -55,6 +55,7 @@ type lowerCtx struct {
 	// stringers holds generated String()/Error() dispatch closures to register
 	// with the fmt runtime at startup.
 	stringers []stringerReg
+	handlers  []handlerReg
 	// namedIds assigns each identity-bearing named type (non-struct underlying with
 	// a method set) a stable per-build id so a boxed value can carry its Go named-
 	// type identity — the typed box (see runtime GoNamed). namedNames maps id ->
@@ -71,11 +72,13 @@ type lowerCtx struct {
 }
 
 // varInit is a package-level variable initializer to run during program startup.
+// idxs/gtypes hold one entry for a single var, or N for a tuple initializer
+// (var a, b = f()). value nil => zero-initialize each target.
 type varInit struct {
-	pkg   *frontend.Package
-	idx   int // global index
-	gtype goir.Type
-	value ast.Expr // nil => zero-initialize
+	pkg    *frontend.Package
+	idxs   []int
+	gtypes []goir.Type
+	value  ast.Expr // nil => zero-initialize
 }
 
 // monoJob is a queued generic-function instantiation whose body is lowered after
@@ -211,6 +214,9 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	// Generate String()/Error() dispatch closures for fmt (after all methods are
 	// shelled, so byFunc is populated; before buildInit emits their registration).
 	c.collectStringers()
+	// Bridge http.Handler implementers (e.g. gin's *Engine) so the net/http server
+	// shim can drive them across the static-dispatch boundary.
+	c.collectHandlers()
 
 	// Startup: run package-var initializers and init() functions before main.
 	if init, ok := c.buildInit(); !ok {
@@ -253,9 +259,14 @@ func (c *lowerCtx) drainMonoTodo() bool {
 }
 
 // collectGlobals registers a package's file-level variables as static-field
-// globals and records their initializers (in source order) for startup.
+// globals and records their initializers for startup. Vars without an
+// initializer are zero-initialized; vars with one run in dependency order
+// (Go's spec order), taken from the type checker's InitOrder so an initializer
+// that references a variable declared later still observes its value.
 func (c *lowerCtx) collectGlobals(p *frontend.Package) {
 	prefix := c.curPrefix()
+	hasInit := map[*types.Var]bool{}
+	// Pass 1: register every package-level var; zero-initialize the value-less ones.
 	for _, f := range p.Syntax {
 		for _, d := range f.Decls {
 			gd, ok := d.(*ast.GenDecl)
@@ -267,7 +278,7 @@ func (c *lowerCtx) collectGlobals(p *frontend.Package) {
 				if !ok {
 					continue
 				}
-				for i, name := range vs.Names {
+				for _, name := range vs.Names {
 					if name.Name == "_" {
 						continue
 					}
@@ -283,14 +294,61 @@ func (c *lowerCtx) collectGlobals(p *frontend.Package) {
 					idx := len(c.prog.Globals)
 					c.prog.Globals = append(c.prog.Globals, &goir.Global{Name: prefix + name.Name, Type: gt})
 					c.globals[obj] = idx
-					var val ast.Expr
-					if len(vs.Values) == len(vs.Names) {
-						val = vs.Values[i]
+				}
+				if len(vs.Values) > 0 {
+					for _, name := range vs.Names {
+						if obj, ok := p.TypesInfo.Defs[name].(*types.Var); ok {
+							hasInit[obj] = true
+						}
 					}
-					c.varInits = append(c.varInits, varInit{pkg: p, idx: idx, gtype: gt, value: val})
 				}
 			}
 		}
+	}
+	// Zero-init pass: every registered global without an initializer.
+	for _, f := range p.Syntax {
+		for _, d := range f.Decls {
+			gd, ok := d.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, name := range vs.Names {
+					obj, ok := p.TypesInfo.Defs[name].(*types.Var)
+					if !ok || hasInit[obj] {
+						continue
+					}
+					idx, ok := c.globals[obj]
+					if !ok {
+						continue
+					}
+					c.varInits = append(c.varInits, varInit{pkg: p, idxs: []int{idx}, gtypes: []goir.Type{c.prog.Globals[idx].Type}, value: nil})
+				}
+			}
+		}
+	}
+	// Pass 2: append initializers in dependency (init) order.
+	for _, in := range p.TypesInfo.InitOrder {
+		idxs := make([]int, 0, len(in.Lhs))
+		gts := make([]goir.Type, 0, len(in.Lhs))
+		bad := false
+		for _, v := range in.Lhs {
+			idx, ok := c.globals[v]
+			if !ok {
+				bad = true // blank or unsupported target; matched by the source-order skip
+				break
+			}
+			idxs = append(idxs, idx)
+			gts = append(gts, c.prog.Globals[idx].Type)
+		}
+		if bad || len(idxs) == 0 {
+			continue
+		}
+		c.varInits = append(c.varInits, varInit{pkg: p, idxs: idxs, gtypes: gts, value: in.Rhs})
 	}
 }
 
@@ -313,7 +371,7 @@ func (c *lowerCtx) taggedStructs() []*goir.Struct {
 // then each init() function. Returns nil if there is nothing to do.
 func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	tagged := c.taggedStructs()
-	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.namedNames) == 0 {
+	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.handlers) == 0 && len(c.namedNames) == 0 {
 		return nil, true
 	}
 	// The package-var initializers and tag registrations are emitted into a series
@@ -345,6 +403,7 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	// dispatch closures so fmt can format custom types.
 	cl.emitRegisterNamedTypes()
 	cl.emitStringerRegistrations()
+	cl.emitHandlerRegistrations()
 	// Register struct field tags first so reflect/json see them everywhere.
 	regExt := &goir.Extern{
 		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Reflect", Method: "RegisterTag",
@@ -384,12 +443,29 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 			cl = newChunk()
 		}
 		c.pkg = vi.pkg
-		if vi.value != nil {
-			cl.exprCoerced(vi.value, vi.gtype)
-		} else {
-			cl.emitZeroValue(vi.gtype)
+		switch {
+		case vi.value == nil:
+			for k, idx := range vi.idxs {
+				cl.emitZeroValue(vi.gtypes[k])
+				cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(idx)})
+			}
+		case len(vi.idxs) == 1:
+			cl.exprCoerced(vi.value, vi.gtypes[0])
+			cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(vi.idxs[0])})
+		default:
+			// Tuple initializer (var a, b = f()): the call leaves an object[] tuple;
+			// unpack each element to its global.
+			tmp := cl.addLocal(nil, goir.TObjectArray)
+			cl.expr(vi.value)
+			cl.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+			for k, idx := range vi.idxs {
+				cl.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+				cl.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(k)})
+				cl.emit(goir.Op{Code: goir.OpLdElemRef})
+				cl.emitUnbox(vi.gtypes[k])
+				cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(idx)})
+			}
 		}
-		cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(vi.idx)})
 	}
 	if !finishChunk(cl) {
 		return nil, false

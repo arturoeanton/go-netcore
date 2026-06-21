@@ -5,10 +5,28 @@ using System.Net.Http;
 using GoCLR.Runtime;
 
 /// <summary>An *http.Response handle (status + body snapshot).</summary>
-public sealed class GoResponse { public int StatusCode; public string Status = ""; public GoReader Body = new(); public long ContentLength; }
+public sealed class GoResponse { public int StatusCode; public string Status = ""; public GoReader Body = new(); public long ContentLength; public readonly GoFieldBag Extra = new(); }
 
 /// <summary>An http.ResponseWriter backed by an HttpListenerResponse.</summary>
 public sealed class GoRespWriter { public HttpListenerResponse Resp = null!; public bool WroteHeader; public GoMap? Headers; }
+
+/// <summary>An http.ResponseController over a response writer.</summary>
+public sealed class GoResponseController { public object? W; }
+
+/// <summary>An http.FileServer/StripPrefix handler (opaque; ServeHTTP is unsupported).</summary>
+public sealed class GoFileServer { public object? Fs; public string StripPrefix = ""; }
+
+/// <summary>An http.Cookie.</summary>
+public sealed class GoCookie
+{
+    public string Name = "";
+    public string Value = "";
+    public string Path = "";
+    public string Domain = "";
+    public long MaxAge;
+    public bool Secure;
+    public bool HttpOnly;
+}
 
 /// <summary>An *http.Request handle (server side).</summary>
 public sealed class GoRequest { public string Method = ""; public GoUrl Url = new(); public GoReader Body = new(); public string Host = ""; public string RemoteAddr = ""; public GoMap? Form; public GoMap? PostForm; public GoMap? Header; public byte[] RawBody = System.Array.Empty<byte>(); public readonly GoFieldBag Extra = new(); }
@@ -53,6 +71,23 @@ public static class Http
     public static GoString Resp_Status(object r) => GoString.FromDotNetString(((GoResponse)r).Status);
     public static object Resp_Body(object r) => ((GoResponse)r).Body;
     public static long Resp_ContentLength(object r) => ((GoResponse)r).ContentLength;
+    public static void Resp_SetStatusCode(object r, long v) => ((GoResponse)r).StatusCode = (int)v;
+    public static void Resp_SetStatus(object r, GoString v) => ((GoResponse)r).Status = v.ToDotNetString();
+    public static void Resp_SetContentLength(object r, long v) => ((GoResponse)r).ContentLength = v;
+    public static void Resp_SetBody(object r, object? v) => ((GoResponse)r).Extra.Set("Body", v);
+    public static object? Resp_Request(object r) => ((GoResponse)r).Extra.Get("Request");
+    public static void Resp_SetRequest(object r, object? v) => ((GoResponse)r).Extra.Set("Request", v);
+    public static object? Resp_TLS(object r) => ((GoResponse)r).Extra.Get("TLS");
+    public static void Resp_SetTLS(object r, object? v) => ((GoResponse)r).Extra.Set("TLS", v);
+    public static object? Resp_Trailer(object r) => ((GoResponse)r).Extra.Get("Trailer");
+    public static void Resp_SetTrailer(object r, object? v) => ((GoResponse)r).Extra.Set("Trailer", v);
+    public static bool Resp_Uncompressed(object r) => ((GoResponse)r).Extra.GetB("Uncompressed");
+    public static void Resp_SetUncompressed(object r, bool v) => ((GoResponse)r).Extra.Set("Uncompressed", v);
+    public static object Resp_Header(object r) => ((GoResponse)r).Extra.Get("Header") ?? GoMaps.Make();
+    public static void Resp_SetHeader(object r, object? v) => ((GoResponse)r).Extra.Set("Header", v);
+    public static GoString Resp_Proto(object r) => GoString.FromDotNetString("HTTP/2.0");
+    public static long Resp_ProtoMajor(object r) => 2;
+    public static long Resp_ProtoMinor(object r) => 0;
 
     // io.ReadCloser.Close on a response body is a no-op (body already buffered).
     public static object? Body_Close(object r) => null;
@@ -76,6 +111,15 @@ public static class Http
     public static object LocalAddrContextKey() => _localAddrKey;
     private static readonly object _serverCtxKey = new();
     public static object ServerContextKey() => _serverCtxKey;
+
+    // http.NewResponseController(w): a controller over the writer. Hijack is
+    // unsupported on the HttpListener backend (h2c prior-knowledge upgrade path).
+    public static object NewResponseController(object w) => new GoResponseController { W = w };
+    public static object?[] RC_Hijack(object rc) => new object?[] { null, null, new GoError(GoString.FromDotNetString("feature not supported")) };
+    public static object? RC_Flush(object rc) => null;
+    public static object? RC_SetReadDeadline(object rc, object t) => null;
+    public static object? RC_SetWriteDeadline(object rc, object t) => null;
+    public static object? RC_EnableFullDuplex(object rc) => null;
 
     // http.Error(w, msg, code): write the status code and message.
     public static void Error(object w, GoString msg, long code)
@@ -106,7 +150,9 @@ public static class Http
         try
         {
             string a = addr.ToDotNetString();
-            string host = a.StartsWith(":") ? "localhost" + a : a;
+            // ":8080" -> bind IPv4 loopback (HttpListener mishandles bracketed IPv6 host
+            // headers); "host:8080" -> bind that host.
+            string host = a.StartsWith(":") ? "127.0.0.1" + a : a;
             var listener = new HttpListener();
             listener.Prefixes.Add("http://" + host + "/");
             listener.Start();
@@ -115,13 +161,50 @@ public static class Http
                 var ctx = listener.GetContext();
                 var w = new GoRespWriter { Resp = ctx.Response };
                 var req = MakeRequest(ctx.Request);
-                var h = handler as GoClosure ?? Match(ctx.Request.Url?.AbsolutePath ?? "/");
-                try { if (h != null) GoRuntime.InvokeArgs(h, w, req); }
+                try { Dispatch(handler, w, req, ctx.Request.Url?.AbsolutePath ?? "/"); }
                 catch (System.Exception) { }
+                try { FlushHeaders(w); } catch { }
                 try { ctx.Response.OutputStream.Close(); } catch { }
             }
         }
         catch (System.Exception e) { return new GoError(GoString.FromDotNetString("http: " + e.Message)); }
+    }
+
+    // Handlers (http.Handler implementers) are registered at startup by type id; the
+    // compiler emits a ServeHTTP adapter closure per implementing type (see
+    // collectHandlers). The server loop looks one up from the handler value's type tag.
+    private static readonly System.Collections.Generic.Dictionary<long, GoClosure> Handlers = new();
+    public static void RegisterHandler(long typeId, GoClosure fn) { lock (Handlers) Handlers[typeId] = fn; }
+    private static GoClosure? HandlerFor(long typeId)
+    {
+        lock (Handlers) return Handlers.TryGetValue(typeId, out var fn) ? fn : null;
+    }
+
+    // Dispatch a request to the configured handler: a bare handler func/closure, an
+    // http.Handler implementer (e.g. gin's *Engine — a GoPtr carrying its type id,
+    // driven through its registered ServeHTTP adapter), an http.Handler interface
+    // value, or nil (route through the DefaultServeMux registrations).
+    private static void Dispatch(object? handler, GoRespWriter w, GoRequest req, string path)
+    {
+        switch (handler)
+        {
+            case GoClosure c:
+                GoRuntime.InvokeArgs(c, w, req);
+                return;
+            case GoInterface gi when gi.Type != null:
+                gi.Call("ServeHTTP", w, req);
+                return;
+            case GoPtr p when p.TypeId != 0 && HandlerFor(p.TypeId) is GoClosure hp:
+                GoRuntime.InvokeArgs(hp, handler, w, req);
+                return;
+            case GoNamed n when HandlerFor(n.TypeId) is GoClosure hn:
+                GoRuntime.InvokeArgs(hn, handler, w, req);
+                return;
+            default:
+                var h = Match(path);
+                if (h != null) GoRuntime.InvokeArgs(h, w, req);
+                return;
+        }
     }
 
     private static GoClosure? Match(string path)
@@ -166,6 +249,9 @@ public static class Http
     public static object? Req_TLS(object r) => ((GoRequest)r).Extra.Get("TLS");
     public static void Req_SetTLS(object r, object? v) => ((GoRequest)r).Extra.Set("TLS", v);
     public static object? Req_MultipartForm(object r) => ((GoRequest)r).Extra.Get("MultipartForm");
+    public static object? Req_Cancel(object r) => ((GoRequest)r).Extra.Get("Cancel");
+    public static object? Req_GetBody(object r) => ((GoRequest)r).Extra.Get("GetBody");
+    public static bool Req_Close(object r) => ((GoRequest)r).Extra.Get("Close") is bool b && b;
     public static void Req_SetBody(object r, object? v) => ((GoRequest)r).Extra.Set("Body", v);
     public static GoString Req_Proto(object r) => GoString.FromDotNetString("HTTP/1.1");
     public static long Req_ProtoMajor(object r) => 1;
@@ -174,10 +260,139 @@ public static class Http
     // (*http.Request).WithContext/Clone: goclr has no request context, so return self.
     public static object Req_WithContext(object r, object? ctx) => r;
     public static object Req_Clone(object r, object? ctx) => r;
-    public static GoString Req_UserAgent(object r) => GoString.FromDotNetString("");
-    public static GoString Req_Referer(object r) => GoString.FromDotNetString("");
-    public static object?[] Req_Cookie(object r, GoString name) => new object?[] { null, new GoError("http: named cookie not present") };
-    public static GoSlice Req_Cookies(object r) => default;
+    public static GoString Req_UserAgent(object r) => GoString.FromDotNetString(HeaderValue((GoRequest)r, "User-Agent"));
+    public static GoString Req_Referer(object r) => GoString.FromDotNetString(HeaderValue((GoRequest)r, "Referer"));
+
+    // First value of a request header (case-insensitive), or "" if absent.
+    private static string HeaderValue(GoRequest r, string key)
+    {
+        if (r.Header?.Data == null) return "";
+        foreach (var kv in r.Header.Data)
+            if (kv.Key is GoString gk && string.Equals(gk.ToDotNetString(), key, System.StringComparison.OrdinalIgnoreCase))
+                return kv.Value is GoSlice s && s.Len > 0 && s.Data![s.Off] is GoString gv ? gv.ToDotNetString() : "";
+        return "";
+    }
+
+    // (*http.Request).Cookie(name) (*http.Cookie, error): parse the Cookie header.
+    public static object?[] Req_Cookie(object r, GoString name)
+    {
+        string want = name.ToDotNetString();
+        foreach (var pair in HeaderValue((GoRequest)r, "Cookie").Split(';'))
+        {
+            string p = pair.Trim();
+            int eq = p.IndexOf('=');
+            if (eq <= 0) continue;
+            if (p.Substring(0, eq) == want)
+            {
+                var ck = new GoCookie { Name = want, Value = p.Substring(eq + 1) };
+                return new object?[] { ck, null };
+            }
+        }
+        return new object?[] { null, new GoError("http: named cookie not present") };
+    }
+    public static GoSlice Req_Cookies(object r)
+    {
+        var list = new System.Collections.Generic.List<object?>();
+        foreach (var pair in HeaderValue((GoRequest)r, "Cookie").Split(';'))
+        {
+            string p = pair.Trim();
+            int eq = p.IndexOf('=');
+            if (eq <= 0) continue;
+            list.Add(new GoCookie { Name = p.Substring(0, eq), Value = p.Substring(eq + 1) });
+        }
+        return new GoSlice { Data = list.ToArray(), Off = 0, Len = list.Count, Cap = list.Count };
+    }
+
+    // http.ServeFile(w, r, name): write a file's bytes to the response with a sniffed
+    // content type (used by gin's StaticFile).
+    public static void ServeFile(object w, object r, GoString name)
+    {
+        string path = name.ToDotNetString();
+        try
+        {
+            byte[] data = System.IO.File.ReadAllBytes(path);
+            var hdr = RW_Header(w);
+            Header_Set(hdr, GoString.FromDotNetString("Content-Type"), GoString.FromDotNetString(ContentTypeByExt(path)));
+            RW_WriteHeader(w, 200);
+            RW_Write(w, BytesToSlice(data));
+        }
+        catch (System.Exception) { RW_WriteHeader(w, 404); }
+    }
+    private static GoSlice BytesToSlice(byte[] b)
+    {
+        var d = new object?[b.Length];
+        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
+    }
+    private static string ContentTypeByExt(string path)
+    {
+        string e = System.IO.Path.GetExtension(path).ToLowerInvariant();
+        return e switch
+        {
+            ".html" or ".htm" => "text/html; charset=utf-8",
+            ".css" => "text/css; charset=utf-8",
+            ".js" => "text/javascript; charset=utf-8",
+            ".json" => "application/json",
+            ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".gif" => "image/gif",
+            ".svg" => "image/svg+xml", ".txt" => "text/plain; charset=utf-8",
+            _ => "application/octet-stream",
+        };
+    }
+
+    // http.FileServer(fs) / http.StripPrefix(prefix, h): the returned handler's
+    // ServeHTTP is a net/http internal type with no lowered body under goclr, so the
+    // handler value is opaque. gin's Static* routes resolve files via its own fs.Open.
+    public static object FileServer(object? fs) => new GoFileServer { Fs = fs };
+    public static object StripPrefix(GoString prefix, object? h)
+    {
+        if (h is GoFileServer fsv) { fsv.StripPrefix = prefix.ToDotNetString(); return fsv; }
+        return h ?? new GoFileServer();
+    }
+
+    // http.Serve(l, handler): serve over a net.Listener (best-effort, not used by goclr's
+    // HttpListener path).
+    public static object? Serve(object? l, object? handler) => null;
+
+    // http.ListenAndServeTLS(addr, certFile, keyFile, handler): TLS isn't terminated by
+    // the HttpListener backend; fall back to plaintext serving on the address.
+    public static object? ListenAndServeTLS(GoString addr, GoString certFile, GoString keyFile, object? handler) =>
+        ListenAndServe(addr, handler);
+
+    // http.SetCookie(w, cookie): add a Set-Cookie header to the writer.
+    public static void SetCookie(object w, object c)
+    {
+        var s = Cookie_String(c);
+        if (s.ToDotNetString().Length == 0) return;
+        Header_Add(RW_Header(w), GoString.FromDotNetString("Set-Cookie"), s);
+    }
+
+    // http.Cookie field getters/setters + String.
+    public static GoString Cookie_Name(object c) => GoString.FromDotNetString(((GoCookie)c).Name);
+    public static GoString Cookie_Value(object c) => GoString.FromDotNetString(((GoCookie)c).Value);
+    public static GoString Cookie_Path(object c) => GoString.FromDotNetString(((GoCookie)c).Path);
+    public static GoString Cookie_Domain(object c) => GoString.FromDotNetString(((GoCookie)c).Domain);
+    public static long Cookie_MaxAge(object c) => ((GoCookie)c).MaxAge;
+    public static bool Cookie_Secure(object c) => ((GoCookie)c).Secure;
+    public static bool Cookie_HttpOnly(object c) => ((GoCookie)c).HttpOnly;
+    public static void Cookie_SetName(object c, GoString v) => ((GoCookie)c).Name = v.ToDotNetString();
+    public static void Cookie_SetValue(object c, GoString v) => ((GoCookie)c).Value = v.ToDotNetString();
+    public static void Cookie_SetPath(object c, GoString v) => ((GoCookie)c).Path = v.ToDotNetString();
+    public static void Cookie_SetDomain(object c, GoString v) => ((GoCookie)c).Domain = v.ToDotNetString();
+    public static void Cookie_SetMaxAge(object c, long v) => ((GoCookie)c).MaxAge = v;
+    public static void Cookie_SetSecure(object c, bool v) => ((GoCookie)c).Secure = v;
+    public static void Cookie_SetHttpOnly(object c, bool v) => ((GoCookie)c).HttpOnly = v;
+    public static GoString Cookie_String(object c)
+    {
+        var ck = (GoCookie)c;
+        var sb = new System.Text.StringBuilder();
+        sb.Append(ck.Name).Append('=').Append(ck.Value);
+        if (ck.Path.Length > 0) sb.Append("; Path=").Append(ck.Path);
+        if (ck.Domain.Length > 0) sb.Append("; Domain=").Append(ck.Domain);
+        if (ck.MaxAge > 0) sb.Append("; Max-Age=").Append(ck.MaxAge);
+        if (ck.HttpOnly) sb.Append("; HttpOnly");
+        if (ck.Secure) sb.Append("; Secure");
+        return GoString.FromDotNetString(sb.ToString());
+    }
 
     /// <summary>http.ErrNotMultipart — the sentinel ParseMultipartForm returns for a
     /// non-multipart request (gin checks errors.Is(err, http.ErrNotMultipart)).</summary>
@@ -202,7 +417,52 @@ public static class Http
         r.PostForm = post;
         return null;
     }
-    public static object? Req_ParseMultipartForm(object ro, long maxMemory) => ErrNotMultipartSentinel;
+    // (*http.Request).ParseMultipartForm(maxMemory): parse a multipart/form-data body
+    // into r.MultipartForm (and merge values into r.Form / r.PostForm).
+    public static object? Req_ParseMultipartForm(object ro, long maxMemory)
+    {
+        var r = (GoRequest)ro;
+        if (r.Extra.Get("MultipartForm") != null) return null;
+        string ct = HeaderValue(r, "Content-Type");
+        int b = ct.IndexOf("boundary=", System.StringComparison.OrdinalIgnoreCase);
+        if (!ct.Contains("multipart/form-data", System.StringComparison.OrdinalIgnoreCase) || b < 0)
+            return ErrNotMultipartSentinel;
+        string boundary = ct.Substring(b + "boundary=".Length).Trim().Trim('"');
+        int semi = boundary.IndexOf(';');
+        if (semi >= 0) boundary = boundary.Substring(0, semi);
+        var form = Multipart.ParseForm(r.RawBody, boundary);
+        r.Extra.Set("MultipartForm", form);
+        // Merge text values into Form/PostForm.
+        r.Form ??= GoMaps.Make();
+        r.PostForm ??= GoMaps.Make();
+        if (form.Value?.Data != null)
+            foreach (var kv in form.Value.Data) { r.Form.Data![kv.Key] = kv.Value; r.PostForm.Data![kv.Key] = kv.Value; }
+        return null;
+    }
+
+    // (*http.Request).MultipartReader(): streaming multipart isn't supported (the body
+    // is buffered); callers fall back to ParseMultipartForm.
+    public static object?[] Req_MultipartReader(object ro) =>
+        new object?[] { null, new GoError("http: streaming multipart not supported; use ParseMultipartForm") };
+
+    // (*http.Request).FormFile(name) (multipart.File, *multipart.FileHeader, error).
+    public static object?[] Req_FormFile(object ro, GoString name)
+    {
+        var r = (GoRequest)ro;
+        if (r.Extra.Get("MultipartForm") == null)
+        {
+            var err = Req_ParseMultipartForm(ro, 32 << 20);
+            if (err != null) return new object?[] { null, null, err };
+        }
+        if (r.Extra.Get("MultipartForm") is GoMultipartForm form && form.File?.Data != null
+            && form.File.Data.TryGetValue(name, out var v) && v is GoSlice s && s.Len > 0
+            && s.Data![s.Off] is GoFileHeader fh)
+        {
+            var opened = Multipart.FH_Open(fh);
+            return new object?[] { opened[0], fh, null };
+        }
+        return new object?[] { null, null, new GoError("http: no such file") };
+    }
     public static object Req_Form(object r)
     {
         var rq = (GoRequest)r;
@@ -254,7 +514,7 @@ public static class Http
 
     // http.ResponseWriter.Header() http.Header: a live map[string][]string; entries
     // set on it are flushed to the response on the first Write/WriteHeader.
-    public static object RW_Header(object w)
+    public static GoMap RW_Header(object w)
     {
         var rw = (GoRespWriter)w;
         return rw.Headers ??= GoMaps.Make();
@@ -276,28 +536,28 @@ public static class Http
 
     // http.Header methods (receiver is the map[string][]string).
     private static GoString Canon(GoString k) => Textproto.CanonicalMIMEHeaderKey(k);
-    public static GoString Header_Get(object h, GoString key)
+    public static GoString Header_Get(GoMap h, GoString key)
     {
         var m = (GoMap)h;
         if (m.Data != null && m.Data.TryGetValue(Canon(key), out var v) && v is GoSlice s && s.Data != null && s.Len > 0)
             return (GoString)s.Data[s.Off]!;
         return GoString.FromDotNetString("");
     }
-    public static void Header_Set(object h, GoString key, GoString val)
+    public static void Header_Set(GoMap h, GoString key, GoString val)
     {
         var m = (GoMap)h;
         m.Data![Canon(key)] = new GoSlice { Data = new object?[] { val }, Off = 0, Len = 1, Cap = 1 };
     }
-    public static void Header_Add(object h, GoString key, GoString val)
+    public static void Header_Add(GoMap h, GoString key, GoString val)
     {
         var m = (GoMap)h;
         var ck = Canon(key);
         GoSlice s = m.Data!.TryGetValue(ck, out var ex) && ex is GoSlice gs ? gs : new GoSlice { Data = new object?[0], Off = 0, Len = 0, Cap = 0 };
         m.Data[ck] = GoSlices.AppendOne(s, val);
     }
-    public static void Header_Del(object h, GoString key) => ((GoMap)h).Data?.Remove(Canon(key));
-    public static GoString Header_Values(object h, GoString key) => Header_Get(h, key);
-    public static object Header_Clone(object h)
+    public static void Header_Del(GoMap h, GoString key) => h.Data?.Remove(Canon(key));
+    public static GoString Header_Values(GoMap h, GoString key) => Header_Get(h, key);
+    public static GoMap Header_Clone(GoMap h)
     {
         var src = (GoMap)h;
         if (src.Data == null) return new GoMap { Data = null };
@@ -305,7 +565,7 @@ public static class Http
         foreach (var kv in src.Data) m.Data![kv.Key] = kv.Value;
         return m;
     }
-    public static object? Header_Write(object h, object? w) => null;
+    public static object? Header_Write(GoMap h, object? w) => null;
 
     // *http.Request field getters.
     public static GoString Req_Method(object r) => GoString.FromDotNetString(((GoRequest)r).Method);
@@ -350,6 +610,15 @@ public static class HttpTypes
     public static void Server_RegisterOnShutdown(object s, object? f) { }
     public static object? Server_Serve(object s, object? l) => Io.EOFSentinel;
     public static void Server_SetKeepAlivesEnabled(object s, bool v) { }
+    public static GoString Server_Addr(object s) => SF(s).Get("Addr") is GoString g ? g : GoString.FromDotNetString("");
+    public static void Server_SetAddr(object s, GoString v) => SF(s).Set("Addr", v);
+    public static void Server_SetHandler(object s, object? v) => SF(s).Set("Handler", v);
+    // (*http.Server).ListenAndServe[TLS]: serve over the HttpListener backend using the
+    // server's Addr + Handler (TLS isn't terminated here — both share the plain path).
+    public static object? Server_ListenAndServe(object s) => Http.ListenAndServe(Server_Addr(s), SF(s).Get("Handler"));
+    public static object? Server_ListenAndServeTLS(object s, GoString certFile, GoString keyFile) => Http.ListenAndServe(Server_Addr(s), SF(s).Get("Handler"));
+    public static object? Server_Shutdown(object s, object? ctx) => null;
+    public static object? Server_Close(object s) => null;
     public static object? Server_TLSConfig(object s) => SF(s).Get("TLSConfig");
     public static void Server_SetTLSConfig(object s, object? v) => SF(s).Set("TLSConfig", v);
     public static object Server_TLSNextProto(object s) => SF(s).Get("TLSNextProto") ?? GoMaps.Make();
@@ -379,6 +648,14 @@ public static class HttpTypes
     public static bool Transport_ForceAttemptHTTP2(object t) => TF(t).GetB("ForceAttemptHTTP2");
     public static object Transport_TLSNextProto(object t) => TF(t).Get("TLSNextProto") ?? GoMaps.Make();
     public static void Transport_SetTLSNextProto(object t, object? v) => TF(t).Set("TLSNextProto", v);
+    public static long Transport_MaxResponseHeaderBytes(object t) => TF(t).GetL("MaxResponseHeaderBytes");
+    public static long Transport_IdleConnTimeout(object t) => TF(t).GetL("IdleConnTimeout");
+    public static long Transport_ResponseHeaderTimeout(object t) => TF(t).GetL("ResponseHeaderTimeout");
+    public static void Transport_SetTLSClientConfig(object t, object? v) => TF(t).Set("TLSClientConfig", v);
+    public static void Transport_SetHTTP2(object t, object? v) => TF(t).Set("HTTP2", v);
+    public static void Transport_RegisterProtocol(object t, GoString scheme, object? rt) { } // dead path (client never runs)
+    public static void Transport_CloseIdleConnections(object t) { }
+    public static object Transport_Clone(object t) => new GoHttpTransport();
 
     // *tls.Config field reads/writes.
     public static GoSlice Config_NextProtos(object c) => CF(c).Get("NextProtos") is GoSlice s ? s : default;
@@ -390,6 +667,15 @@ public static class HttpTypes
     public static object? Config_GetCertificate(object c) => CF(c).Get("GetCertificate");
     public static bool Config_PreferServerCipherSuites(object c) => CF(c).GetB("PreferServerCipherSuites");
     public static void Config_SetPreferServerCipherSuites(object c, bool v) => CF(c).Set("PreferServerCipherSuites", v);
+    public static object Config_Clone(object c) => new GoTlsConfig(); // dead path: a fresh config
+    public static GoString Config_ServerName(object c) => CF(c).Get("ServerName") is GoString g ? g : GoString.FromDotNetString("");
+    public static void Config_SetServerName(object c, GoString v) => CF(c).Set("ServerName", v);
+    public static void Config_SetMinVersion(object c, long v) => CF(c).Set("MinVersion", v);
+    public static void Config_SetMaxVersion(object c, long v) => CF(c).Set("MaxVersion", v);
+    public static void Config_SetInsecureSkipVerify(object c, bool v) => CF(c).Set("InsecureSkipVerify", v);
+    public static object? Config_RootCAs(object c) => CF(c).Get("RootCAs");
+    public static object? Config_Certificates(object c) => CF(c).Get("Certificates");
+    public static long Config_ClientAuth(object c) => CF(c).GetL("ClientAuth");
 
     // *http.HTTP2Config field reads.
     public static long H2C_MaxConcurrentStreams(object c) => HF(c).GetL("MaxConcurrentStreams");
@@ -438,6 +724,7 @@ public static class HttpTypes
     public static long CS_CipherSuite(object s) => ((GoTlsConnState)s).F.GetL("CipherSuite");
     public static bool CS_HandshakeComplete(object s) => ((GoTlsConnState)s).F.GetB("HandshakeComplete");
     public static bool CS_DidResume(object s) => ((GoTlsConnState)s).F.GetB("DidResume");
+    public static bool CS_NegotiatedProtocolIsMutual(object s) => true;
     public static GoSlice CS_PeerCertificates(object s) => ((GoTlsConnState)s).F.Get("PeerCertificates") is GoSlice sl ? sl : default;
 
     public static object NewServer() => new GoHttpServer();
@@ -446,6 +733,9 @@ public static class HttpTypes
     public static object NewHTTP2Config() => new GoHTTP2Config();
     public static object NewProtocols() => new GoHttpProtocols();
     public static object NewTlsConn() => new GoTlsConn();
+    // tls.Dialer (dead path under goclr's server): a dial never succeeds.
+    public static object?[] Dialer_DialContext(object d, object? ctx, GoString network, GoString addr) => new object?[] { null, new GoError(GoString.FromDotNetString("tls: dial not supported")) };
+    public static object?[] Dialer_Dial(object d, GoString network, GoString addr) => new object?[] { null, new GoError(GoString.FromDotNetString("tls: dial not supported")) };
     public static object NewTlsConnState() => new GoTlsConnState();
 
     // http.ServeMux + http.DefaultServeMux.

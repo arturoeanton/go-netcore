@@ -71,7 +71,7 @@ public static class Readers
     public static object?[] Copy(object? dst, object? src)
     {
         byte[] data = Drain(src);
-        long n = Fmt.WriteTo(dst, System.Text.Encoding.UTF8.GetString(data));
+        Compress.WriteRaw(dst, data); // binary-safe (files, buffers, readers)
         return new object?[] { (long)data.Length, null };
     }
 }

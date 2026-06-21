@@ -33,6 +33,9 @@ public static class Sync
     {
         if (v != null) ((GoPool)p).Items.Push(v);
     }
+    // sync.Pool.New is a field of func() any type; gin assigns it after construction.
+    public static void Pool_SetNew(object p, GoClosure? fn) => ((GoPool)p).New = fn;
+    public static GoClosure? Pool_New(object p) => ((GoPool)p).New;
 
     public static object NewMutex() => new GoMutex();
     public static object NewRWMutex() => new GoRWMutex();

@@ -242,6 +242,15 @@ func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 		if l.buildFieldAlias(x) {
 			return
 		}
+		// &shim.field: the base is an opaque shim (dead code under goclr). Box the
+		// field's getter value into a fresh cell so the pointer reads/writes detach
+		// from the shim — the shim is never run, so aliasing fidelity is moot.
+		if l.exprType(x.X).Shim != "" {
+			ft := l.exprType(x)
+			l.expr(x)
+			l.emitBox(ft)
+			return
+		}
 		l.fail(e.Pos(), "address-of field "+x.Sel.Name)
 	case *ast.CompositeLit:
 		// &T{...}: a fresh cell holding the composite value.

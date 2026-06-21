@@ -177,6 +177,27 @@ public static class Bytes
         return S(outb);
     }
 
+    public static GoSlice Replace(GoSlice s, GoSlice oldb, GoSlice newb, long n)
+    {
+        byte[] src = B(s), o = B(oldb), nw = B(newb);
+        if (o.Length == 0 || n == 0) return S(src);
+        var outp = new System.Collections.Generic.List<byte>();
+        int i = 0, count = 0;
+        while (i <= src.Length - o.Length)
+        {
+            bool m = true;
+            for (int j = 0; j < o.Length; j++) if (src[i + j] != o[j]) { m = false; break; }
+            if (m && (n < 0 || count < n))
+            {
+                outp.AddRange(nw); i += o.Length; count++;
+            }
+            else { outp.Add(src[i]); i++; }
+        }
+        while (i < src.Length) { outp.Add(src[i]); i++; }
+        return S(outp.ToArray());
+    }
+    public static GoSlice ReplaceAll(GoSlice s, GoSlice oldb, GoSlice newb) => Replace(s, oldb, newb, -1);
+
     public static GoSlice Split(GoSlice s, GoSlice sep)
     {
         byte[] b = B(s), sb = B(sep);

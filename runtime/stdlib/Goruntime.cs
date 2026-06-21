@@ -32,4 +32,6 @@ public static class Goruntime
     public static long NumGoroutine() => 1;
     public static void GC() => System.GC.Collect();
     public static void Gosched() => System.Threading.Thread.Yield();
+    // runtime.Version(): a Go version string (gin parses it to check Go >= 1.18).
+    public static GoString Version() => GoString.FromDotNetString("go1.22.0");
 }

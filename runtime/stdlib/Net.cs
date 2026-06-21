@@ -34,6 +34,11 @@ public static class Net
         catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("listen: " + e.Message)) }; }
     }
 
+    // net.FileListener(f) (net.Listener, error): serving on a raw fd isn't supported
+    // under goclr's HttpListener backend.
+    public static object?[] FileListener(object? f) =>
+        new object?[] { null, new GoError(GoString.FromDotNetString("net: FileListener not supported")) };
+
     public static object?[] Dial(GoString network, GoString address)
     {
         try
@@ -200,6 +205,38 @@ public static class Net
     // net.IPNet field reads (opaque GoNetAddr).
     public static GoSlice IPNet_IP(object n) => ((GoNetAddr)n).Ip ?? NilBytes();
 
+    // Zero value for net.IPNet (a composite-literal *net.IPNet starts non-null; its
+    // IP/Mask fields are opaque under the shim).
+    public static object NewIPNet() => new GoNetAddr();
+
+    // (*net.IPNet).Contains(ip): is ip within this CIDR network?
+    public static bool IPNet_Contains(object? n, GoSlice ip)
+    {
+        if (n is not GoNetAddr net || net.Str.Length == 0) return false;
+        int slash = net.Str.IndexOf('/');
+        if (slash < 0 || !IPAddress.TryParse(net.Str.Substring(0, slash), out var baseAddr) || !int.TryParse(net.Str.Substring(slash + 1), out var bits))
+            return false;
+        byte[] baseB = baseAddr.GetAddressBytes();
+        byte[] ipB = Raw(ip);
+        // Normalise an IPv4-mapped/v4 address against an IPv4 network (and vice versa).
+        if (ipB.Length != baseB.Length)
+        {
+            var v4 = Raw(IP_To4(ip));
+            if (v4.Length == 4 && baseB.Length == 4) ipB = v4;
+            else return false;
+        }
+        if (ipB.Length != baseB.Length) return false;
+        int fullBytes = bits / 8, remBits = bits % 8;
+        for (int i = 0; i < fullBytes; i++) if (ipB[i] != baseB[i]) return false;
+        if (remBits > 0)
+        {
+            int mask = 0xff << (8 - remBits) & 0xff;
+            if ((ipB[fullBytes] & mask) != (baseB[fullBytes] & mask)) return false;
+        }
+        return true;
+    }
+    public static GoString IPNet_String(object n) => GoString.FromDotNetString(((GoNetAddr)n).Str);
+
     // net.SplitHostPort(hostport) (host, port string, err error).
     public static object?[] SplitHostPort(GoString hostport)
     {
@@ -210,6 +247,20 @@ public static class Net
         string host = s.Substring(0, colon).TrimStart('[').TrimEnd(']');
         return new object?[] { GoString.FromDotNetString(host), GoString.FromDotNetString(s.Substring(colon + 1)), null };
     }
+
+    // net.OpError methods.
+    public static GoString OpError_Error(object e)
+    {
+        var oe = (GoNetOpError)e;
+        string inner = oe.Err is IGoError g ? g.Error().ToDotNetString() : "";
+        return GoString.FromDotNetString((oe.Op.Length > 0 ? oe.Op + " " : "") + (oe.Net.Length > 0 ? oe.Net + ": " : "") + inner);
+    }
+    public static object? OpError_Unwrap(object e) => ((GoNetOpError)e).Err;
+    public static bool OpError_Timeout(object e) => false;
+    public static bool OpError_Temporary(object e) => false;
+    public static GoString OpError_Op(object e) => GoString.FromDotNetString(((GoNetOpError)e).Op);
+    public static GoString OpError_Net(object e) => GoString.FromDotNetString(((GoNetOpError)e).Net);
+    public static object? OpError_Err(object e) => ((GoNetOpError)e).Err;
 
     // net sentinel errors.
     public static readonly GoError ErrClosedSentinel = new(GoString.FromDotNetString("use of closed network connection"));
@@ -238,6 +289,9 @@ public static class Net
 
 /// <summary>An opaque net address (net.IPNet / net.TCPAddr / net.UDPAddr / …).</summary>
 public sealed class GoNetAddr { public string Str = ""; public long Port; public GoSlice? Ip; }
+
+/// <summary>A net.OpError (an operation/network/address-tagged error).</summary>
+public sealed class GoNetOpError { public string Op = ""; public string Net = ""; public object? Err; }
 
 /// <summary>A net.PacketConn over a UdpClient.</summary>
 public sealed class GoPacketConn { public UdpClient U = null!; }

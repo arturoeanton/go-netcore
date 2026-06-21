@@ -24,6 +24,9 @@ public static class Io
 
     // io.ReadFull(r, buf) (n int, err error): read exactly len(buf) bytes into buf.
     // Returns io.EOF if nothing was read, io.ErrUnexpectedEOF on a short read.
+    // io.NopCloser(r): the reader unchanged (Close becomes a no-op via Body_Close).
+    public static object? NopCloser(object? r) => r;
+
     public static object?[] ReadFull(object? r, GoSlice buf)
     {
         int want = buf.Len, got;

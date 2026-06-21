@@ -37,4 +37,9 @@ public static class Template
     public static object?[] Tmpl_ParseGlob(object t, GoString glob) => new object?[] { t, null };
     public static object? Tmpl_Execute(object t, object? w, object? data) => null;
     public static object? Tmpl_ExecuteTemplate(object t, object? w, GoString name, object? data) => null;
+    // Templates(): goclr loads no templates, so the set is just this template.
+    public static GoSlice Tmpl_Templates(object t) => new() { Data = new object?[] { t }, Off = 0, Len = 1, Cap = 1 };
+    public static GoString Tmpl_Name(object t) => GoString.FromDotNetString(t is GoTemplate g ? g.Name : "");
+    public static object Tmpl_Lookup(object t, GoString name) => t;
+    public static object Tmpl_Option(object t, GoSlice opts) => t;
 }
