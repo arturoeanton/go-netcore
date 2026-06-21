@@ -66,6 +66,7 @@ func collectExterns(prog *goir.Program) *externCollection {
 			row := fixedMemberRefs + 1 + len(ec.methods)
 			ec.methods = append(ec.methods, e)
 			ec.tokOf[e.Key()] = 0x0A000000 | uint32(row)
+			recordExtern(e) // first-seen: dump to the shim-signature manifest if enabled
 		}
 	}
 	return ec
