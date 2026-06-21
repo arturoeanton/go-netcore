@@ -34,7 +34,7 @@ public sealed class GoXmlEncoder
 public static class Xml
 {
     public const string HeaderConst = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    public static GoString Header() => GoString.FromDotNetString(HeaderConst);
+    public static object Header() => GoString.FromDotNetString(HeaderConst);
 
     // Zero-value constructors for the value-type tokens.
     public static object NewXmlName() => new GoXmlName();
@@ -127,12 +127,11 @@ public static class Xml
         }
         return null;
     }
-    public static object? Encoder_Indent(object e, GoString prefix, GoString indent)
+    public static void Encoder_Indent(object e, GoString prefix, GoString indent)
     {
         var enc = (GoXmlEncoder)e;
         enc.IndentPrefix = prefix.ToDotNetString();
         enc.IndentStr = indent.ToDotNetString();
-        return null;
     }
     public static object? Encoder_Close(object e) => Encoder_Flush(e);
 

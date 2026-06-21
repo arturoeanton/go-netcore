@@ -31,7 +31,7 @@ public static class Template
     // (*Template) builder methods — each returns the template so calls chain.
     public static object Tmpl_New(object t, GoString name) => t;
     public static object Tmpl_Delims(object t, GoString left, GoString right) => t;
-    public static object Tmpl_Funcs(object t, object funcMap) => t;
+    public static object Tmpl_Funcs(object t, GoMap funcMap) => t;
     public static object?[] Tmpl_Parse(object t, GoString text) => new object?[] { t, null };
     public static object?[] Tmpl_ParseFiles(object t, GoSlice files) => new object?[] { t, null };
     public static object?[] Tmpl_ParseGlob(object t, GoString glob) => new object?[] { t, null };

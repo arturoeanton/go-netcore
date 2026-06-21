@@ -167,7 +167,7 @@ public static class Reflect
     public static long Value_Int(object? v) => Convert.ToInt64(RVal(v) ?? 0L);
     public static ulong Value_Uint(object? v) => Convert.ToUInt64(RVal(v) ?? (ulong)0);
     public static double Value_Float(object? v) => Convert.ToDouble(RVal(v) ?? 0.0);
-    public static object? Value_Complex(object? v) => RVal(v) ?? new GoComplex(0, 0);
+    public static GoComplex Value_Complex(object? v) => RVal(v) as GoComplex ?? new GoComplex(0, 0);
     public static GoString Value_String(object? v)
     {
         var x = RVal(v);

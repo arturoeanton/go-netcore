@@ -370,32 +370,21 @@ type extern struct {
 	ret         string
 }
 
-// knownSignatureGaps baselines the shim externs whose emitted IR type and C# declaration
-// already diverge (the compiler intends a specific type — GoMap, uint, void, … — where
-// the shim still declares object/long). They are pre-existing: CoreCLR happens to bind
-// most of them by name + parameter types today, and they sit in rarely-exercised paths
-// (http.Request/Response header fields, TLS config, xml/template), so they have not
-// surfaced. They are real hygiene debt to fix (align the C# signature to the IR) — this
-// set is the ratchet: NEW divergences fail the test, and a fixed entry is reported as
-// "stale" so the baseline shrinks. Keyed by "Class.Method".
+// knownSignatureGaps baselines shim externs whose emitted IR type and C# declaration
+// diverge (the compiler intends a specific type — GoMap, uint, void, … — where the shim
+// declares object/long). It is the ratchet: a NEW divergence fails the test, and a fixed
+// entry is reported as "stale" so the baseline can only shrink. Keyed by "Class.Method".
+//
+// 34 of the original 38 (http.Request/Response header fields, TLS Config/Cert,
+// xml/template) have been aligned to the emitted types. The 4 remaining are the
+// crypto/sha3 constructors: Go 1.24's sha3.New256 returns the concrete *sha3.SHA3
+// (a pointer -> GoPtr), but the shim models the hasher as a GoHash handle (object).
+// They can't be aligned by signature alone (making *SHA3 an opaque shim breaks its
+// hash.Hash method dispatch); a proper fix models sha3.SHA3 as an opaque type WITH a
+// method registry. Tracked here meanwhile. Keyed by "Class.Method".
 var knownSignatureGaps = map[string]bool{
-	"Crypto.Sha3_224New": true, "Crypto.Sha3_256New": true, "Crypto.Sha3_384New": true,
-	"Crypto.Sha3_512New": true,
-	"Http.Req_Cancel":    true, "Http.Req_GetBody": true, "Http.Req_Header": true,
-	"Http.Req_SetTrailer": true, "Http.Req_Trailer": true, "Http.Resp_Header": true,
-	"Http.Resp_SetHeader": true, "Http.Resp_SetTrailer": true, "Http.Resp_Trailer": true,
-	"HttpTypes.CS_CipherSuite": true, "HttpTypes.CS_Version": true,
-	"HttpTypes.Cert_Certificate": true, "HttpTypes.Cert_SetCertificate": true,
-	"HttpTypes.Config_Certificates": true, "HttpTypes.Config_MinVersion": true,
-	"HttpTypes.Config_SetCertificates": true, "HttpTypes.Config_SetGetCertificate": true,
-	"HttpTypes.Config_SetMinVersion": true, "HttpTypes.Conn_SetReadDeadline": true,
-	"HttpTypes.Conn_SetWriteDeadline": true, "HttpTypes.H2C_CountError": true,
-	"HttpTypes.Server_ConnState": true, "HttpTypes.Server_RegisterOnShutdown": true,
-	"HttpTypes.Server_SetTLSNextProto": true, "HttpTypes.Server_TLSNextProto": true,
-	"HttpTypes.Transport_SetTLSNextProto": true, "HttpTypes.Transport_TLSNextProto": true,
-	"Multipart.Form_File": true, "Multipart.Form_Value": true, "Path.Walk": true,
-	"Reflect.Value_Complex": true, "Template.Tmpl_Funcs": true,
-	"Xml.Encoder_Indent": true, "Xml.Header": true,
+	"Crypto.Sha3_224New": true, "Crypto.Sha3_256New": true,
+	"Crypto.Sha3_384New": true, "Crypto.Sha3_512New": true,
 }
 
 // shimCorpus are packages whose compilation exercises a broad shim surface. Each is built

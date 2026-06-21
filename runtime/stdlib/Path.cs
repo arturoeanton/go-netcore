@@ -22,7 +22,7 @@ public static class Path
     // shim, and the only consumer (universal-translator's translation import/export)
     // is dead code for a service. This returns nil without walking; if a program
     // genuinely needs Walk, it must be lowered from a goclr-safe overlay.
-    public static object? Walk(GoString root, object? fn) => null;
+    public static object? Walk(GoString root, GoClosure? fn) => null;
 
     public static GoString Base(GoString p)
     {

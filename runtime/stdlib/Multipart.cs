@@ -24,8 +24,8 @@ public sealed class GoFileHeader
 public static class Multipart
 {
     public static object? Form_RemoveAll(object f) => null; // no temp files to clean
-    public static object? Form_Value(object f) => ((GoMultipartForm)f).Value ?? GoMaps.Make();
-    public static object? Form_File(object f) => ((GoMultipartForm)f).File ?? GoMaps.Make();
+    public static GoMap Form_Value(object f) => (GoMap)(((GoMultipartForm)f).Value ?? GoMaps.Make());
+    public static GoMap Form_File(object f) => (GoMap)(((GoMultipartForm)f).File ?? GoMaps.Make());
 
     // *multipart.FileHeader.
     public static GoString FH_Filename(object fh) => GoString.FromDotNetString(((GoFileHeader)fh).Filename);

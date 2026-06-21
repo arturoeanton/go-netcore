@@ -92,12 +92,12 @@ public static class Http
     public static void Resp_SetRequest(object r, object? v) => ((GoResponse)r).Extra.Set("Request", v);
     public static object? Resp_TLS(object r) => ((GoResponse)r).Extra.Get("TLS");
     public static void Resp_SetTLS(object r, object? v) => ((GoResponse)r).Extra.Set("TLS", v);
-    public static object? Resp_Trailer(object r) => ((GoResponse)r).Extra.Get("Trailer");
-    public static void Resp_SetTrailer(object r, object? v) => ((GoResponse)r).Extra.Set("Trailer", v);
+    public static GoMap? Resp_Trailer(object r) => (GoMap?)((GoResponse)r).Extra.Get("Trailer");
+    public static void Resp_SetTrailer(object r, GoMap? v) => ((GoResponse)r).Extra.Set("Trailer", v);
     public static bool Resp_Uncompressed(object r) => ((GoResponse)r).Extra.GetB("Uncompressed");
     public static void Resp_SetUncompressed(object r, bool v) => ((GoResponse)r).Extra.Set("Uncompressed", v);
-    public static object Resp_Header(object r) => ((GoResponse)r).Extra.Get("Header") ?? GoMaps.Make();
-    public static void Resp_SetHeader(object r, object? v) => ((GoResponse)r).Extra.Set("Header", v);
+    public static GoMap Resp_Header(object r) => (GoMap)(((GoResponse)r).Extra.Get("Header") ?? GoMaps.Make());
+    public static void Resp_SetHeader(object r, GoMap? v) => ((GoResponse)r).Extra.Set("Header", v);
     public static GoString Resp_Proto(object r) => GoString.FromDotNetString("HTTP/2.0");
     public static long Resp_ProtoMajor(object r) => 2;
     public static long Resp_ProtoMinor(object r) => 0;
@@ -283,7 +283,7 @@ public static class Http
         return new GoRequest { Method = r.HttpMethod, Url = u, Body = new GoReader { Data = body }, Host = r.UserHostName ?? "", RemoteAddr = r.RemoteEndPoint?.ToString() ?? "", RawBody = body, Header = hdr };
     }
 
-    public static object Req_Header(object r)
+    public static GoMap Req_Header(object r)
     {
         var rq = (GoRequest)r;
         return rq.Header ??= GoMaps.Make();
@@ -296,13 +296,13 @@ public static class Http
     // Extra *http.Request fields read/written by x/net/http2 (stored in the field bag).
     public static long Req_ContentLength(object r) => ((GoRequest)r).Extra.GetL("ContentLength");
     public static void Req_SetContentLength(object r, long v) => ((GoRequest)r).Extra.Set("ContentLength", v);
-    public static object? Req_Trailer(object r) => ((GoRequest)r).Extra.Get("Trailer");
-    public static void Req_SetTrailer(object r, object? v) => ((GoRequest)r).Extra.Set("Trailer", v);
+    public static GoMap? Req_Trailer(object r) => (GoMap?)((GoRequest)r).Extra.Get("Trailer");
+    public static void Req_SetTrailer(object r, GoMap? v) => ((GoRequest)r).Extra.Set("Trailer", v);
     public static object? Req_TLS(object r) => ((GoRequest)r).Extra.Get("TLS");
     public static void Req_SetTLS(object r, object? v) => ((GoRequest)r).Extra.Set("TLS", v);
     public static object? Req_MultipartForm(object r) => ((GoRequest)r).Extra.Get("MultipartForm");
-    public static object? Req_Cancel(object r) => ((GoRequest)r).Extra.Get("Cancel");
-    public static object? Req_GetBody(object r) => ((GoRequest)r).Extra.Get("GetBody");
+    public static GoChan? Req_Cancel(object r) => (GoChan?)((GoRequest)r).Extra.Get("Cancel");
+    public static GoClosure? Req_GetBody(object r) => (GoClosure?)((GoRequest)r).Extra.Get("GetBody");
     public static bool Req_Close(object r) => ((GoRequest)r).Extra.Get("Close") is bool b && b;
     public static void Req_SetBody(object r, object? v) => ((GoRequest)r).Extra.Set("Body", v);
     public static GoString Req_Proto(object r) => GoString.FromDotNetString("HTTP/1.1");
@@ -805,7 +805,7 @@ public static class HttpTypes
     private static GoFieldBag HF(object c) => ((GoHTTP2Config)c).F;
 
     // *http.Server: read/write through the field bag; methods are no-ops.
-    public static void Server_RegisterOnShutdown(object s, object? f) { }
+    public static void Server_RegisterOnShutdown(object s, GoClosure? f) { }
     // (*http.Server).Serve(l): goclr serves over the HttpListener backend rather than the
     // caller's net.Listener, so release the port l already bound (echo's newListener grabs
     // it before calling Serve) and serve on the same address with the server's Handler.
@@ -832,12 +832,12 @@ public static class HttpTypes
     public static object? Server_Close(object s) => null;
     public static object? Server_TLSConfig(object s) => SF(s).Get("TLSConfig");
     public static void Server_SetTLSConfig(object s, object? v) => SF(s).Set("TLSConfig", v);
-    public static object Server_TLSNextProto(object s) => SF(s).Get("TLSNextProto") ?? GoMaps.Make();
-    public static void Server_SetTLSNextProto(object s, object? v) => SF(s).Set("TLSNextProto", v);
+    public static GoMap Server_TLSNextProto(object s) => (GoMap)(SF(s).Get("TLSNextProto") ?? GoMaps.Make());
+    public static void Server_SetTLSNextProto(object s, GoMap? v) => SF(s).Set("TLSNextProto", v);
     public static object? Server_Handler(object s) => SF(s).Get("Handler");
     public static object? Server_ErrorLog(object s) => SF(s).Get("ErrorLog");
     public static object? Server_BaseContext(object s) => SF(s).Get("BaseContext");
-    public static object? Server_ConnState(object s) => SF(s).Get("ConnState");
+    public static GoClosure? Server_ConnState(object s) => (GoClosure?)SF(s).Get("ConnState");
     public static object? Server_HTTP2(object s) => SF(s).Get("HTTP2");
     public static long Server_ReadTimeout(object s) => SF(s).GetL("ReadTimeout");
     public static long Server_ReadHeaderTimeout(object s) => SF(s).GetL("ReadHeaderTimeout");
@@ -857,8 +857,8 @@ public static class HttpTypes
     public static bool Transport_DisableCompression(object t) => TF(t).GetB("DisableCompression");
     public static bool Transport_DisableKeepAlives(object t) => TF(t).GetB("DisableKeepAlives");
     public static bool Transport_ForceAttemptHTTP2(object t) => TF(t).GetB("ForceAttemptHTTP2");
-    public static object Transport_TLSNextProto(object t) => TF(t).Get("TLSNextProto") ?? GoMaps.Make();
-    public static void Transport_SetTLSNextProto(object t, object? v) => TF(t).Set("TLSNextProto", v);
+    public static GoMap Transport_TLSNextProto(object t) => (GoMap)(TF(t).Get("TLSNextProto") ?? GoMaps.Make());
+    public static void Transport_SetTLSNextProto(object t, GoMap? v) => TF(t).Set("TLSNextProto", v);
     public static long Transport_MaxResponseHeaderBytes(object t) => TF(t).GetL("MaxResponseHeaderBytes");
     public static long Transport_IdleConnTimeout(object t) => TF(t).GetL("IdleConnTimeout");
     public static long Transport_ResponseHeaderTimeout(object t) => TF(t).GetL("ResponseHeaderTimeout");
@@ -872,7 +872,7 @@ public static class HttpTypes
     public static GoSlice Config_NextProtos(object c) => CF(c).Get("NextProtos") is GoSlice s ? s : default;
     public static void Config_SetNextProtos(object c, GoSlice v) => CF(c).Set("NextProtos", v);
     public static GoSlice Config_CipherSuites(object c) => CF(c).Get("CipherSuites") is GoSlice s ? s : default;
-    public static long Config_MinVersion(object c) => CF(c).GetL("MinVersion");
+    public static uint Config_MinVersion(object c) => (uint)CF(c).GetL("MinVersion");
     public static long Config_MaxVersion(object c) => CF(c).GetL("MaxVersion");
     public static bool Config_InsecureSkipVerify(object c) => CF(c).GetB("InsecureSkipVerify");
     public static object? Config_GetCertificate(object c) => CF(c).Get("GetCertificate");
@@ -881,21 +881,21 @@ public static class HttpTypes
     public static object Config_Clone(object c) => new GoTlsConfig(); // dead path: a fresh config
     public static GoString Config_ServerName(object c) => CF(c).Get("ServerName") is GoString g ? g : GoString.FromDotNetString("");
     public static void Config_SetServerName(object c, GoString v) => CF(c).Set("ServerName", v);
-    public static void Config_SetMinVersion(object c, long v) => CF(c).Set("MinVersion", v);
+    public static void Config_SetMinVersion(object c, uint v) => CF(c).Set("MinVersion", v);
     public static void Config_SetMaxVersion(object c, long v) => CF(c).Set("MaxVersion", v);
     public static void Config_SetInsecureSkipVerify(object c, bool v) => CF(c).Set("InsecureSkipVerify", v);
-    public static void Config_SetGetCertificate(object c, object? v) => CF(c).Set("GetCertificate", v);
+    public static void Config_SetGetCertificate(object c, GoClosure? v) => CF(c).Set("GetCertificate", v);
     public static object? Config_RootCAs(object c) => CF(c).Get("RootCAs");
-    public static object? Config_Certificates(object c) => CF(c).Get("Certificates");
-    public static void Config_SetCertificates(object c, object? v) => CF(c).Set("Certificates", v);
+    public static GoSlice Config_Certificates(object c) => CF(c).Get("Certificates") is GoSlice s ? s : default;
+    public static void Config_SetCertificates(object c, GoSlice v) => CF(c).Set("Certificates", v);
     // tls.Certificate field reads/writes (autocert paths; empty under plain serving).
     public static object? Cert_PrivateKey(object c) => ((GoTlsCert)c).F.Get("PrivateKey");
     public static object? Cert_Leaf(object c) => ((GoTlsCert)c).F.Get("Leaf");
-    public static object? Cert_Certificate(object c) => ((GoTlsCert)c).F.Get("Certificate");
+    public static GoSlice Cert_Certificate(object c) => ((GoTlsCert)c).F.Get("Certificate") is GoSlice s ? s : default;
     public static object? Cert_OCSPStaple(object c) => ((GoTlsCert)c).F.Get("OCSPStaple");
     public static void Cert_SetPrivateKey(object c, object? v) => ((GoTlsCert)c).F.Set("PrivateKey", v);
     public static void Cert_SetLeaf(object c, object? v) => ((GoTlsCert)c).F.Set("Leaf", v);
-    public static void Cert_SetCertificate(object c, object? v) => ((GoTlsCert)c).F.Set("Certificate", v);
+    public static void Cert_SetCertificate(object c, GoSlice v) => ((GoTlsCert)c).F.Set("Certificate", v);
     public static void Cert_SetOCSPStaple(object c, object? v) => ((GoTlsCert)c).F.Set("OCSPStaple", v);
     public static long Config_ClientAuth(object c) => CF(c).GetL("ClientAuth");
 
@@ -915,7 +915,7 @@ public static class HttpTypes
     public static long H2C_ReadIdleTimeout(object c) => HF(c).GetL("ReadIdleTimeout");
     public static long H2C_SendPingTimeout(object c) => HF(c).GetL("SendPingTimeout");
     public static long H2C_WriteByteTimeout(object c) => HF(c).GetL("WriteByteTimeout");
-    public static object? H2C_CountError(object c) => HF(c).Get("CountError");
+    public static GoClosure? H2C_CountError(object c) => (GoClosure?)HF(c).Get("CountError");
 
     // http.Protocols: a small bitset the caller mutates.
     public static void Proto_SetHTTP1(object p, bool v) => ((GoHttpProtocols)p).H1 = v;
@@ -935,15 +935,15 @@ public static class HttpTypes
     public static object? Conn_HandshakeContext(object c, object? ctx) => null;
     public static object Conn_ConnectionState(object c) => new GoTlsConnState();
     public static object? Conn_SetDeadline(object c, long t) => null;
-    public static object? Conn_SetReadDeadline(object c, long t) => null;
-    public static object? Conn_SetWriteDeadline(object c, long t) => null;
+    public static object? Conn_SetReadDeadline(object c, object? t) => null;
+    public static object? Conn_SetWriteDeadline(object c, object? t) => null;
     public static object? Conn_NetConn(object c) => null;
 
     // tls.ConnectionState field reads.
     public static GoString CS_NegotiatedProtocol(object s) => ((GoTlsConnState)s).F.Get("NegotiatedProtocol") is GoString g ? g : GoString.FromDotNetString("");
     public static GoString CS_ServerName(object s) => ((GoTlsConnState)s).F.Get("ServerName") is GoString g ? g : GoString.FromDotNetString("");
-    public static long CS_Version(object s) => ((GoTlsConnState)s).F.GetL("Version");
-    public static long CS_CipherSuite(object s) => ((GoTlsConnState)s).F.GetL("CipherSuite");
+    public static uint CS_Version(object s) => (uint)((GoTlsConnState)s).F.GetL("Version");
+    public static uint CS_CipherSuite(object s) => (uint)((GoTlsConnState)s).F.GetL("CipherSuite");
     public static bool CS_HandshakeComplete(object s) => ((GoTlsConnState)s).F.GetB("HandshakeComplete");
     public static bool CS_DidResume(object s) => ((GoTlsConnState)s).F.GetB("DidResume");
     public static bool CS_NegotiatedProtocolIsMutual(object s) => true;
