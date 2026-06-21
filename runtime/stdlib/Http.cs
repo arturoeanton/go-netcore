@@ -193,12 +193,18 @@ public static class Http
     // http.Handler implementer (e.g. gin's *Engine — a GoPtr carrying its type id,
     // driven through its registered ServeHTTP adapter), an http.Handler interface
     // value, or nil (route through the DefaultServeMux registrations).
-    private static void Dispatch(object? handler, GoRespWriter w, GoRequest req, string path)
+    internal static void Dispatch(object? handler, GoRespWriter w, GoRequest req, string path)
     {
         switch (handler)
         {
             case GoClosure c:
                 GoRuntime.InvokeArgs(c, w, req);
+                return;
+            // http.HandlerFunc(f) is a named func type: a GoNamed wrapping the closure,
+            // whose ServeHTTP just calls f(w, r) — so invoke the wrapped closure. (Kept
+            // before the registered-adapter case so a plain HandlerFunc routes directly.)
+            case GoNamed nf when nf.Value is GoClosure fc:
+                GoRuntime.InvokeArgs(fc, w, req);
                 return;
             case GoInterface gi when gi.Type != null:
                 gi.Call("ServeHTTP", w, req);
@@ -225,7 +231,7 @@ public static class Http
         return best;
     }
 
-    private static GoRequest MakeRequest(HttpListenerRequest r)
+    internal static GoRequest MakeRequest(HttpListenerRequest r)
     {
         var u = new GoUrl { Path = r.Url?.AbsolutePath ?? "/", RawQuery = (r.Url?.Query ?? "").TrimStart('?'), Host = r.Url?.Authority ?? "" };
         byte[] body;

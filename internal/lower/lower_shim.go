@@ -94,6 +94,11 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
 	"net/mail":        {"ParseAddress": {"Mail", "ParseAddress"}},
 	"net/http/cookiejar": {"New": {"Cookiejar", "New"}},
+	"net/http/httptest": {
+		"NewServer": {"Httptest", "NewServer"}, "NewTLSServer": {"Httptest", "NewTLSServer"},
+		"NewUnstartedServer": {"Httptest", "NewUnstartedServer"},
+		"NewRecorder": {"Httptest", "NewRecorder"}, "NewRequest": {"Httptest", "NewRequest"},
+	},
 	"net/textproto":   {"CanonicalMIMEHeaderKey": {"Textproto", "CanonicalMIMEHeaderKey"}, "TrimString": {"Textproto", "TrimString"}, "TrimBytes": {"Textproto", "TrimBytes"}},
 	"html/template":   {"New": {"Template", "New"}, "Must": {"Template", "Must"}, "JSEscapeString": {"Template", "JSEscapeString"}},
 	"text/template":   {"New": {"Template", "New"}, "Must": {"Template", "Must"}},
@@ -374,6 +379,8 @@ var opaqueShimTypes = map[string]bool{
 	"mime/multipart.File":          true,
 	"net/http.Cookie":              true,
 	"net/http/cookiejar.Jar":       true,
+	"net/http/httptest.Server":            true,
+	"net/http/httptest.ResponseRecorder":  true,
 	"bufio.Writer":                 true,
 	"time.Ticker":                  true,
 	"time.Timer":                   true,
@@ -516,6 +523,12 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"net.UDPAddr": {
 		"IP": {"Net", "UDPAddr_IP"}, "Port": {"Net", "UDPAddr_Port"}, "Zone": {"Net", "UDPAddr_Zone"},
+	},
+	"net/http/httptest.Server": {
+		"URL": {"Httptest", "Server_URL"},
+	},
+	"net/http/httptest.ResponseRecorder": {
+		"Code": {"Httptest", "Recorder_Code"}, "Body": {"Httptest", "Recorder_Body"}, "HeaderMap": {"Httptest", "Recorder_HeaderMap"},
 	},
 	"sync.Cond": {
 		"L": {"Sync", "Cond_L"},
@@ -887,6 +900,13 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http/cookiejar.Jar": {
 		"SetCookies": {"Cookiejar", "Jar_SetCookies"}, "Cookies": {"Cookiejar", "Jar_Cookies"},
+	},
+	"net/http/httptest.Server": {
+		"Close": {"Httptest", "Server_Close"}, "Client": {"Httptest", "Server_Client"}, "Start": {"Httptest", "Server_Start"},
+	},
+	"net/http/httptest.ResponseRecorder": {
+		"Header": {"Httptest", "Recorder_Header"}, "Write": {"Httptest", "Recorder_Write"},
+		"WriteHeader": {"Httptest", "Recorder_WriteHeader"},
 	},
 	"encoding/xml.Encoder": {
 		"Encode": {"Xml", "Encoder_Encode"}, "EncodeElement": {"Xml", "Encoder_EncodeElement"}, "EncodeToken": {"Xml", "Encoder_EncodeToken"},
