@@ -54,7 +54,10 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | fmt Stringer/Error dispatch (struct + pointer types) | ✅ | M | ✅ |
 | Struct/array value equality (==) + array value semantics (copy on assign) | ✅ | M | ✅ |
 | `clear` builtin; `&slice[i]`; `&^`/`&^=`; keyed/fixed-array literals; errors.As | ✅ | S | ✅ |
+| `s[i].field = v` and `&s[i]` for a `*[N]T` (pointer-to-array auto-deref) | ✅ | S | ✅ |
 | Reflection lowering + struct-tag descriptors (read + write path) | ✅ | L | ✅ |
+| **reflect runtime type descriptors** — precise kind/name/string/fields, MapOf/SliceOf/PtrTo, Implements/AssignableTo, Zero/New (static + dynamic); see [REFLECT.md](REFLECT.md) | ✅ | L | ✅ |
+| Cross-package function values (`pkg.Func` as a value); promoted shim-type methods | ✅ | S | ✅ |
 | Multi-package lowering + globals + init() + C# shim/extern mechanism | ✅ | XL | ✅ |
 
 ## 3. .NET runtime (`GoCLR.Runtime`)
@@ -69,7 +72,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Time (Duration + time.Time/Format), Console/GoFunc/struct value helpers | 🟡 | M | ✅ |
 | select runtime, ASCII fast-path, intern pool | 🚧 | M | 🟡 |
 
-## 4. Stdlib overlay (C# shim mechanism live; 168 conformance fixtures byte-exact; P0/P1/P2 hardened, typed-box + goja running)
+## 4. Stdlib overlay (C# shim mechanism live; 179 conformance fixtures byte-exact; P0/P1/P2 hardened, typed-box + goja running)
 
 | Package(s) | State | Effort | MVP? |
 |---|---|---|---|
@@ -91,11 +94,12 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 
 | Target | Missing | State | Effort | MVP? |
 |---|---|---|---|---|
-| goja | unsafe.Pointer in typedarrays.go | 🚧 | L | ✅ |
-| regexp2 | //go:build goclr replacement | 🚧 | M | ✅ |
-| x/sys/unix | pure/overlay path (assembly) | 🚧 | M | ✅ |
-| Echo v4 | compile package + middleware | 🚧 | L | ✅ |
-| ~160 stdlib pkgs in closure | overlay or direct compile | 🚧 | L | ✅ |
+| goja | — runs a large JS subset (see goja status) | ✅ | L | ✅ |
+| regexp2 | goclr-safe overlay (unsafe→encoding/binary) | ✅ | M | ✅ |
+| x/sys/unix | dropped via go-isatty/sha3 overlays | ✅ | M | ✅ |
+| Gin v1.10.1 | compiles through validator/yaml/binding/render; x/net/http2 stack pending | 🟡 | L | ✅ |
+| Echo v4 | analyze-compatible; autocert/acme TLS subsystem pending | 🟡 | L | ✅ |
+| ~200 stdlib pkgs in closure | overlay or direct compile | 🟡 | L | ✅ |
 
 ## 6. CLI & packaging
 
@@ -113,7 +117,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Item | State | Effort | MVP? |
 |---|---|---|---|
 | Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
-| 168 conformance fixtures (000–368), all byte-exact vs `go run` | ✅ | M | ✅ |
+| 179 conformance fixtures (000–379), all byte-exact vs `go run` | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |
@@ -229,3 +233,43 @@ LIMITATIONS.md.
 
 `GOCLR_PANIC_TRACE=1` makes the runtime print a panic's throw-site .NET stack — the
 key tool for locating these (a `recover()` otherwise masks the origin).
+
+## reflect — runtime type descriptors (2026-06)
+
+`reflect` is now driven by compile-time **type descriptors** rather than runtime
+samples — the foundation reflection-heavy libraries (encoding/json, validator, ORMs)
+need. `Kind`/`Name`/`String`/`NumField`/`Field`/`Elem`/`Key` are precise (including
+sized-integer kinds and struct field types/tags), for both the static path
+(`reflect.TypeOf(concreteValue)`) and the dynamic path (`reflect.TypeOf(interface{})`,
+recovered from the value's identity). Type construction (`MapOf`/`SliceOf`/`PtrTo`/
+`ArrayOf`), the method set (`NumMethod`/`Method`/`Implements`/`AssignableTo`/
+`ConvertibleTo`), and `Zero`/`New`/`MakeSlice`/`MakeMap` are descriptor-backed.
+Verified byte-identical to `go run` (conformance 375–378). Full design and the one
+remaining limit (a *bare* unnamed sized scalar reflected only dynamically) in
+[REFLECT.md](REFLECT.md). Tag `0.0.29.reflect-complete`.
+
+## gin end-to-end status (2026-06)
+
+Gin (pinned to **v1.10.1**; v1.12+ pulls an HTTP/3 / BSON tree) is the second
+web-framework validation target after the goja work. The compiler builds with the
+`purego` and `nomsgpack` tags (no-assembly/no-unsafe code paths; drops the MessagePack
+`ugorji/go/codec` dependency), and a handful of project overlays cut the genuinely
+unlowerable third-party code at gin's own binding/render seams (go-toml, protobuf,
+encoding/xml) and replace unsafe in dependency libraries (validator, sha3, fasttemplate,
+bytesconv).
+
+Driving the build surfaced — and closed — a broad swath of **Go-stdlib coverage** (all
+shims are stdlib; the compiler stays third-party-agnostic): `net` address parsing and
+`net.IP` methods, `net/mail`, `net/textproto`, `io/fs.FileMode`, `sync/atomic.Value`,
+`time.ParseDuration`/`ParseInLocation`/`LoadLocation`, `encoding/base64.Encoding`
+length/Encode/Decode, `crypto/sha3` (+SHAKE), `crypto/subtle.XORBytes`, `bytes.Runes`/
+`IndexRune`/`IndexAny`/`Trim`, `http.Header` (live response headers) + form/header/query
+binding, `url.URL.Query`/`RequestURI`, and several general lowering fixes (cross-package
+function values, parenthesized inc/dec, `*[N]T` element field-write and address-of, a
+shim-type method promoted from an embedded field). gin compiles through the
+`go-playground/validator` (which exercises `reflect` heavily), `yaml.v3`, and all of
+gin's form/header/query/JSON binding and rendering.
+
+**Remaining frontier:** the `x/net/http2` client/server internals (hpack and
+httpcommon compile; httptrace/http2 next), then the HTTP-server runtime, before gin
+runs end-to-end.

@@ -19,10 +19,19 @@ Legend: `compile-direct` · `overlay` (Go source w/ `//go:build goclr`) · `shim
 
 ## Progress (live)
 
-**168 conformance fixtures pass, all byte-exact vs `go run`.** P0 + P1 + P2 stdlib
+**179 conformance fixtures pass, all byte-exact vs `go run`.** P0 + P1 + P2 stdlib
 are complete and hardened, the typed-box keystone (M3) is in place, and the headline
 validation target — **goja — now compiles, loads, JITs, runs init, and evaluates a
-large JavaScript subset** (see `GAPS.md`, `GOJA-STRATEGY.md`, `examples/demo_goja`).
+large JavaScript subset** including array callbacks and `JSON.stringify`/`parse`
+(see `GAPS.md`, `GOJA-STRATEGY.md`, `examples/demo_goja`).
+
+**reflect is now descriptor-backed** (runtime type descriptors: precise
+kind/name/string/fields/tags, `MapOf`/`SliceOf`/`PtrTo`, `Implements`/`AssignableTo`,
+`Zero`/`New`; static + dynamic) — the foundation reflection-heavy libraries need; see
+[REFLECT.md](REFLECT.md). The stdlib surface has grown to ~200 packages driving a
+second web-framework target, **Gin** (compiles through validator/yaml/binding/render;
+`x/net/http2` pending), all shimmed as Go stdlib so the compiler stays third-party-
+agnostic.
 P0 hardening (the original adversarial sweep over all 20 packages) fixed ~30
 divergences: fmt verb engine + flags/width + no-crash type handling, strconv
 ErrRange/base-0/ParseFloat, reflect null-safety + DeepEqual, json nil-slice/embedded/

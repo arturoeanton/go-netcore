@@ -76,8 +76,21 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | M3 | goja: array callbacks (`map`/`reduce`), `JSON.stringify` | 🚧 |
 | M3 | `goclr test` (real `testing.T`); CI conformance matrix; stable compatibility report | 🚧 |
 
-**168 conformance fixtures pass byte-for-byte vs `go run`.** Tags
-`0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`.
+**179 conformance fixtures pass byte-for-byte vs `go run`.** Tags
+`0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`,
+`0.0.27.goja-json-array-callbacks` (goja runs JSON + array callbacks),
+`0.0.28.reflect-type-descriptors` → `0.0.29.reflect-complete` (reflect descriptors).
+
+**reflect — runtime type descriptors.** `reflect` is now descriptor-backed (precise
+kind/name/string/fields/tags, `MapOf`/`SliceOf`/`PtrTo`, `Implements`/`AssignableTo`,
+`Zero`/`New`; static + dynamic paths), the foundation reflection-heavy libraries need.
+See [REFLECT.md](REFLECT.md).
+
+**Validation targets.** goja evaluates a large JS subset (arithmetic, strings, Math,
+objects, closures, loops, array callbacks, `JSON.stringify`/`parse`) byte-identical to
+`go run`. Gin (v1.10.1) compiles through `validator` (reflect-heavy), `yaml.v3`, and
+its form/header/query/JSON binding and rendering; the `x/net/http2` stack is the
+remaining frontier before it runs. Echo is analyze-compatible (autocert/acme pending).
 
 ## Milestones
 

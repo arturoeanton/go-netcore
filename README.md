@@ -40,14 +40,19 @@ No C# host, no JS runtime: a Go JS engine running as managed .NET code. See
 [`examples/demo_goja`](examples/demo_goja/). Getting a dependency this heavy to run
 exercises a very large surface of the compiler and runtime, so most lighter
 libraries work. Working today: arithmetic, strings and string methods, `Math`,
-objects and property access, function calls/closures, `for`/`while` loops. Still
-being completed: array callbacks (`map`/`reduce`) and `JSON.stringify` — tracked in
-[GAPS.md](GAPS.md).
+objects and property access, function calls/closures, `for`/`while` loops, array
+callbacks (`map`/`filter`/`reduce`/`sort`), `Object.keys`, and `JSON.stringify`/
+`JSON.parse` round-trips — all byte-identical to `go run`.
+
+A second validation target, **Gin** ([`examples/demo_gin`](examples/demo_gin/)), is
+under way: its closure compiles through the `go-playground/validator` (which exercises
+`reflect` heavily), `yaml.v3`, and Gin's form/header/query/JSON binding and rendering
+layers; the remaining frontier is the `x/net/http2` stack.
 
 ## Status
 
 The compiler runs end-to-end: front half + the ECMA-335 emitter + the .NET runtime
-+ a stdlib overlay. **168 conformance fixtures pass byte-for-byte vs `go run`.**
++ a stdlib overlay. **179 conformance fixtures pass byte-for-byte vs `go run`.**
 See [ROADMAP.md](ROADMAP.md) / [ROADMAP-M2.5.md](ROADMAP-M2.5.md) for the milestone
 breakdown and [LIMITATIONS.md](LIMITATIONS.md) / [GAPS.md](GAPS.md) for the tracked
 gaps.
@@ -63,10 +68,12 @@ gaps.
 | **Large-program emitter** — 4-byte metadata heap indices (`HeapSizes=0x07`), `InitLocals`, fat-method headers — required once heaps/method tables exceed the small-program limits (goja) | ✅ |
 | **M2.5 overlay** — multi-package, globals/`init`, C# shim/extern mechanism, stdlib source overlays (`unicode`/`sort`/`slices`) | ✅ |
 | **P0 stdlib** (hardened) — fmt/strconv/strings/bytes/unicode/utf8/sort/math/errors/reflect(r+w)/encoding-json(M+U+streaming)/time/sync/math-rand/context/io/os | ✅ byte-exact |
-| **P1 stdlib** — net/http client+server, net TCP, crypto (sha/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio/io, log, math/big, container/list, os/exec, mime | ✅ |
-| **P2 stdlib** — encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM | ✅ |
-| **goja** — compiles, loads, JITs, runs init, evaluates a large JS subset | 🟡 see [GAPS.md](GAPS.md) |
-| Echo (M5), AOT/perf (P4) | 🚧 |
+| **P1 stdlib** — net/http client+server, net TCP (+ParseIP/ParseMAC/ParseCIDR), crypto (sha/sha3/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio/io, log, math/big, container/list, os/exec, mime, net/mail, net/textproto, io/fs | ✅ |
+| **P2 stdlib** — encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM, crypto/sha3 (+SHAKE) | ✅ |
+| **reflect — runtime type descriptors** ([REFLECT.md](REFLECT.md)) — precise `Kind`/`Name`/`String`/fields/tags (static + dynamic), `MapOf`/`SliceOf`/`PtrTo`/`ArrayOf`, `Implements`/`AssignableTo`, `Zero`/`New` | ✅ descriptor-backed |
+| **goja** — evaluates a large JS subset (arithmetic, strings, `Math`, objects, closures, loops, array callbacks, `JSON.stringify`/`parse`) byte-identical to `go run` | ✅ |
+| **Gin** — compiles through validator/yaml/binding/render; `x/net/http2` stack pending | 🟡 |
+| Echo (autocert/acme pending), AOT/perf (P4) | 🚧 |
 
 ## Requirements
 
@@ -80,7 +87,7 @@ gaps.
 go build -o bin/goclr ./cmd/goclr
 bin/goclr doctor                          # verify Go + .NET environment
 bin/goclr run ./tests/conformance/015_fib # fib(0..9), matches `go run`
-go test ./tests/conformance/              # all 168 fixtures vs `go run`
+go test ./tests/conformance/              # all 179 fixtures vs `go run`
 ```
 
 The first `build`/`run` compiles the `GoCLR.Runtime` and `GoCLR.Stdlib` C# projects
