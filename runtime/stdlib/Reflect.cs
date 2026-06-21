@@ -89,13 +89,17 @@ public static class Reflect
     public static object TypeOf(object? x, int descId) => new GoReflectType { Sample = x, Desc = TypeReg.ById(descId) ?? TypeReg.FromValue(x) };
     public static object ValueOf(object? x, int descId) => new GoReflectValue { V = x, Desc = TypeReg.ById(descId) ?? TypeReg.FromValue(x) };
 
-    // A reflect.Type for a descriptor id (used by Elem/Key/Field.Type).
-    private static object RTypeById(int id)
-    {
-        var d = TypeReg.ById(id);
-        return new GoReflectType { Desc = d };
-    }
+    // A reflect.Type for a descriptor id (used by Field.Type).
+    private static object RTypeById(int id) => new GoReflectType { Desc = TypeReg.ById(id) };
+    private static object RTypeFromDesc(GoTypeDesc? d) => new GoReflectType { Desc = d };
     private static GoTypeDesc? TDesc(object t) => (t as GoReflectType)?.Desc;
+
+    // --- reflect type construction (descriptor synthesis) ------------------
+    public static object SliceOf(object elem) => RTypeFromDesc(TypeReg.Synth(GoKind.Slice, "[]" + Str(elem), TDesc(elem), null, 0));
+    public static object PointerTo(object elem) => RTypeFromDesc(TypeReg.Synth(GoKind.Ptr, "*" + Str(elem), TDesc(elem), null, 0));
+    public static object MapOf(object key, object elem) => RTypeFromDesc(TypeReg.Synth(GoKind.Map, "map[" + Str(key) + "]" + Str(elem), TDesc(elem), TDesc(key), 0));
+    public static object ArrayOf(long n, object elem) => RTypeFromDesc(TypeReg.Synth(GoKind.Array, "[" + n + "]" + Str(elem), TDesc(elem), null, (int)n));
+    private static string Str(object t) { var d = TDesc(t); return d != null ? d.Str : ""; }
 
     // reflect.MakeSlice(typ, len, cap): a slice Value of the type's element kind;
     // elements default to null (the zero for the interface element type goja uses),
@@ -128,7 +132,8 @@ public static class Reflect
     public static GoString Type_Name(object t) { var d = TDesc(t); return GoString.FromDotNetString(d != null ? d.Name : TypeName(((GoReflectType)t).Sample)); }
     public static GoString Type_String(object t) { var d = TDesc(t); return GoString.FromDotNetString(d != null ? d.Str : TypeName(((GoReflectType)t).Sample)); }
     public static long Type_NumField(object t) { var d = TDesc(t); return d != null ? d.Fields.Count : (Fields(((GoReflectType)t).Sample)?.Length ?? 0); }
-    public static object Type_Elem(object t) { var d = TDesc(t); return d != null ? RTypeById(d.ElemId) : new GoReflectType { Sample = ElemSample(((GoReflectType)t).Sample) }; }
+    public static object Type_Elem(object t) { var d = TDesc(t); return d != null ? RTypeFromDesc(d.Elem()) : new GoReflectType { Sample = ElemSample(((GoReflectType)t).Sample) }; }
+    public static long Type_Len(object t) { var d = TDesc(t); return d != null ? d.ArrayLen : 0; }
 
     // --- reflect.Value methods (null receiver = the zero reflect.Value) ---
     private static object? RVal(object? v) => (v as GoReflectValue)?.V;
@@ -160,7 +165,7 @@ public static class Reflect
     {
         var s = (GoSlice)RVal(v)!;
         int idx = s.Off + (int)i;
-        var ed = VDesc(v) is GoTypeDesc d ? TypeReg.ById(d.ElemId) : null;
+        var ed = VDesc(v)?.Elem();
         // Settable: writes through the slice's shared backing array.
         return new GoReflectValue { V = s.Data![idx], Setter = nv => s.Data[idx] = nv, Desc = ed };
     }
@@ -178,7 +183,7 @@ public static class Reflect
     public static object Value_Elem(object v)
     {
         var rv = (GoReflectValue)v;
-        var ed = rv.Desc != null ? TypeReg.ById(rv.Desc.ElemId) : null;
+        var ed = rv.Desc?.Elem();
         if (rv.V is GoPtr p)
             return new GoReflectValue { V = p.Value, Setter = nv => p.Value = nv, Desc = ed };
         return new GoReflectValue { V = rv.V, Desc = ed };
@@ -382,7 +387,7 @@ public static class Reflect
     public static object Type_Key(object t)
     {
         var d = TDesc(t);
-        if (d != null) return RTypeById(d.KeyId);
+        if (d != null) return RTypeFromDesc(d.Key());
         var s = ((GoReflectType)t).Sample;
         if (s is GoMap m && m.Data != null)
             foreach (var k in m.Data.Keys) return new GoReflectType { Sample = k };
@@ -406,9 +411,6 @@ public static class Reflect
     public static bool Type_Implements(object a, object iface) => false;
 
     // --- reflect: free constructors ---------------------------------------
-    public static object PointerTo(object t) =>
-        new GoReflectType { Sample = new GoPtr { Value = ((GoReflectType)t).Sample } };
-
     // reflect.MakeFunc(typ, fn): fn is the implementing Go closure; return a Value
     // carrying that callable so Value.Call() can invoke it.
     public static object MakeFunc(object typ, GoClosure fn) =>

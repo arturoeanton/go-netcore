@@ -45,10 +45,17 @@ public sealed class GoTypeDesc
     public string Name = "";    // "User"; "" for an unnamed/composite type
     public string PkgPath = "";  // "main"; "" for predeclared/unnamed
     public string Str = "";      // the type string: "int", "[]string", "map[string]int", "main.User"
-    public int ElemId = -1;      // slice/array/ptr/map/chan element type
-    public int KeyId = -1;       // map key type
+    public int ElemId = -1;      // slice/array/ptr/map/chan element type (compile-time id)
+    public int KeyId = -1;       // map key type (compile-time id)
     public int ArrayLen;
     public System.Collections.Generic.List<GoFieldDesc> Fields = new();
+    // Direct element/key descriptors for a runtime-synthesized composite (reflect.
+    // MapOf/SliceOf/PtrTo/ArrayOf), used in preference to the id when set.
+    public GoTypeDesc? ElemDesc;
+    public GoTypeDesc? KeyDesc;
+
+    public GoTypeDesc? Elem() => ElemDesc ?? TypeReg.ById(ElemId);
+    public GoTypeDesc? Key() => KeyDesc ?? TypeReg.ById(KeyId);
 }
 
 /// <summary>The process-wide type descriptor registry. Compile-time emission calls
@@ -82,6 +89,17 @@ public static class TypeReg
     }
 
     public static GoTypeDesc? ById(int id) => id >= 0 && _byId.TryGetValue(id, out var d) ? d : null;
+
+    // A runtime-synthesized composite descriptor (reflect.MapOf/SliceOf/PtrTo/ArrayOf),
+    // carrying direct element/key descriptors. Deduplicated by type string so the same
+    // constructed type compares equal.
+    private static readonly System.Collections.Generic.Dictionary<string, GoTypeDesc> _synth = new();
+    public static GoTypeDesc Synth(int kind, string str, GoTypeDesc? elem, GoTypeDesc? key, int arrayLen)
+    {
+        if (_synth.TryGetValue(str, out var d)) return d;
+        _synth[str] = d = new GoTypeDesc { Id = -1, Kind = kind, Str = str, ElemDesc = elem, KeyDesc = key, ArrayLen = arrayLen };
+        return d;
+    }
 
     // Dynamic-identity links: recover a descriptor for a value reached through an
     // interface (no static descriptor) from its emitted struct type name or its

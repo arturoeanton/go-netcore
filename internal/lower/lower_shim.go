@@ -53,6 +53,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"reflect": {
 		"TypeOf": {"Reflect", "TypeOf"}, "ValueOf": {"Reflect", "ValueOf"}, "DeepEqual": {"Reflect", "DeepEqual"}, "MakeSlice": {"Reflect", "MakeSlice"}, "MakeMap": {"Reflect", "MakeMap"}, "Zero": {"Reflect", "Zero"},
 		"New": {"Reflect", "New"}, "PointerTo": {"Reflect", "PointerTo"}, "PtrTo": {"Reflect", "PointerTo"},
+		"MapOf": {"Reflect", "MapOf"}, "SliceOf": {"Reflect", "SliceOf"}, "ArrayOf": {"Reflect", "ArrayOf"},
 		"MakeFunc": {"Reflect", "MakeFunc"}, "Copy": {"Reflect", "Copy"}, "Indirect": {"Reflect", "Indirect"},
 		"Append": {"Reflect", "Append"},
 	},
@@ -534,7 +535,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"reflect.Type": {
 		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},
 		"String": {"Reflect", "Type_String"}, "NumField": {"Reflect", "Type_NumField"},
-		"Elem": {"Reflect", "Type_Elem"}, "Key": {"Reflect", "Type_Key"},
+		"Elem": {"Reflect", "Type_Elem"}, "Key": {"Reflect", "Type_Key"}, "Len": {"Reflect", "Type_Len"},
 		"Field": {"Reflect", "Type_Field"}, "NumMethod": {"Reflect", "Type_NumMethod"},
 		"NumIn": {"Reflect", "Type_NumIn"}, "NumOut": {"Reflect", "Type_NumOut"},
 		"In": {"Reflect", "Type_In"}, "Out": {"Reflect", "Type_Out"},
