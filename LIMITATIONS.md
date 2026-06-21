@@ -19,19 +19,21 @@ sample value.
 
 Remaining gaps (tracked):
 
-- **A boxed unnamed sized scalar reflected dynamically loses its width.** A `uint8`,
-  `int16`, `int32`, `float32`, … passed as `interface{}` boxes to a representation
-  that doesn't preserve the exact width (e.g. `uint8` and `int32` both box to a .NET
-  `int`), so `reflect.TypeOf(v).Kind()` reports the wide bucket (`Int`/`Uint`/…) for
-  the narrow type. Named scalar types (with a method set) keep their identity via the
-  typed box and are exact. The complete fix is a per-value type tag on every scalar
-  boxed into an interface (tag-at-box).
+- **A *bare* unnamed sized scalar reflected *only* dynamically loses its width.**
+  `reflect.TypeOf(interface{}(uint8(5))).Kind()` reports the wide bucket (`Int`/`Uint`)
+  because a narrow scalar (`uint8`/`int16`/`int32`/`float32`/…) boxes to a .NET
+  representation that doesn't carry its width. **This does not affect the dominant
+  reflection pattern — reflecting over struct fields** (validator, encoding/json,
+  ORMs): a struct's descriptor carries each field's exact type, so a `uint8` field
+  reflects as `uint8` even when the struct is reached dynamically through an
+  interface. Named scalar types (with a method set) are also exact via the typed box.
+  The only fix would tag *every* scalar boxed into an interface — overhead and risk on
+  a very common operation for a rare benefit — so it is deliberately not done.
 - **An unnamed composite (`[]int`, `map[string]int`) reflected *only* dynamically**
   can't recover its element/key type — the runtime slice/map header carries no type
   tag. Reflected from a concrete static site (the common case) it is exact; named
-  composite types are exact.
-- Type construction (`reflect.MapOf`/`SliceOf`/`PtrTo`/`ArrayOf`) and the method set
-  (`NumMethod`/`Method`/`Implements`/`AssignableTo`) are not yet descriptor-backed.
+  composite types and struct fields are exact. `reflect.MapOf`/`SliceOf`/`PtrTo`/
+  `ArrayOf` construct precise composite types regardless.
 
 ## Type-info erasure (runtime is non-generic)
 
