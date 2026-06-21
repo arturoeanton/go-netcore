@@ -59,6 +59,7 @@ type typeDescEntry struct {
 	keyId    int
 	arrayLen int
 	fields   []typeFieldEntry
+	methods  []string // method names in this type's method set (or an interface's requirements)
 	// Dynamic-identity links: clrName is the emitted struct type name (for a struct
 	// value reached through an interface) and namedId is the typed-box id (for an
 	// identity-bearing named type); 0/"" when not applicable.
@@ -197,6 +198,19 @@ func (c *lowerCtx) descId(t types.Type) int {
 	if gt, ok := c.goType(t); ok && gt.Kind == goir.KStruct && gt.Struct != nil {
 		entry.clrName = gt.Struct.Name
 	}
+	// Method set: an interface's required methods, or a concrete type's value-receiver
+	// method set (a *T descriptor, built separately, gets *T's full method set). Names
+	// drive reflect's NumMethod/Method and Implements/AssignableTo.
+	if iface, ok := t.Underlying().(*types.Interface); ok {
+		for i := 0; i < iface.NumMethods(); i++ {
+			entry.methods = append(entry.methods, iface.Method(i).Name())
+		}
+	} else {
+		ms := types.NewMethodSet(t)
+		for i := 0; i < ms.Len(); i++ {
+			entry.methods = append(entry.methods, ms.At(i).Obj().Name())
+		}
+	}
 	c.typeDescs = append(c.typeDescs, entry)
 
 	switch u := t.Underlying().(type) {
@@ -258,6 +272,14 @@ func (l *funcLowerer) emitOneTypeDesc(e typeDescEntry) {
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(f.typeId)})
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: boolToInt(f.anonymous)})
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: regField})
+	}
+	for _, mn := range e.methods {
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(e.id)})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: mn})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "TypeReg", Method: "RegisterMethod",
+			Params: []goir.Type{goir.TInt32, goir.TString}, Ret: goir.TVoid,
+		}})
 	}
 	if e.clrName != "" {
 		l.emit(goir.Op{Code: goir.OpStrConst, Str: e.clrName})

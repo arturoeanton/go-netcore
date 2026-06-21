@@ -49,6 +49,7 @@ public sealed class GoTypeDesc
     public int KeyId = -1;       // map key type (compile-time id)
     public int ArrayLen;
     public System.Collections.Generic.List<GoFieldDesc> Fields = new();
+    public System.Collections.Generic.List<string> Methods = new(); // method-set names (or an interface's requirements)
     // Direct element/key descriptors for a runtime-synthesized composite (reflect.
     // MapOf/SliceOf/PtrTo/ArrayOf), used in preference to the id when set.
     public GoTypeDesc? ElemDesc;
@@ -86,6 +87,12 @@ public static class TypeReg
     {
         if (_byId.TryGetValue(typeId, out var d))
             d.Fields.Add(new GoFieldDesc { Name = name.ToDotNetString(), Tag = tag.ToDotNetString(), TypeId = fieldTypeId, Anonymous = anonymous });
+    }
+
+    /// <summary>Appends a method name to a type descriptor's method set.</summary>
+    public static void RegisterMethod(int typeId, GoString name)
+    {
+        if (_byId.TryGetValue(typeId, out var d)) d.Methods.Add(name.ToDotNetString());
     }
 
     public static GoTypeDesc? ById(int id) => id >= 0 && _byId.TryGetValue(id, out var d) ? d : null;

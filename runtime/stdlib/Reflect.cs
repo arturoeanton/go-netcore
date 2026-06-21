@@ -415,22 +415,52 @@ public static class Reflect
             foreach (var k in m.Data.Keys) return new GoReflectType { Sample = k };
         return new GoReflectType { Sample = null };
     }
-    public static long Type_NumMethod(object t) => 0;
-    public static object Type_Method(object t, long i) => new GoReflectMethod { Index = (int)i };
+    public static long Type_NumMethod(object t) { var d = TDesc(t); return d != null ? d.Methods.Count : 0; }
+    public static object Type_Method(object t, long i)
+    {
+        var d = TDesc(t);
+        string name = d != null && (int)i < d.Methods.Count ? d.Methods[(int)i] : "";
+        return new GoReflectMethod { Name = name, Index = (int)i };
+    }
     public static long Type_NumIn(object t) => 0;
     public static long Type_NumOut(object t) => 0;
     public static object Type_In(object t, long i) => new GoReflectType { Sample = null };
     public static object Type_Out(object t, long i) => new GoReflectType { Sample = null };
-    public static GoString Type_PkgPath(object t) => GoString.FromDotNetString("");
+    public static GoString Type_PkgPath(object t) { var d = TDesc(t); return GoString.FromDotNetString(d != null ? d.PkgPath : ""); }
     public static bool Type_Comparable(object t)
     {
-        var k = KindOf(((GoReflectType)t).Sample);
-        return k != KSlice && k != KMap && k != 18 /*func*/;
+        var d = TDesc(t);
+        int k = d != null ? d.Kind : (int)KindOf(((GoReflectType)t).Sample);
+        return k != GoKind.Slice && k != GoKind.Map && k != GoKind.Func;
     }
-    public static bool Type_AssignableTo(object a, object b) =>
-        KindOf(((GoReflectType)a).Sample) == KindOf(((GoReflectType)b).Sample);
-    public static bool Type_ConvertibleTo(object a, object b) => Type_AssignableTo(a, b);
-    public static bool Type_Implements(object a, object iface) => false;
+
+    // Type_Implements(a, iface): a's method set includes every method iface requires.
+    public static bool Type_Implements(object a, object iface)
+    {
+        var ad = TDesc(a); var id = TDesc(iface);
+        if (ad == null || id == null) return false;
+        foreach (var m in id.Methods) if (!ad.Methods.Contains(m)) return false;
+        return true;
+    }
+    // Type_AssignableTo(a, b): identical type, or a implements interface b.
+    public static bool Type_AssignableTo(object a, object b)
+    {
+        var ad = TDesc(a); var bd = TDesc(b);
+        if (ad == null || bd == null) return KindOf(((GoReflectType)a).Sample) == KindOf(((GoReflectType)b).Sample);
+        if (bd.Kind == GoKind.Interface) return Type_Implements(a, b);
+        return ad.Str == bd.Str;
+    }
+    // Type_ConvertibleTo(a, b): assignable, or a conversion between same-class types
+    // (numeric<->numeric, string<->[]byte/[]rune) — an approximation of Go's rules.
+    public static bool Type_ConvertibleTo(object a, object b)
+    {
+        if (Type_AssignableTo(a, b)) return true;
+        var ad = TDesc(a); var bd = TDesc(b);
+        if (ad == null || bd == null) return false;
+        return IsNumericKind(ad.Kind) && IsNumericKind(bd.Kind);
+    }
+    private static bool IsNumericKind(int k) =>
+        (k >= GoKind.Int && k <= GoKind.Uintptr) || k == GoKind.Float32 || k == GoKind.Float64 || k == GoKind.Complex64 || k == GoKind.Complex128;
 
     // --- reflect: free constructors ---------------------------------------
     // reflect.MakeFunc(typ, fn): fn is the implementing Go closure; return a Value
