@@ -4,6 +4,35 @@ These are the deliberately-deferred gaps after the P0 hardening pass. Each is
 documented so it fails predictably (or is avoidable), not silently. None block the
 P0 stdlib surface; they are edges or larger features.
 
+## reflect — runtime type descriptors
+
+reflect is driven by compile-time **type descriptors** (goclr's `*rtype`): every
+named and struct type, and every type observed at a `reflect.TypeOf`/`ValueOf` site
+(recursively, its element/key/field types), is registered at startup with its
+precise kind, name, type string, element/key types, and struct fields
+(name/tag/type/anonymous). `reflect.TypeOf`/`ValueOf` carry the static type's
+descriptor id, and a value reached through an interface recovers its descriptor from
+its identity (a struct's emitted type, a named type's typed-box id, or a boxed
+scalar). So `Kind`, `Name`, `String`, `NumField`, `Field`, `Elem`, `Key`, and the
+sized-integer kinds are all precise — for struct/named/scalar types — without a
+sample value.
+
+Remaining gaps (tracked):
+
+- **A boxed unnamed sized scalar reflected dynamically loses its width.** A `uint8`,
+  `int16`, `int32`, `float32`, … passed as `interface{}` boxes to a representation
+  that doesn't preserve the exact width (e.g. `uint8` and `int32` both box to a .NET
+  `int`), so `reflect.TypeOf(v).Kind()` reports the wide bucket (`Int`/`Uint`/…) for
+  the narrow type. Named scalar types (with a method set) keep their identity via the
+  typed box and are exact. The complete fix is a per-value type tag on every scalar
+  boxed into an interface (tag-at-box).
+- **An unnamed composite (`[]int`, `map[string]int`) reflected *only* dynamically**
+  can't recover its element/key type — the runtime slice/map header carries no type
+  tag. Reflected from a concrete static site (the common case) it is exact; named
+  composite types are exact.
+- Type construction (`reflect.MapOf`/`SliceOf`/`PtrTo`/`ArrayOf`) and the method set
+  (`NumMethod`/`Method`/`Implements`/`AssignableTo`) are not yet descriptor-backed.
+
 ## Type-info erasure (runtime is non-generic)
 
 The runtime slice/map representation erases element types, so a few things can't
