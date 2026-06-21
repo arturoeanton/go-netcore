@@ -116,7 +116,116 @@ public static class Net
         catch (System.Exception e) { return new object?[] { 0L, GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString(e.Message)) }; }
     }
     public static object? PC_Close(object pc) { ((GoPacketConn)pc).U.Close(); return null; }
+
+    // --- address parsing (net.IP / net.HardwareAddr are []byte) -------------
+    private static GoSlice Bytes(byte[] b)
+    {
+        var d = new object?[b.Length];
+        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
+    }
+    private static GoSlice NilBytes() => new() { Data = null, Off = 0, Len = 0, Cap = 0 };
+
+    // net.ParseIP(s) net.IP: the IP's bytes, or nil if s is not a valid IP.
+    public static GoSlice ParseIP(GoString s) =>
+        IPAddress.TryParse(s.ToDotNetString(), out var ip) ? Bytes(ip.GetAddressBytes()) : NilBytes();
+
+    // net.ParseMAC(s) (net.HardwareAddr, error): parse a colon/hyphen-separated MAC.
+    public static object?[] ParseMAC(GoString s)
+    {
+        var parts = s.ToDotNetString().Split(':', '-', '.');
+        var bytes = new System.Collections.Generic.List<byte>();
+        foreach (var p in parts)
+        {
+            for (int i = 0; i + 1 < p.Length + 1 && i < p.Length; i += 2)
+            {
+                if (i + 2 > p.Length || !byte.TryParse(p.Substring(i, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
+                    return new object?[] { NilBytes(), new GoError("address " + s.ToDotNetString() + ": invalid MAC address") };
+                bytes.Add(b);
+            }
+        }
+        if (bytes.Count is not (6 or 8 or 20))
+            return new object?[] { NilBytes(), new GoError("address " + s.ToDotNetString() + ": invalid MAC address") };
+        return new object?[] { Bytes(bytes.ToArray()), null };
+    }
+
+    // net.ParseCIDR(s) (net.IP, *net.IPNet, error).
+    public static object?[] ParseCIDR(GoString s)
+    {
+        string str = s.ToDotNetString();
+        int slash = str.IndexOf('/');
+        if (slash < 0 || !IPAddress.TryParse(str.Substring(0, slash), out var ip) || !int.TryParse(str.Substring(slash + 1), out var bits))
+            return new object?[] { NilBytes(), null, new GoError("invalid CIDR address: " + str) };
+        var ipBytes = Bytes(ip.GetAddressBytes());
+        return new object?[] { ipBytes, new GoNetAddr { Str = str, Port = bits, Ip = ipBytes }, null };
+    }
+
+    // net.IP methods (receiver is the []byte representation).
+    private static byte[] Raw(GoSlice s)
+    {
+        if (s.Data == null) return System.Array.Empty<byte>();
+        var b = new byte[s.Len];
+        for (int i = 0; i < s.Len; i++) b[i] = (byte)System.Convert.ToInt64(s.Data[s.Off + i]);
+        return b;
+    }
+    public static GoSlice IP_To4(GoSlice ip)
+    {
+        var b = Raw(ip);
+        if (b.Length == 4) return ip;
+        // IPv4-mapped IPv6 (::ffff:a.b.c.d)
+        if (b.Length == 16)
+        {
+            bool mapped = true;
+            for (int i = 0; i < 10; i++) if (b[i] != 0) { mapped = false; break; }
+            if (mapped && b[10] == 0xff && b[11] == 0xff)
+                return Bytes(new[] { b[12], b[13], b[14], b[15] });
+        }
+        return NilBytes();
+    }
+    public static GoSlice IP_To16(GoSlice ip) => Raw(ip).Length == 16 ? ip : ip;
+    public static bool IP_Equal(GoSlice a, GoSlice b)
+    {
+        byte[] x = Raw(a), y = Raw(b);
+        if (x.Length == y.Length) return x.AsSpan().SequenceEqual(y);
+        var t4 = Raw(IP_To4(a)); var o4 = Raw(IP_To4(b));
+        return t4.Length == 4 && o4.Length == 4 && t4.AsSpan().SequenceEqual(o4);
+    }
+    public static GoString IP_String(GoSlice ip)
+    {
+        var b = Raw(ip);
+        try { return GoString.FromDotNetString(new IPAddress(b).ToString()); }
+        catch { return GoString.FromDotNetString("<nil>"); }
+    }
+
+    // net.IPNet field reads (opaque GoNetAddr).
+    public static GoSlice IPNet_IP(object n) => ((GoNetAddr)n).Ip ?? NilBytes();
+
+    // net.SplitHostPort(hostport) (host, port string, err error).
+    public static object?[] SplitHostPort(GoString hostport)
+    {
+        string s = hostport.ToDotNetString();
+        int colon = s.LastIndexOf(':');
+        if (colon < 0)
+            return new object?[] { GoString.FromDotNetString(""), GoString.FromDotNetString(""), new GoError("address " + s + ": missing port in address") };
+        string host = s.Substring(0, colon).TrimStart('[').TrimEnd(']');
+        return new object?[] { GoString.FromDotNetString(host), GoString.FromDotNetString(s.Substring(colon + 1)), null };
+    }
+
+    // net.Resolve{TCP,UDP,IP,Unix}Addr: best-effort — parse host:port into an opaque
+    // address. goclr does no DNS, so an unparseable host yields an error.
+    private static object?[] ResolveAddr(GoString network, GoString address)
+    {
+        string a = address.ToDotNetString();
+        return new object?[] { new GoNetAddr { Str = a }, null };
+    }
+    public static object?[] ResolveTCPAddr(GoString n, GoString a) => ResolveAddr(n, a);
+    public static object?[] ResolveUDPAddr(GoString n, GoString a) => ResolveAddr(n, a);
+    public static object?[] ResolveIPAddr(GoString n, GoString a) => ResolveAddr(n, a);
+    public static object?[] ResolveUnixAddr(GoString n, GoString a) => ResolveAddr(n, a);
 }
+
+/// <summary>An opaque net address (net.IPNet / net.TCPAddr / net.UDPAddr / …).</summary>
+public sealed class GoNetAddr { public string Str = ""; public long Port; public GoSlice? Ip; }
 
 /// <summary>A net.PacketConn over a UdpClient.</summary>
 public sealed class GoPacketConn { public UdpClient U = null!; }

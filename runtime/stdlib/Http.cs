@@ -11,7 +11,7 @@ public sealed class GoResponse { public int StatusCode; public string Status = "
 public sealed class GoRespWriter { public HttpListenerResponse Resp = null!; public bool WroteHeader; }
 
 /// <summary>An *http.Request handle (server side).</summary>
-public sealed class GoRequest { public string Method = ""; public GoUrl Url = new(); public GoReader Body = new(); public string Host = ""; public string RemoteAddr = ""; }
+public sealed class GoRequest { public string Method = ""; public GoUrl Url = new(); public GoReader Body = new(); public string Host = ""; public string RemoteAddr = ""; public GoMap? Form; public GoMap? PostForm; public GoMap? Header; public byte[] RawBody = System.Array.Empty<byte>(); }
 
 /// <summary>Shim for Go's <c>net/http</c> client (over a pooled HttpClient).
 /// Server-side and streaming bodies are out of scope; the body is read eagerly.</summary>
@@ -103,7 +103,73 @@ public static class Http
         var u = new GoUrl { Path = r.Url?.AbsolutePath ?? "/", RawQuery = (r.Url?.Query ?? "").TrimStart('?'), Host = r.Url?.Authority ?? "" };
         byte[] body;
         using (var ms = new System.IO.MemoryStream()) { r.InputStream.CopyTo(ms); body = ms.ToArray(); }
-        return new GoRequest { Method = r.HttpMethod, Url = u, Body = new GoReader { Data = body }, Host = r.UserHostName ?? "", RemoteAddr = r.RemoteEndPoint?.ToString() ?? "" };
+        var hdr = GoMaps.Make();
+        foreach (string? key in r.Headers.AllKeys)
+        {
+            if (key == null) continue;
+            var vals = new GoSlice { Data = new object?[] { GoString.FromDotNetString(r.Headers[key] ?? "") }, Off = 0, Len = 1, Cap = 1 };
+            hdr.Data![GoString.FromDotNetString(key)] = vals;
+        }
+        return new GoRequest { Method = r.HttpMethod, Url = u, Body = new GoReader { Data = body }, Host = r.UserHostName ?? "", RemoteAddr = r.RemoteEndPoint?.ToString() ?? "", RawBody = body, Header = hdr };
+    }
+
+    public static object Req_Header(object r)
+    {
+        var rq = (GoRequest)r;
+        return rq.Header ??= GoMaps.Make();
+    }
+
+    /// <summary>http.ErrNotMultipart — the sentinel ParseMultipartForm returns for a
+    /// non-multipart request (gin checks errors.Is(err, http.ErrNotMultipart)).</summary>
+    public static readonly GoError ErrNotMultipartSentinel = new(GoString.FromDotNetString("request Content-Type isn't multipart/form-data"));
+    public static object ErrNotMultipart() => ErrNotMultipartSentinel;
+
+    // (*http.Request).ParseForm(): parse the URL query and a urlencoded body into Form
+    // (url.Values = map[string][]string).
+    public static object? Req_ParseForm(object ro)
+    {
+        var r = (GoRequest)ro;
+        var m = GoMaps.Make();
+        var post = GoMaps.Make();
+        AddQuery(m, r.Url.RawQuery);
+        if (r.Method is "POST" or "PUT" or "PATCH")
+        {
+            string b = System.Text.Encoding.UTF8.GetString(r.RawBody);
+            AddQuery(m, b);
+            AddQuery(post, b);
+        }
+        r.Form = m;
+        r.PostForm = post;
+        return null;
+    }
+    public static object? Req_ParseMultipartForm(object ro, long maxMemory) => ErrNotMultipartSentinel;
+    public static object Req_Form(object r)
+    {
+        var rq = (GoRequest)r;
+        if (rq.Form == null) Req_ParseForm(r);
+        return rq.Form!;
+    }
+    public static object Req_PostForm(object r)
+    {
+        var rq = (GoRequest)r;
+        if (rq.PostForm == null) Req_ParseForm(r);
+        return rq.PostForm!;
+    }
+
+    private static void AddQuery(GoMap m, string q)
+    {
+        if (string.IsNullOrEmpty(q)) return;
+        foreach (var pair in q.Split('&'))
+        {
+            if (pair.Length == 0) continue;
+            int eq = pair.IndexOf('=');
+            string k = System.Uri.UnescapeDataString((eq < 0 ? pair : pair.Substring(0, eq)).Replace('+', ' '));
+            string v = eq < 0 ? "" : System.Uri.UnescapeDataString(pair.Substring(eq + 1).Replace('+', ' '));
+            var key = GoString.FromDotNetString(k);
+            GoSlice vals = m.Data!.TryGetValue(key, out var ex) && ex is GoSlice s ? s : new GoSlice { Data = new object?[0], Off = 0, Len = 0, Cap = 0 };
+            vals = GoSlices.AppendOne(vals, GoString.FromDotNetString(v));
+            m.Data[key] = vals;
+        }
     }
 
     // http.ResponseWriter methods.

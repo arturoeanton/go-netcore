@@ -94,6 +94,10 @@ public static class Os
     public static GoString FileInfo_Name(object fi) => ((GoFileInfo)fi).FileName;
     public static long FileInfo_Size(object fi) => ((GoFileInfo)fi).Size;
     public static bool FileInfo_IsDir(object fi) => ((GoFileInfo)fi).Dir;
+    // Mode() io/fs.FileMode: goclr does not read OS file modes, so this reports the
+    // directory bit (1<<31) for a directory and 0 otherwise — enough for the common
+    // IsDir()/Type() checks; socket/device bits are not represented.
+    public static uint FileInfo_Mode(object fi) => ((GoFileInfo)fi).Dir ? (uint)(1u << 31) : 0u;
 
     public static GoString Getenv(GoString key) =>
         GoString.FromDotNetString(System.Environment.GetEnvironmentVariable(key.ToDotNetString()) ?? "");

@@ -162,6 +162,7 @@ public static class Reflect
     public static long Value_Int(object? v) => Convert.ToInt64(RVal(v) ?? 0L);
     public static ulong Value_Uint(object? v) => Convert.ToUInt64(RVal(v) ?? (ulong)0);
     public static double Value_Float(object? v) => Convert.ToDouble(RVal(v) ?? 0.0);
+    public static object? Value_Complex(object? v) => RVal(v) ?? new GoComplex(0, 0);
     public static GoString Value_String(object? v)
     {
         var x = RVal(v);
@@ -557,6 +558,8 @@ public static class Reflect
     public static object Value_Method(object? v, long i) => new GoReflectValue { V = null };
     public static object Value_MethodByName(object? v, GoString name) => new GoReflectValue { V = null };
     public static bool Value_OverflowInt(object? v, long x) => false;
+    public static bool Value_OverflowUint(object? v, ulong x) => false;
+    public static bool Value_OverflowFloat(object? v, double x) => false;
 
     // Call(in []Value) []Value: invoke the wrapped function with the unwrapped
     // argument Values and wrap each result as a Value. The wrapped value is a

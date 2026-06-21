@@ -38,6 +38,35 @@ public static class Url
         return new object?[] { u, null };
     }
 
+    // url.ParseRequestURI: like Parse but the URL must be absolute (have a scheme).
+    public static object?[] ParseRequestURI(GoString raw)
+    {
+        var r = Parse(raw);
+        var u = (GoUrl)r[0]!;
+        if (u.Scheme.Length == 0)
+            return new object?[] { u, new GoError("parse " + raw.ToDotNetString() + ": invalid URI for request") };
+        return r;
+    }
+
+    // (*url.URL).Query() url.Values: parse RawQuery into a map[string][]string.
+    public static object URL_Query(object u)
+    {
+        var m = GoMaps.Make();
+        string q = ((GoUrl)u).RawQuery;
+        if (!string.IsNullOrEmpty(q))
+            foreach (var pair in q.Split('&'))
+            {
+                if (pair.Length == 0) continue;
+                int eq = pair.IndexOf('=');
+                string k = System.Uri.UnescapeDataString((eq < 0 ? pair : pair.Substring(0, eq)).Replace('+', ' '));
+                string v = eq < 0 ? "" : System.Uri.UnescapeDataString(pair.Substring(eq + 1).Replace('+', ' '));
+                var key = GoString.FromDotNetString(k);
+                GoSlice vals = m.Data!.TryGetValue(key, out var ex) && ex is GoSlice sl ? sl : new GoSlice { Data = new object?[0], Off = 0, Len = 0, Cap = 0 };
+                m.Data[key] = GoSlices.AppendOne(vals, GoString.FromDotNetString(v));
+            }
+        return m;
+    }
+
     public static GoString URL_Scheme(object u) => GoString.FromDotNetString(((GoUrl)u).Scheme);
     public static GoString URL_Host(object u) => GoString.FromDotNetString(((GoUrl)u).Host);
     public static GoString URL_Path(object u) => GoString.FromDotNetString(((GoUrl)u).Path);

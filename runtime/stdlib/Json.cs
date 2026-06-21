@@ -400,6 +400,7 @@ public static class Json
     }
 
     public static void Decoder_UseNumber(object dec) => ((GoJsonDecoder)dec).UseNumber = true;
+    public static void Decoder_DisallowUnknownFields(object dec) { /* lenient decoder: accepted, not enforced */ }
 
     public static bool Decoder_More(object dec) => ((GoJsonDecoder)dec).More();
 

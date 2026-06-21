@@ -79,6 +79,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/hmac":     {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
 	"crypto/subtle":   {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}},
 	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
+	"net/mail":        {"ParseAddress": {"Mail", "ParseAddress"}},
+	"net/textproto":   {"CanonicalMIMEHeaderKey": {"Textproto", "CanonicalMIMEHeaderKey"}},
 	"os/exec":         {"Command": {"Exec", "Command"}},
 	"container/list":  {"New": {"List", "New"}},
 	"encoding/csv":    {"NewReader": {"Csv", "NewReader"}, "NewWriter": {"Csv", "NewWriter"}},
@@ -94,7 +96,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"net/url": {
 		"QueryEscape": {"Url", "QueryEscape"}, "PathEscape": {"Url", "PathEscape"},
 		"QueryUnescape": {"Url", "QueryUnescape"}, "PathUnescape": {"Url", "PathUnescape"},
-		"Parse": {"Url", "Parse"},
+		"Parse": {"Url", "Parse"}, "ParseRequestURI": {"Url", "ParseRequestURI"},
 	},
 	"regexp": {
 		"Compile": {"Regexp", "Compile"}, "MustCompile": {"Regexp", "MustCompile"},
@@ -133,6 +135,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"net": {
 		"Listen": {"Net", "Listen"}, "Dial": {"Net", "Dial"},
+		"ParseIP": {"Net", "ParseIP"}, "ParseMAC": {"Net", "ParseMAC"}, "ParseCIDR": {"Net", "ParseCIDR"},
+		"SplitHostPort":  {"Net", "SplitHostPort"},
+		"ResolveTCPAddr": {"Net", "ResolveTCPAddr"}, "ResolveUDPAddr": {"Net", "ResolveUDPAddr"},
+		"ResolveIPAddr": {"Net", "ResolveIPAddr"}, "ResolveUnixAddr": {"Net", "ResolveUnixAddr"},
 	},
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
@@ -169,8 +175,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},
 		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
 		"FixedZone": {"Time", "FixedZone"}, "NewTicker": {"Time", "NewTicker"}, "NewTimer": {"Time", "NewTimer"},
-		"Parse": {"Time", "Parse"},
-		"Tick":  {"Time", "Tick"},
+		"Parse": {"Time", "Parse"}, "LoadLocation": {"Time", "LoadLocation"}, "ParseDuration": {"Time", "ParseDuration"}, "ParseInLocation": {"Time", "ParseInLocation"},
+		"Tick": {"Time", "Tick"},
 	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
@@ -245,6 +251,7 @@ var opaqueShimTypes = map[string]bool{
 	"reflect.Type":                 true,
 	"reflect.Value":                true,
 	"sync.Mutex":                   true,
+	"sync/atomic.Value":            true,
 	"sync.RWMutex":                 true,
 	"sync.WaitGroup":               true,
 	"sync.Once":                    true,
@@ -271,6 +278,12 @@ var opaqueShimTypes = map[string]bool{
 	"net/http.Response":            true,
 	"net.Listener":                 true,
 	"net.Conn":                     true,
+	"net.IPNet":                    true,
+	"net/mail.Address":             true,
+	"net.TCPAddr":                  true,
+	"net.UDPAddr":                  true,
+	"net.IPAddr":                   true,
+	"net.UnixAddr":                 true,
 	"net.PacketConn":               true,
 	"net/http.ResponseWriter":      true,
 	"net/http.Request":             true,
@@ -322,6 +335,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 	"io.EOF":                         {"Io", "EOF"},
 	"io.ErrUnexpectedEOF":            {"Io", "ErrUnexpectedEOF"},
+	"net/http.ErrNotMultipart":       {"Http", "ErrNotMultipart"},
 	"strconv.ErrRange":               {"Strconv", "ErrRangeVar"},
 	"strconv.ErrSyntax":              {"Strconv", "ErrSyntaxVar"},
 }
@@ -375,6 +389,12 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"RawQuery": {"Url", "URL_RawQuery"}, "Fragment": {"Url", "URL_Fragment"},
 		"User": {"Url", "URL_User"}, "RawPath": {"Url", "URL_Path"}, "Opaque": {"Url", "URL_Opaque"},
 	},
+	"net.IPNet": {
+		"IP": {"Net", "IPNet_IP"},
+	},
+	"net/mail.Address": {
+		"Name": {"Mail", "Address_Name"}, "Address": {"Mail", "Address_Address"},
+	},
 	"net/http.Response": {
 		"StatusCode": {"Http", "Resp_StatusCode"}, "Status": {"Http", "Resp_Status"},
 		"Body": {"Http", "Resp_Body"}, "ContentLength": {"Http", "Resp_ContentLength"},
@@ -399,7 +419,7 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http.Request": {
 		"Method": {"Http", "Req_Method"}, "URL": {"Http", "Req_URL"}, "Body": {"Http", "Req_Body"},
-		"Host": {"Http", "Req_Host"}, "RemoteAddr": {"Http", "Req_RemoteAddr"},
+		"Host": {"Http", "Req_Host"}, "RemoteAddr": {"Http", "Req_RemoteAddr"}, "Form": {"Http", "Req_Form"}, "PostForm": {"Http", "Req_PostForm"}, "Header": {"Http", "Req_Header"},
 	},
 }
 
@@ -472,6 +492,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"sync.Once":         {"Sync", "NewOnce"},
 	"sync.Map":          {"Sync", "NewMap"},
 	"sync.Pool":         {"Sync", "NewPool"},
+	"sync/atomic.Value": {"Atomic", "NewValue"},
 	"strings.Builder":   {"StringsBuilder", "New"},
 	"bytes.Buffer":      {"BytesBuffer", "New"},
 	"time.Time":         {"Time", "TimeZero"},
@@ -513,7 +534,7 @@ var binaryMethods = map[string]shimFunc{
 var shimMethodRegistry = map[string]map[string]shimFunc{
 	"encoding/json.Decoder": {
 		"Token": {"Json", "Decoder_Token"}, "More": {"Json", "Decoder_More"},
-		"Decode": {"Json", "Decoder_Decode"}, "UseNumber": {"Json", "Decoder_UseNumber"},
+		"Decode": {"Json", "Decoder_Decode"}, "UseNumber": {"Json", "Decoder_UseNumber"}, "DisallowUnknownFields": {"Json", "Decoder_DisallowUnknownFields"},
 		"Buffered": {"Json", "Decoder_Buffered"},
 	},
 	"encoding/json.Encoder": {
@@ -522,7 +543,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net/url.URL": {
 		"IsAbs": {"Url", "URL_IsAbs"}, "String": {"Url", "URL_String"},
-		"ResolveReference": {"Url", "URL_ResolveReference"},
+		"ResolveReference": {"Url", "URL_ResolveReference"}, "Query": {"Url", "URL_Query"},
 	},
 	"strings.Reader": {
 		"ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
@@ -564,6 +585,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"io.ReadCloser": {
 		"Close": {"Http", "Body_Close"},
+	},
+	"net/http.Request": {
+		"ParseForm": {"Http", "Req_ParseForm"}, "ParseMultipartForm": {"Http", "Req_ParseMultipartForm"},
 	},
 	"net/http.ResponseWriter": {
 		"Write": {"Http", "RW_Write"}, "WriteHeader": {"Http", "RW_WriteHeader"},
@@ -612,6 +636,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
+		"EncodedLen": {"Base64", "EncodedLen"}, "DecodedLen": {"Base64", "DecodedLen"}, "Encode": {"Base64", "Encode"}, "Decode": {"Base64", "Decode"},
 	},
 	"encoding/binary.littleEndian": binaryMethods,
 	"encoding/binary.bigEndian":    binaryMethods,
@@ -678,11 +703,17 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"os.File": {
 		"Fd": {"Os", "File_Fd"}, "Close": {"Os", "File_Close"},
 	},
+	"net.IP": {
+		"To4": {"Net", "IP_To4"}, "To16": {"Net", "IP_To16"}, "Equal": {"Net", "IP_Equal"}, "String": {"Net", "IP_String"},
+	},
 	"os.FileInfo": {
-		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"},
+		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"}, "Mode": {"Os", "FileInfo_Mode"},
 	},
 	"io/fs.FileInfo": {
-		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"},
+		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"}, "Mode": {"Os", "FileInfo_Mode"},
+	},
+	"io/fs.FileMode": {
+		"Type": {"Fs", "Mode_Type"}, "IsDir": {"Fs", "Mode_IsDir"}, "IsRegular": {"Fs", "Mode_IsRegular"}, "Perm": {"Fs", "Mode_Perm"},
 	},
 	"crypto/sha3.SHAKE": {
 		"Write": {"Crypto", "Shake_Write"}, "Read": {"Crypto", "Shake_Read"}, "Reset": {"Crypto", "Shake_Reset"},
@@ -691,6 +722,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"sync.Mutex": {
 		"Lock": {"Sync", "Mutex_Lock"}, "Unlock": {"Sync", "Mutex_Unlock"}, "TryLock": {"Sync", "Mutex_TryLock"},
+	},
+	"sync/atomic.Value": {
+		"Load": {"Atomic", "Value_Load"}, "Store": {"Atomic", "Value_Store"}, "Swap": {"Atomic", "Value_Swap"}, "CompareAndSwap": {"Atomic", "Value_CompareAndSwap"},
 	},
 	"sync.RWMutex": {
 		"Lock": {"Sync", "RWMutex_Lock"}, "Unlock": {"Sync", "RWMutex_Unlock"},
@@ -761,7 +795,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"NumMethod": {"Reflect", "Value_NumMethod"}, "CanInterface": {"Reflect", "Value_CanInterface"},
 		"FieldByName": {"Reflect", "Value_FieldByName"}, "FieldByIndex": {"Reflect", "Value_FieldByIndex"},
 		"Method": {"Reflect", "Value_Method"}, "Call": {"Reflect", "Value_Call"},
-		"MethodByName": {"Reflect", "Value_MethodByName"}, "OverflowInt": {"Reflect", "Value_OverflowInt"},
+		"MethodByName": {"Reflect", "Value_MethodByName"}, "OverflowInt": {"Reflect", "Value_OverflowInt"}, "Complex": {"Reflect", "Value_Complex"}, "OverflowUint": {"Reflect", "Value_OverflowUint"}, "OverflowFloat": {"Reflect", "Value_OverflowFloat"},
 	},
 }
 

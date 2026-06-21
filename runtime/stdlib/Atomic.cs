@@ -45,4 +45,14 @@ public static class Atomic
     public static ulong SwapUint64(GoPtr p, ulong nv) { lock (Gate) { ulong old = U64(p); GoPtrs.Set(p, nv); return old; } }
     public static bool CompareAndSwapUint64(GoPtr p, ulong old, ulong nv) { lock (Gate) { if (U64(p) == old) { GoPtrs.Set(p, nv); return true; } return false; } }
     public static bool CompareAndSwapUint32(GoPtr p, uint old, uint nv) { lock (Gate) { if (U32(p) == old) { GoPtrs.Set(p, nv); return true; } return false; } }
+
+    // sync/atomic.Value: atomically holds an interface{} value.
+    public static object NewValue() => new GoAtomicValue();
+    public static object? Value_Load(object v) { lock (Gate) return ((GoAtomicValue)v).Val; }
+    public static void Value_Store(object v, object? x) { lock (Gate) ((GoAtomicValue)v).Val = x; }
+    public static object? Value_Swap(object v, object? x) { lock (Gate) { var a = (GoAtomicValue)v; var old = a.Val; a.Val = x; return old; } }
+    public static bool Value_CompareAndSwap(object v, object? old, object? nw) { lock (Gate) { var a = (GoAtomicValue)v; if (System.Object.Equals(a.Val, old)) { a.Val = nw; return true; } return false; } }
 }
+
+/// <summary>A sync/atomic.Value holding one interface value.</summary>
+public sealed class GoAtomicValue { public object? Val; }

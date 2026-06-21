@@ -345,6 +345,62 @@ public static class Time
     // time.FixedZone(name, offsetSeconds): a Location at a constant UTC offset.
     public static object FixedZone(GoString name, long offsetSec) =>
         new GoLocation { Name = name.ToDotNetString(), OffsetSeconds = (int)offsetSec };
+
+    // time.ParseDuration("1h30m", "300ms", …) (Duration, error): sum of decimal runs
+    // each followed by a unit (ns/us/µs/ms/s/m/h), with an optional leading sign.
+    public static object?[] ParseDuration(GoString sg)
+    {
+        string s = sg.ToDotNetString();
+        if (s == "0") return new object?[] { 0L, null };
+        int i = 0;
+        long total = 0;
+        bool neg = false;
+        if (i < s.Length && (s[i] == '+' || s[i] == '-')) { neg = s[i] == '-'; i++; }
+        if (i >= s.Length) return Err(s);
+        while (i < s.Length)
+        {
+            int start = i;
+            while (i < s.Length && (char.IsDigit(s[i]) || s[i] == '.')) i++;
+            if (i == start) return Err(s);
+            if (!double.TryParse(s.Substring(start, i - start), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double val))
+                return Err(s);
+            int us = i;
+            while (i < s.Length && !char.IsDigit(s[i]) && s[i] != '.') i++;
+            string unit = s.Substring(us, i - us);
+            long scale = unit switch
+            {
+                "ns" => Nanosecond, "us" => Microsecond, "µs" => Microsecond, "μs" => Microsecond,
+                "ms" => Millisecond, "s" => Second, "m" => Minute, "h" => Hour,
+                _ => -1,
+            };
+            if (scale < 0) return Err(s);
+            total += (long)(val * scale);
+        }
+        return new object?[] { neg ? -total : total, null };
+    }
+    private static object?[] Err(string s) => new object?[] { 0L, new GoError("time: invalid duration \"" + s + "\"") };
+
+    // time.ParseInLocation(layout, value, loc): goclr's time is UTC-only, so the
+    // location is ignored and this is Parse.
+    public static object?[] ParseInLocation(GoString layout, GoString value, object loc) => Parse(layout, value);
+
+    // time.LoadLocation(name) (*Location, error): "" and "UTC" are UTC; otherwise look
+    // up the IANA/system zone for its base offset (goclr's time is UTC-only, so the
+    // zone carries just a name and fixed offset — adequate for validation/formatting).
+    public static object?[] LoadLocation(GoString name)
+    {
+        string n = name.ToDotNetString();
+        if (n.Length == 0 || n == "UTC") return new object?[] { UtcLoc, null };
+        try
+        {
+            var tz = System.TimeZoneInfo.FindSystemTimeZoneById(n);
+            return new object?[] { new GoLocation { Name = n, OffsetSeconds = (int)tz.BaseUtcOffset.TotalSeconds }, null };
+        }
+        catch
+        {
+            return new object?[] { null, new GoError("unknown time zone " + n) };
+        }
+    }
     private static readonly object UtcLoc = new GoLocation();
 }
 

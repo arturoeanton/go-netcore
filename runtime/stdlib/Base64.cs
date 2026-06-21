@@ -45,4 +45,26 @@ public static class Base64
         try { return new object?[] { Slice(System.Convert.FromBase64String(s)), null }; }
         catch { return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("illegal base64 data")) }; }
     }
+
+    public static long EncodedLen(object enc, long n) =>
+        ((GoBase64)enc).Pad ? (n + 2) / 3 * 4 : (n * 8 + 5) / 6;
+    public static long DecodedLen(object enc, long n) =>
+        ((GoBase64)enc).Pad ? n / 4 * 3 : n * 6 / 8;
+
+    // Encode(dst, src): write the encoding of src into dst, returning the byte count.
+    public static void Encode(object enc, GoSlice dst, GoSlice src)
+    {
+        var s = EncodeToString(enc, src);
+        var by = s.Bytes;
+        for (int i = 0; i < by.Length && i < dst.Len; i++) dst.Data![dst.Off + i] = (int)by[i];
+    }
+    // Decode(dst, src) (n int, err error).
+    public static object?[] Decode(object enc, GoSlice dst, GoSlice src)
+    {
+        var r = DecodeString(enc, GoString.FromBytes(Bytes(src)));
+        if (r[1] != null) return new object?[] { 0L, r[1] };
+        var decoded = (GoSlice)r[0]!;
+        for (int i = 0; i < decoded.Len && i < dst.Len; i++) dst.Data![dst.Off + i] = decoded.Data![decoded.Off + i];
+        return new object?[] { (long)decoded.Len, null };
+    }
 }
