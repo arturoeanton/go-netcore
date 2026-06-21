@@ -581,6 +581,9 @@ func (l *funcLowerer) namedFuncCall(e *ast.CallExpr, ident *ast.Ident, fn *types
 	if fn.Pkg() != nil && fn.Pkg().Path() == "reflect" && (fn.Name() == "TypeOf" || fn.Name() == "ValueOf") {
 		return l.reflectOfCall(e, fn.Name())
 	}
+	if fn.Pkg() != nil && fn.Pkg().Path() == "reflect" && fn.Name() == "TypeFor" {
+		return l.reflectTypeForCall(e)
+	}
 	// Shimmed stdlib function -> external (GoCLR.Stdlib) call.
 	if ext, ok := l.shimExtern(fn); ok {
 		variadic := false

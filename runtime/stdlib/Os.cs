@@ -63,37 +63,107 @@ public static class Os
         catch (System.Exception e) { return new object?[] { null, new GoError("open " + name.ToDotNetString() + ": " + e.Message) }; }
     }
 
-    // os.OpenFile(name, flag, perm) (*os.File, error): create-or-append for writing,
-    // otherwise read the file fully (matching os.Open).
+    // os.OpenFile(name, flag, perm) (*os.File, error): open a file with full random
+    // access (read+write+seek) so callers like a SQLite pager can ReadAt/WriteAt it.
     public static object?[] OpenFile(GoString name, long flag, uint perm)
     {
-        const long O_WRONLY = 1, O_RDWR = 2, O_APPEND = 0x400, O_CREATE = 0x40, O_TRUNC = 0x200;
-        bool write = (flag & (O_WRONLY | O_RDWR)) != 0 || (flag & (O_APPEND | O_CREATE | O_TRUNC)) != 0;
-        if (!write) return Open(name);
+        // The low two bits are the access mode on every Unix (O_RDONLY=0, O_WRONLY=1,
+        // O_RDWR=2); the create/trunc/append bits differ per platform, so this opens
+        // create-if-missing for any write mode (the common pager case) without relying
+        // on their exact values.
+        long acc = flag & 0x3;
+        bool write = acc != 0;
         try
         {
             string p = name.ToDotNetString();
-            var mode = (flag & O_APPEND) != 0 ? System.IO.FileMode.Append
-                     : (flag & O_TRUNC) != 0 ? System.IO.FileMode.Create
-                     : (flag & O_CREATE) != 0 ? System.IO.FileMode.OpenOrCreate
-                     : System.IO.FileMode.Open;
-            return new object?[] { new GoFile { Wr = new System.IO.FileStream(p, mode, System.IO.FileAccess.Write), Path = p }, null };
+            var mode = write ? System.IO.FileMode.OpenOrCreate : System.IO.FileMode.Open;
+            var access = write ? System.IO.FileAccess.ReadWrite : System.IO.FileAccess.Read;
+            var fs = new System.IO.FileStream(p, mode, access, System.IO.FileShare.ReadWrite);
+            return new object?[] { new GoFile { Wr = fs, Path = p }, null };
         }
         catch (System.Exception e) { return new object?[] { null, new GoError("open " + name.ToDotNetString() + ": " + e.Message) }; }
     }
 
-    // (*os.File).Write(p) (n int, err error): write bytes to the underlying stream
-    // (or the standard stream for stdout/stderr).
+    // (*os.File).Write(p): write at the current position to the underlying stream (or a
+    // standard stream for stdout/stderr).
     public static object?[] File_Write(object f, GoSlice p)
     {
         var gf = (GoFile)f;
-        byte[] buf = new byte[p.Len];
-        for (int i = 0; i < p.Len; i++) buf[i] = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
+        byte[] buf = Raw(p);
         if (gf.Wr != null) gf.Wr.Write(buf, 0, buf.Length);
         else { var s = System.Text.Encoding.UTF8.GetString(buf); if (gf.IsStderr) System.Console.Error.Write(s); else System.Console.Out.Write(s); }
         return new object?[] { (long)p.Len, null };
     }
     public static object?[] File_WriteString(object f, GoString s) => File_Write(f, BytesOf(s));
+    // (*os.File).WriteAt(p, off): write at an absolute offset.
+    public static object?[] File_WriteAt(object f, GoSlice p, long off)
+    {
+        var gf = (GoFile)f;
+        if (gf.Wr == null) return new object?[] { 0L, new GoError("write: file not open for writing") };
+        gf.Wr.Seek(off, System.IO.SeekOrigin.Begin);
+        var buf = Raw(p);
+        gf.Wr.Write(buf, 0, buf.Length);
+        gf.Wr.Flush(); // make the write visible to other handles on the same file
+        return new object?[] { (long)p.Len, null };
+    }
+    // (*os.File).Read(p): read at the current position (GoReader snapshot or stream).
+    public static object?[] File_Read(object f, GoSlice p)
+    {
+        if (f is GoFile gf && gf.Wr != null)
+        {
+            var buf = new byte[p.Len];
+            int n = gf.Wr.Read(buf, 0, buf.Length);
+            for (int i = 0; i < n; i++) p.Data![p.Off + i] = (int)buf[i];
+            return new object?[] { (long)n, n == 0 ? Io.EOFSentinel : null };
+        }
+        return Io.ReadFull(f, p);
+    }
+    // (*os.File).ReadAt(p, off): read len(p) bytes at an absolute offset; short reads
+    // return io.EOF (the io.ReaderAt contract).
+    public static object?[] File_ReadAt(object f, GoSlice p, long off)
+    {
+        var gf = (GoFile)f;
+        if (gf.Wr == null) return new object?[] { 0L, Io.EOFSentinel };
+        gf.Wr.Seek(off, System.IO.SeekOrigin.Begin);
+        var buf = new byte[p.Len];
+        int total = 0;
+        while (total < buf.Length)
+        {
+            int n = gf.Wr.Read(buf, total, buf.Length - total);
+            if (n == 0) break;
+            total += n;
+        }
+        for (int i = 0; i < total; i++) p.Data![p.Off + i] = (int)buf[i];
+        return new object?[] { (long)total, total < p.Len ? Io.EOFSentinel : null };
+    }
+    // (*os.File).Seek(offset, whence) (ret int64, err error).
+    public static object?[] File_Seek(object f, long offset, long whence)
+    {
+        var gf = (GoFile)f;
+        if (gf.Wr == null) return new object?[] { 0L, new GoError("seek: file not seekable") };
+        var origin = whence switch { 1 => System.IO.SeekOrigin.Current, 2 => System.IO.SeekOrigin.End, _ => System.IO.SeekOrigin.Begin };
+        return new object?[] { gf.Wr.Seek(offset, origin), null };
+    }
+    // (*os.File).Truncate(size): resize the file.
+    public static object? File_Truncate(object f, long size)
+    {
+        var gf = (GoFile)f;
+        if (gf.Wr != null) { try { gf.Wr.SetLength(size); } catch (System.Exception e) { return new GoError(e.Message); } }
+        return null;
+    }
+    // (*os.File).Stat() (FileInfo, error).
+    public static object?[] File_Stat(object f)
+    {
+        var gf = (GoFile)f;
+        long size = gf.Wr?.Length ?? 0;
+        return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(System.IO.Path.GetFileName(gf.Path)), Size = size, Dir = false }, null };
+    }
+    private static byte[] Raw(GoSlice p)
+    {
+        var buf = new byte[p.Len];
+        for (int i = 0; i < p.Len; i++) buf[i] = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
+        return buf;
+    }
     private static GoSlice BytesOf(GoString s)
     {
         var by = s.Bytes; var d = new object?[by.Length];
@@ -101,8 +171,6 @@ public static class Os
         return new GoSlice { Data = d, Off = 0, Len = by.Length, Cap = by.Length };
     }
 
-    // (*os.File).Read(p): read from a file opened with os.Open (a buffered GoReader).
-    public static object?[] File_Read(object f, GoSlice p) => Io.ReadFull(f, p);
     // (*os.File).Name(): the path the file was opened with.
     public static GoString File_Name(object f) => GoString.FromDotNetString(f is GoFile gf ? gf.Path : "");
     // (*os.File).Sync(): flush a writable file.
@@ -159,6 +227,37 @@ public static class Os
     // os.IsNotExist(err): does err report a missing file? (matched by message suffix).
     public static bool IsNotExist(object? err) =>
         err is GoError g && g.Error().ToDotNetString().EndsWith("no such file or directory", System.StringComparison.Ordinal);
+
+    // os.CreateTemp(dir, pattern) (*os.File, error): create a new temp file. A "*" in
+    // pattern is replaced with a random string (else it's a suffix).
+    public static object?[] CreateTemp(GoString dir, GoString pattern)
+    {
+        try
+        {
+            string d = dir.ToDotNetString();
+            if (d.Length == 0) d = System.IO.Path.GetTempPath();
+            string pat = pattern.ToDotNetString();
+            string prefix, suffix;
+            int star = pat.IndexOf('*');
+            if (star >= 0) { prefix = pat.Substring(0, star); suffix = pat.Substring(star + 1); }
+            else { prefix = pat; suffix = ""; }
+            for (int attempt = 0; ; attempt++)
+            {
+                string name = prefix + System.Guid.NewGuid().ToString("N").Substring(0, 10) + suffix;
+                string path = System.IO.Path.Combine(d, name);
+                try
+                {
+                    var fs = new System.IO.FileStream(path, System.IO.FileMode.CreateNew, System.IO.FileAccess.ReadWrite);
+                    return new object?[] { new GoFile { Wr = fs, Path = path }, null };
+                }
+                catch (System.IO.IOException) when (attempt < 10000) { /* name clash: retry */ }
+            }
+        }
+        catch (System.Exception e) { return new object?[] { null, new GoError("createtemp: " + e.Message) }; }
+    }
+
+    // os.TempDir(): the default directory for temporary files.
+    public static GoString TempDir() => GoString.FromDotNetString(System.IO.Path.GetTempPath().TrimEnd('/'));
 
     // os.NewFile(fd, name) *os.File: a file handle for a raw descriptor. goclr has no fd
     // table, so this is an opaque handle carrying the name (used by RunFd).

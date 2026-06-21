@@ -85,18 +85,20 @@ func (l *funcLowerer) commaOk(s *ast.AssignStmt) {
 	okIdx := l.assignTarget(s, s.Lhs[1], goir.TBool)
 
 	if vIdx >= 0 {
-		l.emit(goir.Op{Code: goir.OpLdLoc, Local: mTmp})
-		l.emit(goir.Op{Code: goir.OpLdLoc, Local: kTmp})
-		l.emitBoxedZero(valT)
-		l.emit(goir.Op{Code: goir.OpMapGet})
-		l.emitUnbox(valT)
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: vIdx})
+		l.storeTarget(s, vIdx, func() {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: mTmp})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: kTmp})
+			l.emitBoxedZero(valT)
+			l.emit(goir.Op{Code: goir.OpMapGet})
+			l.emitUnbox(valT)
+		})
 	}
 	if okIdx >= 0 {
-		l.emit(goir.Op{Code: goir.OpLdLoc, Local: mTmp})
-		l.emit(goir.Op{Code: goir.OpLdLoc, Local: kTmp})
-		l.emit(goir.Op{Code: goir.OpMapContains})
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: okIdx})
+		l.storeTarget(s, okIdx, func() {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: mTmp})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: kTmp})
+			l.emit(goir.Op{Code: goir.OpMapContains})
+		})
 	}
 }
 
@@ -109,7 +111,10 @@ func (l *funcLowerer) assignTarget(s *ast.AssignStmt, e ast.Expr, t goir.Type) i
 	}
 	if s.Tok == token.DEFINE {
 		if obj := l.pkg.TypesInfo.Defs[id]; obj != nil {
-			return l.addLocal(obj, t)
+			// declareLocal (not addLocal) so an address-taken / closure-captured target
+			// becomes a GoPtr cell; storing into it must then go through storeTarget.
+			idx, _ := l.declareLocal(obj, t)
+			return idx
 		}
 	}
 	idx, _, ok := l.lookupVar(id)
@@ -117,6 +122,16 @@ func (l *funcLowerer) assignTarget(s *ast.AssignStmt, e ast.Expr, t goir.Type) i
 		return -1
 	}
 	return idx
+}
+
+// storeTarget stores a value (emitValue pushes it unboxed) into a comma-ok result
+// target, honoring a GoPtr cell when the target is address-taken/captured.
+func (l *funcLowerer) storeTarget(s *ast.AssignStmt, idx int, emitValue func()) {
+	if s.Tok == token.DEFINE {
+		l.initLocal(idx, emitValue)
+	} else {
+		l.assignLocal(idx, emitValue)
+	}
 }
 
 // rangeMap lowers `for k, v := range m`: iterate the map's keys, fetching each

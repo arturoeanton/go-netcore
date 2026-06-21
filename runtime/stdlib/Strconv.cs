@@ -55,6 +55,19 @@ public static class Strconv
     public static GoString FormatUint(ulong i, long b) => GoString.FromDotNetString(ToBaseU(i, (int)b));
     public static GoString FormatBool(bool v) => GoString.FromDotNetString(v ? "true" : "false");
 
+    private static GoSlice AppendStr(GoSlice dst, string s)
+    {
+        int n = dst.Len;
+        var d = new object?[n + s.Length];
+        for (int k = 0; k < n; k++) d[k] = dst.Data![dst.Off + k];
+        for (int k = 0; k < s.Length; k++) d[n + k] = (int)(byte)s[k];
+        return new GoSlice { Data = d, Off = 0, Len = n + s.Length, Cap = n + s.Length };
+    }
+    public static GoSlice AppendUint(GoSlice dst, ulong i, long b) => AppendStr(dst, ToBaseU(i, (int)b));
+    public static GoSlice AppendBool(GoSlice dst, bool v) => AppendStr(dst, v ? "true" : "false");
+    public static GoSlice AppendFloat(GoSlice dst, double f, int fmt, long prec, long bitSize) => AppendStr(dst, FormatFloat(f, fmt, prec, bitSize).ToDotNetString());
+    public static GoSlice AppendQuote(GoSlice dst, GoString s) => AppendStr(dst, Quote(s).ToDotNetString());
+
     // CanBackquote reports whether s can be represented unchanged as a single-line
     // backquoted string (no backquote, no control char except tab, no BOM/DEL,
     // valid UTF-8).

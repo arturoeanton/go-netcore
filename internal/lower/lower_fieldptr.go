@@ -123,6 +123,29 @@ func (l *funcLowerer) buildFieldAlias(sel *ast.SelectorExpr) bool {
 				goir.PtrType(elem), elem, path, ft)
 			return true
 		}
+		// &slice[i].field: alias the field through a pointer to the slice element
+		// (ElemAddr aliases the backing array, so writes are observed by the slice).
+		if ix, ok := unparen(s.X).(*ast.IndexExpr); ok {
+			xt := l.exprType(ix.X)
+			if xt.Kind == goir.KSlice && xt.Elem != nil && xt.Elem.Kind == goir.KStruct {
+				elem := *xt.Elem
+				path, ft, ok := l.fieldPath(elem, names, innermost)
+				if !ok {
+					return false
+				}
+				ixX, ixIndex := ix.X, ix.Index
+				emitElemPtr := func() {
+					l.expr(ixX)
+					l.expr(ixIndex)
+					l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+						Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ElemAddr",
+						Params: []goir.Type{xt, goir.TInt64}, Ret: goir.PtrType(elem),
+					}})
+				}
+				l.emitFieldAliasPtr(emitElemPtr, goir.PtrType(elem), elem, path, ft)
+				return true
+			}
+		}
 		cur = s.X // keep walking up the chain
 	}
 }

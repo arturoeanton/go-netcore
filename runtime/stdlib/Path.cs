@@ -59,6 +59,17 @@ public static class Path
     }
 
     public static bool IsAbs(GoString p) { string s = p.ToDotNetString(); return s.Length > 0 && s[0] == '/'; }
+    // filepath.Abs(path) (string, error): the cleaned absolute path (joined with cwd).
+    public static object?[] Abs(GoString p)
+    {
+        try
+        {
+            string s = p.ToDotNetString();
+            string abs = IsAbs(p) ? Clean(s) : Clean(System.IO.Directory.GetCurrentDirectory() + "/" + s);
+            return new object?[] { GoString.FromDotNetString(abs), null };
+        }
+        catch (System.Exception e) { return new object?[] { GoString.FromDotNetString(""), new GoError(e.Message) }; }
+    }
 
     // Go's path.Clean algorithm (lexical).
     public static GoString Clean(GoString p) => GoString.FromDotNetString(Clean(p.ToDotNetString()));

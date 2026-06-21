@@ -1,0 +1,22 @@
+// goclr-safe overlay of the iter package: keeps the Seq/Seq2 iterator function
+// types (used by maps/slices range-over-func helpers) and replaces Pull/Pull2 with
+// stubs, dropping the runtime coroutine intrinsics (newcoro/coroswitch, which are
+// linkname assembly with no Go body) that goclr cannot lower. Range-over-func uses
+// the Seq types directly and does not need Pull.
+package iter
+
+// Seq is an iterator over sequences of individual values.
+type Seq[V any] func(yield func(V) bool)
+
+// Seq2 is an iterator over sequences of pairs of values, most commonly key-value.
+type Seq2[K, V any] func(yield func(K, V) bool)
+
+// Pull is unsupported under goclr (it requires runtime coroutines).
+func Pull[V any](seq Seq[V]) (next func() (V, bool), stop func()) {
+	panic("iter.Pull is not supported under goclr")
+}
+
+// Pull2 is unsupported under goclr (it requires runtime coroutines).
+func Pull2[K, V any](seq Seq2[K, V]) (next func() (K, V, bool), stop func()) {
+	panic("iter.Pull2 is not supported under goclr")
+}

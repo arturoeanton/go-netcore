@@ -51,6 +51,12 @@ public static class Sync
     public static void RWMutex_Unlock(object m) => ((GoRWMutex)m).Sem.Release();
     public static void RWMutex_RLock(object m) => ((GoRWMutex)m).Sem.Wait();
     public static void RWMutex_RUnlock(object m) => ((GoRWMutex)m).Sem.Release();
+    public static bool RWMutex_TryLock(object m) => ((GoRWMutex)m).Sem.Wait(0);
+    public static bool RWMutex_TryRLock(object m) => ((GoRWMutex)m).Sem.Wait(0);
+    // RLocker() sync.Locker: a Locker view whose Lock/Unlock take the read lock. goclr's
+    // RWMutex is a single semaphore, so the view is the mutex itself (using the write
+    // lock for reads is conservative but correct).
+    public static object RWMutex_RLocker(object m) => m;
 
     public static void WaitGroup_Add(object w, long delta)
     {

@@ -185,8 +185,24 @@ func (l *funcLowerer) deferStmt(s *ast.DeferStmt) {
 	case *ast.SelectorExpr:
 		if seln := l.pkg.TypesInfo.Selections[fun]; seln != nil && seln.Kind() == types.MethodVal {
 			if ext, ok := l.shimMethodExtern(seln); ok {
-				l.deferShimMethod(call, fun, ext)
+				l.deferShimMethod(call, fun, seln, ext)
 				return
+			}
+			// defer of an interface method (direct, or promoted from an embedded
+			// interface field such as database/sql's driverStmt{ sync.Locker }).
+			if fn, ok := seln.Obj().(*types.Func); ok {
+				recvT := l.pkg.TypesInfo.TypeOf(fun.X)
+				if iface, ok := recvT.Underlying().(*types.Interface); ok {
+					l.deferInterfaceMethod(call, fn, iface, func() { l.expr(fun.X) })
+					return
+				}
+				if iface, ok := fn.Type().(*types.Signature).Recv().Type().Underlying().(*types.Interface); ok {
+					if idx := seln.Index(); len(idx) > 1 {
+						sel := fun
+						l.deferInterfaceMethod(call, fn, iface, func() { l.emitEmbeddedIfaceValue(sel, idx[:len(idx)-1]) })
+						return
+					}
+				}
 			}
 			l.deferMethod(call, fun, seln)
 			return
@@ -396,6 +412,40 @@ func (l *funcLowerer) deferMethod(call *ast.CallExpr, sel *ast.SelectorExpr, sel
 	l.emit(goir.Op{Code: goir.OpDeferPush})
 }
 
+// deferInterfaceMethod lowers `defer recv.Method(args)` where Method is an interface
+// method: capture the receiver value and arguments now (Go semantics), then perform
+// the interface dispatch at unwind.
+func (l *funcLowerer) deferInterfaceMethod(call *ast.CallExpr, fn *types.Func, iface *types.Interface, emitRecv func()) {
+	sig := fn.Type().(*types.Signature)
+	if sig.Variadic() {
+		l.fail(call.Pos(), "defer of a variadic interface method")
+		return
+	}
+	captures := make([]thunkCapture, 0, len(call.Args)+1)
+	captures = append(captures, thunkCapture{emit: emitRecv, typ: goir.TObject})
+	argTypes := make([]goir.Type, len(call.Args))
+	for i, a := range call.Args {
+		pt, _ := l.goType(sig.Params().At(i).Type())
+		argTypes[i] = pt
+		arg := a
+		captures = append(captures, thunkCapture{emit: func() { l.exprCoerced(arg, pt) }, typ: pt})
+	}
+	l.buildThunk(captures, func(cl *funcLowerer) {
+		argTmps := make([]int, len(argTypes))
+		for i, pt := range argTypes {
+			tmp := cl.addLocal(nil, pt)
+			cl.emitEnvArg(i+1, pt)
+			cl.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+			argTmps[i] = tmp
+		}
+		ret := cl.interfaceDispatchCore(func() { cl.emitEnvArg(0, goir.TObject) }, fn, iface, argTmps)
+		if ret != goir.TVoid {
+			cl.emit(goir.Op{Code: goir.OpPop})
+		}
+	})
+	l.emit(goir.Op{Code: goir.OpDeferPush})
+}
+
 // deferFuncValue lowers `defer fv(args)` where fv is a function value, capturing
 // the closure and arguments and re-dispatching through __invoke at unwind.
 func (l *funcLowerer) deferFuncValue(call *ast.CallExpr) {
@@ -405,9 +455,19 @@ func (l *funcLowerer) deferFuncValue(call *ast.CallExpr) {
 
 // deferShimMethod lowers `defer recv.Method(args)` where Method is a shimmed
 // stdlib method: capture the receiver and args, then call the extern at unwind.
-func (l *funcLowerer) deferShimMethod(call *ast.CallExpr, sel *ast.SelectorExpr, ext *goir.Extern) {
+func (l *funcLowerer) deferShimMethod(call *ast.CallExpr, sel *ast.SelectorExpr, seln *types.Selection, ext *goir.Extern) {
 	captures := make([]thunkCapture, 0, len(call.Args)+1)
-	captures = append(captures, thunkCapture{emit: func() { l.expr(sel.X) }, typ: ext.Params[0]})
+	// For a method promoted from an embedded shim field (defer s.Unlock() where s
+	// embeds sync.Mutex), capture the embedded field handle, not the outer value.
+	recvEmit := func() { l.expr(sel.X) }
+	if idx := seln.Index(); len(idx) > 1 {
+		recvEmit = func() {
+			xt := l.exprType(sel.X)
+			l.expr(sel.X)
+			l.emitEmbedNav(xt, idx[:len(idx)-1], ext.Params[0])
+		}
+	}
+	captures = append(captures, thunkCapture{emit: recvEmit, typ: ext.Params[0]})
 	for i, a := range call.Args {
 		arg := a
 		pt := goir.TObject

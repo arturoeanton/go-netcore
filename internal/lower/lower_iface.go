@@ -150,6 +150,10 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 	// guarded, diagnosable failure only if such a value ever reaches this call site,
 	// rather than aborting the whole compilation. Tracked in LIMITATIONS.md.
 	unsupported := make([]bool, len(impls))
+	// shimExt[i] != nil marks an implementer that satisfies the method through an
+	// embedded shim-type field (e.g. driverConn{ sync.Mutex } satisfying sync.Locker):
+	// the case body navigates recvPath[i] to that field and calls the shim extern.
+	shimExt := make([]*goir.Extern, len(impls))
 	for i, impl := range impls {
 		labels[i] = l.label()
 		embedField[i] = -1
@@ -177,7 +181,17 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 					embedField[i] = idxPath[0]
 				}
 			}
-			if embedField[i] < 0 {
+			// The method belongs to a shim type (promoted from an embedded shim field):
+			// call its extern, navigating to that field.
+			if embedField[i] < 0 && fn != nil {
+				if ext, ok := l.shimExternForFunc(fn); ok {
+					shimExt[i] = ext
+					if len(idxPath) > 1 {
+						recvPath[i] = idxPath[:len(idxPath)-1]
+					}
+				}
+			}
+			if embedField[i] < 0 && shimExt[i] == nil {
 				// The method resolves to a shim type's method with no lowered body and
 				// no shim extern. Keep this implementer matchable but give it a panic
 				// body instead of failing the whole compilation (see unsupported above).
@@ -223,6 +237,21 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
 			l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: ctypes[i]})
 			l.emit(goir.Op{Code: goir.OpBrTrue, Label: labels[i]})
+			// A *T pointer also satisfies T's value-receiver methods, so the interface
+			// may hold a GoPtr to the struct; match it too (the body derefs it).
+			if ctypes[i].Kind == goir.KStruct {
+				skip := l.label()
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: goir.PtrType(ctypes[i])})
+				l.emit(goir.Op{Code: goir.OpBrFalse, Label: skip})
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])})
+				l.emit(goir.Op{Code: goir.OpPtrTypeId})
+				l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(ctypes[i].Struct.Id)})
+				l.emit(goir.Op{Code: goir.OpCeq})
+				l.emit(goir.Op{Code: goir.OpBrTrue, Label: labels[i]})
+				l.mark(skip)
+			}
 			continue
 		}
 		// Pointer-to-non-struct implementer (e.g. method on *MyInt): the cell carries
@@ -261,6 +290,42 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 
 	for i, impl := range impls {
 		l.mark(labels[i])
+		// Implementer satisfying the method through an embedded shim field (sync.Mutex,
+		// etc.): load the struct, navigate to the embedded shim handle, call the extern.
+		if shimExt[i] != nil {
+			if impl.viaPtr {
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])})
+				l.emit(goir.Op{Code: goir.OpPtrGet})
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
+			} else if ctypes[i].Kind == goir.KStruct {
+				notPtr, done := l.label(), l.label()
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: goir.PtrType(ctypes[i])})
+				l.emit(goir.Op{Code: goir.OpBrFalse, Label: notPtr})
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])})
+				l.emit(goir.Op{Code: goir.OpPtrGet})
+				l.emit(goir.Op{Code: goir.OpBr, Label: done})
+				l.mark(notPtr)
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.mark(done)
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
+			} else {
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
+			}
+			l.emitEmbedNav(ctypes[i], recvPath[i], shimExt[i].Params[0])
+			for _, at := range argTmps {
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: at})
+			}
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: shimExt[i]})
+			if resultTmp >= 0 {
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: resultTmp})
+			}
+			l.emit(goir.Op{Code: goir.OpBr, Label: end})
+			continue
+		}
 		// Incidental implementer whose method goclr cannot dispatch (shim type method,
 		// no extern): panic if such a value ever reaches this site. It is matched so the
 		// failure is precise, not silently routed to another branch.
@@ -282,8 +347,8 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 			l.emit(goir.Op{Code: goir.OpBr, Label: loopStart})
 			continue
 		}
-		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
 		if impl.viaPtr {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
 			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])}) // the GoPtr receiver
 			// A value-receiver method promoted from an embedded field, reached through a
 			// pointer implementer: deref to the struct and navigate to the embedded value.
@@ -292,13 +357,30 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
 				l.emitEmbedNav(ctypes[i], recvPath[i], callees[i].Params[0])
 			}
-		} else {
-			if namedId[i] != 0 {
-				l.emitUnwrapNamed() // GoNamed -> inner boxed representation
-			}
+		} else if namedId[i] != 0 {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+			l.emitUnwrapNamed() // GoNamed -> inner boxed representation
 			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
-			// Method promoted from an embedded value field: navigate to the embedded
-			// receiver (the called method expects that field's type, not the outer one).
+			l.emitEmbedNav(ctypes[i], recvPath[i], callees[i].Params[0])
+		} else if ctypes[i].Kind == goir.KStruct {
+			// A value-receiver implementer reached with either a boxed value or a *T
+			// pointer (matched above): deref the pointer form to the boxed struct.
+			notPtr, done := l.label(), l.label()
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+			l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: goir.PtrType(ctypes[i])})
+			l.emit(goir.Op{Code: goir.OpBrFalse, Label: notPtr})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])})
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emit(goir.Op{Code: goir.OpBr, Label: done})
+			l.mark(notPtr)
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+			l.mark(done)
+			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
+			l.emitEmbedNav(ctypes[i], recvPath[i], callees[i].Params[0])
+		} else {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
 			l.emitEmbedNav(ctypes[i], recvPath[i], callees[i].Params[0])
 		}
 		for _, at := range argTmps {
@@ -585,24 +667,29 @@ func (l *funcLowerer) bindAssertResults(s *ast.AssignStmt, isTmp int, t goir.Typ
 	okIdx := l.assignTarget(s, s.Lhs[1], goir.TBool)
 
 	if okIdx >= 0 {
-		l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
-		l.emit(goir.Op{Code: goir.OpLdNull})
-		l.emit(goir.Op{Code: goir.OpCeq})
-		l.emit(goir.Op{Code: goir.OpNot})
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: okIdx})
+		l.storeTarget(s, okIdx, func() {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
+			l.emit(goir.Op{Code: goir.OpLdNull})
+			l.emit(goir.Op{Code: goir.OpCeq})
+			l.emit(goir.Op{Code: goir.OpNot})
+		})
 	}
 	if vIdx >= 0 {
+		// Compute the bound value (matched -> unbox, else zero) into a temp, then store
+		// it through storeTarget so a captured target's GoPtr cell is preserved.
+		valTmp := l.addLocal(nil, t)
 		lz, lend := l.label(), l.label()
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
 		l.emit(goir.Op{Code: goir.OpBrFalse, Label: lz})
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: isTmp})
 		l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: t})
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: vIdx})
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
 		l.emit(goir.Op{Code: goir.OpBr, Label: lend})
 		l.mark(lz)
 		l.emitZeroValue(t)
-		l.emit(goir.Op{Code: goir.OpStLoc, Local: vIdx})
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
 		l.mark(lend)
+		l.storeTarget(s, vIdx, func() { l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp}) })
 	}
 }
 

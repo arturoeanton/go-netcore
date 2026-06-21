@@ -289,6 +289,15 @@ public static class Rand
     public static long Intn(long n) => Global.Intn(n);
     public static GoSlice Perm(long n) => Global.Perm(n);
     public static void Seed(long seed) { }
+    public static ulong Uint64() => ((ulong)Global.Int63() << 1) | ((ulong)Global.Int63() & 1);
+    public static uint Uint32() => (uint)Global.Int63();
+    public static long Int31() => Global.Int63() >> 32;
+    // rand.Read(p) (n, err): fill p with pseudo-random bytes.
+    public static object?[] Read(GoSlice p)
+    {
+        for (int i = 0; i < p.Len; i++) p.Data![p.Off + i] = (int)(byte)Global.Int63();
+        return new object?[] { (long)p.Len, null };
+    }
 
     // *rand.Rand method shims (receiver as first arg).
     public static long Rand_Int63(object r) => ((GoRand)r).Int63();

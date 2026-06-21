@@ -326,3 +326,29 @@ func (l *funcLowerer) reflectOfCall(e *ast.CallExpr, name string) goir.Type {
 	}})
 	return goir.TObject
 }
+
+// reflectTypeForCall lowers reflect.TypeFor[T](): pass the descriptor id of the
+// explicit (or inferred) type argument T, so the resulting reflect.Type is precise.
+func (l *funcLowerer) reflectTypeForCall(e *ast.CallExpr) goir.Type {
+	var T types.Type
+	switch fn := unparen(e.Fun).(type) {
+	case *ast.IndexExpr:
+		T = l.pkg.TypesInfo.TypeOf(fn.Index)
+	case *ast.IndexListExpr:
+		if len(fn.Indices) == 1 {
+			T = l.pkg.TypesInfo.TypeOf(fn.Indices[0])
+		}
+	}
+	descID := -1
+	if T != nil {
+		if _, isIface := T.Underlying().(*types.Interface); !isIface {
+			descID = l.descId(T)
+		}
+	}
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(descID)})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Reflect", Method: "TypeFor",
+		Params: []goir.Type{goir.TInt32}, Ret: goir.TObject,
+	}})
+	return goir.TObject
+}

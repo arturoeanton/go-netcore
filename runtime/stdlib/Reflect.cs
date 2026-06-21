@@ -88,6 +88,9 @@ public static class Reflect
 
     public static object TypeOf(object? x, int descId) => new GoReflectType { Sample = x, Desc = TypeReg.ById(descId) ?? TypeReg.FromValue(x) };
     public static object ValueOf(object? x, int descId) => new GoReflectValue { V = x, Desc = TypeReg.ById(descId) ?? TypeReg.FromValue(x) };
+    // reflect.TypeFor[T](): the reflect.Type for the static type T (descriptor id, or
+    // -1 for an interface type such as any).
+    public static object TypeFor(int descId) => new GoReflectType { Desc = TypeReg.ById(descId) };
 
     // A reflect.Type for a descriptor id (used by Field.Type).
     private static object RTypeById(int id) => new GoReflectType { Desc = TypeReg.ById(id) };
@@ -171,6 +174,8 @@ public static class Reflect
         return GoString.FromDotNetString(x == null ? "<invalid Value>" : "<" + KindName(KindOf(x)) + " Value>");
     }
     public static bool Value_Bool(object? v) => RVal(v) is bool b && b;
+    // reflect.Value.Bytes(): the underlying []byte of a byte-slice value.
+    public static GoSlice Value_Bytes(object? v) => RVal(v) is GoSlice s ? s : new GoSlice { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
     public static long Value_Len(object? v) => LenOf(RVal(v));
     public static long Value_NumField(object? v) => Fields(RVal(v))?.Length ?? 0;
     public static bool Value_IsNil(object? v) { var x = RVal(v); return x == null || (x is GoSlice s && s.Data == null) || (x is GoMap m && m.Data == null); }
@@ -224,6 +229,21 @@ public static class Reflect
     public static void Value_SetBool(object v, bool b) => DoSet(v, b);
     public static void Value_SetString(object v, GoString s) => DoSet(v, s);
     public static void Value_Set(object v, object other) => DoSet(v, ((GoReflectValue)other).V);
+    // reflect.Value.SetZero(): set the value to the zero of its type.
+    public static void Value_SetZero(object v)
+    {
+        var rv = (GoReflectValue)v;
+        object? zero = rv.V switch
+        {
+            GoString => GoString.FromDotNetString(""),
+            long => 0L, int => 0, ulong => 0UL, uint => 0u, double => 0.0, float => 0f, bool => false,
+            GoSlice => new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 },
+            GoMap => new GoMap { Data = null },
+            null => null,
+            var x => x.GetType().IsValueType ? System.Activator.CreateInstance(x.GetType()) : null,
+        };
+        DoSet(v, zero);
+    }
 
     // Coerce a boxed numeric/value to a concrete CLR type (int widths, GoPtr<>).
     private static object? Coerce(object? v, System.Type target)

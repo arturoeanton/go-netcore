@@ -197,6 +197,7 @@ public static class Bytes
         return S(outp.ToArray());
     }
     public static GoSlice ReplaceAll(GoSlice s, GoSlice oldb, GoSlice newb) => Replace(s, oldb, newb, -1);
+    public static GoSlice Clone(GoSlice s) => s.Data == null ? s : S(B(s));
 
     public static GoSlice Split(GoSlice s, GoSlice sep)
     {

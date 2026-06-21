@@ -510,6 +510,10 @@ var compileFromSource = map[string]bool{
 	"cmp":                true, // tiny generic package (Less/Compare/Or over the Ordered set)
 	"slices":             true, // generic slice helpers (depends only on cmp)
 	"net/http/httptrace": true, // via a goclr overlay (drops crypto/tls + internal/nettrace)
+	"database/sql":        true, // pure Go; pairs with a compiled-from-source driver
+	"database/sql/driver": true, // driver interfaces + value types
+	"maps":               true, // generic map helpers (iterators)
+	"iter":               true, // iter.Seq[K] range-over-func
 }
 
 // collectPackages returns root plus its transitive non-stdlib dependencies that
@@ -911,6 +915,12 @@ type funcLowerer struct {
 }
 
 func (l *funcLowerer) build(fd *ast.FuncDecl) {
+	// A bodyless declaration (assembly/linkname stub in the stdlib) has no Go to
+	// lower; leave the shelled method empty rather than walking a nil body.
+	if fd.Body == nil {
+		l.fail(fd.Pos(), "function "+fd.Name.Name+" has no body (assembly or linkname stub)")
+		return
+	}
 	l.locals = map[types.Object]int{}
 	l.cells = map[int]goir.Type{}
 	l.gotoLabels = map[string]int{}

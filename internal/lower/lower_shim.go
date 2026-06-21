@@ -48,6 +48,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"flag": {
 		"Lookup": {"Flag", "Lookup"},
 	},
+	"syscall": {
+		"FcntlFlock": {"Syscall", "FcntlFlock"}, "Fsync": {"Syscall", "Fsync"},
+	},
 	"encoding/xml": {
 		"Marshal": {"Xml", "Marshal"}, "MarshalIndent": {"Xml", "MarshalIndent"}, "NewEncoder": {"Xml", "NewEncoder"},
 		"Unmarshal": {"Xml", "Unmarshal"}, "NewDecoder": {"Xml", "NewDecoder"},
@@ -130,7 +133,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"path/filepath": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
-		"ToSlash": {"Path", "ToSlash"}, "FromSlash": {"Path", "FromSlash"}, "Walk": {"Path", "Walk"},
+		"ToSlash": {"Path", "ToSlash"}, "FromSlash": {"Path", "FromSlash"}, "Walk": {"Path", "Walk"}, "Abs": {"Path", "Abs"},
 	},
 	"fmt": {
 		"Sprint": {"Fmt", "Sprint"}, "Sprintln": {"Fmt", "Sprintln"}, "Sprintf": {"Fmt", "Sprintf"},
@@ -160,10 +163,16 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"NewResponseController": {"Http", "NewResponseController"}, "SetCookie": {"Http", "SetCookie"},
 		"ServeFile": {"Http", "ServeFile"}, "FileServer": {"Http", "FileServer"}, "StripPrefix": {"Http", "StripPrefix"}, "Serve": {"Http", "Serve"}, "ListenAndServeTLS": {"Http", "ListenAndServeTLS"},
 	},
+	"math/rand/v2": {
+		"IntN": {"Rand2", "IntN"}, "Int64N": {"Rand2", "Int64N"}, "Int32N": {"Rand2", "Int32N"}, "UintN": {"Rand2", "UintN"},
+		"Int": {"Rand2", "Int"}, "Int64": {"Rand2", "Int64"}, "Int32": {"Rand2", "Int32"}, "Uint64": {"Rand2", "Uint64"}, "Uint32": {"Rand2", "Uint32"},
+		"Float64": {"Rand2", "Float64"}, "Float32": {"Rand2", "Float32"}, "Shuffle": {"Rand2", "Shuffle"}, "Perm": {"Rand2", "Perm"},
+	},
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
 		"Float64": {"Rand", "Float64"}, "Int63": {"Rand", "Int63"}, "Int": {"Rand", "Int"},
 		"Int63n": {"Rand", "Int63n"}, "Intn": {"Rand", "Intn"}, "Perm": {"Rand", "Perm"}, "Seed": {"Rand", "Seed"},
+		"Uint64": {"Rand", "Uint64"}, "Uint32": {"Rand", "Uint32"}, "Int31": {"Rand", "Int31"}, "Read": {"Rand", "Read"},
 	},
 	"sync": {"NewCond": {"Sync", "NewCond"}},
 	"sync/atomic": {
@@ -212,13 +221,13 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"},
 		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
-		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "NewFile": {"Os", "NewFile"},
+		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "TempDir": {"Os", "TempDir"},
 		"Stat": {"Os", "Stat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"},
 	},
 	"bytes": {
 		"Equal": {"Bytes", "Equal"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
 		"HasPrefix": {"Bytes", "HasPrefix"}, "HasSuffix": {"Bytes", "HasSuffix"}, "Index": {"Bytes", "Index"},
-		"LastIndex": {"Bytes", "LastIndex"}, "LastIndexByte": {"Bytes", "LastIndexByte"}, "Replace": {"Bytes", "Replace"}, "ReplaceAll": {"Bytes", "ReplaceAll"},
+		"LastIndex": {"Bytes", "LastIndex"}, "LastIndexByte": {"Bytes", "LastIndexByte"}, "Replace": {"Bytes", "Replace"}, "ReplaceAll": {"Bytes", "ReplaceAll"}, "Clone": {"Bytes", "Clone"},
 		"IndexByte": {"Bytes", "IndexByte"}, "IndexRune": {"Bytes", "IndexRune"}, "IndexAny": {"Bytes", "IndexAny"}, "Runes": {"Bytes", "Runes"}, "Count": {"Bytes", "Count"}, "ToUpper": {"Bytes", "ToUpper"},
 		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Trim": {"Bytes", "Trim"}, "TrimPrefix": {"Bytes", "TrimPrefix"}, "TrimSuffix": {"Bytes", "TrimSuffix"}, "Repeat": {"Bytes", "Repeat"},
 		"Split": {"Bytes", "Split"}, "SplitAfterN": {"Bytes", "SplitAfterN"}, "Join": {"Bytes", "Join"},
@@ -231,7 +240,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ParseInt": {"Strconv", "ParseInt"}, "ParseUint": {"Strconv", "ParseUint"},
 		"ParseFloat": {"Strconv", "ParseFloat"}, "ParseBool": {"Strconv", "ParseBool"},
 		"Quote": {"Strconv", "Quote"}, "QuoteToASCII": {"Strconv", "QuoteToASCII"},
-		"CanBackquote": {"Strconv", "CanBackquote"}, "AppendInt": {"Strconv", "AppendInt"},
+		"CanBackquote": {"Strconv", "CanBackquote"}, "AppendInt": {"Strconv", "AppendInt"}, "AppendUint": {"Strconv", "AppendUint"}, "AppendBool": {"Strconv", "AppendBool"}, "AppendFloat": {"Strconv", "AppendFloat"}, "AppendQuote": {"Strconv", "AppendQuote"},
 	},
 	"unicode/utf8": {
 		"RuneCountInString": {"Utf8", "RuneCountInString"}, "RuneCount": {"Utf8", "RuneCount"},
@@ -272,6 +281,12 @@ var opaqueShimTypes = map[string]bool{
 	"sync.Cond":                    true,
 	"sync/atomic.Value":            true,
 	"sync/atomic.Bool":             true,
+	"sync/atomic.Int64":            true,
+	"sync/atomic.Int32":            true,
+	"sync/atomic.Uint64":           true,
+	"sync/atomic.Uint32":           true,
+	"sync/atomic.Uintptr":          true,
+	"sync/atomic.Pointer":          true,
 	"sync.RWMutex":                 true,
 	"sync.WaitGroup":               true,
 	"sync.Once":                    true,
@@ -307,6 +322,7 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/xml.EndElement":      true,
 	"encoding/xml.Attr":            true,
 	"os.SyscallError":              true,
+	"syscall.Flock_t":              true,
 	"net/mail.Address":             true,
 	"html/template.Template":       true,
 	"text/template.Template":       true,
@@ -685,6 +701,12 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"net/http.HTTP2Config":       {"HttpTypes", "NewHTTP2Config"},
 	"net/http.Protocols":         {"HttpTypes", "NewProtocols"},
 	"sync/atomic.Bool":           {"Atomic", "NewBool"},
+	"sync/atomic.Int64":          {"AtomicInt", "NewInt"},
+	"sync/atomic.Int32":          {"AtomicInt", "NewInt"},
+	"sync/atomic.Uint64":         {"AtomicInt", "NewUint"},
+	"sync/atomic.Uint32":         {"AtomicInt", "NewUint"},
+	"sync/atomic.Uintptr":        {"AtomicInt", "NewUint"},
+	"sync/atomic.Pointer":        {"AtomicInt", "NewPointer"},
 	"strings.Builder":            {"StringsBuilder", "New"},
 	"bytes.Buffer":               {"BytesBuffer", "New"},
 	"time.Time":                  {"Time", "TimeZero"},
@@ -692,6 +714,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"math/big.Float":             {"Big", "FloatZero"},
 	"hash/maphash.Hash":          {"MapHash", "New"},
 	"net.IPNet":                  {"Net", "NewIPNet"},
+	"syscall.Flock_t":            {"Syscall", "NewFlockT"},
 	"encoding/xml.Name":          {"Xml", "NewXmlName"},
 	"encoding/xml.StartElement":  {"Xml", "NewXmlStart"},
 	"encoding/xml.EndElement":    {"Xml", "NewXmlEnd"},
@@ -979,7 +1002,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"WriteTo": {"BytesBuffer", "WriteTo"},
 	},
 	"os.File": {
-		"Fd": {"Os", "File_Fd"}, "Close": {"Os", "File_Close"}, "Write": {"Os", "File_Write"}, "WriteString": {"Os", "File_WriteString"}, "Read": {"Os", "File_Read"}, "Name": {"Os", "File_Name"}, "Sync": {"Os", "File_Sync"},
+		"Fd": {"Os", "File_Fd"}, "Close": {"Os", "File_Close"}, "Write": {"Os", "File_Write"}, "WriteString": {"Os", "File_WriteString"}, "Read": {"Os", "File_Read"}, "Name": {"Os", "File_Name"}, "Sync": {"Os", "File_Sync"}, "WriteAt": {"Os", "File_WriteAt"}, "ReadAt": {"Os", "File_ReadAt"}, "Seek": {"Os", "File_Seek"}, "Truncate": {"Os", "File_Truncate"}, "Stat": {"Os", "File_Stat"},
 	},
 	"net.IP": {
 		"To4": {"Net", "IP_To4"}, "To16": {"Net", "IP_To16"}, "Equal": {"Net", "IP_Equal"}, "String": {"Net", "IP_String"},
@@ -1019,9 +1042,28 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"sync/atomic.Bool": {
 		"Load": {"Atomic", "Bool_Load"}, "Store": {"Atomic", "Bool_Store"}, "Swap": {"Atomic", "Bool_Swap"}, "CompareAndSwap": {"Atomic", "Bool_CompareAndSwap"},
 	},
+	"sync/atomic.Int64": {
+		"Load": {"AtomicInt", "Int_Load"}, "Store": {"AtomicInt", "Int_Store"}, "Add": {"AtomicInt", "Int_Add"}, "Swap": {"AtomicInt", "Int_Swap"}, "CompareAndSwap": {"AtomicInt", "Int_CompareAndSwap"},
+	},
+	"sync/atomic.Int32": {
+		"Load": {"AtomicInt", "Int_Load"}, "Store": {"AtomicInt", "Int_Store"}, "Add": {"AtomicInt", "Int_Add"}, "Swap": {"AtomicInt", "Int_Swap"}, "CompareAndSwap": {"AtomicInt", "Int_CompareAndSwap"},
+	},
+	"sync/atomic.Uint64": {
+		"Load": {"AtomicInt", "Uint_Load"}, "Store": {"AtomicInt", "Uint_Store"}, "Add": {"AtomicInt", "Uint_Add"}, "Swap": {"AtomicInt", "Uint_Swap"}, "CompareAndSwap": {"AtomicInt", "Uint_CompareAndSwap"},
+	},
+	"sync/atomic.Uint32": {
+		"Load": {"AtomicInt", "Uint_Load"}, "Store": {"AtomicInt", "Uint_Store"}, "Add": {"AtomicInt", "Uint_Add"}, "Swap": {"AtomicInt", "Uint_Swap"}, "CompareAndSwap": {"AtomicInt", "Uint_CompareAndSwap"},
+	},
+	"sync/atomic.Uintptr": {
+		"Load": {"AtomicInt", "Uint_Load"}, "Store": {"AtomicInt", "Uint_Store"}, "Add": {"AtomicInt", "Uint_Add"}, "Swap": {"AtomicInt", "Uint_Swap"}, "CompareAndSwap": {"AtomicInt", "Uint_CompareAndSwap"},
+	},
+	"sync/atomic.Pointer": {
+		"Load": {"AtomicInt", "Ptr_Load"}, "Store": {"AtomicInt", "Ptr_Store"}, "Swap": {"AtomicInt", "Ptr_Swap"}, "CompareAndSwap": {"AtomicInt", "Ptr_CompareAndSwap"},
+	},
 	"sync.RWMutex": {
 		"Lock": {"Sync", "RWMutex_Lock"}, "Unlock": {"Sync", "RWMutex_Unlock"},
 		"RLock": {"Sync", "RWMutex_RLock"}, "RUnlock": {"Sync", "RWMutex_RUnlock"},
+		"TryLock": {"Sync", "RWMutex_TryLock"}, "TryRLock": {"Sync", "RWMutex_TryRLock"}, "RLocker": {"Sync", "RWMutex_RLocker"},
 	},
 	"sync.WaitGroup": {
 		"Add": {"Sync", "WaitGroup_Add"}, "Done": {"Sync", "WaitGroup_Done"}, "Wait": {"Sync", "WaitGroup_Wait"},
@@ -1052,7 +1094,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Add": {"Time", "Time_Add"}, "Sub": {"Time", "Time_Sub"}, "Round": {"Time", "Time_Round"}, "Truncate": {"Time", "Time_Truncate"},
 		"Before": {"Time", "Time_Before"}, "After": {"Time", "Time_After"}, "Equal": {"Time", "Time_Equal"},
 		"IsZero": {"Time", "Time_IsZero"}, "UTC": {"Time", "Time_UTC"}, "Local": {"Time", "Time_Local"},
-		"String": {"Time", "Time_String"}, "Format": {"Time", "Time_Format"},
+		"String": {"Time", "Time_String"}, "Format": {"Time", "Time_Format"}, "AppendFormat": {"Time", "Time_AppendFormat"},
 		"Zone": {"Time", "Time_Zone"}, "YearDay": {"Time", "Time_YearDay"}, "In": {"Time", "Time_In"}, "Location": {"Time", "Time_Location"},
 	},
 	"time.Month": {
@@ -1071,11 +1113,11 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Kind": {"Reflect", "Value_Kind"}, "Type": {"Reflect", "Value_Type"},
 		"Interface": {"Reflect", "Value_Interface"}, "Int": {"Reflect", "Value_Int"},
 		"Uint": {"Reflect", "Value_Uint"}, "Float": {"Reflect", "Value_Float"},
-		"String": {"Reflect", "Value_String"}, "Bool": {"Reflect", "Value_Bool"},
+		"String": {"Reflect", "Value_String"}, "Bool": {"Reflect", "Value_Bool"}, "Bytes": {"Reflect", "Value_Bytes"},
 		"Len": {"Reflect", "Value_Len"}, "Index": {"Reflect", "Value_Index"},
 		"Field": {"Reflect", "Value_Field"}, "NumField": {"Reflect", "Value_NumField"},
 		"IsNil": {"Reflect", "Value_IsNil"}, "IsZero": {"Reflect", "Value_IsZero"},
-		"IsValid": {"Reflect", "Value_IsValid"}, "Elem": {"Reflect", "Value_Elem"},
+		"IsValid": {"Reflect", "Value_IsValid"}, "Elem": {"Reflect", "Value_Elem"}, "SetZero": {"Reflect", "Value_SetZero"},
 		"MapKeys": {"Reflect", "Value_MapKeys"}, "MapIndex": {"Reflect", "Value_MapIndex"},
 		"CanSet": {"Reflect", "Value_CanSet"}, "CanAddr": {"Reflect", "Value_CanAddr"},
 		"SetInt": {"Reflect", "Value_SetInt"}, "SetUint": {"Reflect", "Value_SetUint"},
@@ -1128,6 +1170,46 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 		recvIR = rt
 	}
 	params := []goir.Type{recvIR}
+	for i := 0; i < sig.Params().Len(); i++ {
+		pt, ok := l.lowerCtx.goType(sig.Params().At(i).Type())
+		if !ok {
+			return nil, false
+		}
+		params = append(params, pt)
+	}
+	ret := goir.TVoid
+	switch sig.Results().Len() {
+	case 0:
+	case 1:
+		ret, _ = l.lowerCtx.goType(sig.Results().At(0).Type())
+	default:
+		ret = goir.TObjectArray
+	}
+	return &goir.Extern{Assembly: shimAssembly, Namespace: shimAssembly, Type: sf.csType, Method: sf.csMethod, Params: params, Ret: ret}, true
+}
+
+// shimExternForFunc builds the shim extern for a method belonging to a shim type,
+// keyed on the method's own receiver type (used when an interface implementer
+// satisfies a method through an embedded shim field, e.g. driverConn{ sync.Mutex }
+// satisfying sync.Locker). Returns false if the method is not a registered shim.
+func (l *funcLowerer) shimExternForFunc(fn *types.Func) (*goir.Extern, bool) {
+	sig, ok := fn.Type().(*types.Signature)
+	if !ok || sig.Recv() == nil {
+		return nil, false
+	}
+	recv := namedOf(sig.Recv().Type())
+	if recv == nil || recv.Obj() == nil || recv.Obj().Pkg() == nil {
+		return nil, false
+	}
+	methods, ok := shimMethodRegistry[recv.Obj().Pkg().Path()+"."+recv.Obj().Name()]
+	if !ok {
+		return nil, false
+	}
+	sf, ok := methods[fn.Name()]
+	if !ok {
+		return nil, false
+	}
+	params := []goir.Type{goir.TObject}
 	for i := 0; i < sig.Params().Len(); i++ {
 		pt, ok := l.lowerCtx.goType(sig.Params().At(i).Type())
 		if !ok {

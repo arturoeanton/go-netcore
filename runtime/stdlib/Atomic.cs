@@ -66,3 +66,38 @@ public sealed class GoAtomicValue { public object? Val; }
 
 /// <summary>A sync/atomic.Bool.</summary>
 public sealed class GoAtomicBool { public bool V; }
+
+/// <summary>A sync/atomic.Int64/Int32 (signed atomic integer).</summary>
+public sealed class GoAtomicInt { public long V; }
+
+/// <summary>A sync/atomic.Uint64/Uint32/Uintptr (unsigned atomic integer).</summary>
+public sealed class GoAtomicUint { public long V; } // bits stored in a long; interpreted unsigned
+
+/// <summary>A sync/atomic.Pointer[T] holding one boxed pointer.</summary>
+public sealed class GoAtomicPtr { public object? V; }
+
+/// <summary>sync/atomic typed integers, backed by Interlocked over a shared field.</summary>
+public static class AtomicInt
+{
+    public static object NewInt() => new GoAtomicInt();
+    public static object NewUint() => new GoAtomicUint();
+
+    public static long Int_Load(object a) => System.Threading.Interlocked.Read(ref ((GoAtomicInt)a).V);
+    public static void Int_Store(object a, long v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicInt)a).V, v);
+    public static long Int_Add(object a, long d) => System.Threading.Interlocked.Add(ref ((GoAtomicInt)a).V, d);
+    public static long Int_Swap(object a, long v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicInt)a).V, v);
+    public static bool Int_CompareAndSwap(object a, long old, long nw) => System.Threading.Interlocked.CompareExchange(ref ((GoAtomicInt)a).V, nw, old) == old;
+
+    public static object NewPointer() => new GoAtomicPtr();
+    // atomic.Pointer[T] stores a *T, represented by a GoPtr cell.
+    public static GoPtr? Ptr_Load(object a) => System.Threading.Volatile.Read(ref ((GoAtomicPtr)a).V) as GoPtr;
+    public static void Ptr_Store(object a, GoPtr? v) => System.Threading.Volatile.Write(ref ((GoAtomicPtr)a).V, v);
+    public static GoPtr? Ptr_Swap(object a, GoPtr? v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicPtr)a).V, v) as GoPtr;
+    public static bool Ptr_CompareAndSwap(object a, GoPtr? old, GoPtr? nw) => System.Object.ReferenceEquals(System.Threading.Interlocked.CompareExchange(ref ((GoAtomicPtr)a).V, nw, old), old);
+
+    public static ulong Uint_Load(object a) => (ulong)System.Threading.Interlocked.Read(ref ((GoAtomicUint)a).V);
+    public static void Uint_Store(object a, ulong v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicUint)a).V, (long)v);
+    public static ulong Uint_Add(object a, ulong d) => (ulong)System.Threading.Interlocked.Add(ref ((GoAtomicUint)a).V, (long)d);
+    public static ulong Uint_Swap(object a, ulong v) => (ulong)System.Threading.Interlocked.Exchange(ref ((GoAtomicUint)a).V, (long)v);
+    public static bool Uint_CompareAndSwap(object a, ulong old, ulong nw) => System.Threading.Interlocked.CompareExchange(ref ((GoAtomicUint)a).V, (long)nw, (long)old) == (long)old;
+}

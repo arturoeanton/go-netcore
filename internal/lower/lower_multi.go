@@ -111,6 +111,13 @@ func (l *funcLowerer) assignToTarget(s *ast.AssignStmt, lhs ast.Expr, t goir.Typ
 			return
 		}
 	}
+	// A package-level variable target (e.g. `db, err = sql.Open(...)` where db is a
+	// global): store the multi-result element through the global slot.
+	if gi, ok := l.globalRef(id); ok && s.Tok != token.DEFINE {
+		emitVal()
+		l.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(gi)})
+		return
+	}
 	idx, _, ok := l.lookupVar(id)
 	if !ok {
 		return

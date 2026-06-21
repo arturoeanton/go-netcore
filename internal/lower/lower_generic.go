@@ -170,8 +170,9 @@ func (l *funcLowerer) genericCallee(fun *ast.Ident) (*goir.Method, bool) {
 
 // namedOf returns the named type underneath a (possibly pointer) type, or nil.
 func namedOf(t types.Type) *types.Named {
+	t = types.Unalias(t) // resolve type aliases (e.g. os.FileInfo = io/fs.FileInfo)
 	if p, ok := t.(*types.Pointer); ok {
-		t = p.Elem()
+		t = types.Unalias(p.Elem())
 	}
 	if n, ok := t.(*types.Named); ok {
 		return n

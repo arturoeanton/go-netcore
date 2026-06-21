@@ -196,6 +196,16 @@ public static class Time
     public static object Time_Local(object t) => t;
     public static GoString Time_String(object t) => GoString.FromDotNetString(DoFormat((GoTime)t, "2006-01-02 15:04:05.999999999 -0700 MST"));
     public static GoString Time_Format(object t, GoString layout) => GoString.FromDotNetString(DoFormat((GoTime)t, layout.ToDotNetString()));
+    // (time.Time).AppendFormat(b, layout): append the formatted time to the byte slice.
+    public static GoSlice Time_AppendFormat(object t, GoSlice b, GoString layout)
+    {
+        var by = System.Text.Encoding.UTF8.GetBytes(DoFormat((GoTime)t, layout.ToDotNetString()));
+        int n = b.Len;
+        var data = new object?[n + by.Length];
+        for (int i = 0; i < n; i++) data[i] = b.Data![b.Off + i];
+        for (int i = 0; i < by.Length; i++) data[n + i] = (int)by[i];
+        return new GoSlice { Data = data, Off = 0, Len = data.Length, Cap = data.Length };
+    }
 
     // time.Parse(layout, value) (Time, error): the inverse of Format — walk the Go
     // reference-time layout, consuming the matching run from value for each token.
