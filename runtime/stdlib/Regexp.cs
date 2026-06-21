@@ -160,6 +160,20 @@ public static class Regexp
         foreach (Match m in ((GoRegexp)r).Re.Matches(s.ToDotNetString())) { if (n >= 0 && items.Count >= n) break; items.Add(m.Value); }
         return items.Count == 0 ? default : StrSlice(items);
     }
+    // FindAllStringSubmatch(s, n) [][]string: every match's submatches (group 0 = the
+    // whole match), up to n matches (n < 0 = all). nil if there are no matches.
+    public static GoSlice Re_FindAllStringSubmatch(object r, GoString s, long n)
+    {
+        var rows = new System.Collections.Generic.List<object?>();
+        foreach (Match m in ((GoRegexp)r).Re.Matches(s.ToDotNetString()))
+        {
+            if (n >= 0 && rows.Count >= n) break;
+            var groups = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < m.Groups.Count; i++) groups.Add(m.Groups[i].Success ? m.Groups[i].Value : "");
+            rows.Add(StrSlice(groups));
+        }
+        return rows.Count == 0 ? default : new GoSlice { Data = rows.ToArray(), Off = 0, Len = rows.Count, Cap = rows.Count };
+    }
     public static GoString Re_ReplaceAllString(object r, GoString s, GoString repl)
     {
         // Go uses $1 / ${name}; .NET uses the same — translate Go's $name to ${name} loosely.

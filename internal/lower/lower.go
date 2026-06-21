@@ -701,6 +701,9 @@ func (c *lowerCtx) recvTypeName(fd *ast.FuncDecl) string {
 
 // goType maps a go/types.Type to a goir.Type, registering struct types on demand.
 func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
+	// Resolve type aliases (Go 1.22+ models them as *types.Alias, so `os.PathError`
+	// is no longer a *types.Named) — they're transparent for lowering.
+	t = types.Unalias(t)
 	if named, ok := t.(*types.Named); ok {
 		// Opaque shim types (reflect.Type/Value, sync.*, …) are handles backed by
 		// runtime reference objects, not lowered structures.
@@ -711,7 +714,7 @@ func (c *lowerCtx) goType(t types.Type) (goir.Type, bool) {
 	// A pointer to an opaque value-type shim IS that shim's runtime object
 	// (*bytes.Buffer and bytes.Buffer share one handle).
 	if pt, ok := t.Underlying().(*types.Pointer); ok {
-		if named, ok := pt.Elem().(*types.Named); ok && isOpaqueShimType(named) {
+		if named, ok := types.Unalias(pt.Elem()).(*types.Named); ok && isOpaqueShimType(named) {
 			return goir.Type{Kind: goir.KObject, Shim: named.Obj().Pkg().Path() + "." + named.Obj().Name()}, true
 		}
 	}
