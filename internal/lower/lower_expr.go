@@ -904,6 +904,15 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 		l.fail(e.Pos(), "conversion")
 		return goir.TVoid
 	}
+	// A conversion to unsafe.Pointer that reached here is an UNRECOGNIZED reinterpret
+	// (the safe string↔[]byte idioms and reflect.*Header reads short-circuit earlier, in
+	// derefRead / the header-view recognizer). goclr has no raw memory, so a real
+	// pointer reinterpret/bit-cast can't be represented — reject it rather than silently
+	// miscompile. (unsafe.Pointer is allow-listed in the analysis pass; this is its gate.)
+	if b, ok := l.pkg.TypesInfo.TypeOf(e).Underlying().(*types.Basic); ok && b.Kind() == types.UnsafePointer {
+		l.fail(e.Pos(), "unsafe.Pointer reinterpret (only the string↔[]byte and reflect.*Header idioms are supported)")
+		return goir.TVoid
+	}
 	target, ok := l.goType(l.pkg.TypesInfo.TypeOf(e))
 	if !ok {
 		l.fail(e.Pos(), "conversion target type")

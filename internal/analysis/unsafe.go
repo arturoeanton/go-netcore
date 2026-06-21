@@ -28,6 +28,10 @@ var approvedUnsafe = map[string]bool{
 	"unsafe.SliceData":  true,
 	"unsafe.String":     true,
 	"unsafe.StringData": true,
+	// unsafe.Pointer itself: the gate moves to lowering, which recognizes the safe
+	// string↔[]byte reinterpret idioms (*(*string)(unsafe.Pointer(&b)), reflect.*Header
+	// offset reads) and rejects everything else with GCLR0301.
+	"unsafe.Pointer": true,
 }
 
 // checkUnsafe records every unsafe.* use. Approved patterns produce a single

@@ -301,8 +301,73 @@ func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 	}
 }
 
+// isByteSlice reports whether t is (a named) []byte.
+func isByteSlice(t types.Type) bool {
+	s, ok := t.Underlying().(*types.Slice)
+	if !ok {
+		return false
+	}
+	b, ok := s.Elem().Underlying().(*types.Basic)
+	return ok && b.Kind() == types.Uint8
+}
+
+func isStringBasic(t types.Type) bool {
+	b, ok := t.Underlying().(*types.Basic)
+	return ok && b.Kind() == types.String
+}
+
+// unsafeReinterpretDeref recognizes the pre-1.20 zero-copy reinterpret idiom
+// `*(*T)(unsafe.Pointer(&Y))` and lowers it as the equivalent safe conversion: a
+// []byte↔string reinterpret becomes string(Y)/[]byte(Y) (a copy — goclr has no raw
+// memory), and an identity reinterpret (same T) is just Y. Any other reinterpret (a real
+// bit-cast) is left unrecognized so it fails downstream. See docs/DESIGN-unsafe-pointer.md.
+func (l *funcLowerer) unsafeReinterpretDeref(e *ast.StarExpr) bool {
+	conv, ok := unparen(e.X).(*ast.CallExpr)
+	if !ok || len(conv.Args) != 1 {
+		return false
+	}
+	tv, ok := l.pkg.TypesInfo.Types[conv.Fun]
+	if !ok || !tv.IsType() {
+		return false
+	}
+	ptrT, ok := tv.Type.Underlying().(*types.Pointer)
+	if !ok {
+		return false
+	}
+	inner, ok := unparen(conv.Args[0]).(*ast.CallExpr)
+	if !ok || len(inner.Args) != 1 {
+		return false
+	}
+	if b, ok := l.pkg.TypesInfo.TypeOf(inner).Underlying().(*types.Basic); !ok || b.Kind() != types.UnsafePointer {
+		return false
+	}
+	addr, ok := unparen(inner.Args[0]).(*ast.UnaryExpr)
+	if !ok || addr.Op != token.AND {
+		return false
+	}
+	y := addr.X
+	dst, src := ptrT.Elem(), l.pkg.TypesInfo.TypeOf(y)
+	switch {
+	case isStringBasic(dst) && isByteSlice(src):
+		l.expr(y)
+		l.emit(goir.Op{Code: goir.OpStrFromBytes})
+		return true
+	case isByteSlice(dst) && isStringBasic(src):
+		l.expr(y)
+		l.emit(goir.Op{Code: goir.OpStrToBytes})
+		return true
+	case types.Identical(dst, src):
+		l.expr(y)
+		return true
+	}
+	return false
+}
+
 // derefRead lowers *p (read), leaving the pointee value.
 func (l *funcLowerer) derefRead(e *ast.StarExpr) {
+	if l.unsafeReinterpretDeref(e) {
+		return
+	}
 	pt := l.exprType(e.X)
 	// *opaqueShimPtr: *url.URL and url.URL are the same opaque object, so a deref
 	// produces a value copy — clone it (when a cloner is registered) to preserve
