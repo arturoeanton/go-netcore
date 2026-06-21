@@ -72,7 +72,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/rand":     {"Read": {"Crypto", "RandRead"}},
 	"crypto/hmac":     {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
 	"crypto/subtle":   {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}},
-	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}},
+	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
 	"os/exec":         {"Command": {"Exec", "Command"}},
 	"container/list":  {"New": {"List", "New"}},
 	"encoding/csv":    {"NewReader": {"Csv", "NewReader"}, "NewWriter": {"Csv", "NewWriter"}},
@@ -120,6 +120,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"io": {
 		"WriteString": {"Io", "WriteString"}, "ReadAll": {"Readers", "ReadAll"}, "Copy": {"Readers", "Copy"},
+		"ReadFull": {"Io", "ReadFull"},
 	},
 	"bufio": {
 		"NewScanner": {"Bufio", "NewScanner"},
@@ -310,6 +311,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"context.Canceled":               {"Context", "Canceled"},
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 	"io.EOF":                         {"Io", "EOF"},
+	"io.ErrUnexpectedEOF":            {"Io", "ErrUnexpectedEOF"},
 	"strconv.ErrRange":               {"Strconv", "ErrRangeVar"},
 	"strconv.ErrSyntax":              {"Strconv", "ErrSyntaxVar"},
 }

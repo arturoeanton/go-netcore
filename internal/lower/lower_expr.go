@@ -86,6 +86,13 @@ func (l *funcLowerer) expr(e ast.Expr) {
 					}
 				}
 			}
+		} else if fn, ok := l.pkg.TypesInfo.ObjectOf(e.Sel).(*types.Func); ok {
+			// A qualified reference to a package-level function used as a value, not
+			// called (pkg.Func passed as an argument or stored in a map/slice literal,
+			// e.g. charset.FromPlain). Emit a func value, like a bare func ident.
+			if _, ok := l.funcValue(fn); ok {
+				return
+			}
 		}
 		l.fieldRead(e)
 	case *ast.CompositeLit:
