@@ -192,7 +192,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
-		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"}, "NewServeMux": {"Http", "NewServeMux"},
+		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"}, "NewServeMux": {"HttpTypes", "NewServeMux"},
 		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"}, "Error": {"Http", "Error"},
 		"NewResponseController": {"Http", "NewResponseController"}, "SetCookie": {"Http", "SetCookie"},
 		"ServeFile": {"Http", "ServeFile"}, "ServeContent": {"Http", "ServeContent"}, "FileServer": {"Http", "FileServer"}, "StripPrefix": {"Http", "StripPrefix"}, "Serve": {"Http", "Serve"}, "ListenAndServeTLS": {"Http", "ListenAndServeTLS"},
@@ -489,7 +489,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"net/http.ErrServerClosed":       {"Http", "ErrServerClosed"},
 	"net/http.ErrHandlerTimeout":     {"Http", "ErrHandlerTimeout"},
 	"net/http.NoBody":                {"Http", "NoBody"},
-	"net/http.DefaultServeMux":       {"Http", "DefaultServeMux"},
+	"net/http.DefaultServeMux":       {"HttpTypes", "DefaultServeMux"},
 	"net/http.LocalAddrContextKey":   {"Http", "LocalAddrContextKey"},
 	"net/http.ServerContextKey":      {"Http", "ServerContextKey"},
 	"os.ErrDeadlineExceeded":         {"Os", "ErrDeadlineExceeded"},
@@ -949,7 +949,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Error": {"Json", "SyntaxErr_Error"},
 	},
 	"net/http.ServeMux": {
-		"Handle": {"Http", "Mux_Handle"}, "HandleFunc": {"Http", "Mux_HandleFunc"}, "ServeHTTP": {"Http", "Mux_ServeHTTP"}, "Handler": {"Http", "Mux_Handler"},
+		"Handle": {"HttpTypes", "Mux_Handle"}, "HandleFunc": {"HttpTypes", "Mux_HandleFunc"}, "ServeHTTP": {"HttpTypes", "Mux_ServeHTTP"}, "Handler": {"HttpTypes", "Mux_Handler"},
 	},
 	"mime/multipart.Form": {
 		"RemoveAll": {"Multipart", "Form_RemoveAll"},
