@@ -1,0 +1,32 @@
+// Copyright 2018 Gin Core Team. All rights reserved.
+// Use of this source code is governed by a MIT style
+// license that can be found in the LICENSE file.
+
+package render
+
+// goclr-safe overlay: cuts the google.golang.org/protobuf/proto import at gin's own
+// render seam (protobuf's protoreflect.Value packs through unsafe.Pointer goclr
+// cannot lower). The render.ProtoBuf type is preserved so c.ProtoBuf() still
+// compiles; rendering returns an error (the validation targets never render protobuf).
+
+import (
+	"errors"
+	"net/http"
+)
+
+// ProtoBuf contains the given interface object.
+type ProtoBuf struct {
+	Data any
+}
+
+var protobufContentType = []string{"application/x-protobuf"}
+
+// Render (ProtoBuf) is unavailable under goclr (see overlay note above).
+func (r ProtoBuf) Render(w http.ResponseWriter) error {
+	return errors.New("goclr: protobuf render is unavailable")
+}
+
+// WriteContentType (ProtoBuf) writes ProtoBuf ContentType.
+func (r ProtoBuf) WriteContentType(w http.ResponseWriter) {
+	writeContentType(w, protobufContentType)
+}

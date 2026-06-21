@@ -1,0 +1,27 @@
+// Copyright 2014 Manu Martinez-Almeida. All rights reserved.
+// Use of this source code is governed by a MIT style
+// license that can be found in the LICENSE file.
+
+package binding
+
+// goclr-safe overlay: the real protobufBinding decodes via
+// google.golang.org/protobuf/proto, whose protoreflect.Value packs values through
+// unsafe.Pointer reinterpretation goclr cannot lower. Cutting the import here — at
+// gin's own binding seam — drops the protobuf module from the closure entirely. The
+// binding type is preserved so binding.go's `ProtoBuf = protobufBinding{}` still
+// compiles; invoking it returns an error (the validation targets never bind protobuf).
+
+import (
+	"errors"
+	"net/http"
+)
+
+var errProtobufUnsupported = errors.New("goclr: protobuf binding is unavailable")
+
+type protobufBinding struct{}
+
+func (protobufBinding) Name() string { return "protobuf" }
+
+func (protobufBinding) Bind(req *http.Request, obj any) error { return errProtobufUnsupported }
+
+func (protobufBinding) BindBody(body []byte, obj any) error { return errProtobufUnsupported }
