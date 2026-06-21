@@ -88,7 +88,8 @@ public static class Json
             case ulong u: sb.Append(u.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
             case double d: WriteNumber(sb, d); break;
             case GoString gs: WriteString(sb, gs.ToDotNetString()); break;
-            case GoPtr p: Write(sb, p.Value); break;
+            case GoNamed n: Write(sb, n.Value); break; // typed box: marshal the underlying value
+            case GoPtr p: Write(sb, GoPtrs.Get(p)); break;
             // A nil slice/map (zero value: null backing) marshals as null, not []/{}.
             case GoSlice s when s.Data == null: sb.Append("null"); break;
             case GoMap m when m.Data == null: sb.Append("null"); break;

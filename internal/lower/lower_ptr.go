@@ -720,7 +720,15 @@ func (l *funcLowerer) promotedMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr,
 			embT = embT.Struct.Fields[idx].Type
 		}
 		if embT.Kind != goir.KPtr {
-			// value embed + pointer receiver: needs &embedded with write-back.
+			// value embed + pointer receiver. When the base is itself a pointer, alias
+			// the embedded field directly through that pointer so the method observes
+			// and mutates the live struct (and mutations it makes to the pointee through
+			// other aliases — e.g. a back-pointer field — are not clobbered by a stale
+			// snapshot write-back). A non-pointer (value) base is not addressable, so it
+			// still needs the copy-then-write-back dance.
+			if baseType.Kind == goir.KPtr {
+				return l.promotedPtrRecvAliasThroughPtr(e, sel, m, embedPath, sig, baseType)
+			}
 			return l.promotedPtrRecvValueEmbed(e, sel, m, embedPath, sig)
 		}
 		// Pointer embed: the chain yields the pointer itself — pass it through.
@@ -742,6 +750,24 @@ func (l *funcLowerer) promotedMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr,
 		l.emitUnbox(*embType.Elem)
 	}
 
+	l.emitCallArgs(e.Args, m.Params[1:], sig.Variadic(), e.Ellipsis.IsValid())
+	l.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
+	return m.Ret
+}
+
+// promotedPtrRecvAliasThroughPtr handles p.M() where p is a pointer, M has a pointer
+// receiver, and M is promoted through value-typed embedded field(s). It builds a field
+// alias pointer to the embedded field that reads/writes through p directly, so M runs
+// on the live embedded value with no whole-struct snapshot (which would otherwise
+// clobber mutations M makes to the pointee through aliases such as a back-pointer).
+func (l *funcLowerer) promotedPtrRecvAliasThroughPtr(e *ast.CallExpr, sel *ast.SelectorExpr, m *goir.Method, embedPath []int, sig *types.Signature, baseType goir.Type) goir.Type {
+	root := *baseType.Elem
+	ft := root
+	for _, idx := range embedPath {
+		ft = ft.Struct.Fields[idx].Type
+	}
+	sx := sel.X
+	l.emitFieldAliasPtr(func() { l.expr(sx) }, baseType, root, embedPath, ft)
 	l.emitCallArgs(e.Args, m.Params[1:], sig.Variadic(), e.Ellipsis.IsValid())
 	l.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
 	return m.Ret

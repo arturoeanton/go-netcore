@@ -492,22 +492,48 @@ public static class Http
         }
     }
 
+    // Resolve an http.ResponseWriter value to the backing GoRespWriter. Frameworks
+    // wrap the writer (gin's responseWriter embeds http.ResponseWriter); since
+    // http.ResponseWriter is dispatched statically to these shims, navigate the
+    // wrapper's fields to the embedded GoRespWriter. This drives the real response
+    // for both promoted (Header) and overridden (Write/WriteHeader) wrapper methods.
+    private static GoRespWriter AsRW(object? w) => FindRW(w, 0) ?? throw new System.InvalidCastException("not an http.ResponseWriter");
+    private static GoRespWriter? FindRW(object? w, int depth)
+    {
+        switch (w)
+        {
+            case null: return null;
+            case GoRespWriter rw: return rw;
+            case GoPtr p: return depth < 8 ? FindRW(GoPtrs.Get(p), depth + 1) : null;
+        }
+        if (depth >= 8) return null;
+        // A wrapper struct: scan its fields for the embedded ResponseWriter (direct, or
+        // nested through another pointer/struct field).
+        foreach (var f in w.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            var fv = f.GetValue(w);
+            if (fv is GoRespWriter rw) return rw;
+            if (fv is GoPtr && FindRW(fv, depth + 1) is GoRespWriter found) return found;
+        }
+        return null;
+    }
+
     // http.ResponseWriter methods.
     public static object?[] RW_Write(object w, GoSlice p)
     {
-        var rw = (GoRespWriter)w;
+        var rw = AsRW(w);
         FlushHeaders(rw);
         var buf = new byte[p.Len];
         for (int i = 0; i < p.Len; i++) buf[i] = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
         rw.Resp.OutputStream.Write(buf, 0, buf.Length);
         return new object?[] { (long)p.Len, null };
     }
-    public static void RW_WriteHeader(object w, long code) { var rw = (GoRespWriter)w; FlushHeaders(rw); if (!rw.WroteHeader) { rw.Resp.StatusCode = (int)code; rw.WroteHeader = true; } }
+    public static void RW_WriteHeader(object w, long code) { var rw = AsRW(w); FlushHeaders(rw); if (!rw.WroteHeader) { rw.Resp.StatusCode = (int)code; rw.WroteHeader = true; } }
 
     // http.Redirect(w, r, url, code): set Location and write the status code.
     public static void Redirect(object w, object? r, GoString url, long code)
     {
-        var rw = (GoRespWriter)w;
+        var rw = AsRW(w);
         try { rw.Resp.Headers["Location"] = url.ToDotNetString(); } catch { }
         RW_WriteHeader(w, code);
     }
@@ -516,7 +542,7 @@ public static class Http
     // set on it are flushed to the response on the first Write/WriteHeader.
     public static GoMap RW_Header(object w)
     {
-        var rw = (GoRespWriter)w;
+        var rw = AsRW(w);
         return rw.Headers ??= GoMaps.Make();
     }
     private static void FlushHeaders(GoRespWriter rw)
@@ -529,6 +555,9 @@ public static class Http
                 for (int i = 0; i < vs.Len; i++)
                 {
                     string v = ((GoString)vs.Data[vs.Off + i]!).ToDotNetString();
+                    // Content-Type is a reserved header on HttpListener (Headers.Add throws);
+                    // it must be set through the dedicated property.
+                    if (string.Equals(k, "Content-Type", System.StringComparison.OrdinalIgnoreCase)) { try { rw.Resp.ContentType = v; } catch { } continue; }
                     try { rw.Resp.Headers.Add(k, v); } catch { /* restricted header (Content-Length, etc.) */ }
                 }
         }

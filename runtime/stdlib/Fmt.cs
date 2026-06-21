@@ -116,15 +116,45 @@ public static class Fmt
     /// builder, or stdout/stderr); returns the byte count.</summary>
     internal static long WriteTo(object? w, string s)
     {
-        switch (w)
+        switch (ResolveSink(w, 0))
         {
             case GoStringBuilder sb: sb.SB.Append(s); break;
             case GoBuffer buf: foreach (byte b in Encoding.UTF8.GetBytes(s)) buf.B.Add(b); break;
+            case GoFile f when f.Wr != null: { var b = Encoding.UTF8.GetBytes(s); f.Wr.Write(b, 0, b.Length); break; }
             case GoFile f when f.IsStderr: System.Console.Error.Write(s); System.Console.Error.Flush(); break;
             case GoRespWriter rw: { var b = Encoding.UTF8.GetBytes(s); rw.Resp.OutputStream.Write(b, 0, b.Length); break; }
             default: Out(s); break;
         }
         return Encoding.UTF8.GetByteCount(s);
+    }
+
+    // Resolve an io.Writer to a sink the runtime can write to, navigating user wrapper
+    // types (a struct/pointer embedding another writer, e.g. gin's responseWriter wraps
+    // http.ResponseWriter) to the underlying GoRespWriter/buffer/file.
+    private static object? ResolveSink(object? w, int depth)
+    {
+        switch (w)
+        {
+            case null: return null;
+            case GoStringBuilder: case GoBuffer: case GoRespWriter: return w;
+            case GoFile: return w;
+        }
+        if (depth >= 8) return w;
+        if (w is GoPtr p) return ResolveSink(GoPtrs.Get(p), depth + 1);
+        // A wrapper struct: find an embedded writer field.
+        foreach (var f in w.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            var fv = f.GetValue(w);
+            switch (fv)
+            {
+                case GoRespWriter: case GoBuffer: case GoStringBuilder: case GoFile: return fv;
+                case GoPtr:
+                    var inner = ResolveSink(fv, depth + 1);
+                    if (inner is GoRespWriter or GoBuffer or GoStringBuilder or GoFile) return inner;
+                    break;
+            }
+        }
+        return w;
     }
 
     public static object?[] Fprint(object? w, GoSlice args) { long n = WriteTo(w, Sprint(args).ToDotNetString()); return new object?[] { n, null }; }
