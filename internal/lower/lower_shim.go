@@ -771,7 +771,13 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 	if !ok {
 		return nil, false
 	}
+	// Key the registry on the method's own receiver type, not seln.Recv(): for a
+	// method promoted from an embedded shim field (struct{ *sha3.SHAKE }), seln.Recv()
+	// is the outer struct, but the method is declared on the embedded shim type.
 	recv := namedOf(seln.Recv())
+	if mr := namedOf(fn.Type().(*types.Signature).Recv().Type()); mr != nil {
+		recv = mr
+	}
 	if recv == nil || recv.Obj() == nil || recv.Obj().Pkg() == nil {
 		return nil, false
 	}
@@ -810,8 +816,16 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 }
 
 // shimMethodCall lowers a shimmed method call: receiver then args, OpCallExtern.
-func (l *funcLowerer) shimMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr, ext *goir.Extern) goir.Type {
-	l.expr(sel.X) // receiver handle
+// For a method promoted from an embedded shim field, the receiver is that field, not
+// the outer value, so navigate the embedded-field path to the shim handle.
+func (l *funcLowerer) shimMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *types.Selection, ext *goir.Extern) goir.Type {
+	if idx := seln.Index(); len(idx) > 1 {
+		xt := l.exprType(sel.X)
+		l.expr(sel.X)
+		l.emitEmbedNav(xt, idx[:len(idx)-1], ext.Params[0])
+	} else {
+		l.expr(sel.X) // receiver handle
+	}
 	for i, a := range e.Args {
 		if i+1 < len(ext.Params) {
 			l.exprCoerced(a, ext.Params[i+1])

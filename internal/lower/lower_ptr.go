@@ -469,7 +469,7 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 	}
 	// Method on a shimmed stdlib type (reflect.Type.Kind, …) -> external call.
 	if ext, ok := l.shimMethodExtern(seln); ok {
-		return l.shimMethodCall(e, sel, ext)
+		return l.shimMethodCall(e, sel, seln, ext)
 	}
 
 	// Method on a type-parameter value inside a monomorphized generic: the
