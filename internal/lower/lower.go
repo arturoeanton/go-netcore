@@ -361,8 +361,10 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 			cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: regExt})
 		}
 	}
-	// Register runtime type descriptors (for reflect): kind, name, type string,
-	// element/key types, and struct fields — split across chunks like var inits.
+	// Build descriptors for every named/struct type (for dynamic reflect), then
+	// register all runtime type descriptors — kind, name, type string, element/key
+	// types, struct fields — split across chunks like var inits.
+	c.buildAllTypeDescs()
 	for _, e := range c.typeDescs {
 		if len(cl.m.Code) > chunkOpBudget {
 			if !finishChunk(cl) {

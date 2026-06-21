@@ -82,4 +82,42 @@ public static class TypeReg
     }
 
     public static GoTypeDesc? ById(int id) => id >= 0 && _byId.TryGetValue(id, out var d) ? d : null;
+
+    // Dynamic-identity links: recover a descriptor for a value reached through an
+    // interface (no static descriptor) from its emitted struct type name or its
+    // typed-box id.
+    private static readonly System.Collections.Generic.Dictionary<string, int> _byClr = new();
+    private static readonly System.Collections.Generic.Dictionary<long, int> _byNamed = new();
+    public static void LinkClr(GoString clrName, int id) => _byClr[clrName.ToDotNetString()] = id;
+    public static void LinkNamed(long namedId, int id) => _byNamed[namedId] = id;
+
+    /// <summary>The descriptor for a runtime value's dynamic type, or null.</summary>
+    public static GoTypeDesc? FromValue(object? v)
+    {
+        switch (v)
+        {
+            case null: return null;
+            case GoNamed nm:
+                if (_byNamed.TryGetValue(nm.TypeId, out var nid)) return ById(nid);
+                return FromValue(nm.Value);
+            case GoString: return Predeclared(GoKind.String);
+            case bool: return Predeclared(GoKind.Bool);
+            case long: return Predeclared(GoKind.Int);
+            case ulong: return Predeclared(GoKind.Uint);
+            case double: return Predeclared(GoKind.Float64);
+            default:
+                if (_byClr.TryGetValue(v.GetType().Name, out var cid)) return ById(cid);
+                return null;
+        }
+    }
+
+    // Synthetic descriptors for predeclared types reached dynamically (a boxed
+    // primitive carries no width, so this is the best the representation allows).
+    private static readonly System.Collections.Generic.Dictionary<int, GoTypeDesc> _pre = new();
+    private static GoTypeDesc Predeclared(int kind)
+    {
+        if (!_pre.TryGetValue(kind, out var d))
+            _pre[kind] = d = new GoTypeDesc { Id = -1, Kind = kind, Name = GoKind.Name(kind), Str = GoKind.Name(kind) };
+        return d;
+    }
 }

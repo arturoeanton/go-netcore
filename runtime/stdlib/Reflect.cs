@@ -86,8 +86,8 @@ public static class Reflect
         return "";
     }
 
-    public static object TypeOf(object? x, int descId) => new GoReflectType { Sample = x, Desc = TypeReg.ById(descId) };
-    public static object ValueOf(object? x, int descId) => new GoReflectValue { V = x, Desc = TypeReg.ById(descId) };
+    public static object TypeOf(object? x, int descId) => new GoReflectType { Sample = x, Desc = TypeReg.ById(descId) ?? TypeReg.FromValue(x) };
+    public static object ValueOf(object? x, int descId) => new GoReflectValue { V = x, Desc = TypeReg.ById(descId) ?? TypeReg.FromValue(x) };
 
     // A reflect.Type for a descriptor id (used by Elem/Key/Field.Type).
     private static object RTypeById(int id)

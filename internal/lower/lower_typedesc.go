@@ -3,6 +3,7 @@ package lower
 import (
 	"go/ast"
 	"go/types"
+	"sort"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
 )
@@ -58,6 +59,11 @@ type typeDescEntry struct {
 	keyId    int
 	arrayLen int
 	fields   []typeFieldEntry
+	// Dynamic-identity links: clrName is the emitted struct type name (for a struct
+	// value reached through an interface) and namedId is the typed-box id (for an
+	// identity-bearing named type); 0/"" when not applicable.
+	clrName string
+	namedId int64
 }
 
 type typeFieldEntry struct {
@@ -65,6 +71,34 @@ type typeFieldEntry struct {
 	tag       string
 	typeId    int
 	anonymous bool
+}
+
+// buildAllTypeDescs builds a descriptor for every struct and named type defined in
+// the program, so reflect over a value reached dynamically (through an interface)
+// recovers precise type info — not just the types seen at a static reflect site.
+// Types are visited in a deterministic order (canonical string) for reproducible
+// builds.
+func (c *lowerCtx) buildAllTypeDescs() {
+	seen := map[*types.Named]bool{}
+	var named []*types.Named
+	add := func(n *types.Named) {
+		if n != nil && !seen[n] {
+			seen[n] = true
+			named = append(named, n)
+		}
+	}
+	for n := range c.structReg {
+		add(n)
+	}
+	for n := range c.namedIds {
+		add(n)
+	}
+	sort.Slice(named, func(i, j int) bool {
+		return types.TypeString(named[i], nil) < types.TypeString(named[j], nil)
+	})
+	for _, n := range named {
+		c.descId(n)
+	}
 }
 
 // reflectKind maps a type's underlying type to its reflect.Kind.
@@ -152,6 +186,16 @@ func (c *lowerCtx) descId(t types.Type) int {
 		if named.Obj().Pkg() != nil {
 			entry.pkgPath = named.Obj().Pkg().Path()
 		}
+		// Link the typed-box id so reflect on a dynamic (interface) value of an
+		// identity-bearing named type recovers this descriptor.
+		if nid, ok := c.namedIdentity(named); ok {
+			entry.namedId = nid
+		}
+	}
+	// Link a struct's emitted CLR type name so reflect on a dynamic struct value
+	// (boxed into an interface) recovers this descriptor from value.GetType().
+	if gt, ok := c.goType(t); ok && gt.Kind == goir.KStruct && gt.Struct != nil {
+		entry.clrName = gt.Struct.Name
 	}
 	c.typeDescs = append(c.typeDescs, entry)
 
@@ -214,6 +258,22 @@ func (l *funcLowerer) emitOneTypeDesc(e typeDescEntry) {
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(f.typeId)})
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: boolToInt(f.anonymous)})
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: regField})
+	}
+	if e.clrName != "" {
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: e.clrName})
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(e.id)})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "TypeReg", Method: "LinkClr",
+			Params: []goir.Type{goir.TString, goir.TInt32}, Ret: goir.TVoid,
+		}})
+	}
+	if e.namedId != 0 {
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: e.namedId})
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(e.id)})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "TypeReg", Method: "LinkNamed",
+			Params: []goir.Type{goir.TInt64, goir.TInt32}, Ret: goir.TVoid,
+		}})
 	}
 }
 
