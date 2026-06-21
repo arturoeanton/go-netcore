@@ -1050,7 +1050,10 @@ func (l *funcLowerer) incDec(s *ast.IncDecStmt) {
 	if s.Tok == token.DEC {
 		binTok = token.SUB
 	}
-	if gi, ok := l.globalRef(s.X); ok {
+	// (x)++ is the same target as x++ — generated parsers (ragel) parenthesize the
+	// operand, e.g. (m.p)--.
+	x := unparen(s.X)
+	if gi, ok := l.globalRef(x); ok {
 		gt := l.prog.Globals[gi].Type
 		l.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
 		l.emitInt(1, gt)
@@ -1058,7 +1061,7 @@ func (l *funcLowerer) incDec(s *ast.IncDecStmt) {
 		l.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(gi)})
 		return
 	}
-	switch lhs := s.X.(type) {
+	switch lhs := x.(type) {
 	case *ast.Ident:
 		idx, t, ok := l.lookupVar(lhs)
 		if !ok {

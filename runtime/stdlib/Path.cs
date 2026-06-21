@@ -18,6 +18,12 @@ public static class Path
     }
     public static GoString Join(GoSlice elems) => GoString.FromDotNetString(J(elems));
 
+    // filepath.Walk(root, fn) error: goclr cannot invoke the Go walk callback from a
+    // shim, and the only consumer (universal-translator's translation import/export)
+    // is dead code for a service. This returns nil without walking; if a program
+    // genuinely needs Walk, it must be lowered from a goclr-safe overlay.
+    public static object? Walk(GoString root, object? fn) => null;
+
     public static GoString Base(GoString p)
     {
         string s = p.ToDotNetString();

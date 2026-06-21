@@ -5,6 +5,15 @@ using GoCLR.Runtime;
 /// <summary>A minimal os.File handle (currently the standard streams).</summary>
 public sealed class GoFile { public bool IsStderr; public bool IsStdin; }
 
+/// <summary>An os.FileInfo: the fields fs.FileInfo exposes through its methods.</summary>
+public sealed class GoFileInfo
+{
+    public GoString FileName;
+    public long Size;
+    public bool Dir;
+    public long ModTimeN; // nanoseconds since Unix epoch
+}
+
 /// <summary>Shim for a subset of Go's <c>os</c> package.</summary>
 public static class Os
 {
@@ -46,6 +55,45 @@ public static class Os
 
     // (*os.File).Close(): no-op — os.Open already read the file fully.
     public static object? File_Close(object f) => null;
+
+    // os.Stat(name) (FileInfo, error).
+    public static object?[] Stat(GoString name)
+    {
+        string p = name.ToDotNetString();
+        try
+        {
+            if (System.IO.Directory.Exists(p))
+                return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(System.IO.Path.GetFileName(p.TrimEnd('/')) is var d && d.Length > 0 ? d : p), Dir = true, Size = 0 }, null };
+            if (System.IO.File.Exists(p))
+            {
+                var fi = new System.IO.FileInfo(p);
+                return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(fi.Name), Size = fi.Length, Dir = false }, null };
+            }
+            return new object?[] { null, NotExist(p) };
+        }
+        catch (System.Exception e)
+        {
+            return new object?[] { null, new GoError("stat " + p + ": " + e.Message) };
+        }
+    }
+
+    private static GoError NotExist(string p) => new("stat " + p + ": no such file or directory");
+
+    // os.IsNotExist(err): does err report a missing file? (matched by message suffix).
+    public static bool IsNotExist(object? err) =>
+        err is GoError g && g.Error().ToDotNetString().EndsWith("no such file or directory", System.StringComparison.Ordinal);
+
+    // os.MkdirAll(path, perm) error.
+    public static object? MkdirAll(GoString path, uint perm)
+    {
+        try { System.IO.Directory.CreateDirectory(path.ToDotNetString()); return null; }
+        catch (System.Exception e) { return new GoError("mkdir " + path.ToDotNetString() + ": " + e.Message); }
+    }
+
+    // os.FileInfo method set.
+    public static GoString FileInfo_Name(object fi) => ((GoFileInfo)fi).FileName;
+    public static long FileInfo_Size(object fi) => ((GoFileInfo)fi).Size;
+    public static bool FileInfo_IsDir(object fi) => ((GoFileInfo)fi).Dir;
 
     public static GoString Getenv(GoString key) =>
         GoString.FromDotNetString(System.Environment.GetEnvironmentVariable(key.ToDotNetString()) ?? "");

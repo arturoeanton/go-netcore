@@ -110,7 +110,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"path/filepath": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
-		"ToSlash": {"Path", "ToSlash"}, "FromSlash": {"Path", "FromSlash"},
+		"ToSlash": {"Path", "ToSlash"}, "FromSlash": {"Path", "FromSlash"}, "Walk": {"Path", "Walk"},
 	},
 	"fmt": {
 		"Sprint": {"Fmt", "Sprint"}, "Sprintln": {"Fmt", "Sprintln"}, "Sprintf": {"Fmt", "Sprintf"},
@@ -183,6 +183,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"},
 		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
+		"Stat": {"Os", "Stat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"},
 	},
 	"bytes": {
 		"Equal": {"Bytes", "Equal"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
@@ -248,6 +249,8 @@ var opaqueShimTypes = map[string]bool{
 	"strings.Replacer":             true,
 	"bytes.Buffer":                 true,
 	"os.File":                      true,
+	"os.FileInfo":                  true,
+	"io/fs.FileInfo":               true,
 	"time.Time":                    true,
 	"time.Location":                true,
 	"math/rand.Rand":               true,
@@ -667,6 +670,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"os.File": {
 		"Fd": {"Os", "File_Fd"}, "Close": {"Os", "File_Close"},
+	},
+	"os.FileInfo": {
+		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"},
+	},
+	"io/fs.FileInfo": {
+		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"},
 	},
 	"sync.Mutex": {
 		"Lock": {"Sync", "Mutex_Lock"}, "Unlock": {"Sync", "Mutex_Unlock"}, "TryLock": {"Sync", "Mutex_TryLock"},
