@@ -102,7 +102,7 @@ public static class Regexp
 
     // FindReaderSubmatchIndex: match against an io.RuneReader and return rune-offset
     // group index pairs. The reader is drained through the runtime's reader protocol;
-    // a custom RuneReader the runtime can't drain yields no match (see LIMITATIONS.md
+    // a custom RuneReader the runtime can't drain yields no match (see docs/LIMITATIONS.md
     // — this only affects full-Unicode RE2 matching over non-standard readers).
     public static GoSlice Re_FindReaderSubmatchIndex(object r, object? reader)
     {

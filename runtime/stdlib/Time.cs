@@ -213,13 +213,13 @@ public static class Time
     // time.Parse(layout, value) (Time, error): the inverse of Format — walk the Go
     // reference-time layout, consuming the matching run from value for each token.
     // Returns the zero Time and an error if value does not match the layout. The
-    // result is in UTC (goclr's time is UTC-only; see LIMITATIONS.md).
+    // result is in UTC (goclr's time is UTC-only; see docs/LIMITATIONS.md).
     public static object?[] Parse(GoString layout, GoString value)
     {
         string lay = layout.ToDotNetString(), val = value.ToDotNetString();
         // Go defaults a missing year to 0; goclr's GoTime counts nanoseconds from the
         // Unix epoch (representable range ~1678..2262), so a yearless layout uses 1970
-        // to keep the parsed clock fields exact without overflowing (see LIMITATIONS.md).
+        // to keep the parsed clock fields exact without overflowing (see docs/LIMITATIONS.md).
         int year = 1970, month = 1, day = 1, hour = 0, min = 0, sec = 0, nsec = 0;
         bool hasPM = false, pm = false;
         int li = 0, vi = 0;

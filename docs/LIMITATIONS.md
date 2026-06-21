@@ -55,7 +55,7 @@ Custom **struct and pointer** types that implement `fmt.Stringer`/`error` format
 via their method under `%v`/`%s`. A named **non-struct** type with a method set
 (`type Money int64` with `String()`, an `int` enum, a named slice) now also carries
 its identity through interfaces via the **typed box** (`GoNamed`, see
-`docs/DESIGN-typed-box.md`): top-level `%v`/`%s`/`%T` dispatch correctly, and
+`DESIGN-typed-box.md`): top-level `%v`/`%s`/`%T` dispatch correctly, and
 interface dispatch distinguishes named types that share a representation (so two
 named slices both satisfying `sort.Interface` dispatch to their own methods — the
 representation collapse that blocked goja is resolved).
@@ -144,7 +144,7 @@ module):
   (`type IntHeap []int` reached as `*IntHeap`): `heap.Init/Push/Pop/Fix/Remove` drive
   the user type's `Less/Swap/Push/Pop` through the interface method-callback bridge
   (`Bridge.CallMethod` + compiler-generated per-method adapters; see
-  `docs/DESIGN-callback-bridge.md`). Struct ids and typed-box named ids now share one
+  `DESIGN-callback-bridge.md`). Struct ids and typed-box named ids now share one
   counter, so `&IntHeap{...}` carries `IntHeap`'s unified id and the bridge resolves its
   methods through the pointer. **Remaining bridge gap:** an implementer reached BY VALUE
   rather than through a pointer — a value-receiver struct passed by value, or a named
@@ -231,6 +231,28 @@ pointer-identity scan; the rest of the package is its real GOROOT source). Cavea
 GoPtr model does not preserve across `&s[i]` — so the in-place aliasing
 optimizations they guard are conservative (they fall back to copying). This does
 not affect element values, only the optimization choice.
+
+## `unsafe.Pointer` — the safe idioms only
+
+goclr's value model has **no raw memory** (a `GoSlice` is `object[]`-backed, a
+`GoString` is a .NET string, a `GoPtr` is a cell), so general pointer arithmetic and
+header *writes* are fundamentally impossible. What **is** supported (see
+[DESIGN-unsafe-pointer.md](DESIGN-unsafe-pointer.md)):
+
+- the **`string ↔ []byte` zero-copy reinterprets** — the modern builtins
+  `unsafe.String(unsafe.SliceData(b), n)` / `unsafe.Slice(unsafe.StringData(s), n)`
+  and the old `*(*string)(unsafe.Pointer(&b))` / `*(*[]byte)(unsafe.Pointer(&s))` form
+  — lowered as the equivalent (copying) conversions;
+- **read-only `reflect.SliceHeader`/`StringHeader` offset views** —
+  `(*reflect.SliceHeader)(unsafe.Pointer(&x)).Data` for offset arithmetic (two views
+  over the same backing differ by exactly the byte offset; this is what go-toml's
+  `SubsliceOffset` needs). `StringHeader` offset *diffs* are not recoverable (.NET
+  substrings don't share backing storage); only `.Len` is meaningful there.
+
+Everything else — a bit-cast like `*(*float32)(unsafe.Pointer(&u64))`, pointer
+arithmetic, or a header *write* that reconstructs a slice from a foreign header (the
+pre-1.20 `s2b`, fasttemplate/validator) — is **rejected** with `GCLR0301`/`GCLR0201`,
+not silently miscompiled. Those stay overlay territory (`goclr.overlays/`).
 
 ## Misc
 

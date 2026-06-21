@@ -428,7 +428,7 @@ public static class Reflect
     // The sample model carries a representative value, so element/key types are
     // recovered from a live element when present. Method-set and func-signature
     // queries return the conservative empty answer (the runtime does not retain
-    // those descriptors); see LIMITATIONS.md.
+    // those descriptors); see docs/LIMITATIONS.md.
     public static object Type_Key(object t)
     {
         var d = TDesc(t);

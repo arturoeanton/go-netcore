@@ -1,5 +1,14 @@
 # Goja & unsafe.Pointer — strategy (M3)
 
+> **Historical note (kept for context).** This documents the original goja /
+> `unsafe.Pointer` strategy and how it was carried out — goja now evaluates a large
+> JS subset on the CLR (the status updates at the end record the resolution). Since
+> then, goclr also gained **native support for the safe `unsafe.Pointer` idioms** (the
+> `string↔[]byte` reinterprets and read-only `reflect.*Header` offset views), so many
+> programs no longer need an overlay at all. For the current `unsafe.Pointer` model
+> see [DESIGN-unsafe-pointer.md](DESIGN-unsafe-pointer.md); for live status see
+> [GAPS.md](GAPS.md) and [ROADMAP.md](ROADMAP.md).
+
 `goclr analyze ./cmd/server` shows the goja+Echo target has **exactly three hard
 blockers**, all `unsafe.Pointer` (GCLR0201). Everything else in the closure
 compiles or is a benign "overlay not yet provided" warning.
@@ -132,7 +141,7 @@ formatting, and multi-named-slice interface dispatch at once.
 
 ## STATUS UPDATE — goja runs JavaScript (the recommendation above was carried out)
 
-The **typed box** (`docs/DESIGN-typed-box.md`) gives every named non-struct value a
+The **typed box** (`DESIGN-typed-box.md`) gives every named non-struct value a
 runtime type identity (`GoNamed{TypeId, Value}`); interface dispatch, `==`, `fmt`,
 and a sample-based `reflect` overlay recover it. With that keystone in place, goja
 went all the way from "compiles partway" to **evaluating JavaScript**: `vm.New()`

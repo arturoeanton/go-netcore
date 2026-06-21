@@ -149,7 +149,7 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 	// embedded *bufio.Reader, enumerated as an io.ByteReader implementer though it
 	// never flows to one. The type is still matched, but its case body panics: a
 	// guarded, diagnosable failure only if such a value ever reaches this call site,
-	// rather than aborting the whole compilation. Tracked in LIMITATIONS.md.
+	// rather than aborting the whole compilation. Tracked in docs/LIMITATIONS.md.
 	unsupported := make([]bool, len(impls))
 	// shimExt[i] != nil marks an implementer that satisfies the method through an
 	// embedded shim-type field (e.g. driverConn{ sync.Mutex } satisfying sync.Locker):
@@ -257,7 +257,7 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		}
 		// Pointer-to-non-struct implementer (e.g. method on *MyInt): the cell carries
 		// no struct id, so disambiguate only as a GoPtr. Ambiguous when several such
-		// pointer types implement the same interface (rare); see LIMITATIONS.md.
+		// pointer types implement the same interface (rare); see docs/LIMITATIONS.md.
 		ptrType := goir.PtrType(ctypes[i])
 		if ctypes[i].Kind != goir.KStruct {
 			// Refine the plain GoPtr match by the pointee's representation so distinct

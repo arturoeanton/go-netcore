@@ -82,7 +82,7 @@ func cmdBuild(args []string) int {
 // reports backend status. It returns the process exit code and the output path.
 //
 // The IL emission backend (lower → emit → link) is under active development; see
-// ROADMAP.md. Until it lands, build performs a real compatibility gate and then
+// docs/ROADMAP.md. Until it lands, build performs a real compatibility gate and then
 // reports clearly that emission is pending, rather than producing a broken DLL.
 func buildToAssembly(patterns []string, bf *buildFlags, out string) (int, string) {
 	patterns = normalizePatterns(patterns)

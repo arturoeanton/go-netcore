@@ -69,10 +69,12 @@ backend forced a large set of general language and runtime features to be correc
 ## Status
 
 The compiler runs end-to-end: front half + the ECMA-335 emitter + the .NET runtime
-+ a stdlib overlay. **191 conformance fixtures pass byte-for-byte vs `go run`.**
-See [ROADMAP.md](ROADMAP.md) for the milestone breakdown and the done/pending
-checklist, and [LIMITATIONS.md](LIMITATIONS.md) / [GAPS.md](GAPS.md) for the tracked
-gaps.
++ a stdlib overlay. **199 conformance fixtures pass byte-for-byte vs `go run`.**
+All project documentation lives under [`docs/`](docs/) (see [`docs/README.md`](docs/README.md)
+for the index): [ROADMAP](docs/ROADMAP.md) for the milestone breakdown and the
+done/pending checklist, [LIMITATIONS](docs/LIMITATIONS.md) / [GAPS](docs/GAPS.md)
+for the tracked gaps, [REFLECT](docs/REFLECT.md) for the reflect design, and the
+`DESIGN-*` notes (typed box, callback bridge, unsafe.Pointer).
 
 | Area | State |
 | --- | --- |
@@ -89,10 +91,13 @@ gaps.
 | **P2 stdlib** — encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM, crypto/sha3 (+SHAKE) | ✅ |
 | **P3 stdlib** — net/http server (HttpListener) + net/http/httptest + net/http/cookiejar, net UDP (UDPConn/UDPAddr), log/slog (text+JSON), os/signal (real SIGINT/TERM delivery), `database/sql` + `database/sql/driver` | ✅ |
 | **database/sql + a pure-Go SQLite engine** — `go-r2-sqlite` (zero-cgo, ~14k LOC) compiled through goclr; CREATE/INSERT/SELECT with INTEGER/REAL/TEXT scanned into Go types | ✅ |
-| **reflect — runtime type descriptors** ([REFLECT.md](REFLECT.md)) — precise `Kind`/`Name`/`String`/fields/tags (static + dynamic), `MapOf`/`SliceOf`/`PtrTo`/`ArrayOf`, `Implements`/`AssignableTo`, `Zero`/`New` | ✅ descriptor-backed |
+| **reflect — runtime type descriptors** ([REFLECT.md](docs/REFLECT.md)) — precise `Kind`/`Name`/`String`/fields/tags (static + dynamic), `MapOf`/`SliceOf`/`PtrTo`/`ArrayOf`, `Implements`/`AssignableTo`, `Zero`/`New` | ✅ descriptor-backed |
+| **`unsafe.Pointer` — the safe idioms** ([DESIGN-unsafe-pointer.md](docs/DESIGN-unsafe-pointer.md)) — `string↔[]byte` zero-copy reinterprets (modern `unsafe.String/Slice` builtins + the old `*(*string)(unsafe.Pointer(&b))` form) and read-only `reflect.SliceHeader`/`StringHeader` offset views (go-toml's `SubsliceOffset`); pointer-arith / header *writes* rejected with a clear diagnostic | ✅ |
+| **`container/heap`** — incl. the idiomatic named-slice implementer (`type IntHeap []int`), via the interface method-callback bridge ([DESIGN-callback-bridge.md](docs/DESIGN-callback-bridge.md)) | ✅ |
 | **goja** — evaluates a large JS subset (arithmetic, strings, `Math`, objects, closures, loops, array callbacks, `JSON.stringify`/`parse`) byte-identical to `go run` | ✅ |
 | **Gin** — router, middleware, JSON binding/render run end to end; full CRUD over `database/sql` + a pure-Go SQLite engine ([`examples/demo_gin_sql`](examples/demo_gin_sql/)) | ✅ runs |
-| Echo (autocert/acme pending), AOT/perf (P4) | 🚧 |
+| **Echo v4** — router, path params, JSON, status codes serve on the CLR ([`examples/demo_echo`](examples/demo_echo/)); the `crypto/x509` + `acme`/`autocert` TLS closure lowers (TLS path is an honest no-op shim, plain HTTP fully exercised) | ✅ runs |
+| AOT / performance pass (P4) | 🚧 |
 
 ## Requirements
 
@@ -106,7 +111,7 @@ gaps.
 go build -o bin/goclr ./cmd/goclr
 bin/goclr doctor                          # verify Go + .NET environment
 bin/goclr run ./tests/conformance/015_fib # fib(0..9), matches `go run`
-go test ./tests/conformance/              # all 191 fixtures vs `go run`
+go test ./tests/conformance/              # all conformance fixtures vs `go run`
 ```
 
 The first `build`/`run` compiles the `GoCLR.Runtime` and `GoCLR.Stdlib` C# projects

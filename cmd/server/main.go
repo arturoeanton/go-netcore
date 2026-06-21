@@ -1,6 +1,6 @@
 // Command server is the goclr MVP target: an Echo v4 HTTP service that evaluates
 // JavaScript via goja. It must eventually compile with `goclr build` and run on
-// .NET. See ROADMAP.md for current status.
+// .NET. See docs/ROADMAP.md for current status.
 package main
 
 import (

@@ -72,7 +72,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Time (Duration + time.Time/Format), Console/GoFunc/struct value helpers | 🟡 | M | ✅ |
 | select runtime, ASCII fast-path, intern pool | 🚧 | M | 🟡 |
 
-## 4. Stdlib overlay (C# shim mechanism live; 191 conformance fixtures byte-exact; P0/P1/P2/P3 hardened, typed-box + goja + Gin running)
+## 4. Stdlib overlay (C# shim mechanism live; 199 conformance fixtures byte-exact; P0/P1/P2/P3/P4 hardened, typed-box + goja + Gin + Echo running)
 
 | Package(s) | State | Effort | MVP? |
 |---|---|---|---|
@@ -97,8 +97,9 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | goja | — runs a large JS subset (see goja status) | ✅ | L | ✅ |
 | regexp2 | goclr-safe overlay (unsafe→encoding/binary) | ✅ | M | ✅ |
 | x/sys/unix | dropped via go-isatty/sha3 overlays | ✅ | M | ✅ |
-| Gin v1.10.1 | compiles through validator/yaml/binding/render; x/net/http2 stack pending | 🟡 | L | ✅ |
-| Echo v4 | analyze-compatible; autocert/acme TLS subsystem pending | 🟡 | L | ✅ |
+| Gin v1.10.1 | runs end to end — router/middleware/binding/render + full CRUD over `database/sql` + the pure-Go SQLite engine | ✅ | L | ✅ |
+| Echo v4 | runs — router, path params, JSON, status codes serve on the CLR; `crypto/x509`+`acme`/`autocert` closure lowers (TLS path a no-op shim) | ✅ | L | ✅ |
+| KrakenD / Lura | measured — no goclr language gap is the blocker; the walls are third-party native deps (quic-go HTTP/3, Go `plugin`); fixed the two real goclr gaps it surfaced (type aliases, `regexp.FindAllStringSubmatch`) | 🟡 | XL | — |
 | ~200 stdlib pkgs in closure | overlay or direct compile | 🟡 | L | ✅ |
 
 ## 6. CLI & packaging
@@ -117,7 +118,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Item | State | Effort | MVP? |
 |---|---|---|---|
 | Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
-| 191 conformance fixtures (000–391), all byte-exact vs `go run` | ✅ | M | ✅ |
+| 199 conformance fixtures (000–400), all byte-exact vs `go run` (200 total, 1 skipped) | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |
@@ -270,6 +271,36 @@ shim-type method promoted from an embedded field). gin compiles through the
 `go-playground/validator` (which exercises `reflect` heavily), `yaml.v3`, and all of
 gin's form/header/query/JSON binding and rendering.
 
-**Remaining frontier:** the `x/net/http2` client/server internals (hpack and
-httpcommon compile; httptrace/http2 next), then the HTTP-server runtime, before gin
-runs end-to-end.
+**Status: gin runs end to end.** `examples/demo_gin` (router) and
+`examples/demo_gin_sql` (a Gin REST API over `database/sql` + the pure-Go zero-cgo
+SQLite engine `go-r2-sqlite`, full CRUD byte-accurate) both serve correct responses
+on the CLR. The server runtime bridges gin's `*Engine` across goclr's static-dispatch
+boundary via a per-`http.Handler` ServeHTTP adapter (`Http.RegisterHandler`), driven
+by an `HttpListener` loop. The HTTP/1 path is fully exercised; HTTP/2 (`x/net/http2`)
+is not on the served path.
+
+## Echo end-to-end status (2026-06)
+
+Echo v4 **runs** on the CLR (`examples/demo_echo`): `/health`→`ok`,
+`/ping`→`{"message":"pong"}`, `/hello/:name`→`{"hello":"x"}` (path params),
+`/missing`→404 with Echo's own JSON body. The whole framework lowers — including its
+`crypto/x509` + `acme`/`autocert` TLS closure (the TLS path is an honest no-op shim;
+plain HTTP/JSON is fully exercised) — with **no overlays** (real echo/acme Go
+compiled). Reaching it needed two compiler fixes (typing an opaque-shim field setter
+from the field's Go type so `http.Server.Handler = e` boxes correctly; removing
+`net.Listener` from the shim *method* registry so it dispatches as the interface it
+is) and a serving bridge that releases echo's own bound port to the `HttpListener`.
+
+## KrakenD / Lura distance (2026-06)
+
+Measured by compiling KrakenD's core framework, **Lura**
+(`github.com/luraproject/lura/v2`), through goclr: **no goclr language or compiler gap
+is the blocker.** Every wall is a third-party *native* dependency (overlay / build-tag
+territory): `go-playground/validator` unsafe (overlay exists), go-toml/v2's
+`SubsliceOffset` (now compiles directly — see the `reflect.SliceHeader` offset views),
+quic-go HTTP/3 (raw sockets + asm + unsafe — must be cut, as gin pinned to v1.10.1
+avoids), `x/net` asm, and Go `plugin` (external plugins, unportable to .NET; the core
+CE runtime runs without them). The probe surfaced two real goclr gaps, both fixed:
+`regexp.(*Regexp).FindAllStringSubmatch` and Go 1.22+ type aliases (`types.Unalias` in
+the type lowering). So the distance to KrakenD is an overlay/build-tag campaign on
+Lura's deps plus the plugin limit — not compiler work.

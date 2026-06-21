@@ -1,5 +1,5 @@
 // Command goclr is an experimental compiler that builds pure-Go projects into
-// .NET assemblies. See ROADMAP.md for the implemented surface vs. the milestones
+// .NET assemblies. See docs/ROADMAP.md for the implemented surface vs. the milestones
 // that are still in progress.
 package main
 

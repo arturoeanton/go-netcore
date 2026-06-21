@@ -73,13 +73,21 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | M3 | Large-program emitter: 4-byte metadata heap indices (`HeapSizes=0x07`), `InitLocals`, fat headers — required by goja-scale assemblies | ✅ |
 | M3 | Slice capacity semantics (`make`/`append` cap region holds element zeros); identical-layout struct conversion; promoted pointer-receiver method mutation through a pointer | ✅ |
 | M3 | **goja: compiles → loads → JITs → runs init → evaluates a large JS subset** (arithmetic, strings + methods, `Math`, objects, closures, `for`/`while`) | ✅ |
-| M3 | goja: array callbacks (`map`/`reduce`), `JSON.stringify` | 🚧 |
+| M3 | goja: array callbacks (`map`/`filter`/`reduce`/`sort`), `JSON.stringify`/`parse` | ✅ |
+| M3 | interface method-callback bridge (`container/heap` incl. named-slice impl, `io.Writer`, `io/fs.Stat`) | ✅ |
+| M3 | `unsafe.Pointer` safe idioms — `string↔[]byte` reinterprets + read-only `reflect.*Header` offset views (go-toml `SubsliceOffset`); pointer-arith / header writes rejected | ✅ |
+| M5 | **Echo v4 runs** — router, path params, JSON, status codes on the CLR; `crypto/x509`+`acme`/`autocert` closure lowers (TLS path a no-op shim) | ✅ |
 | M3 | `goclr test` (real `testing.T`); CI conformance matrix; stable compatibility report | 🚧 |
 
-**191 conformance fixtures pass byte-for-byte vs `go run`.** Tags
-`0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`,
-`0.0.27.goja-json-array-callbacks` (goja runs JSON + array callbacks),
-`0.0.28.reflect-type-descriptors` → `0.0.29.reflect-complete` (reflect descriptors).
+**199 conformance fixtures pass byte-for-byte vs `go run`** (200 total, one skipped).
+Recent tags: `0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`,
+`0.0.27.goja-json-array-callbacks` (goja JSON + array callbacks),
+`0.0.28.reflect-type-descriptors` → `0.0.29.reflect-complete` (reflect descriptors),
+`0.0.36.phase4-echo` (Echo serves on the CLR), `0.0.37` → `0.0.43` (shim-signature
+validator, interface method-callback bridge + `container/heap`, type-id unification),
+`0.0.44.lura-alias-regexp` (type aliases, `regexp.FindAllStringSubmatch`),
+`0.0.45.unsafe-string-slice` → `0.0.46.reflect-header-offset` (the `unsafe.Pointer`
+safe idioms).
 
 **reflect — runtime type descriptors.** `reflect` is now descriptor-backed (precise
 kind/name/string/fields/tags, `MapOf`/`SliceOf`/`PtrTo`, `Implements`/`AssignableTo`,
@@ -118,8 +126,8 @@ Tracks what is implemented vs outstanding. Done items are verified byte-exact vs
 - [x] **P1** net/http client+server, net TCP, crypto (sha/sha3/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio, log, container/list, os/exec, mime, net/mail, net/textproto, io/fs, flag
 - [x] **P2** encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM, hash family
 - [x] **P3** net/http/httptest + cookiejar, net UDP, log/slog, os/signal (real SIGINT/TERM), `database/sql` + `database/sql/driver` (+ the `go-r2-sqlite` engine compiled through goclr), mime/multipart
-- [ ] `container/heap` (needs an interface-method-callback bridge), `container/ring`
-- [ ] `encoding/gob`, full `encoding/xml`, `text/template` / `html/template`
+- [x] **P4** `crypto/x509` + `acme`/`autocert` closure (lowered for Echo; TLS path a no-op shim), `container/heap` (via the interface method-callback bridge, incl. the named-slice implementer), `encoding/xml` (real reflection Marshal/Encode + token API), `encoding/pem`/asn1, `reflect.SliceHeader`/`StringHeader` read-only offset views
+- [ ] `container/ring`, `encoding/gob`, `text/template` / `html/template`
 - [ ] `crypto/rsa·ecdsa·x509·tls` (full key/cert surface), `net/smtp`, `archive/zip·tar`, `runtime/debug`, `text/tabwriter` / `text/scanner`
 - [ ] `golang.org/x/sync/errgroup` (needs the external module to type-check), `google/uuid`
 
@@ -340,13 +348,15 @@ Known documented limitations:
 Whole, idiomatic apps across the target classes that must be byte-exact under
 `go run` vs `goclr run`, proving the compiler is application-agnostic (goja is a
 validation target, not the product). `business-json`, `cli-csv`, `rules-engine`,
-`http-basic` ✅; `goja` and `examples/demo_goja` ⏳ blocked on the typed-box.
+`http-basic` ✅; `goja` / `examples/demo_goja` ✅ (evaluates a large JS subset); Gin
+(`examples/demo_gin`, `examples/demo_gin_sql`) and Echo (`examples/demo_echo`) serve
+on the CLR.
 
 ### M3 — the typed-box keystone + goja running (largely done)
 
 `unsafe.Pointer` (goja's old blocker) is **solved** via `goclr.overlays/` +
 `encoding/binary`. The keystone — **per-value runtime type identity**, designed in
-`docs/DESIGN-typed-box.md` — is implemented and carried goja from "compiles
+`DESIGN-typed-box.md` — is implemented and carried goja from "compiles
 partway" to **evaluating JavaScript**:
 - ✅ **typed box**: `TypeId` on every boxed named value (named-primitive Stringers,
   `%T`, interface dispatch over representation-sharing types)
@@ -357,7 +367,8 @@ partway" to **evaluating JavaScript**:
   **slice capacity semantics**, and a long tail of codegen-correctness fixes that
   together make **goja compile, load, JIT, run init, and evaluate a large JS
   subset** (see `examples/demo_goja`, GAPS.md) — tagged `0.0.21`…`0.0.24`
-- 🚧 remaining JS surface: array callbacks (`map`/`reduce`), `JSON.stringify`
+- ✅ JS surface: array callbacks (`map`/`filter`/`reduce`/`sort`),
+  `JSON.stringify`/`parse` — byte-identical to `go run` (tag `0.0.27`)
 - 🚧 `goclr test` with a real `testing.T`; CI conformance matrix; stable
   HTML/JSON compatibility report
 

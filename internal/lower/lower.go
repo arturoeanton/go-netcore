@@ -885,7 +885,7 @@ func (c *lowerCtx) unsupported(pos token.Pos, what string) bool {
 		WithPackage(c.pkg.PkgPath).
 		WithPos(dp).
 		WithReason("the goclr backend (milestone M1) lowers functions, int/int32/bool/string locals, operators, if/for/switch, range-over-string, calls, structs, and println/print.").
-		WithSuggestion("see ROADMAP.md — pointers, slices, maps, and interfaces arrive in later increments."))
+		WithSuggestion("see docs/ROADMAP.md — pointers, slices, maps, and interfaces arrive in later increments."))
 	return false
 }
 
