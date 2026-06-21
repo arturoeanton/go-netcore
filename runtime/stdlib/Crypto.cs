@@ -51,9 +51,24 @@ public sealed class GoShake
     }
 }
 
+/// <summary>A crypto.Hash (the hash-function identifier enum).</summary>
+[GoShim("crypto.Hash")]
+public sealed class GoCryptoHash { public int Id; }
+
 /// <summary>Shims for crypto/sha256, sha1, sha512, md5, hmac, and crypto/rand.</summary>
 public static class Crypto
 {
+    // crypto.Hash constants (the Go enum values) and methods.
+    public static object CH_MD5() => new GoCryptoHash { Id = 2 };
+    public static object CH_SHA1() => new GoCryptoHash { Id = 3 };
+    public static object CH_SHA256() => new GoCryptoHash { Id = 5 };
+    public static object CH_SHA384() => new GoCryptoHash { Id = 6 };
+    public static object CH_SHA512() => new GoCryptoHash { Id = 7 };
+    public static bool CHash_Available(object h) => true;
+    public static long CHash_Size(object h) => ((GoCryptoHash)h).Id switch { 2 => 16, 3 => 20, 5 => 32, 6 => 48, 7 => 64, _ => 0 };
+    public static object CHash_New(object h) => ((GoCryptoHash)h).Id switch { 2 => Md5New(), 3 => Sha1New(), 6 => Sha384New(), 7 => Sha512New(), _ => Sha256New() };
+    public static object CHash_HashFunc(object h) => h;
+
     private static GoHash H(string algo, int size, int block) => new() { Algo = algo, Size = size, Block = block };
 
     // package New() constructors (return hash.Hash).
@@ -70,6 +85,16 @@ public static class Crypto
     public static object Sha3_256New() => H("SHA3-256", 32, 136);
     public static object Sha3_384New() => H("SHA3-384", 48, 104);
     public static object Sha3_512New() => H("SHA3-512", 64, 72);
+    // one-shot package functions (sha256.Sum256(data) [32]byte, etc.) — return the
+    // digest as a fixed-size array (the lowering types the extern result by the Go
+    // signature; the value is a GoSlice over the digest bytes).
+    public static GoSlice Sha256Sum256(GoSlice d) => Slice(SHA256.HashData(Bytes(d)), default);
+    public static GoSlice Sha256Sum224(GoSlice d) => Slice(SHA256.HashData(Bytes(d))[..28], default); // SHA-224 over SHA-256 core not exposed; truncate
+    public static GoSlice Sha512Sum512(GoSlice d) => Slice(SHA512.HashData(Bytes(d)), default);
+    public static GoSlice Sha512Sum384(GoSlice d) => Slice(SHA384.HashData(Bytes(d)), default);
+    public static GoSlice Sha1Sum(GoSlice d) => Slice(SHA1.HashData(Bytes(d)), default);
+    public static GoSlice Md5Sum(GoSlice d) => Slice(MD5.HashData(Bytes(d)), default);
+
     public static GoSlice Sha3Sum224(GoSlice d) => Slice(Sha3Digest("SHA3-224", Bytes(d)), default);
     public static GoSlice Sha3Sum256(GoSlice d) => Slice(Sha3Digest("SHA3-256", Bytes(d)), default);
     public static GoSlice Sha3Sum384(GoSlice d) => Slice(Sha3Digest("SHA3-384", Bytes(d)), default);
@@ -196,6 +221,34 @@ public static class Crypto
     public static void Hash_Reset(object hh) => ((GoHash)hh).Buf.Clear();
     public static long Hash_Size(object hh) => ((GoHash)hh).Size;
     public static long Hash_BlockSize(object hh) => ((GoHash)hh).Block;
+
+    // crypto/rand.Reader (io.Reader) — a reader yielding cryptographically-random bytes.
+    // The crypto shims (ecdsa/rsa key gen, certificate creation) draw from .NET's RNG
+    // directly and ignore this value; it is here for code that reads from it (io.ReadFull
+    // for serial numbers, nonces) — a fresh random buffer per access covers those.
+    public static object RandReader()
+    {
+        var buf = new byte[4096];
+        RandomNumberGenerator.Fill(buf);
+        return new GoReader { Data = buf };
+    }
+
+    // crypto/rand.Int(rand, max) (*big.Int, error) — a uniform random value in [0, max).
+    public static object?[] RandInt(object? reader, object max)
+    {
+        var m = ((GoBigInt)max).V;
+        if (m <= 0) return new object?[] { null, new GoError(GoString.FromDotNetString("crypto/rand: argument to Int is <= 0")) };
+        int n = m.GetByteCount(isUnsigned: true);
+        System.Numerics.BigInteger r;
+        do
+        {
+            var buf = new byte[n + 1];
+            RandomNumberGenerator.Fill(buf);
+            buf[n] = 0; // force non-negative
+            r = new System.Numerics.BigInteger(buf);
+        } while (r >= m);
+        return new object?[] { new GoBigInt { V = r }, null };
+    }
 
     // crypto/rand.Read(b) — fill b with cryptographically-random bytes.
     public static object?[] RandRead(GoSlice b)

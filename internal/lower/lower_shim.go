@@ -79,16 +79,27 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"EncodeToString": {"Hex", "EncodeToString"}, "DecodeString": {"Hex", "DecodeString"},
 		"EncodedLen": {"Hex", "EncodedLen"}, "DecodedLen": {"Hex", "DecodedLen"},
 	},
-	"crypto/sha256": {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}},
-	"crypto/sha1":   {"New": {"Crypto", "Sha1New"}},
-	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}},
+	"crypto/sha256": {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}, "Sum256": {"Crypto", "Sha256Sum256"}, "Sum224": {"Crypto", "Sha256Sum224"}},
+	"crypto/sha1":   {"New": {"Crypto", "Sha1New"}, "Sum": {"Crypto", "Sha1Sum"}},
+	"crypto/elliptic": {"P224": {"Crypto509", "P224"}, "P256": {"Crypto509", "P256"}, "P384": {"Crypto509", "P384"}, "P521": {"Crypto509", "P521"}},
+	"crypto/ecdsa":    {"GenerateKey": {"Crypto509", "EcdsaGenerateKey"}},
+	"encoding/asn1":   {"Marshal": {"Asn1", "Marshal"}, "Unmarshal": {"Asn1", "Unmarshal"}},
+	"crypto/rsa":      {"GenerateKey": {"Crypto509", "RsaGenerateKey"}},
+	"crypto/x509": {
+		"CreateCertificate": {"Crypto509", "CreateCertificate"}, "ParseCertificate": {"Crypto509", "ParseCertificate"}, "ParseCertificates": {"Crypto509", "ParseCertificates"},
+		"MarshalECPrivateKey": {"Crypto509", "MarshalECPrivateKey"}, "ParseECPrivateKey": {"Crypto509", "ParseECPrivateKey"},
+		"MarshalPKCS1PrivateKey": {"Crypto509", "MarshalPKCS1PrivateKey"}, "ParsePKCS1PrivateKey": {"Crypto509", "ParsePKCS1PrivateKey"},
+		"ParsePKCS8PrivateKey": {"Crypto509", "ParsePKCS8PrivateKey"},
+	},
+	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}, "Sum512": {"Crypto", "Sha512Sum512"}, "Sum384": {"Crypto", "Sha512Sum384"}},
+	"crypto/md5":    {"New": {"Crypto", "Md5New"}, "Sum": {"Crypto", "Md5Sum"}},
 	"crypto/sha3": {
 		"New224": {"Crypto", "Sha3_224New"}, "New256": {"Crypto", "Sha3_256New"}, "New384": {"Crypto", "Sha3_384New"}, "New512": {"Crypto", "Sha3_512New"},
 		"Sum224": {"Crypto", "Sha3Sum224"}, "Sum256": {"Crypto", "Sha3Sum256"}, "Sum384": {"Crypto", "Sha3Sum384"}, "Sum512": {"Crypto", "Sha3Sum512"},
 		"NewSHAKE128": {"Crypto", "NewSHAKE128"}, "NewSHAKE256": {"Crypto", "NewSHAKE256"}, "NewCSHAKE128": {"Crypto", "NewCSHAKE128"}, "NewCSHAKE256": {"Crypto", "NewCSHAKE256"},
 	},
-	"crypto/md5":      {"New": {"Crypto", "Md5New"}},
-	"crypto/rand":     {"Read": {"Crypto", "RandRead"}},
+	"crypto/rand":     {"Read": {"Crypto", "RandRead"}, "Int": {"Crypto", "RandInt"}},
+	"runtime/debug":   {"ReadBuildInfo": {"Debug", "ReadBuildInfo"}, "Stack": {"Debug", "Stack"}, "PrintStack": {"Debug", "PrintStack"}, "SetGCPercent": {"Debug", "SetGCPercent"}, "FreeOSMemory": {"Debug", "FreeOSMemory"}},
 	"crypto/hmac":     {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
 	"crypto/subtle":   {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}},
 	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
@@ -180,6 +191,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"}, "Error": {"Http", "Error"},
 		"NewResponseController": {"Http", "NewResponseController"}, "SetCookie": {"Http", "SetCookie"},
 		"ServeFile": {"Http", "ServeFile"}, "FileServer": {"Http", "FileServer"}, "StripPrefix": {"Http", "StripPrefix"}, "Serve": {"Http", "Serve"}, "ListenAndServeTLS": {"Http", "ListenAndServeTLS"},
+		"NewRequest": {"Http", "NewRequest"}, "NewRequestWithContext": {"Http", "NewRequestWithContext"}, "ParseTime": {"Http", "ParseTime"},
 	},
 	"math/rand/v2": {
 		"IntN": {"Rand2", "IntN"}, "Int64N": {"Rand2", "Int64N"}, "Int32N": {"Rand2", "Int32N"}, "UintN": {"Rand2", "UintN"},
@@ -359,6 +371,16 @@ var opaqueShimTypes = map[string]bool{
 	"net/http.ServeMux":            true,
 	"net/http.HTTP2Config":         true,
 	"net/http.Protocols":           true,
+	"crypto.Hash":                  true,
+	"crypto/elliptic.Curve":        true,
+	"crypto/ecdsa.PrivateKey":      true,
+	"crypto/ecdsa.PublicKey":       true,
+	"crypto/rsa.PrivateKey":        true,
+	"crypto/rsa.PublicKey":         true,
+	"crypto/x509.Certificate":      true,
+	"crypto/x509.CertificateRequest": true,
+	"crypto/x509/pkix.Name":        true,
+	"crypto/x509/pkix.Extension":   true,
 	"crypto/tls.Config":            true,
 	"crypto/tls.Conn":              true,
 	"crypto/tls.ConnectionState":   true,
@@ -389,6 +411,7 @@ var opaqueShimTypes = map[string]bool{
 	"mime/multipart.FileHeader":    true,
 	"mime/multipart.File":          true,
 	"net/http.Cookie":              true,
+	"net/http.Client":              true,
 	"net/http/cookiejar.Jar":       true,
 	"log/slog.Logger":              true,
 	"log/slog.Attr":                true,
@@ -420,6 +443,13 @@ var shimVarRegistry = map[string]shimFunc{
 	"log/slog.MessageKey":            {"Slog", "KeyMessage"},
 	"log/slog.LevelKey":              {"Slog", "KeyLevel"},
 	"log/slog.SourceKey":             {"Slog", "KeySource"},
+	"crypto/rand.Reader":             {"Crypto", "RandReader"},
+	"crypto.MD5":                     {"Crypto", "CH_MD5"},
+	"crypto.SHA1":                    {"Crypto", "CH_SHA1"},
+	"crypto.SHA256":                  {"Crypto", "CH_SHA256"},
+	"crypto.SHA384":                  {"Crypto", "CH_SHA384"},
+	"crypto.SHA512":                  {"Crypto", "CH_SHA512"},
+	"net/http.DefaultClient":         {"Http", "DefaultClient"},
 	"os.Interrupt":                   {"Os", "Interrupt"},
 	"os.Kill":                        {"Os", "Kill"},
 	"syscall.SIGHUP":                 {"Syscall", "SIGHUP"},
@@ -566,6 +596,28 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"log/slog.Attr": {
 		"Key": {"Slog", "Attr_Key"}, "Value": {"Slog", "Attr_Value"},
 	},
+	"crypto/x509.Certificate": {
+		"Subject": {"Crypto509", "Cert_Subject"}, "DNSNames": {"Crypto509", "Cert_DNSNames"},
+		"Raw": {"Crypto509", "Cert_Raw"}, "NotBefore": {"Crypto509", "Cert_NotBefore"}, "NotAfter": {"Crypto509", "Cert_NotAfter"},
+		"Version": {"Crypto509", "Cert_Version"}, "Issuer": {"Crypto509", "Cert_Issuer"}, "KeyUsage": {"Crypto509", "Cert_KeyUsage"},
+		"ExtKeyUsage": {"Crypto509", "Cert_ExtKeyUsage"}, "ExtraExtensions": {"Crypto509", "Cert_ExtraExtensions"},
+		"IPAddresses": {"Crypto509", "Cert_IPAddresses"}, "PublicKey": {"Crypto509", "Cert_PublicKey"},
+	},
+	"crypto/x509/pkix.Name": {
+		"CommonName": {"Crypto509", "PkixName_CommonName"}, "Organization": {"Crypto509", "PkixName_Organization"},
+	},
+	"crypto/rsa.PublicKey": {
+		"N": {"Crypto509", "RsaKey_N"}, "E": {"Crypto509", "RsaKey_E"},
+	},
+	"crypto/ecdsa.PublicKey": {
+		"X": {"Crypto509", "EcKey_X"}, "Y": {"Crypto509", "EcKey_Y"}, "Curve": {"Crypto509", "EcKey_Curve"},
+	},
+	"crypto/ecdsa.PrivateKey": {
+		"PublicKey": {"Crypto509", "EcdsaPublic"},
+	},
+	"crypto/rsa.PrivateKey": {
+		"PublicKey": {"Crypto509", "RsaPublic"},
+	},
 	"sync.Cond": {
 		"L": {"Sync", "Cond_L"},
 	},
@@ -674,6 +726,18 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"log/slog.HandlerOptions": {
 		"Level": {"Slog", "HO_SetLevel"}, "AddSource": {"Slog", "HO_SetAddSource"}, "ReplaceAttr": {"Slog", "HO_SetReplaceAttr"},
 	},
+	"crypto/x509.Certificate": {
+		"SerialNumber": {"Crypto509", "Cert_SetSerialNumber"}, "Subject": {"Crypto509", "Cert_SetSubject"},
+		"NotBefore": {"Crypto509", "Cert_SetNotBefore"}, "NotAfter": {"Crypto509", "Cert_SetNotAfter"},
+		"DNSNames": {"Crypto509", "Cert_SetDNSNames"}, "KeyUsage": {"Crypto509", "Cert_SetKeyUsage"},
+		"ExtKeyUsage": {"Crypto509", "Cert_SetExtKeyUsage"}, "IsCA": {"Crypto509", "Cert_SetIsCA"},
+		"BasicConstraintsValid": {"Crypto509", "Cert_SetBasicConstraintsValid"},
+		"ExtraExtensions": {"Crypto509", "Cert_SetExtraExtensions"}, "IPAddresses": {"Crypto509", "Cert_SetIPAddresses"},
+		"PublicKey": {"Crypto509", "Cert_SetPublicKey"},
+	},
+	"crypto/x509/pkix.Name": {
+		"CommonName": {"Crypto509", "PkixName_SetCommonName"}, "Organization": {"Crypto509", "PkixName_SetOrganization"}, "Country": {"Crypto509", "PkixName_SetCountry"},
+	},
 	"encoding/xml.StartElement": {
 		"Name": {"Xml", "Start_SetName"}, "Attr": {"Xml", "Start_SetAttr"},
 	},
@@ -682,6 +746,9 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/xml.Attr": {
 		"Name": {"Xml", "Attr_SetName"}, "Value": {"Xml", "Attr_SetValue"},
+	},
+	"net/http.Client": {
+		"Timeout": {"Http", "Client_SetTimeout"}, "Transport": {"Http", "Client_SetTransport"}, "CheckRedirect": {"Http", "Client_SetCheckRedirect"}, "Jar": {"Http", "Client_SetJar"},
 	},
 	"net/http.Cookie": {
 		"Name": {"Http", "Cookie_SetName"}, "Value": {"Http", "Cookie_SetValue"}, "Path": {"Http", "Cookie_SetPath"},
@@ -763,6 +830,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"sync/atomic.Value":          {"Atomic", "NewValue"},
 	"net/http.Server":            {"HttpTypes", "NewServer"},
 	"net/http.Cookie":            {"Http", "NewCookie"},
+	"net/http.Client":            {"Http", "NewClient"},
 	"log.Logger":                 {"Log", "NewLoggerZero"},
 	"net/http.Transport":         {"HttpTypes", "NewTransport"},
 	"crypto/tls.Config":          {"HttpTypes", "NewTlsConfig"},
@@ -787,6 +855,10 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"net.UDPAddr":                {"Net", "NewUDPAddr"},
 	"log/slog.Attr":              {"Slog", "NewAttr"},
 	"log/slog.HandlerOptions":    {"Slog", "NewHandlerOptions"},
+	"crypto/x509/pkix.Name":      {"Crypto509", "NewPkixName"},
+	"crypto/x509/pkix.Extension": {"Crypto509", "NewPkixExt"},
+	"crypto/x509.Certificate":    {"Crypto509", "NewCertificate"},
+	"crypto/x509.CertificateRequest": {"Crypto509", "NewCertReq"},
 	"syscall.Flock_t":            {"Syscall", "NewFlockT"},
 	"encoding/xml.Name":          {"Xml", "NewXmlName"},
 	"encoding/xml.StartElement":  {"Xml", "NewXmlStart"},
@@ -949,6 +1021,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net/http/cookiejar.Jar": {
 		"SetCookies": {"Cookiejar", "Jar_SetCookies"}, "Cookies": {"Cookiejar", "Jar_Cookies"},
 	},
+	"net/http.Client": {
+		"Do": {"Http", "Client_Do"}, "Get": {"Http", "Client_Get"}, "Post": {"Http", "Client_Post"}, "Head": {"Http", "Client_Head"},
+	},
 	"log/slog.Logger": {
 		"Info": {"Slog", "Logger_Info"}, "Debug": {"Slog", "Logger_Debug"}, "Warn": {"Slog", "Logger_Warn"},
 		"Error": {"Slog", "Logger_Error"}, "With": {"Slog", "Logger_With"},
@@ -956,6 +1031,11 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"syscall.Signal": {
 		"String": {"Ossignal", "Signal_String"}, "Signal": {"Ossignal", "Signal_Signal"},
 	},
+	"crypto.Hash": {
+		"Available": {"Crypto", "CHash_Available"}, "Size": {"Crypto", "CHash_Size"}, "New": {"Crypto", "CHash_New"}, "HashFunc": {"Crypto", "CHash_HashFunc"},
+	},
+	"crypto/ecdsa.PrivateKey": {"Public": {"Crypto509", "EcdsaPublic"}},
+	"crypto/rsa.PrivateKey":   {"Public": {"Crypto509", "RsaPublic"}},
 	"net/http/httptest.Server": {
 		"Close": {"Httptest", "Server_Close"}, "Client": {"Httptest", "Server_Client"}, "Start": {"Httptest", "Server_Start"},
 	},

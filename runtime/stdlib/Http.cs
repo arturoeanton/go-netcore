@@ -37,6 +37,10 @@ public sealed class GoCookie
     public bool HttpOnly;
 }
 
+/// <summary>An *http.Client (over the pooled static HttpClient).</summary>
+[GoShim("net/http.Client")]
+public sealed class GoHttpClient { public long TimeoutNanos; }
+
 /// <summary>An *http.Request handle (server side).</summary>
 public sealed class GoRequest { public string Method = ""; public GoUrl Url = new(); public GoReader Body = new(); public string Host = ""; public string RemoteAddr = ""; public GoMap? Form; public GoMap? PostForm; public GoMap? Header; public byte[] RawBody = System.Array.Empty<byte>(); public readonly GoFieldBag Extra = new(); }
 
@@ -291,6 +295,74 @@ public static class Http
     // Zero value for an http.Cookie composite literal (&http.Cookie{...}); field
     // initializers then assign through Cookie_SetName/Value/... on this instance.
     public static object NewCookie() => new GoCookie();
+
+    // http.NewRequest(method, url, body) (*Request, error) — a client request.
+    public static object?[] NewRequest(GoString method, GoString url, object? body)
+    {
+        try
+        {
+            var u = new GoUrl();
+            string t = url.ToDotNetString();
+            if (t.StartsWith("http://") || t.StartsWith("https://"))
+            {
+                var p = new System.Uri(t);
+                u.Scheme = p.Scheme; u.Host = p.Authority; u.Path = p.AbsolutePath; u.RawQuery = p.Query.TrimStart('?');
+            }
+            else u.Path = t;
+            byte[] raw = body == null ? System.Array.Empty<byte>() : Readers.Drain(body);
+            return new object?[] { new GoRequest { Method = method.ToDotNetString(), Url = u, Body = new GoReader { Data = raw }, RawBody = raw, Host = u.Host, Header = GoMaps.Make() }, null };
+        }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("http: " + e.Message)) }; }
+    }
+    public static object?[] NewRequestWithContext(object? ctx, GoString method, GoString url, object? body) => NewRequest(method, url, body);
+
+    // http.Client: zero value, DefaultClient, and the request methods over the pooled
+    // static HttpClient (the per-client Timeout/Transport are accepted but not applied).
+    public static object NewClient() => new GoHttpClient();
+    public static object DefaultClient() => new GoHttpClient();
+    public static void Client_SetTimeout(object c, long t) => ((GoHttpClient)c).TimeoutNanos = t;
+    public static void Client_SetTransport(object c, object? v) { }
+    public static void Client_SetCheckRedirect(object c, object? v) { }
+    public static void Client_SetJar(object c, object? v) { }
+
+    private static string ReqUrl(GoRequest r) =>
+        (r.Url.Scheme.Length > 0 ? r.Url.Scheme + "://" + r.Url.Host : "") + (r.Url.Path.Length > 0 ? r.Url.Path : "/") +
+        (r.Url.RawQuery.Length > 0 ? "?" + r.Url.RawQuery : "");
+
+    public static object?[] Client_Do(object c, object req)
+    {
+        try
+        {
+            var r = (GoRequest)req;
+            var msg = new HttpRequestMessage(new HttpMethod(r.Method.Length > 0 ? r.Method : "GET"), ReqUrl(r));
+            if (r.RawBody.Length > 0) msg.Content = new ByteArrayContent(r.RawBody);
+            if (r.Header is GoMap h && h.Data != null)
+                foreach (var (k, v) in h.Data)
+                    if (k is GoString gk && v is GoSlice gs && gs.Len > 0 && gs.Data![gs.Off] is GoString gv)
+                        try { msg.Headers.TryAddWithoutValidation(gk.ToDotNetString(), gv.ToDotNetString()); } catch { }
+            return new object?[] { Make(Client.SendAsync(msg).GetAwaiter().GetResult()), null };
+        }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("http: " + e.Message)) }; }
+    }
+    public static object?[] Client_Get(object c, GoString url) => Get(url);
+    public static object?[] Client_Post(object c, GoString url, GoString ct, object? body) => Post(url, ct, body);
+    public static object?[] Client_Head(object c, GoString url)
+    {
+        try { var m = new HttpRequestMessage(HttpMethod.Head, url.ToDotNetString()); return new object?[] { Make(Client.SendAsync(m).GetAwaiter().GetResult()), null }; }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("Head " + url.ToDotNetString() + ": " + e.Message)) }; }
+    }
+
+    // http.ParseTime(text) (time.Time, error) — the three HTTP date formats.
+    public static object?[] ParseTime(GoString text)
+    {
+        string s = text.ToDotNetString();
+        var epoch = new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc);
+        foreach (var fmt in new[] { "ddd, dd MMM yyyy HH:mm:ss 'GMT'", "dddd, dd-MMM-yy HH:mm:ss 'GMT'", "ddd MMM d HH:mm:ss yyyy", "ddd MMM  d HH:mm:ss yyyy" })
+            if (System.DateTime.TryParseExact(s, fmt, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dt))
+                return new object?[] { new GoTime { N = (dt.ToUniversalTime() - epoch).Ticks * 100 }, null };
+        return new object?[] { new GoTime { IsZero = true }, new GoError(GoString.FromDotNetString("http: invalid time")) };
+    }
 
     // (*http.Request).Cookie(name) (*http.Cookie, error): parse the Cookie header.
     public static object?[] Req_Cookie(object r, GoString name)
