@@ -151,6 +151,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Float64": {"Rand", "Float64"}, "Int63": {"Rand", "Int63"}, "Int": {"Rand", "Int"},
 		"Int63n": {"Rand", "Int63n"}, "Intn": {"Rand", "Intn"}, "Perm": {"Rand", "Perm"}, "Seed": {"Rand", "Seed"},
 	},
+	"sync": {"NewCond": {"Sync", "NewCond"}},
 	"sync/atomic": {
 		"AddInt64": {"Atomic", "AddInt64"}, "AddInt32": {"Atomic", "AddInt32"}, "AddUint64": {"Atomic", "AddUint64"},
 		"LoadInt64": {"Atomic", "LoadInt64"}, "LoadInt32": {"Atomic", "LoadInt32"}, "LoadUint64": {"Atomic", "LoadUint64"},
@@ -253,6 +254,7 @@ var opaqueShimTypes = map[string]bool{
 	"reflect.Type":                 true,
 	"reflect.Value":                true,
 	"sync.Mutex":                   true,
+	"sync.Cond":                    true,
 	"sync/atomic.Value":            true,
 	"sync/atomic.Bool":             true,
 	"sync.RWMutex":                 true,
@@ -406,6 +408,9 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"net.IPNet": {
 		"IP": {"Net", "IPNet_IP"},
 	},
+	"sync.Cond": {
+		"L": {"Sync", "Cond_L"},
+	},
 	"net/mail.Address": {
 		"Name": {"Mail", "Address_Name"}, "Address": {"Mail", "Address_Address"},
 	},
@@ -459,6 +464,7 @@ var opaqueShimClone = map[string]shimFunc{
 }
 
 var shimFieldSetRegistry = map[string]map[string]shimFunc{
+	"sync.Cond": {"L": {"Sync", "Cond_SetL"}},
 	"net/url.URL": {
 		"Path": {"Url", "URL_SetPath"}, "Scheme": {"Url", "URL_SetScheme"},
 		"Host": {"Url", "URL_SetHost"}, "RawQuery": {"Url", "URL_SetRawQuery"},
@@ -506,6 +512,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"sync.Once":         {"Sync", "NewOnce"},
 	"sync.Map":          {"Sync", "NewMap"},
 	"sync.Pool":         {"Sync", "NewPool"},
+	"sync.Cond":         {"Sync", "NewCondZero"},
 	"sync/atomic.Value": {"Atomic", "NewValue"},
 	"sync/atomic.Bool":  {"Atomic", "NewBool"},
 	"strings.Builder":   {"StringsBuilder", "New"},
@@ -754,6 +761,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"sync.Mutex": {
 		"Lock": {"Sync", "Mutex_Lock"}, "Unlock": {"Sync", "Mutex_Unlock"}, "TryLock": {"Sync", "Mutex_TryLock"},
+	},
+	"sync.Cond": {
+		"Wait": {"Sync", "Cond_Wait"}, "Signal": {"Sync", "Cond_Signal"}, "Broadcast": {"Sync", "Cond_Broadcast"},
 	},
 	"sync/atomic.Value": {
 		"Load": {"Atomic", "Value_Load"}, "Store": {"Atomic", "Value_Store"}, "Swap": {"Atomic", "Value_Swap"}, "CompareAndSwap": {"Atomic", "Value_CompareAndSwap"},

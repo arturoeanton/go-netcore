@@ -4,6 +4,8 @@ using System.Threading;
 using GoCLR.Runtime;
 
 public sealed class GoMutex { public readonly SemaphoreSlim Sem = new(1, 1); }
+
+public sealed class GoCond { public object? L; public readonly object Mon = new(); }
 public sealed class GoRWMutex { public readonly SemaphoreSlim Sem = new(1, 1); }
 public sealed class GoWaitGroup { public int Count; public readonly object Gate = new(); }
 public sealed class GoOnce { public int Done; public readonly object Gate = new(); }
@@ -78,4 +80,16 @@ public static class Sync
     }
     public static object?[] Map_LoadAndDelete(object m, object key) =>
         ((GoSyncMap)m).D.TryRemove(key, out var v) ? new object?[] { v, true } : new object?[] { null, false };
+
+    // sync.Cond: condition variable. L is the associated Locker. goclr's Wait/Signal
+    // use a .NET monitor; the associated lock is not released across Wait (that would
+    // require an interface back-call), so this is a best-effort Cond — adequate for the
+    // x/net/http2 pipe, which is dead weight under the shimmed HttpListener server.
+    public static object NewCond(object? l) => new GoCond { L = l };
+    public static object NewCondZero() => new GoCond();
+    public static object? Cond_L(object c) => ((GoCond)c).L;
+    public static void Cond_SetL(object c, object? l) => ((GoCond)c).L = l;
+    public static void Cond_Wait(object co) { var c = (GoCond)co; lock (c.Mon) System.Threading.Monitor.Wait(c.Mon, 50); }
+    public static void Cond_Signal(object co) { var c = (GoCond)co; lock (c.Mon) System.Threading.Monitor.Pulse(c.Mon); }
+    public static void Cond_Broadcast(object co) { var c = (GoCond)co; lock (c.Mon) System.Threading.Monitor.PulseAll(c.Mon); }
 }
