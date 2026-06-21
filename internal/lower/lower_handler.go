@@ -107,6 +107,15 @@ func (c *lowerCtx) buildMethodAdapter(m *goir.Method, src recvSource) int {
 		cl.emitUnbox(goir.PtrType(recvType))
 		cl.emit(goir.Op{Code: goir.OpPtrGet})
 		cl.emitUnbox(recvType)
+	case valBridge:
+		// A value receiver reached through the bridge: the interface value may arrive as a
+		// GoPtr (&v stored), a GoNamed (named non-struct value), or a bare struct value.
+		// Bridge.RecvValue normalizes all three to the receiver payload, then unbox to T.
+		cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Bridge", Method: "RecvValue",
+			Params: []goir.Type{goir.TObject}, Ret: goir.TObject,
+		}})
+		cl.emitUnbox(recvType)
 	}
 	// Each declared param from args[i].
 	for i := 1; i < len(m.Params); i++ {
@@ -149,7 +158,15 @@ func (c *lowerCtx) collectBridgeMethods() {
 			continue
 		}
 		for named, st := range c.structReg {
-			c.registerBridgeAdapters(named, st.Id, iface)
+			if c.registerBridgeAdapters(named, st.Id, iface) {
+				// Link the CLR struct name to its id so an implementer reached BY VALUE
+				// (a value-receiver struct boxed as its CLR struct) resolves to the same
+				// adapter id its pointer carries.
+				if c.bridgeClrLinks == nil {
+					c.bridgeClrLinks = map[string]int64{}
+				}
+				c.bridgeClrLinks[st.Name] = int64(st.Id)
+			}
 		}
 		// Named non-struct implementers (a typed-box type like `type IntHeap []int`
 		// reached as *IntHeap, or a named map reached by value): keyed by the same
@@ -189,13 +206,16 @@ func (c *lowerCtx) lookupNamedType(name string) *types.Named {
 	return c.namedByName[name]
 }
 
-// registerBridgeAdapters: if struct type `named` implements `iface`, generate an adapter
-// for each interface method and record it under the type id the *T (GoPtr) carries.
-func (c *lowerCtx) registerBridgeAdapters(named *types.Named, typeID int, iface *types.Interface) {
+// registerBridgeAdapters: if type `named` implements `iface`, generate an adapter for each
+// interface method and record it under the type id the implementer's value carries (a *T
+// GoPtr, a GoNamed for a named non-struct, or the struct value's CLR-linked id). Returns
+// whether any adapter was registered.
+func (c *lowerCtx) registerBridgeAdapters(named *types.Named, typeID int, iface *types.Interface) bool {
 	ptr := types.NewPointer(named)
 	if !types.Implements(ptr, iface) && !types.Implements(named, iface) {
-		return
+		return false
 	}
+	registered := false
 	for i := 0; i < iface.NumMethods(); i++ {
 		im := iface.Method(i)
 		obj, _, _ := types.LookupFieldOrMethod(ptr, true, im.Pkg(), im.Name())
@@ -209,9 +229,10 @@ func (c *lowerCtx) registerBridgeAdapters(named *types.Named, typeID int, iface 
 		}
 		c.needsInvoker = true
 		c.invokeMethod()
-		// The bridge always hands the adapter a *T (GoPtr): a pointer-receiver method
-		// uses it directly, a value-receiver method dereferences to the struct value.
-		src := ptrDeref
+		// A pointer-receiver method takes the *T (GoPtr) directly; a value-receiver method
+		// goes through valBridge, which normalizes whatever form the value arrived in
+		// (GoPtr when &v was stored, GoNamed for a named value, or a bare struct value).
+		src := valBridge
 		if isPointerType(fn.Type().(*types.Signature).Recv().Type()) {
 			src = ptrDirect
 		}
@@ -220,12 +241,23 @@ func (c *lowerCtx) registerBridgeAdapters(named *types.Named, typeID int, iface 
 			method:    im.Name(),
 			closureID: c.buildMethodAdapter(m, src),
 		})
+		registered = true
 	}
+	return registered
 }
 
 // emitBridgeRegistrations appends the startup calls that register every collected
 // method-callback adapter with the runtime, keyed by (implementing type id, method name).
 func (l *funcLowerer) emitBridgeRegistrations() {
+	// Link CLR struct names -> dispatch ids first, so a by-value struct receiver resolves.
+	for clrName, id := range l.bridgeClrLinks {
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: clrName})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Bridge", Method: "LinkClrId",
+			Params: []goir.Type{goir.TString, goir.TInt64}, Ret: goir.TVoid,
+		}})
+	}
 	for _, br := range l.bridges {
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(br.closureID)})
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})

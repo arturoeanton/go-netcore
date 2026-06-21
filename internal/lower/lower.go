@@ -59,7 +59,10 @@ type lowerCtx struct {
 	// bridges holds generated method-callback adapters (container/heap, …) to register
 	// with the runtime at startup; namedByName memoizes the import-closure type lookup.
 	bridges     []bridgeReg
-	namedByName map[string]*types.Named
+	// bridgeClrLinks maps a CLR struct type name -> its dispatch id, for bridge implementers
+	// reached BY VALUE (a value-receiver struct boxed as its CLR struct carries no GoPtr id).
+	bridgeClrLinks map[string]int64
+	namedByName    map[string]*types.Named
 	root        *types.Package // main package; its import closure spans the whole program
 	// typeIdSeq is ONE counter shared by struct ids and typed-box named ids, so every
 	// runtime-dispatched type (a struct reached as *T, or a named non-struct reached as a

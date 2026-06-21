@@ -28,6 +28,7 @@ const (
 	ptrDeref                      // arg is a GoPtr; dereference to the struct value
 	ptrDirect                     // arg is a GoPtr; pass it as the pointer receiver
 	namedUnwrap                   // arg is a GoNamed; unwrap, then unbox to the underlying value
+	valBridge                     // bridge value receiver: normalize any form (GoPtr/GoNamed/struct value) via Bridge.RecvValue
 )
 
 // collectStringers finds every struct type with a String() or Error() method and

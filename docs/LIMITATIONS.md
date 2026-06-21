@@ -146,18 +146,19 @@ module):
   (`Bridge.CallMethod` + compiler-generated per-method adapters; see
   `DESIGN-callback-bridge.md`). Struct ids and typed-box named ids now share one
   counter, so `&IntHeap{...}` carries `IntHeap`'s unified id and the bridge resolves its
-  methods through the pointer. **Remaining bridge gap:** an implementer reached BY VALUE
-  rather than through a pointer — a value-receiver struct passed by value, or a named
-  map/slice passed by value (`fstest.MapFS`) — isn't dispatched: the boxed value carries
-  no pointer id (struct value) / the generated adapter expects a `GoPtr` to deref (named
-  value). Pass such implementers by pointer.
+  methods through the pointer. Implementers reached **by value** (a value-receiver struct
+  passed by value, a named non-struct value) are also dispatched: `Bridge.TypeIdOf`
+  recovers a struct value's id from its CLR type (a compiler-emitted `LinkClrId` map), and
+  value-receiver adapters normalize any receiver form via `Bridge.RecvValue` (fixture
+  401_bridge_byvalue_writer).
 - **`io/fs.Stat`** — real over **`os.DirFS`** and any `fs.FS` whose `Open` returns an
   `*os.File` (echo's defaultFS, `http.FS(os.DirFS(...))`): the `fsys.Open` call goes
   through the callback bridge and an `os.File`-backed `FileInfo` is read back. A user
   `fs.FS` whose `Open` returns the program's OWN `fs.File`/`fs.FileInfo` types is not
   dispatched (`io/fs.FileInfo` is an interface in the shim method registry, assuming
-  `GoFileInfo`); such a call returns a clean not-found rather than crashing. Value-receiver
-  / named-map `fs.FS` likewise fall back (bridge type-id covers GoPtr/GoNamed only).
+  `GoFileInfo`); such a call returns a clean not-found rather than crashing. (A
+  value-receiver / named-map `fs.FS` now resolves through the by-value bridge support; the
+  unresolved piece is the returned `fs.FileInfo` interface-dispatch.)
 - **`x/sync/errgroup`** — shim written, but the import needs the external x/sync
   module present to type-check.
 - **`google/uuid`** — not yet shimmed.

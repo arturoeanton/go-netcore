@@ -78,10 +78,15 @@ non-struct type tags its `GoPtr` with that type's id (`ptrNewId`), and
 (fixture 395_heap_named_slice, byte-exact). `struct.Id` is a dispatch key only (the
 metadata `TypeDefRow` is assigned separately in emit), so the change is invisible to the
 emitter; conformance 194 + typed-box/stringer/interface-dispatch all stay green.
-**Still open:** an implementer reached BY VALUE (a value-receiver struct passed by value
-→ boxed struct value has no pointer id; a named map/slice passed by value → the adapter
-expects a `GoPtr` to deref). Needs `TypeIdOf` to recover a struct value's id from its CLR
-class + the adapter to handle a non-`GoPtr` receiver form.
+**By-value implementers — DONE** (fixture 401_bridge_byvalue_writer). An implementer
+reached BY VALUE (a value-receiver struct passed by value, a named non-struct value)
+now dispatches: (1) `Bridge.TypeIdOf` recovers a struct value's id from its CLR type via
+a `Bridge.LinkClrId(clrName, id)` map the compiler emits for every struct with bridge
+adapters (a `GoPtr`/`GoNamed` value still carries its id directly); (2) value-receiver
+adapters use the `valBridge` receiver source, which calls `Bridge.RecvValue` to normalize
+whatever form the value arrives in — a `GoPtr` (`&v` stored) is dereferenced, a `GoNamed`
+is unwrapped, a bare struct value is used as-is — before unboxing to the receiver type.
+So the same value-receiver type dispatches whether stored as a value or as `&v`.
 
 ## After heap: remove the real hacks (each its own slice)
 - ✅ **DONE** — `Fmt.WriteTo`: `io.Writer` is now a `bridgeInterface`, so when `w` is a
@@ -105,8 +110,9 @@ class + the adapter to handle a non-`GoPtr` receiver form.
   `io/fs.FileInfo` sits in `shimMethodRegistry` (an interface there, like the old
   `net.Listener` bug) so `fi.Name()` would hit the GoFileInfo cast. Fixing it needs
   `io/fs.FileInfo` removed from the method registry + `GoFileInfo` anchored as a concrete
-  implementer (no public concrete Go type exists, unlike `net.TCPListener`). Value-receiver
-  / named-map `fs.FS` also fall back (the bridge type-id only covers GoPtr/GoNamed today).
+  implementer (no public concrete Go type exists, unlike `net.TCPListener`). A
+  value-receiver / named-map `fs.FS` is now resolved by the by-value bridge support above
+  (`fsys.Open` dispatches); only the returned `fs.FileInfo` interface-dispatch remains.
 - `(*http.Server).Serve`: optional — drive `CallMethod(l, "Accept")` in a loop and speak
   HTTP/1.1 on the conn (removes the `Bound`-port-release bridge); larger, do last.
 
