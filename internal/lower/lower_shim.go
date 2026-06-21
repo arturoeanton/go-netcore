@@ -294,6 +294,9 @@ var opaqueShimTypes = map[string]bool{
 	"net.PacketConn":               true,
 	"net/http.ResponseWriter":      true,
 	"net/http.Request":             true,
+	"net/http.Server":              true,
+	"net/http.Transport":           true,
+	"crypto/tls.Config":            true,
 	"os/exec.Cmd":                  true,
 	"container/list.List":          true,
 	"container/list.Element":       true,
@@ -414,6 +417,15 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"net/mail.Address": {
 		"Name": {"Mail", "Address_Name"}, "Address": {"Mail", "Address_Address"},
 	},
+	"net/http.Server": {
+		"TLSConfig": {"HttpTypes", "Server_TLSConfig"}, "TLSNextProto": {"HttpTypes", "Server_TLSNextProto"}, "Handler": {"HttpTypes", "Server_Handler"},
+		"ErrorLog": {"HttpTypes", "Server_ErrorLog"}, "BaseContext": {"HttpTypes", "Server_BaseContext"}, "ConnState": {"HttpTypes", "Server_ConnState"},
+		"ReadTimeout": {"HttpTypes", "Server_ReadTimeout"}, "ReadHeaderTimeout": {"HttpTypes", "Server_ReadHeaderTimeout"}, "WriteTimeout": {"HttpTypes", "Server_WriteTimeout"},
+		"IdleTimeout": {"HttpTypes", "Server_IdleTimeout"}, "MaxHeaderBytes": {"HttpTypes", "Server_MaxHeaderBytes"},
+	},
+	"crypto/tls.Config": {
+		"NextProtos": {"HttpTypes", "Config_NextProtos"},
+	},
 	"net/http.Response": {
 		"StatusCode": {"Http", "Resp_StatusCode"}, "Status": {"Http", "Resp_Status"},
 		"Body": {"Http", "Resp_Body"}, "ContentLength": {"Http", "Resp_ContentLength"},
@@ -506,21 +518,24 @@ func (l *funcLowerer) shimVarExtern(e ast.Expr) (*goir.Extern, bool) {
 // opaqueZeroCtor maps an opaque value-type shim to the constructor producing its
 // (non-null) zero value; types absent here zero to null (e.g. reflect handles).
 var opaqueZeroCtor = map[string]shimFunc{
-	"sync.Mutex":        {"Sync", "NewMutex"},
-	"sync.RWMutex":      {"Sync", "NewRWMutex"},
-	"sync.WaitGroup":    {"Sync", "NewWaitGroup"},
-	"sync.Once":         {"Sync", "NewOnce"},
-	"sync.Map":          {"Sync", "NewMap"},
-	"sync.Pool":         {"Sync", "NewPool"},
-	"sync.Cond":         {"Sync", "NewCondZero"},
-	"sync/atomic.Value": {"Atomic", "NewValue"},
-	"sync/atomic.Bool":  {"Atomic", "NewBool"},
-	"strings.Builder":   {"StringsBuilder", "New"},
-	"bytes.Buffer":      {"BytesBuffer", "New"},
-	"time.Time":         {"Time", "TimeZero"},
-	"math/big.Int":      {"Big", "IntZero"},
-	"math/big.Float":    {"Big", "FloatZero"},
-	"hash/maphash.Hash": {"MapHash", "New"},
+	"sync.Mutex":         {"Sync", "NewMutex"},
+	"sync.RWMutex":       {"Sync", "NewRWMutex"},
+	"sync.WaitGroup":     {"Sync", "NewWaitGroup"},
+	"sync.Once":          {"Sync", "NewOnce"},
+	"sync.Map":           {"Sync", "NewMap"},
+	"sync.Pool":          {"Sync", "NewPool"},
+	"sync.Cond":          {"Sync", "NewCondZero"},
+	"sync/atomic.Value":  {"Atomic", "NewValue"},
+	"net/http.Server":    {"HttpTypes", "NewServer"},
+	"net/http.Transport": {"HttpTypes", "NewTransport"},
+	"crypto/tls.Config":  {"HttpTypes", "NewTlsConfig"},
+	"sync/atomic.Bool":   {"Atomic", "NewBool"},
+	"strings.Builder":    {"StringsBuilder", "New"},
+	"bytes.Buffer":       {"BytesBuffer", "New"},
+	"time.Time":          {"Time", "TimeZero"},
+	"math/big.Int":       {"Big", "IntZero"},
+	"math/big.Float":     {"Big", "FloatZero"},
+	"hash/maphash.Hash":  {"MapHash", "New"},
 }
 
 // shimZeroExtern returns the zero-value constructor extern for an opaque value
@@ -554,6 +569,9 @@ var binaryMethods = map[string]shimFunc{
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
+	"net/http.Server": {
+		"RegisterOnShutdown": {"HttpTypes", "Server_RegisterOnShutdown"}, "Serve": {"HttpTypes", "Server_Serve"}, "SetKeepAlivesEnabled": {"HttpTypes", "Server_SetKeepAlivesEnabled"},
+	},
 	"net/http.Header": {
 		"Get": {"Http", "Header_Get"}, "Set": {"Http", "Header_Set"}, "Add": {"Http", "Header_Add"}, "Del": {"Http", "Header_Del"}, "Values": {"Http", "Header_Values"},
 	},

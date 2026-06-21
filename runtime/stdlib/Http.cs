@@ -249,3 +249,36 @@ public static class Http
     public static GoString Req_Host(object r) => GoString.FromDotNetString(((GoRequest)r).Host);
     public static GoString Req_RemoteAddr(object r) => GoString.FromDotNetString(((GoRequest)r).RemoteAddr);
 }
+
+/// <summary>net/http and crypto/tls value types that x/net/http2 constructs and reads
+/// but that never execute under goclr's shimmed (HttpListener) server — modeled as
+/// plain holders so http2 compiles. Callback/timeout/config fields default to nil/0.</summary>
+public sealed class GoHttpServer { }
+public sealed class GoHttpTransport { }
+public sealed class GoTlsConfig { public GoSlice NextProtos; }
+
+public static class HttpTypes
+{
+    // *http.Server: fields read by x/net/http2 default to nil/0; methods are no-ops.
+    public static void Server_RegisterOnShutdown(object s, object? f) { }
+    public static object? Server_Serve(object s, object? l) => Io.EOFSentinel;
+    public static object? Server_TLSConfig(object s) => null;
+    public static object Server_TLSNextProto(object s) => GoMaps.Make();
+    public static object? Server_Handler(object s) => null;
+    public static object? Server_ErrorLog(object s) => null;
+    public static object? Server_BaseContext(object s) => null;
+    public static object? Server_ConnState(object s) => null;
+    public static long Server_ReadTimeout(object s) => 0;
+    public static long Server_ReadHeaderTimeout(object s) => 0;
+    public static long Server_WriteTimeout(object s) => 0;
+    public static long Server_IdleTimeout(object s) => 0;
+    public static long Server_MaxHeaderBytes(object s) => 0;
+    public static void Server_SetKeepAlivesEnabled(object s, bool v) { }
+
+    // *tls.Config field reads.
+    public static GoSlice Config_NextProtos(object c) => ((GoTlsConfig)c).NextProtos;
+
+    public static object NewServer() => new GoHttpServer();
+    public static object NewTransport() => new GoHttpTransport();
+    public static object NewTlsConfig() => new GoTlsConfig();
+}
