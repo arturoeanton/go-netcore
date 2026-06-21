@@ -304,6 +304,15 @@ func (l *funcLowerer) derefRead(e *ast.StarExpr) {
 // derefWrite lowers *p = v.
 func (l *funcLowerer) derefWrite(e *ast.StarExpr, rhs ast.Expr) {
 	pt := l.exprType(e.X)
+	// *opaqueShim = v: an opaque shim handle has no separate pointee storage (*T and T
+	// are the same object), so there is nothing to write through. Evaluate the RHS for
+	// its side effects and drop it. This arises only in code goclr shims rather than
+	// runs (e.g. x/net/http2 doing *sc.tlsState = conn.ConnectionState()).
+	if pt.Kind == goir.KObject && pt.Shim != "" {
+		l.expr(rhs)
+		l.emit(goir.Op{Code: goir.OpPop})
+		return
+	}
 	if pt.Kind != goir.KPtr {
 		l.fail(e.Pos(), "dereference of non-pointer")
 		return

@@ -105,7 +105,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"MatchString": {"Regexp", "MatchString"}, "QuoteMeta": {"Regexp", "QuoteMeta"},
 	},
 	"log": {
-		"Print": {"Log", "Print"}, "Println": {"Log", "Println"}, "Printf": {"Log", "Printf"},
+		"New": {"Log", "New"}, "Print": {"Log", "Print"}, "Println": {"Log", "Println"}, "Printf": {"Log", "Printf"},
 		"Fatal": {"Log", "Fatal"}, "Fatalf": {"Log", "Fatalf"}, "Fatalln": {"Log", "Fatalln"},
 		"Panic": {"Log", "Panic"}, "Panicf": {"Log", "Panicf"},
 		"SetFlags": {"Log", "SetFlags"}, "SetPrefix": {"Log", "SetPrefix"}, "Flags": {"Log", "Flags"}, "Prefix": {"Log", "Prefix"},
@@ -145,6 +145,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
 		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"},
+		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"},
 	},
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
@@ -179,7 +180,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
 		"FixedZone": {"Time", "FixedZone"}, "NewTicker": {"Time", "NewTicker"}, "NewTimer": {"Time", "NewTimer"},
 		"Parse": {"Time", "Parse"}, "LoadLocation": {"Time", "LoadLocation"}, "ParseDuration": {"Time", "ParseDuration"}, "ParseInLocation": {"Time", "ParseInLocation"},
-		"Tick": {"Time", "Tick"},
+		"Tick": {"Time", "Tick"}, "AfterFunc": {"Time", "AfterFunc"},
 	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
@@ -295,8 +296,13 @@ var opaqueShimTypes = map[string]bool{
 	"net/http.ResponseWriter":      true,
 	"net/http.Request":             true,
 	"net/http.Server":              true,
+	"log.Logger":                   true,
 	"net/http.Transport":           true,
+	"net/http.HTTP2Config":         true,
+	"net/http.Protocols":           true,
 	"crypto/tls.Config":            true,
+	"crypto/tls.Conn":              true,
+	"crypto/tls.ConnectionState":   true,
 	"os/exec.Cmd":                  true,
 	"container/list.List":          true,
 	"container/list.Element":       true,
@@ -346,6 +352,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 	"io.EOF":                         {"Io", "EOF"},
 	"io.ErrUnexpectedEOF":            {"Io", "ErrUnexpectedEOF"},
+	"net.ErrClosed":                  {"Net", "ErrClosed"},
 	"os.ErrDeadlineExceeded":         {"Os", "ErrDeadlineExceeded"},
 	"os.ErrNotExist":                 {"Os", "ErrNotExist"},
 	"os.ErrExist":                    {"Os", "ErrExist"},
@@ -421,10 +428,30 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"TLSConfig": {"HttpTypes", "Server_TLSConfig"}, "TLSNextProto": {"HttpTypes", "Server_TLSNextProto"}, "Handler": {"HttpTypes", "Server_Handler"},
 		"ErrorLog": {"HttpTypes", "Server_ErrorLog"}, "BaseContext": {"HttpTypes", "Server_BaseContext"}, "ConnState": {"HttpTypes", "Server_ConnState"},
 		"ReadTimeout": {"HttpTypes", "Server_ReadTimeout"}, "ReadHeaderTimeout": {"HttpTypes", "Server_ReadHeaderTimeout"}, "WriteTimeout": {"HttpTypes", "Server_WriteTimeout"},
-		"IdleTimeout": {"HttpTypes", "Server_IdleTimeout"}, "MaxHeaderBytes": {"HttpTypes", "Server_MaxHeaderBytes"},
+		"IdleTimeout": {"HttpTypes", "Server_IdleTimeout"}, "MaxHeaderBytes": {"HttpTypes", "Server_MaxHeaderBytes"}, "HTTP2": {"HttpTypes", "Server_HTTP2"},
+	},
+	"net/http.HTTP2Config": {
+		"MaxConcurrentStreams": {"HttpTypes", "H2C_MaxConcurrentStreams"}, "MaxDecoderHeaderTableSize": {"HttpTypes", "H2C_MaxDecoderHeaderTableSize"}, "MaxEncoderHeaderTableSize": {"HttpTypes", "H2C_MaxEncoderHeaderTableSize"},
+		"MaxReadFrameSize": {"HttpTypes", "H2C_MaxReadFrameSize"}, "MaxReceiveBufferPerConnection": {"HttpTypes", "H2C_MaxReceiveBufferPerConnection"}, "MaxReceiveBufferPerStream": {"HttpTypes", "H2C_MaxReceiveBufferPerStream"},
+		"MaxUploadBufferPerConnection": {"HttpTypes", "H2C_MaxUploadBufferPerConnection"}, "MaxUploadBufferPerStream": {"HttpTypes", "H2C_MaxUploadBufferPerStream"},
+		"PermitProhibitedCipherSuites": {"HttpTypes", "H2C_PermitProhibitedCipherSuites"}, "StrictMaxConcurrentStreams": {"HttpTypes", "H2C_StrictMaxConcurrentStreams"}, "StrictMaxConcurrentRequests": {"HttpTypes", "H2C_StrictMaxConcurrentRequests"},
+		"PingTimeout": {"HttpTypes", "H2C_PingTimeout"}, "ReadIdleTimeout": {"HttpTypes", "H2C_ReadIdleTimeout"}, "SendPingTimeout": {"HttpTypes", "H2C_SendPingTimeout"}, "WriteByteTimeout": {"HttpTypes", "H2C_WriteByteTimeout"}, "CountError": {"HttpTypes", "H2C_CountError"},
+	},
+	"crypto/tls.ConnectionState": {
+		"NegotiatedProtocol": {"HttpTypes", "CS_NegotiatedProtocol"}, "ServerName": {"HttpTypes", "CS_ServerName"}, "Version": {"HttpTypes", "CS_Version"},
+		"CipherSuite": {"HttpTypes", "CS_CipherSuite"}, "HandshakeComplete": {"HttpTypes", "CS_HandshakeComplete"}, "DidResume": {"HttpTypes", "CS_DidResume"}, "PeerCertificates": {"HttpTypes", "CS_PeerCertificates"},
 	},
 	"crypto/tls.Config": {
-		"NextProtos": {"HttpTypes", "Config_NextProtos"},
+		"NextProtos": {"HttpTypes", "Config_NextProtos"}, "CipherSuites": {"HttpTypes", "Config_CipherSuites"},
+		"MinVersion": {"HttpTypes", "Config_MinVersion"}, "MaxVersion": {"HttpTypes", "Config_MaxVersion"},
+		"InsecureSkipVerify": {"HttpTypes", "Config_InsecureSkipVerify"}, "GetCertificate": {"HttpTypes", "Config_GetCertificate"}, "PreferServerCipherSuites": {"HttpTypes", "Config_PreferServerCipherSuites"},
+	},
+	"net/http.Transport": {
+		"HTTP2": {"HttpTypes", "Transport_HTTP2"}, "TLSClientConfig": {"HttpTypes", "Transport_TLSClientConfig"}, "Proxy": {"HttpTypes", "Transport_Proxy"},
+		"DialContext": {"HttpTypes", "Transport_DialContext"}, "DialTLSContext": {"HttpTypes", "Transport_DialTLSContext"},
+		"MaxHeaderListSize": {"HttpTypes", "Transport_MaxHeaderListSize"}, "ExpectContinueTimeout": {"HttpTypes", "Transport_ExpectContinueTimeout"},
+		"DisableCompression": {"HttpTypes", "Transport_DisableCompression"}, "DisableKeepAlives": {"HttpTypes", "Transport_DisableKeepAlives"},
+		"ForceAttemptHTTP2": {"HttpTypes", "Transport_ForceAttemptHTTP2"}, "TLSNextProto": {"HttpTypes", "Transport_TLSNextProto"},
 	},
 	"net/http.Response": {
 		"StatusCode": {"Http", "Resp_StatusCode"}, "Status": {"Http", "Resp_Status"},
@@ -477,6 +504,15 @@ var opaqueShimClone = map[string]shimFunc{
 
 var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"sync.Cond": {"L": {"Sync", "Cond_SetL"}},
+	"net/http.Server": {
+		"TLSConfig": {"HttpTypes", "Server_SetTLSConfig"}, "TLSNextProto": {"HttpTypes", "Server_SetTLSNextProto"}, "IdleTimeout": {"HttpTypes", "Server_SetIdleTimeout"},
+	},
+	"net/http.Transport": {
+		"TLSNextProto": {"HttpTypes", "Transport_SetTLSNextProto"},
+	},
+	"crypto/tls.Config": {
+		"NextProtos": {"HttpTypes", "Config_SetNextProtos"}, "PreferServerCipherSuites": {"HttpTypes", "Config_SetPreferServerCipherSuites"},
+	},
 	"net/url.URL": {
 		"Path": {"Url", "URL_SetPath"}, "Scheme": {"Url", "URL_SetScheme"},
 		"Host": {"Url", "URL_SetHost"}, "RawQuery": {"Url", "URL_SetRawQuery"},
@@ -518,24 +554,29 @@ func (l *funcLowerer) shimVarExtern(e ast.Expr) (*goir.Extern, bool) {
 // opaqueZeroCtor maps an opaque value-type shim to the constructor producing its
 // (non-null) zero value; types absent here zero to null (e.g. reflect handles).
 var opaqueZeroCtor = map[string]shimFunc{
-	"sync.Mutex":         {"Sync", "NewMutex"},
-	"sync.RWMutex":       {"Sync", "NewRWMutex"},
-	"sync.WaitGroup":     {"Sync", "NewWaitGroup"},
-	"sync.Once":          {"Sync", "NewOnce"},
-	"sync.Map":           {"Sync", "NewMap"},
-	"sync.Pool":          {"Sync", "NewPool"},
-	"sync.Cond":          {"Sync", "NewCondZero"},
-	"sync/atomic.Value":  {"Atomic", "NewValue"},
-	"net/http.Server":    {"HttpTypes", "NewServer"},
-	"net/http.Transport": {"HttpTypes", "NewTransport"},
-	"crypto/tls.Config":  {"HttpTypes", "NewTlsConfig"},
-	"sync/atomic.Bool":   {"Atomic", "NewBool"},
-	"strings.Builder":    {"StringsBuilder", "New"},
-	"bytes.Buffer":       {"BytesBuffer", "New"},
-	"time.Time":          {"Time", "TimeZero"},
-	"math/big.Int":       {"Big", "IntZero"},
-	"math/big.Float":     {"Big", "FloatZero"},
-	"hash/maphash.Hash":  {"MapHash", "New"},
+	"sync.Mutex":                 {"Sync", "NewMutex"},
+	"sync.RWMutex":               {"Sync", "NewRWMutex"},
+	"sync.WaitGroup":             {"Sync", "NewWaitGroup"},
+	"sync.Once":                  {"Sync", "NewOnce"},
+	"sync.Map":                   {"Sync", "NewMap"},
+	"sync.Pool":                  {"Sync", "NewPool"},
+	"sync.Cond":                  {"Sync", "NewCondZero"},
+	"sync/atomic.Value":          {"Atomic", "NewValue"},
+	"net/http.Server":            {"HttpTypes", "NewServer"},
+	"log.Logger":                 {"Log", "NewLoggerZero"},
+	"net/http.Transport":         {"HttpTypes", "NewTransport"},
+	"crypto/tls.Config":          {"HttpTypes", "NewTlsConfig"},
+	"crypto/tls.Conn":            {"HttpTypes", "NewTlsConn"},
+	"crypto/tls.ConnectionState": {"HttpTypes", "NewTlsConnState"},
+	"net/http.HTTP2Config":       {"HttpTypes", "NewHTTP2Config"},
+	"net/http.Protocols":         {"HttpTypes", "NewProtocols"},
+	"sync/atomic.Bool":           {"Atomic", "NewBool"},
+	"strings.Builder":            {"StringsBuilder", "New"},
+	"bytes.Buffer":               {"BytesBuffer", "New"},
+	"time.Time":                  {"Time", "TimeZero"},
+	"math/big.Int":               {"Big", "IntZero"},
+	"math/big.Float":             {"Big", "FloatZero"},
+	"hash/maphash.Hash":          {"MapHash", "New"},
 }
 
 // shimZeroExtern returns the zero-value constructor extern for an opaque value
@@ -569,8 +610,22 @@ var binaryMethods = map[string]shimFunc{
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
+	"crypto/tls.Conn": {
+		"Close": {"HttpTypes", "Conn_Close"}, "LocalAddr": {"HttpTypes", "Conn_LocalAddr"}, "RemoteAddr": {"HttpTypes", "Conn_RemoteAddr"},
+		"Read": {"HttpTypes", "Conn_Read"}, "Write": {"HttpTypes", "Conn_Write"}, "Handshake": {"HttpTypes", "Conn_Handshake"}, "HandshakeContext": {"HttpTypes", "Conn_HandshakeContext"},
+		"ConnectionState": {"HttpTypes", "Conn_ConnectionState"}, "SetDeadline": {"HttpTypes", "Conn_SetDeadline"}, "SetReadDeadline": {"HttpTypes", "Conn_SetReadDeadline"}, "SetWriteDeadline": {"HttpTypes", "Conn_SetWriteDeadline"}, "NetConn": {"HttpTypes", "Conn_NetConn"},
+	},
+	"log.Logger": {
+		"Print": {"Log", "Logger_Print"}, "Println": {"Log", "Logger_Println"}, "Printf": {"Log", "Logger_Printf"}, "Output": {"Log", "Logger_Output"},
+		"Fatal": {"Log", "Logger_Fatal"}, "Fatalf": {"Log", "Logger_Fatalf"}, "Fatalln": {"Log", "Logger_Fatalln"}, "Panic": {"Log", "Logger_Panic"}, "Panicf": {"Log", "Logger_Panicf"},
+		"SetFlags": {"Log", "Logger_SetFlags"}, "Flags": {"Log", "Logger_Flags"}, "SetPrefix": {"Log", "Logger_SetPrefix"}, "Prefix": {"Log", "Logger_Prefix"}, "SetOutput": {"Log", "Logger_SetOutput"}, "Writer": {"Log", "Logger_Writer"},
+	},
 	"net/http.Server": {
 		"RegisterOnShutdown": {"HttpTypes", "Server_RegisterOnShutdown"}, "Serve": {"HttpTypes", "Server_Serve"}, "SetKeepAlivesEnabled": {"HttpTypes", "Server_SetKeepAlivesEnabled"},
+	},
+	"net/http.Protocols": {
+		"SetHTTP1": {"HttpTypes", "Proto_SetHTTP1"}, "SetHTTP2": {"HttpTypes", "Proto_SetHTTP2"}, "SetUnencryptedHTTP2": {"HttpTypes", "Proto_SetUnencryptedHTTP2"},
+		"HTTP1": {"HttpTypes", "Proto_HTTP1"}, "HTTP2": {"HttpTypes", "Proto_HTTP2"}, "UnencryptedHTTP2": {"HttpTypes", "Proto_UnencryptedHTTP2"},
 	},
 	"net/http.Header": {
 		"Get": {"Http", "Header_Get"}, "Set": {"Http", "Header_Set"}, "Add": {"Http", "Header_Add"}, "Del": {"Http", "Header_Del"}, "Values": {"Http", "Header_Values"},

@@ -211,6 +211,10 @@ public static class Net
         return new object?[] { GoString.FromDotNetString(host), GoString.FromDotNetString(s.Substring(colon + 1)), null };
     }
 
+    // net sentinel errors.
+    public static readonly GoError ErrClosedSentinel = new(GoString.FromDotNetString("use of closed network connection"));
+    public static object ErrClosed() => ErrClosedSentinel;
+
     // net.JoinHostPort(host, port): "host:port", bracketing an IPv6 host.
     public static GoString JoinHostPort(GoString host, GoString port)
     {

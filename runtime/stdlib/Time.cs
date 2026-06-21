@@ -44,6 +44,16 @@ public static class Time
         var t = new GoTicker { C = After(d) };
         return t;
     }
+    // time.AfterFunc(d, f): run f in its own goroutine after d; returns a *Timer.
+    public static object AfterFunc(long d, GoClosure f)
+    {
+        long ms = d / Millisecond;
+        if (ms < 0) ms = 0;
+        var t = new GoTicker();
+        t.Timer = new System.Threading.Timer(_ => { try { GoRuntime.InvokeArgs(f); } catch { } },
+            null, ms, System.Threading.Timeout.Infinite);
+        return t;
+    }
     // time.Tick(d): just the channel of a new ticker (the ticker is never collected).
     public static GoChan Tick(long d) => ((GoTicker)NewTicker(d)).C;
 

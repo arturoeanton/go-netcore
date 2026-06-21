@@ -307,6 +307,10 @@ func (l *funcLowerer) methodValue(sel *ast.SelectorExpr, seln *types.Selection) 
 	if m == nil {
 		if gm, ok := l.instantiateMethod(fn, seln); ok {
 			m = gm
+		} else if ext, ok := l.shimMethodExtern(seln); ok {
+			// A bound method value of a shimmed-stdlib method (e.g. `go conn.Close()`,
+			// where conn is a shim type): wrap the extern call in a closure.
+			return l.shimMethodValue(sel, ext)
 		} else {
 			l.fail(sel.Pos(), "method value "+sel.Sel.Name)
 			return goir.TFunc
@@ -358,6 +362,56 @@ func (l *funcLowerer) methodValue(sel *ast.SelectorExpr, seln *types.Selection) 
 	l.emit(goir.Op{Code: goir.OpDup})
 	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
 	l.emitMethodReceiver(sel, fn, recvType)
+	l.emit(goir.Op{Code: goir.OpStelemRef})
+	l.emit(goir.Op{Code: goir.OpClosNew})
+	return goir.TFunc
+}
+
+// shimMethodValue binds recv.M where M is a shimmed-stdlib method: a closure whose
+// lifted body invokes the shim extern with the captured receiver as the first arg.
+func (l *funcLowerer) shimMethodValue(sel *ast.SelectorExpr, ext *goir.Extern) goir.Type {
+	l.needsInvoker = true
+	l.invokeMethod()
+	id := len(l.closures)
+	method := &goir.Method{
+		Name: "__mvalue_" + itoa(id), GoName: "__mvalue_" + itoa(id),
+		Params: []goir.Type{goir.TObjectArray, goir.TObjectArray}, Ret: goir.TObject, Results: []goir.Type{goir.TObject},
+	}
+	l.closures = append(l.closures, &closureInfo{id: id, method: method})
+	l.prog.Methods = append(l.prog.Methods, method)
+
+	recvType := ext.Params[0]
+	cl := &funcLowerer{lowerCtx: l.lowerCtx, m: method, ok: true}
+	cl.typeSubst = l.typeSubst
+	cl.locals = map[types.Object]int{}
+	cl.cells = map[int]goir.Type{}
+	cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 0})
+	cl.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+	cl.emit(goir.Op{Code: goir.OpLdElemRef})
+	cl.emitUnbox(recvType)
+	for i, pt := range ext.Params[1:] {
+		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
+		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+		cl.emit(goir.Op{Code: goir.OpLdElemRef})
+		cl.emitUnbox(pt)
+	}
+	cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+	if ext.Ret == goir.TVoid {
+		cl.emit(goir.Op{Code: goir.OpLdNull})
+	} else {
+		cl.emitBox(ext.Ret)
+	}
+	cl.emit(goir.Op{Code: goir.OpRet})
+	if !cl.ok {
+		l.ok = false
+	}
+
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(id)})
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 1})
+	l.emit(goir.Op{Code: goir.OpNewObjArray})
+	l.emit(goir.Op{Code: goir.OpDup})
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+	l.expr(sel.X) // the receiver (already the shim handle)
 	l.emit(goir.Op{Code: goir.OpStelemRef})
 	l.emit(goir.Op{Code: goir.OpClosNew})
 	return goir.TFunc
