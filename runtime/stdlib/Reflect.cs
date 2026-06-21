@@ -107,13 +107,31 @@ public static class Reflect
     public static object MakeSlice(object typ, long len, long cap)
     {
         if (cap < len) cap = len;
-        return new GoReflectValue { V = new GoSlice { Data = new object?[cap], Off = 0, Len = (int)len, Cap = (int)cap } };
+        return new GoReflectValue { V = new GoSlice { Data = new object?[cap], Off = 0, Len = (int)len, Cap = (int)cap }, Desc = TDesc(typ) };
     }
     public static object MakeMap(object typ) =>
-        new GoReflectValue { V = GoCLR.Runtime.GoMaps.Make() };
-    // reflect.Zero(typ): the type's zero value, inferred from the type's sample.
+        new GoReflectValue { V = GoCLR.Runtime.GoMaps.Make(), Desc = TDesc(typ) };
+
+    // The boxed zero value for a type descriptor's kind.
+    private static object? ZeroForDesc(GoTypeDesc? d)
+    {
+        if (d == null) return null;
+        int k = d.Kind;
+        if (k == GoKind.Bool) return false;
+        if (k >= GoKind.Int && k <= GoKind.Int64) return 0L;
+        if (k >= GoKind.Uint && k <= GoKind.Uintptr) return (ulong)0;
+        if (k == GoKind.Float32 || k == GoKind.Float64) return 0.0;
+        if (k == GoKind.String) return GoString.FromDotNetString("");
+        if (k == GoKind.Slice) return new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 };
+        if (k == GoKind.Map) return new GoMap { Data = null };
+        return null; // ptr/interface/func/chan/struct: nil / a struct zero needs the CLR type
+    }
+
+    // reflect.Zero(typ): the type's zero Value (kind-based; falls back to the sample).
     public static object Zero(object typ)
     {
+        var d = TDesc(typ);
+        if (d != null) return new GoReflectValue { V = ZeroForDesc(d), Desc = d };
         var s = ((GoReflectType)typ).Sample;
         object? z = s switch
         {
@@ -218,22 +236,26 @@ public static class Reflect
         return v;
     }
 
-    // reflect.New(t): a Value holding a pointer to a freshly zeroed t.
+    // reflect.New(t): a Value holding a pointer to a freshly zeroed t. The Value's
+    // type is *t, so New(t).Elem() is a settable zero of t.
     public static object New(object t)
     {
+        var td = TDesc(t);
         var sample = ((GoReflectType)t).Sample;
-        object? zero = sample switch
-        {
-            null => null,
-            bool => false,
-            long => (long)0,
-            int => 0,
-            ulong => (ulong)0,
-            double => (double)0,
-            GoString => GoString.FromDotNetString(""),
-            _ => sample.GetType().IsValueType ? System.Activator.CreateInstance(sample.GetType()) : null,
-        };
-        return new GoReflectValue { V = new GoPtr { Value = zero } };
+        object? zero = sample != null
+            ? sample switch
+            {
+                bool => false,
+                long => (long)0,
+                int => 0,
+                ulong => (ulong)0,
+                double => (double)0,
+                GoString => GoString.FromDotNetString(""),
+                _ => sample.GetType().IsValueType ? System.Activator.CreateInstance(sample.GetType()) : null,
+            }
+            : ZeroForDesc(td);
+        var ptrDesc = td != null ? TypeReg.Synth(GoKind.Ptr, "*" + td.Str, td, null, 0) : null;
+        return new GoReflectValue { V = new GoPtr { Value = zero }, Desc = ptrDesc };
     }
     public static GoSlice Value_MapKeys(object? v)
     {
