@@ -67,6 +67,15 @@ public static class Url
         return m;
     }
 
+    // (*url.URL).RequestURI(): the path (or opaque) plus the raw query.
+    public static GoString URL_RequestURI(object uo)
+    {
+        var u = (GoUrl)uo;
+        string r = u.Opaque.Length > 0 ? u.Opaque : (u.Path.Length > 0 ? u.Path : "/");
+        if (u.RawQuery.Length > 0) r += "?" + u.RawQuery;
+        return GoString.FromDotNetString(r);
+    }
+
     public static GoString URL_Scheme(object u) => GoString.FromDotNetString(((GoUrl)u).Scheme);
     public static GoString URL_Host(object u) => GoString.FromDotNetString(((GoUrl)u).Host);
     public static GoString URL_Path(object u) => GoString.FromDotNetString(((GoUrl)u).Path);

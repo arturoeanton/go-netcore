@@ -8,7 +8,7 @@ using GoCLR.Runtime;
 public sealed class GoResponse { public int StatusCode; public string Status = ""; public GoReader Body = new(); public long ContentLength; }
 
 /// <summary>An http.ResponseWriter backed by an HttpListenerResponse.</summary>
-public sealed class GoRespWriter { public HttpListenerResponse Resp = null!; public bool WroteHeader; }
+public sealed class GoRespWriter { public HttpListenerResponse Resp = null!; public bool WroteHeader; public GoMap? Headers; }
 
 /// <summary>An *http.Request handle (server side).</summary>
 public sealed class GoRequest { public string Method = ""; public GoUrl Url = new(); public GoReader Body = new(); public string Host = ""; public string RemoteAddr = ""; public GoMap? Form; public GoMap? PostForm; public GoMap? Header; public byte[] RawBody = System.Array.Empty<byte>(); }
@@ -176,12 +176,67 @@ public static class Http
     public static object?[] RW_Write(object w, GoSlice p)
     {
         var rw = (GoRespWriter)w;
+        FlushHeaders(rw);
         var buf = new byte[p.Len];
         for (int i = 0; i < p.Len; i++) buf[i] = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
         rw.Resp.OutputStream.Write(buf, 0, buf.Length);
         return new object?[] { (long)p.Len, null };
     }
-    public static void RW_WriteHeader(object w, long code) { var rw = (GoRespWriter)w; if (!rw.WroteHeader) { rw.Resp.StatusCode = (int)code; rw.WroteHeader = true; } }
+    public static void RW_WriteHeader(object w, long code) { var rw = (GoRespWriter)w; FlushHeaders(rw); if (!rw.WroteHeader) { rw.Resp.StatusCode = (int)code; rw.WroteHeader = true; } }
+
+    // http.Redirect(w, r, url, code): set Location and write the status code.
+    public static void Redirect(object w, object? r, GoString url, long code)
+    {
+        var rw = (GoRespWriter)w;
+        try { rw.Resp.Headers["Location"] = url.ToDotNetString(); } catch { }
+        RW_WriteHeader(w, code);
+    }
+
+    // http.ResponseWriter.Header() http.Header: a live map[string][]string; entries
+    // set on it are flushed to the response on the first Write/WriteHeader.
+    public static object RW_Header(object w)
+    {
+        var rw = (GoRespWriter)w;
+        return rw.Headers ??= GoMaps.Make();
+    }
+    private static void FlushHeaders(GoRespWriter rw)
+    {
+        if (rw.WroteHeader || rw.Headers?.Data == null) return;
+        foreach (var kv in rw.Headers.Data)
+        {
+            string k = ((GoString)kv.Key).ToDotNetString();
+            if (kv.Value is GoSlice vs && vs.Data != null)
+                for (int i = 0; i < vs.Len; i++)
+                {
+                    string v = ((GoString)vs.Data[vs.Off + i]!).ToDotNetString();
+                    try { rw.Resp.Headers.Add(k, v); } catch { /* restricted header (Content-Length, etc.) */ }
+                }
+        }
+    }
+
+    // http.Header methods (receiver is the map[string][]string).
+    private static GoString Canon(GoString k) => Textproto.CanonicalMIMEHeaderKey(k);
+    public static GoString Header_Get(object h, GoString key)
+    {
+        var m = (GoMap)h;
+        if (m.Data != null && m.Data.TryGetValue(Canon(key), out var v) && v is GoSlice s && s.Data != null && s.Len > 0)
+            return (GoString)s.Data[s.Off]!;
+        return GoString.FromDotNetString("");
+    }
+    public static void Header_Set(object h, GoString key, GoString val)
+    {
+        var m = (GoMap)h;
+        m.Data![Canon(key)] = new GoSlice { Data = new object?[] { val }, Off = 0, Len = 1, Cap = 1 };
+    }
+    public static void Header_Add(object h, GoString key, GoString val)
+    {
+        var m = (GoMap)h;
+        var ck = Canon(key);
+        GoSlice s = m.Data!.TryGetValue(ck, out var ex) && ex is GoSlice gs ? gs : new GoSlice { Data = new object?[0], Off = 0, Len = 0, Cap = 0 };
+        m.Data[ck] = GoSlices.AppendOne(s, val);
+    }
+    public static void Header_Del(object h, GoString key) => ((GoMap)h).Data?.Remove(Canon(key));
+    public static GoString Header_Values(object h, GoString key) => Header_Get(h, key);
 
     // *http.Request field getters.
     public static GoString Req_Method(object r) => GoString.FromDotNetString(((GoRequest)r).Method);

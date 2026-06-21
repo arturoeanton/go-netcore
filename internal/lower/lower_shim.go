@@ -81,6 +81,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
 	"net/mail":        {"ParseAddress": {"Mail", "ParseAddress"}},
 	"net/textproto":   {"CanonicalMIMEHeaderKey": {"Textproto", "CanonicalMIMEHeaderKey"}},
+	"html/template":   {"New": {"Template", "New"}, "Must": {"Template", "Must"}, "JSEscapeString": {"Template", "JSEscapeString"}},
+	"text/template":   {"New": {"Template", "New"}, "Must": {"Template", "Must"}},
 	"os/exec":         {"Command": {"Exec", "Command"}},
 	"container/list":  {"New": {"List", "New"}},
 	"encoding/csv":    {"NewReader": {"Csv", "NewReader"}, "NewWriter": {"Csv", "NewWriter"}},
@@ -136,13 +138,13 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"net": {
 		"Listen": {"Net", "Listen"}, "Dial": {"Net", "Dial"},
 		"ParseIP": {"Net", "ParseIP"}, "ParseMAC": {"Net", "ParseMAC"}, "ParseCIDR": {"Net", "ParseCIDR"},
-		"SplitHostPort":  {"Net", "SplitHostPort"},
+		"SplitHostPort": {"Net", "SplitHostPort"}, "JoinHostPort": {"Net", "JoinHostPort"},
 		"ResolveTCPAddr": {"Net", "ResolveTCPAddr"}, "ResolveUDPAddr": {"Net", "ResolveUDPAddr"},
 		"ResolveIPAddr": {"Net", "ResolveIPAddr"}, "ResolveUnixAddr": {"Net", "ResolveUnixAddr"},
 	},
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
-		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"},
+		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"},
 	},
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
@@ -201,7 +203,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Equal": {"Bytes", "Equal"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
 		"HasPrefix": {"Bytes", "HasPrefix"}, "HasSuffix": {"Bytes", "HasSuffix"}, "Index": {"Bytes", "Index"},
 		"LastIndex": {"Bytes", "LastIndex"}, "LastIndexByte": {"Bytes", "LastIndexByte"},
-		"IndexByte": {"Bytes", "IndexByte"}, "IndexRune": {"Bytes", "IndexRune"}, "IndexAny": {"Bytes", "IndexAny"}, "Count": {"Bytes", "Count"}, "ToUpper": {"Bytes", "ToUpper"},
+		"IndexByte": {"Bytes", "IndexByte"}, "IndexRune": {"Bytes", "IndexRune"}, "IndexAny": {"Bytes", "IndexAny"}, "Runes": {"Bytes", "Runes"}, "Count": {"Bytes", "Count"}, "ToUpper": {"Bytes", "ToUpper"},
 		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Trim": {"Bytes", "Trim"}, "Repeat": {"Bytes", "Repeat"},
 		"Split": {"Bytes", "Split"}, "SplitAfterN": {"Bytes", "SplitAfterN"}, "Join": {"Bytes", "Join"},
 		"NewReader": {"Readers", "NewBytesReader"}, "NewBuffer": {"BytesBuffer", "NewBuffer"}, "NewBufferString": {"BytesBuffer", "NewBufferString"},
@@ -280,6 +282,8 @@ var opaqueShimTypes = map[string]bool{
 	"net.Conn":                     true,
 	"net.IPNet":                    true,
 	"net/mail.Address":             true,
+	"html/template.Template":       true,
+	"text/template.Template":       true,
 	"net.TCPAddr":                  true,
 	"net.UDPAddr":                  true,
 	"net.IPAddr":                   true,
@@ -335,6 +339,10 @@ var shimVarRegistry = map[string]shimFunc{
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 	"io.EOF":                         {"Io", "EOF"},
 	"io.ErrUnexpectedEOF":            {"Io", "ErrUnexpectedEOF"},
+	"io.ErrShortWrite":               {"Io", "ErrShortWrite"},
+	"io.ErrShortBuffer":              {"Io", "ErrShortBuffer"},
+	"io.ErrClosedPipe":               {"Io", "ErrClosedPipe"},
+	"io.ErrNoProgress":               {"Io", "ErrNoProgress"},
 	"net/http.ErrNotMultipart":       {"Http", "ErrNotMultipart"},
 	"strconv.ErrRange":               {"Strconv", "ErrRangeVar"},
 	"strconv.ErrSyntax":              {"Strconv", "ErrSyntaxVar"},
@@ -532,6 +540,19 @@ var binaryMethods = map[string]shimFunc{
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
+	"net/http.Header": {
+		"Get": {"Http", "Header_Get"}, "Set": {"Http", "Header_Set"}, "Add": {"Http", "Header_Add"}, "Del": {"Http", "Header_Del"}, "Values": {"Http", "Header_Values"},
+	},
+	"html/template.Template": {
+		"New": {"Template", "Tmpl_New"}, "Delims": {"Template", "Tmpl_Delims"}, "Funcs": {"Template", "Tmpl_Funcs"},
+		"Parse": {"Template", "Tmpl_Parse"}, "ParseFiles": {"Template", "Tmpl_ParseFiles"}, "ParseGlob": {"Template", "Tmpl_ParseGlob"},
+		"Execute": {"Template", "Tmpl_Execute"}, "ExecuteTemplate": {"Template", "Tmpl_ExecuteTemplate"},
+	},
+	"text/template.Template": {
+		"New": {"Template", "Tmpl_New"}, "Delims": {"Template", "Tmpl_Delims"}, "Funcs": {"Template", "Tmpl_Funcs"},
+		"Parse": {"Template", "Tmpl_Parse"}, "ParseFiles": {"Template", "Tmpl_ParseFiles"}, "ParseGlob": {"Template", "Tmpl_ParseGlob"},
+		"Execute": {"Template", "Tmpl_Execute"}, "ExecuteTemplate": {"Template", "Tmpl_ExecuteTemplate"},
+	},
 	"encoding/json.Decoder": {
 		"Token": {"Json", "Decoder_Token"}, "More": {"Json", "Decoder_More"},
 		"Decode": {"Json", "Decoder_Decode"}, "UseNumber": {"Json", "Decoder_UseNumber"}, "DisallowUnknownFields": {"Json", "Decoder_DisallowUnknownFields"},
@@ -543,7 +564,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net/url.URL": {
 		"IsAbs": {"Url", "URL_IsAbs"}, "String": {"Url", "URL_String"},
-		"ResolveReference": {"Url", "URL_ResolveReference"}, "Query": {"Url", "URL_Query"},
+		"ResolveReference": {"Url", "URL_ResolveReference"}, "Query": {"Url", "URL_Query"}, "RequestURI": {"Url", "URL_RequestURI"},
 	},
 	"strings.Reader": {
 		"ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
@@ -590,7 +611,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"ParseForm": {"Http", "Req_ParseForm"}, "ParseMultipartForm": {"Http", "Req_ParseMultipartForm"},
 	},
 	"net/http.ResponseWriter": {
-		"Write": {"Http", "RW_Write"}, "WriteHeader": {"Http", "RW_WriteHeader"},
+		"Write": {"Http", "RW_Write"}, "WriteHeader": {"Http", "RW_WriteHeader"}, "Header": {"Http", "RW_Header"},
 	},
 	"net.Listener": {
 		"Accept": {"Net", "Listener_Accept"}, "Close": {"Net", "Listener_Close"},
@@ -819,8 +840,14 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 	if recv == nil || recv.Obj() == nil || recv.Obj().Pkg() == nil {
 		return nil, false
 	}
+	if fn.Name() == "ParseFiles" {
+		println("DBG ParseFiles recv key:", recv.Obj().Pkg().Path()+"."+recv.Obj().Name())
+	}
 	methods, ok := shimMethodRegistry[recv.Obj().Pkg().Path()+"."+recv.Obj().Name()]
 	if !ok {
+		if fn.Name() == "ParseFiles" {
+			println("DBG ParseFiles registry MISS")
+		}
 		return nil, false
 	}
 	sf, ok := methods[fn.Name()]
@@ -838,6 +865,9 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 	for i := 0; i < sig.Params().Len(); i++ {
 		pt, ok := l.lowerCtx.goType(sig.Params().At(i).Type())
 		if !ok {
+			if fn.Name() == "ParseFiles" {
+				println("DBG ParseFiles param", i, "goType failed for", sig.Params().At(i).Type().String())
+			}
 			return nil, false
 		}
 		params = append(params, pt)

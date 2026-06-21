@@ -354,11 +354,21 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 	// s[i].field = v : read the boxed struct element, set the field, write it back.
 	if ix, ok := unparen(sel.X).(*ast.IndexExpr); ok {
 		xt := l.exprType(ix.X)
-		if xt.Kind == goir.KSlice {
-			sliceTmp := l.addLocal(nil, xt)
+		// s may be a slice, or a *[N]T (Go auto-derefs the pointer to the array).
+		sliceTy := xt
+		isPtrArray := xt.Kind == goir.KPtr && xt.Elem != nil && xt.Elem.Kind == goir.KSlice
+		if isPtrArray {
+			sliceTy = *xt.Elem
+		}
+		if xt.Kind == goir.KSlice || isPtrArray {
+			sliceTmp := l.addLocal(nil, sliceTy)
 			idxTmp := l.addLocal(nil, goir.TInt64)
 			structTmp := l.addLocal(nil, bt)
 			l.expr(ix.X)
+			if isPtrArray {
+				l.emit(goir.Op{Code: goir.OpPtrGet})
+				l.emitUnbox(sliceTy)
+			}
 			l.emit(goir.Op{Code: goir.OpStLoc, Local: sliceTmp})
 			l.expr(ix.Index)
 			l.emit(goir.Op{Code: goir.OpStLoc, Local: idxTmp})

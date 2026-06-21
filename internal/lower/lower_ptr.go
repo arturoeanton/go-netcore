@@ -253,15 +253,23 @@ func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 		// element's slot in the backing array, so the slice and the pointer
 		// observe the same storage.
 		xt := l.exprType(x.X)
-		if xt.Kind != goir.KSlice {
+		sliceTy := xt
+		if xt.Kind == goir.KPtr && xt.Elem != nil && xt.Elem.Kind == goir.KSlice {
+			sliceTy = *xt.Elem
+		}
+		if sliceTy.Kind != goir.KSlice {
 			l.fail(e.Pos(), "address-of element (only slice elements are supported)")
 			return
 		}
 		l.expr(x.X)
+		if xt.Kind == goir.KPtr {
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emitUnbox(sliceTy)
+		}
 		l.expr(x.Index)
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
 			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ElemAddr",
-			Params: []goir.Type{xt, goir.TInt64}, Ret: goir.PtrType(*xt.Elem),
+			Params: []goir.Type{sliceTy, goir.TInt64}, Ret: goir.PtrType(*sliceTy.Elem),
 		}})
 	default:
 		l.fail(e.Pos(), "address-of (only &variable and &T{...} are supported)")

@@ -67,6 +67,14 @@ public static class Bytes
         for (int i = 0; i < b.Length; i++) if (b[i] == (byte)c) return i;
         return -1;
     }
+    // Runes(s): the UTF-8 runes of s as a []rune (int32 slice).
+    public static GoSlice Runes(GoSlice s)
+    {
+        string str = System.Text.Encoding.UTF8.GetString(B(s));
+        var runes = new System.Collections.Generic.List<object?>();
+        foreach (var r in str.EnumerateRunes()) runes.Add(r.Value);
+        return new GoSlice { Data = runes.ToArray(), Off = 0, Len = runes.Count, Cap = runes.Count };
+    }
     // IndexAny(s, chars): byte index of the first rune in s that is one of the Unicode
     // code points in chars (Go decodes s as UTF-8). -1 if none, or chars is empty.
     public static long IndexAny(GoSlice s, GoString chars)

@@ -13,6 +13,15 @@ public static class Io
     public static readonly GoError ErrUnexpectedEOFSentinel = new(GoString.FromDotNetString("unexpected EOF"));
     public static object ErrUnexpectedEOF() => ErrUnexpectedEOFSentinel;
 
+    public static readonly GoError ErrShortWriteSentinel = new(GoString.FromDotNetString("short write"));
+    public static object ErrShortWrite() => ErrShortWriteSentinel;
+    public static readonly GoError ErrShortBufferSentinel = new(GoString.FromDotNetString("short buffer"));
+    public static object ErrShortBuffer() => ErrShortBufferSentinel;
+    public static readonly GoError ErrClosedPipeSentinel = new(GoString.FromDotNetString("io: read/write on closed pipe"));
+    public static object ErrClosedPipe() => ErrClosedPipeSentinel;
+    public static readonly GoError ErrNoProgressSentinel = new(GoString.FromDotNetString("multiple Read calls return no data or error"));
+    public static object ErrNoProgress() => ErrNoProgressSentinel;
+
     // io.ReadFull(r, buf) (n int, err error): read exactly len(buf) bytes into buf.
     // Returns io.EOF if nothing was read, io.ErrUnexpectedEOF on a short read.
     public static object?[] ReadFull(object? r, GoSlice buf)

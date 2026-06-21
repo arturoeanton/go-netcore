@@ -211,6 +211,14 @@ public static class Net
         return new object?[] { GoString.FromDotNetString(host), GoString.FromDotNetString(s.Substring(colon + 1)), null };
     }
 
+    // net.JoinHostPort(host, port): "host:port", bracketing an IPv6 host.
+    public static GoString JoinHostPort(GoString host, GoString port)
+    {
+        string h = host.ToDotNetString();
+        if (h.Contains(':')) h = "[" + h + "]";
+        return GoString.FromDotNetString(h + ":" + port.ToDotNetString());
+    }
+
     // net.Resolve{TCP,UDP,IP,Unix}Addr: best-effort — parse host:port into an opaque
     // address. goclr does no DNS, so an unparseable host yields an error.
     private static object?[] ResolveAddr(GoString network, GoString address)
