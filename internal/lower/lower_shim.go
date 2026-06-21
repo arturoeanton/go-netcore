@@ -260,8 +260,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"}, "Getwd": {"Os", "Getwd"}, "DirFS": {"Os", "DirFS"},
 		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
-		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "Rename": {"Os", "Rename"}, "UserCacheDir": {"Os", "UserCacheDir"}, "UserConfigDir": {"Os", "UserConfigDir"}, "UserHomeDir": {"Os", "UserHomeDir"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "TempDir": {"Os", "TempDir"},
-		"Stat": {"Os", "Stat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"},
+		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "Rename": {"Os", "Rename"}, "UserCacheDir": {"Os", "UserCacheDir"}, "UserConfigDir": {"Os", "UserConfigDir"}, "UserHomeDir": {"Os", "UserHomeDir"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "MkdirTemp": {"Os", "MkdirTemp"}, "TempDir": {"Os", "TempDir"},
+		"Stat": {"Os", "Stat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"}, "Mkdir": {"Os", "Mkdir"},
 	},
 	"bytes": {
 		"Equal": {"Bytes", "Equal"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},

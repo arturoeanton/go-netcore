@@ -148,6 +148,13 @@ module):
   type id (`ptrNew` tags struct pointees only), so the bridge can't resolve its
   methods and throws a clear error. Use a struct wrapper (`type H struct{ data []int }`)
   meanwhile; unifying the pointer type id is the documented follow-up.
+- **`io/fs.Stat`** — real over **`os.DirFS`** and any `fs.FS` whose `Open` returns an
+  `*os.File` (echo's defaultFS, `http.FS(os.DirFS(...))`): the `fsys.Open` call goes
+  through the callback bridge and an `os.File`-backed `FileInfo` is read back. A user
+  `fs.FS` whose `Open` returns the program's OWN `fs.File`/`fs.FileInfo` types is not
+  dispatched (`io/fs.FileInfo` is an interface in the shim method registry, assuming
+  `GoFileInfo`); such a call returns a clean not-found rather than crashing. Value-receiver
+  / named-map `fs.FS` likewise fall back (bridge type-id covers GoPtr/GoNamed only).
 - **`x/sync/errgroup`** — shim written, but the import needs the external x/sync
   module present to type-check.
 - **`google/uuid`** — not yet shimmed.

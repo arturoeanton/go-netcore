@@ -131,7 +131,9 @@ func (c *lowerCtx) buildMethodAdapter(m *goir.Method, src recvSource) int {
 // generates + registers an adapter per (implementing type, method). Keyed by "pkg.Type".
 var bridgeInterfaces = []string{
 	"container/heap.Interface",
-	"io.Writer", // so Fmt.WriteTo can drive a wrapper writer's own Write (echo.Response, …)
+	"io.Writer",  // so Fmt.WriteTo can drive a wrapper writer's own Write (echo.Response, …)
+	"io/fs.FS",   // so fs.Stat can call fsys.Open
+	"io/fs.File", // so fs.Stat can call the opened file's Stat/Close
 }
 
 // collectBridgeMethods generates the method-callback adapters every concrete implementer

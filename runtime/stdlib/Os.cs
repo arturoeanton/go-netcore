@@ -265,6 +265,29 @@ public static class Os
         catch (System.Exception e) { return new object?[] { null, new GoError("createtemp: " + e.Message) }; }
     }
 
+    // os.MkdirTemp(dir, pattern) (string, error): create a new temporary directory.
+    public static object?[] MkdirTemp(GoString dir, GoString pattern)
+    {
+        try
+        {
+            string d = dir.ToDotNetString();
+            if (d.Length == 0) d = System.IO.Path.GetTempPath();
+            string pat = pattern.ToDotNetString();
+            string prefix, suffix;
+            int star = pat.IndexOf('*');
+            if (star >= 0) { prefix = pat.Substring(0, star); suffix = pat.Substring(star + 1); }
+            else { prefix = pat; suffix = ""; }
+            for (int attempt = 0; ; attempt++)
+            {
+                string name = prefix + System.Guid.NewGuid().ToString("N").Substring(0, 10) + suffix;
+                string path = System.IO.Path.Combine(d, name);
+                try { System.IO.Directory.CreateDirectory(path); return new object?[] { GoString.FromDotNetString(path), null }; }
+                catch (System.IO.IOException) when (attempt < 10000) { /* name clash: retry */ }
+            }
+        }
+        catch (System.Exception e) { return new object?[] { GoString.FromDotNetString(""), new GoError("mkdirtemp: " + e.Message) }; }
+    }
+
     // os.TempDir(): the default directory for temporary files.
     public static GoString TempDir() => GoString.FromDotNetString(System.IO.Path.GetTempPath().TrimEnd('/'));
 
@@ -312,6 +335,17 @@ public static class Os
     {
         try { System.IO.Directory.CreateDirectory(path.ToDotNetString()); return null; }
         catch (System.Exception e) { return new GoError("mkdir " + path.ToDotNetString() + ": " + e.Message); }
+    }
+
+    // os.Mkdir(path, perm) error: create a single directory (parent must exist; an
+    // existing path is an error, mirroring Go).
+    public static object? Mkdir(GoString path, uint perm)
+    {
+        string p = path.ToDotNetString();
+        if (System.IO.Directory.Exists(p) || System.IO.File.Exists(p))
+            return new GoError("mkdir " + p + ": file exists");
+        try { System.IO.Directory.CreateDirectory(p); return null; }
+        catch (System.Exception e) { return new GoError("mkdir " + p + ": " + e.Message); }
     }
 
     // os.FileInfo method set.
