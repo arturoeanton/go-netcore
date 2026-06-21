@@ -771,12 +771,15 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 	if !ok {
 		return nil, false
 	}
-	// Key the registry on the method's own receiver type, not seln.Recv(): for a
-	// method promoted from an embedded shim field (struct{ *sha3.SHAKE }), seln.Recv()
-	// is the outer struct, but the method is declared on the embedded shim type.
+	// For a method promoted from an embedded shim field (struct{ *sha3.SHAKE }),
+	// seln.Recv() is the outer struct, so key the registry on the method's own
+	// receiver type instead. Only do this when actually promoted (index depth > 1) to
+	// leave the direct-call path — and its receiver IR typing — exactly as before.
 	recv := namedOf(seln.Recv())
-	if mr := namedOf(fn.Type().(*types.Signature).Recv().Type()); mr != nil {
-		recv = mr
+	if len(seln.Index()) > 1 {
+		if mr := namedOf(fn.Type().(*types.Signature).Recv().Type()); mr != nil {
+			recv = mr
+		}
 	}
 	if recv == nil || recv.Obj() == nil || recv.Obj().Pkg() == nil {
 		return nil, false
