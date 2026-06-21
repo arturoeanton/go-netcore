@@ -11,10 +11,47 @@ public sealed class GoScanner
     public byte[] Cur = System.Array.Empty<byte>();
 }
 
-/// <summary>Shim for a subset of Go's <c>bufio</c> (Scanner over a runtime reader).</summary>
+/// <summary>A bufio.Writer buffering bytes over an underlying writer.</summary>
+public sealed class GoBufWriter
+{
+    public object? W;
+    public int Size = 4096;
+    public readonly System.Collections.Generic.List<byte> Buf = new();
+}
+
+/// <summary>Shim for a subset of Go's <c>bufio</c> (Scanner over a runtime reader,
+/// Writer over a runtime writer).</summary>
 public static class Bufio
 {
     public static object NewScanner(object? r) => new GoScanner { Data = Readers.Drain(r) };
+
+    // bufio.NewWriter / NewWriterSize.
+    public static object NewWriter(object? w) => new GoBufWriter { W = w };
+    public static object NewWriterSize(object? w, long size) => new GoBufWriter { W = w, Size = size > 0 ? (int)size : 4096 };
+
+    public static long Writer_Available(object bw) { var b = (GoBufWriter)bw; return b.Size - b.Buf.Count; }
+    public static long Writer_Buffered(object bw) => ((GoBufWriter)bw).Buf.Count;
+    public static object?[] Writer_Write(object bw, GoSlice p)
+    {
+        var b = (GoBufWriter)bw;
+        for (int i = 0; i < p.Len; i++) b.Buf.Add((byte)System.Convert.ToInt64(p.Data![p.Off + i]));
+        return new object?[] { (long)p.Len, null };
+    }
+    public static object? Writer_WriteByte(object bw, int c) { ((GoBufWriter)bw).Buf.Add((byte)c); return null; }
+    public static object?[] Writer_WriteString(object bw, GoString s)
+    {
+        var b = (GoBufWriter)bw;
+        var by = s.Bytes;
+        b.Buf.AddRange(by);
+        return new object?[] { (long)by.Length, null };
+    }
+    public static object? Writer_Flush(object bw)
+    {
+        var b = (GoBufWriter)bw;
+        if (b.Buf.Count > 0) { Compress.WriteRaw(b.W, b.Buf.ToArray()); b.Buf.Clear(); }
+        return null;
+    }
+    public static void Writer_Reset(object bw, object? w) { var b = (GoBufWriter)bw; b.W = w; b.Buf.Clear(); }
 
     public static void Scanner_Split(object s, object split)
     {

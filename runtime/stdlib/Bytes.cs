@@ -67,6 +67,21 @@ public static class Bytes
         for (int i = 0; i < b.Length; i++) if (b[i] == (byte)c) return i;
         return -1;
     }
+    // TrimPrefix(s, prefix) / TrimSuffix(s, suffix): drop a leading/trailing prefix.
+    public static GoSlice TrimPrefix(GoSlice s, GoSlice prefix)
+    {
+        byte[] b = B(s), p = B(prefix);
+        if (p.Length <= b.Length && b.AsSpan(0, p.Length).SequenceEqual(p))
+            return S(b.AsSpan(p.Length).ToArray());
+        return s;
+    }
+    public static GoSlice TrimSuffix(GoSlice s, GoSlice suffix)
+    {
+        byte[] b = B(s), p = B(suffix);
+        if (p.Length <= b.Length && b.AsSpan(b.Length - p.Length).SequenceEqual(p))
+            return S(b.AsSpan(0, b.Length - p.Length).ToArray());
+        return s;
+    }
     // Runes(s): the UTF-8 runes of s as a []rune (int32 slice).
     public static GoSlice Runes(GoSlice s)
     {

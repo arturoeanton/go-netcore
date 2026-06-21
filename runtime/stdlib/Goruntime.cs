@@ -23,6 +23,10 @@ public static class Goruntime
     public static object?[] Caller(long skip) =>
         new object?[] { (ulong)0, GoString.FromDotNetString(""), 0L, false };
 
+    // runtime.Stack(buf, all) int: goclr keeps no reflectable goroutine stacks, so
+    // nothing is written and 0 is returned (used only by debug paths).
+    public static long Stack(GoSlice buf, bool all) => 0;
+
     public static long GOMAXPROCS(long n) => System.Environment.ProcessorCount;
     public static long NumCPU() => System.Environment.ProcessorCount;
     public static long NumGoroutine() => 1;

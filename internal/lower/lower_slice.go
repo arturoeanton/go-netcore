@@ -350,12 +350,22 @@ func (l *funcLowerer) sliceExpr(e *ast.SliceExpr) {
 		}})
 		return
 	}
-	if st.Kind != goir.KSlice {
+	// p[lo:hi] where p is *[N]T: Go auto-derefs the pointer to the array.
+	sliceTy := st
+	isPtrArray := st.Kind == goir.KPtr && st.Elem != nil && st.Elem.Kind == goir.KSlice
+	if isPtrArray {
+		sliceTy = *st.Elem
+	}
+	if sliceTy.Kind != goir.KSlice {
 		l.fail(e.Pos(), "slice expression (only slices are supported)")
 		return
 	}
-	tmp := l.addLocal(nil, st)
+	tmp := l.addLocal(nil, sliceTy)
 	l.expr(e.X)
+	if isPtrArray {
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(sliceTy)
+	}
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
 
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})

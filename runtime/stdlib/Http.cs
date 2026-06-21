@@ -119,6 +119,10 @@ public static class Http
         return rq.Header ??= GoMaps.Make();
     }
 
+    // (*http.Request).Context(): goclr has no per-request cancellation, so this is a
+    // fresh background context.
+    public static object Req_Context(object r) => Context.Background();
+
     /// <summary>http.ErrNotMultipart — the sentinel ParseMultipartForm returns for a
     /// non-multipart request (gin checks errors.Is(err, http.ErrNotMultipart)).</summary>
     public static readonly GoError ErrNotMultipartSentinel = new(GoString.FromDotNetString("request Content-Type isn't multipart/form-data"));

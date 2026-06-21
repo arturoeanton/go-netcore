@@ -429,10 +429,11 @@ func funcDecls(p *frontend.Package) []*ast.FuncDecl {
 // native surface. They must import nothing outside this set and contain only code
 // goclr can lower (structs, slices, maps, package-level table initializers).
 var compileFromSource = map[string]bool{
-	"unicode": true,
-	"sort":    true, // via a goclr source overlay (drops internal/reflectlite)
-	"cmp":     true, // tiny generic package (Less/Compare/Or over the Ordered set)
-	"slices":  true, // generic slice helpers (depends only on cmp)
+	"unicode":            true,
+	"sort":               true, // via a goclr source overlay (drops internal/reflectlite)
+	"cmp":                true, // tiny generic package (Less/Compare/Or over the Ordered set)
+	"slices":             true, // generic slice helpers (depends only on cmp)
+	"net/http/httptrace": true, // via a goclr overlay (drops crypto/tls + internal/nettrace)
 }
 
 // collectPackages returns root plus its transitive non-stdlib dependencies that

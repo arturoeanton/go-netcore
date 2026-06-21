@@ -41,7 +41,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"IsExported": {"Ast", "IsExported"},
 	},
 	"runtime": {
-		"FuncForPC": {"Goruntime", "FuncForPC"}, "GOMAXPROCS": {"Goruntime", "GOMAXPROCS"}, "Caller": {"Goruntime", "Caller"},
+		"FuncForPC": {"Goruntime", "FuncForPC"}, "GOMAXPROCS": {"Goruntime", "GOMAXPROCS"}, "Caller": {"Goruntime", "Caller"}, "Stack": {"Goruntime", "Stack"},
 		"NumCPU": {"Goruntime", "NumCPU"}, "NumGoroutine": {"Goruntime", "NumGoroutine"},
 		"GC": {"Goruntime", "GC"}, "Gosched": {"Goruntime", "Gosched"},
 	},
@@ -80,7 +80,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/subtle":   {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}},
 	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
 	"net/mail":        {"ParseAddress": {"Mail", "ParseAddress"}},
-	"net/textproto":   {"CanonicalMIMEHeaderKey": {"Textproto", "CanonicalMIMEHeaderKey"}},
+	"net/textproto":   {"CanonicalMIMEHeaderKey": {"Textproto", "CanonicalMIMEHeaderKey"}, "TrimString": {"Textproto", "TrimString"}, "TrimBytes": {"Textproto", "TrimBytes"}},
 	"html/template":   {"New": {"Template", "New"}, "Must": {"Template", "Must"}, "JSEscapeString": {"Template", "JSEscapeString"}},
 	"text/template":   {"New": {"Template", "New"}, "Must": {"Template", "Must"}},
 	"os/exec":         {"Command": {"Exec", "Command"}},
@@ -133,7 +133,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ReadFull": {"Io", "ReadFull"},
 	},
 	"bufio": {
-		"NewScanner": {"Bufio", "NewScanner"},
+		"NewScanner": {"Bufio", "NewScanner"}, "NewWriter": {"Bufio", "NewWriter"}, "NewWriterSize": {"Bufio", "NewWriterSize"},
 	},
 	"net": {
 		"Listen": {"Net", "Listen"}, "Dial": {"Net", "Dial"},
@@ -204,7 +204,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"HasPrefix": {"Bytes", "HasPrefix"}, "HasSuffix": {"Bytes", "HasSuffix"}, "Index": {"Bytes", "Index"},
 		"LastIndex": {"Bytes", "LastIndex"}, "LastIndexByte": {"Bytes", "LastIndexByte"},
 		"IndexByte": {"Bytes", "IndexByte"}, "IndexRune": {"Bytes", "IndexRune"}, "IndexAny": {"Bytes", "IndexAny"}, "Runes": {"Bytes", "Runes"}, "Count": {"Bytes", "Count"}, "ToUpper": {"Bytes", "ToUpper"},
-		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Trim": {"Bytes", "Trim"}, "Repeat": {"Bytes", "Repeat"},
+		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Trim": {"Bytes", "Trim"}, "TrimPrefix": {"Bytes", "TrimPrefix"}, "TrimSuffix": {"Bytes", "TrimSuffix"}, "Repeat": {"Bytes", "Repeat"},
 		"Split": {"Bytes", "Split"}, "SplitAfterN": {"Bytes", "SplitAfterN"}, "Join": {"Bytes", "Join"},
 		"NewReader": {"Readers", "NewBytesReader"}, "NewBuffer": {"BytesBuffer", "NewBuffer"}, "NewBufferString": {"BytesBuffer", "NewBufferString"},
 	},
@@ -254,6 +254,7 @@ var opaqueShimTypes = map[string]bool{
 	"reflect.Value":                true,
 	"sync.Mutex":                   true,
 	"sync/atomic.Value":            true,
+	"sync/atomic.Bool":             true,
 	"sync.RWMutex":                 true,
 	"sync.WaitGroup":               true,
 	"sync.Once":                    true,
@@ -311,6 +312,7 @@ var opaqueShimTypes = map[string]bool{
 	"strings.Reader":               true,
 	"bytes.Reader":                 true,
 	"bufio.Scanner":                true,
+	"bufio.Writer":                 true,
 	"time.Ticker":                  true,
 	"time.Timer":                   true,
 	"encoding/json.Decoder":        true,
@@ -339,6 +341,10 @@ var shimVarRegistry = map[string]shimFunc{
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 	"io.EOF":                         {"Io", "EOF"},
 	"io.ErrUnexpectedEOF":            {"Io", "ErrUnexpectedEOF"},
+	"os.ErrDeadlineExceeded":         {"Os", "ErrDeadlineExceeded"},
+	"os.ErrNotExist":                 {"Os", "ErrNotExist"},
+	"os.ErrExist":                    {"Os", "ErrExist"},
+	"os.ErrClosed":                   {"Os", "ErrClosed"},
 	"io.ErrShortWrite":               {"Io", "ErrShortWrite"},
 	"io.ErrShortBuffer":              {"Io", "ErrShortBuffer"},
 	"io.ErrClosedPipe":               {"Io", "ErrClosedPipe"},
@@ -501,6 +507,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"sync.Map":          {"Sync", "NewMap"},
 	"sync.Pool":         {"Sync", "NewPool"},
 	"sync/atomic.Value": {"Atomic", "NewValue"},
+	"sync/atomic.Bool":  {"Atomic", "NewBool"},
 	"strings.Builder":   {"StringsBuilder", "New"},
 	"bytes.Buffer":      {"BytesBuffer", "New"},
 	"time.Time":         {"Time", "TimeZero"},
@@ -598,6 +605,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"bufio.Scanner": {
 		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"}, "Err": {"Bufio", "Scanner_Err"},
 	},
+	"bufio.Writer": {
+		"Available": {"Bufio", "Writer_Available"}, "Buffered": {"Bufio", "Writer_Buffered"}, "Flush": {"Bufio", "Writer_Flush"},
+		"Write": {"Bufio", "Writer_Write"}, "WriteByte": {"Bufio", "Writer_WriteByte"}, "WriteString": {"Bufio", "Writer_WriteString"}, "Reset": {"Bufio", "Writer_Reset"},
+	},
 	"time.Ticker": {
 		"Stop": {"Time", "Ticker_Stop"}, "Reset": {"Time", "Ticker_Reset"},
 	},
@@ -608,7 +619,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Close": {"Http", "Body_Close"},
 	},
 	"net/http.Request": {
-		"ParseForm": {"Http", "Req_ParseForm"}, "ParseMultipartForm": {"Http", "Req_ParseMultipartForm"},
+		"ParseForm": {"Http", "Req_ParseForm"}, "ParseMultipartForm": {"Http", "Req_ParseMultipartForm"}, "Context": {"Http", "Req_Context"},
 	},
 	"net/http.ResponseWriter": {
 		"Write": {"Http", "RW_Write"}, "WriteHeader": {"Http", "RW_WriteHeader"}, "Header": {"Http", "RW_Header"},
@@ -746,6 +757,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"sync/atomic.Value": {
 		"Load": {"Atomic", "Value_Load"}, "Store": {"Atomic", "Value_Store"}, "Swap": {"Atomic", "Value_Swap"}, "CompareAndSwap": {"Atomic", "Value_CompareAndSwap"},
+	},
+	"sync/atomic.Bool": {
+		"Load": {"Atomic", "Bool_Load"}, "Store": {"Atomic", "Bool_Store"}, "Swap": {"Atomic", "Bool_Swap"}, "CompareAndSwap": {"Atomic", "Bool_CompareAndSwap"},
 	},
 	"sync.RWMutex": {
 		"Lock": {"Sync", "RWMutex_Lock"}, "Unlock": {"Sync", "RWMutex_Unlock"},

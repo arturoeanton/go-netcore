@@ -46,6 +46,13 @@ public static class Atomic
     public static bool CompareAndSwapUint64(GoPtr p, ulong old, ulong nv) { lock (Gate) { if (U64(p) == old) { GoPtrs.Set(p, nv); return true; } return false; } }
     public static bool CompareAndSwapUint32(GoPtr p, uint old, uint nv) { lock (Gate) { if (U32(p) == old) { GoPtrs.Set(p, nv); return true; } return false; } }
 
+    // sync/atomic.Bool: an atomic boolean.
+    public static object NewBool() => new GoAtomicBool();
+    public static bool Bool_Load(object v) { lock (Gate) return ((GoAtomicBool)v).V; }
+    public static void Bool_Store(object v, bool x) { lock (Gate) ((GoAtomicBool)v).V = x; }
+    public static bool Bool_Swap(object v, bool x) { lock (Gate) { var a = (GoAtomicBool)v; var old = a.V; a.V = x; return old; } }
+    public static bool Bool_CompareAndSwap(object v, bool old, bool nw) { lock (Gate) { var a = (GoAtomicBool)v; if (a.V == old) { a.V = nw; return true; } return false; } }
+
     // sync/atomic.Value: atomically holds an interface{} value.
     public static object NewValue() => new GoAtomicValue();
     public static object? Value_Load(object v) { lock (Gate) return ((GoAtomicValue)v).Val; }
@@ -56,3 +63,6 @@ public static class Atomic
 
 /// <summary>A sync/atomic.Value holding one interface value.</summary>
 public sealed class GoAtomicValue { public object? Val; }
+
+/// <summary>A sync/atomic.Bool.</summary>
+public sealed class GoAtomicBool { public bool V; }

@@ -56,6 +56,16 @@ public static class Os
     // (*os.File).Close(): no-op — os.Open already read the file fully.
     public static object? File_Close(object f) => null;
 
+    // os sentinel errors.
+    public static readonly GoError ErrDeadlineExceededSentinel = new(GoString.FromDotNetString("i/o timeout"));
+    public static object ErrDeadlineExceeded() => ErrDeadlineExceededSentinel;
+    public static readonly GoError ErrNotExistSentinel = new(GoString.FromDotNetString("file does not exist"));
+    public static object ErrNotExist() => ErrNotExistSentinel;
+    public static readonly GoError ErrExistSentinel = new(GoString.FromDotNetString("file already exists"));
+    public static object ErrExist() => ErrExistSentinel;
+    public static readonly GoError ErrClosedSentinel = new(GoString.FromDotNetString("file already closed"));
+    public static object ErrClosed() => ErrClosedSentinel;
+
     // os.Stat(name) (FileInfo, error).
     public static object?[] Stat(GoString name)
     {

@@ -16,6 +16,7 @@ import (
 //go:embed overlays/sort/sort.go.txt
 //go:embed overlays/sort/search.go.txt
 //go:embed overlays/slices/slices.go.txt
+//go:embed overlays/httptrace/trace.go.txt
 var overlayFS embed.FS
 
 // projectOverlayDir is the convention directory, relative to a project's module
@@ -52,6 +53,12 @@ var stdlibOverlayPkgs = []stdlibOverlayPkg{
 	// Replace just that file; iter.go/sort.go/zsort*.go compile from real source.
 	{importPath: "slices", replaceOnly: true, files: map[string]string{
 		"slices.go": "overlays/slices/slices.go.txt",
+	}},
+	// net/http/httptrace: the real package pulls crypto/tls + internal/nettrace and
+	// uses reflect. The overlay keeps only the client-trace surface x/net/http2 reads
+	// (dead weight for a server) so it compiles without those deps.
+	{importPath: "net/http/httptrace", files: map[string]string{
+		"trace.go": "overlays/httptrace/trace.go.txt",
 	}},
 }
 
