@@ -5,6 +5,7 @@ using GoCLR.Runtime;
 
 /// <summary>A *regexp.Regexp handle wrapping a .NET Regex. (.NET uses a
 /// backtracking engine vs Go's RE2; common patterns match, some edges differ.)</summary>
+[GoShim("regexp.Regexp")]
 public sealed class GoRegexp { public Regex Re = null!; }
 
 /// <summary>Shim for a subset of Go's <c>regexp</c> package.</summary>

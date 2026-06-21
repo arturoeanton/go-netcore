@@ -4,6 +4,7 @@ using System.Text;
 using GoCLR.Runtime;
 
 /// <summary>A *url.URL handle (parsed components).</summary>
+[GoShim("net/url.URL")]
 public sealed class GoUrl { public string Scheme = "", Host = "", Path = "", RawQuery = "", Fragment = "", Opaque = "", User = ""; }
 
 /// <summary>Shim for Go's <c>net/url</c> (escapes + Parse with field getters).</summary>

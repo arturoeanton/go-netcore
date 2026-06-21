@@ -8,12 +8,14 @@ using GoCLR.Runtime;
 /// (kind/name/fields/element/key); Sample is the legacy representative value, used
 /// only when no descriptor is available (a dynamic value reached through an
 /// interface).</summary>
+[GoShim("reflect.Type")]
 public sealed class GoReflectType { public object? Sample; public GoTypeDesc? Desc; }
 
 /// <summary>reflect.Value handle: wraps a (boxed) value plus its type descriptor.
 /// When settable (reached via Elem of a pointer, or a Field of a settable struct),
 /// Setter writes a new boxed value back into the underlying storage (the GoPtr cell,
 /// threading through parent structs as needed).</summary>
+[GoShim("reflect.Value")]
 public sealed class GoReflectValue { public object? V; public System.Action<object?>? Setter; public GoTypeDesc? Desc; }
 
 /// <summary>Shim for a subset of Go's <c>reflect</c> package (the read path used

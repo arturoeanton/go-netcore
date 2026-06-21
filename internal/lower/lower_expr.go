@@ -277,9 +277,10 @@ func (l *funcLowerer) applyShimFields(e *ast.CompositeLit, t goir.Type, litType 
 	if len(e.Elts) == 0 {
 		return
 	}
+	// Best-effort: a shim with no field setters keeps its zero value (the long-standing
+	// behavior — e.g. syscall.Flock_t{...}, a no-op lock whose fields are unobserved).
 	setters, ok := shimFieldSetRegistry[t.Shim]
 	if !ok {
-		l.fail(e.Pos(), "field initializers in "+t.Shim+" literal")
 		return
 	}
 	var st *types.Struct
@@ -291,8 +292,7 @@ func (l *funcLowerer) applyShimFields(e *ast.CompositeLit, t goir.Type, litType 
 	for _, elt := range e.Elts {
 		kv, ok := elt.(*ast.KeyValueExpr)
 		if !ok {
-			l.fail(elt.Pos(), "positional field in "+t.Shim+" literal")
-			continue
+			continue // positional shim field: keep the zero value for it
 		}
 		id, ok := kv.Key.(*ast.Ident)
 		if !ok {
@@ -300,8 +300,7 @@ func (l *funcLowerer) applyShimFields(e *ast.CompositeLit, t goir.Type, litType 
 		}
 		sf, ok := setters[id.Name]
 		if !ok {
-			l.fail(kv.Pos(), "field "+id.Name+" in "+t.Shim+" literal")
-			continue
+			continue // no setter for this field: keep its zero value
 		}
 		ft := l.exprType(kv.Value)
 		if st != nil {

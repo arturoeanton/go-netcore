@@ -62,6 +62,11 @@ type lowerCtx struct {
 	// display name ("pkg.Type") for %T / reflect, registered at startup.
 	namedIds   map[*types.Named]int64
 	namedNames map[int64]string
+	// shimNamed resolves an opaque-shim type's "pkg/path.Name" to its *types.Named
+	// (lazily, by scanning the program's import closure) so interface dispatch can ask
+	// types.Implements whether a shim type satisfies an interface — a precise,
+	// signature-aware check, not a method-name guess. nil until first use.
+	shimNamed map[string]*types.Named
 	// Runtime type descriptors (goclr's *rtype). Every type observed at a
 	// reflect.TypeOf/ValueOf site — and, recursively, its element/key/field types —
 	// is assigned a stable id (typeDescIds, keyed by the canonical type string) and a

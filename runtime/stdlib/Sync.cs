@@ -3,15 +3,22 @@ namespace GoCLR.Stdlib;
 using System.Threading;
 using GoCLR.Runtime;
 
+[GoShim("sync.Mutex")]
 public sealed class GoMutex { public readonly SemaphoreSlim Sem = new(1, 1); }
 
+[GoShim("sync.Cond")]
 public sealed class GoCond { public object? L; public readonly object Mon = new(); }
+[GoShim("sync.RWMutex")]
 public sealed class GoRWMutex { public readonly SemaphoreSlim Sem = new(1, 1); }
+[GoShim("sync.WaitGroup")]
 public sealed class GoWaitGroup { public int Count; public readonly object Gate = new(); }
+[GoShim("sync.Once")]
 public sealed class GoOnce { public int Done; public readonly object Gate = new(); }
+[GoShim("sync.Map")]
 public sealed class GoSyncMap { public readonly System.Collections.Concurrent.ConcurrentDictionary<object, object?> D = new(); }
 
 /// <summary>sync.Pool: a free-list of reusable objects with an optional New factory.</summary>
+[GoShim("sync.Pool")]
 public sealed class GoPool
 {
     public GoClosure? New;
@@ -57,22 +64,6 @@ public static class Sync
     // RWMutex is a single semaphore, so the view is the mutex itself (using the write
     // lock for reads is conservative but correct).
     public static object RWMutex_RLocker(object m) => m;
-
-    // LockerDispatch routes a sync.Locker interface call to the right shim when the
-    // boxed value is an opaque shim handle (a *sync.Mutex or *sync.RWMutex, e.g. the
-    // RWMutex returned by RLocker()). Opaque shim handles share the System.Object CLR
-    // type, so the lowered interface dispatch cannot tell them apart by isinst and
-    // falls through to here, where the concrete CLR type discriminates.
-    public static void LockerDispatch(object recv, GoString method)
-    {
-        bool lk = method.ToString() == "Lock";
-        switch (recv)
-        {
-            case GoMutex m: if (lk) m.Sem.Wait(); else m.Sem.Release(); break;
-            case GoRWMutex rw: if (lk) rw.Sem.Wait(); else rw.Sem.Release(); break;
-            default: throw new GoPanicException(GoString.FromDotNetString("runtime error: invalid memory address or nil pointer dereference"));
-        }
-    }
 
     public static void WaitGroup_Add(object w, long delta)
     {

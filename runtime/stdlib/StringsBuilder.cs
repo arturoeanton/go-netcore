@@ -3,6 +3,7 @@ namespace GoCLR.Stdlib;
 using System.Text;
 using GoCLR.Runtime;
 
+[GoShim("strings.Builder")]
 public sealed class GoStringBuilder { public readonly StringBuilder SB = new(); }
 
 /// <summary>Shim for strings.Builder.</summary>

@@ -3,6 +3,7 @@ namespace GoCLR.Stdlib;
 using System.Text;
 using GoCLR.Runtime;
 
+[GoShim("bytes.Buffer")]
 public sealed class GoBuffer { public readonly System.Collections.Generic.List<byte> B = new(); public int Pos; }
 
 /// <summary>Shim for bytes.Buffer.</summary>

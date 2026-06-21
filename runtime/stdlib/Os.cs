@@ -3,6 +3,7 @@ namespace GoCLR.Stdlib;
 using GoCLR.Runtime;
 
 /// <summary>An os.File handle: a standard stream, or a file opened for writing.</summary>
+[GoShim("os.File")]
 public sealed class GoFile { public bool IsStderr; public bool IsStdin; public System.IO.Stream? Wr; public string Path = ""; }
 
 /// <summary>An os.SyscallError (a syscall-tagged error).</summary>

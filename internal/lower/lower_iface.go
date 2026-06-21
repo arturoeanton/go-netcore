@@ -3,6 +3,7 @@ package lower
 import (
 	"go/ast"
 	"go/types"
+	"sort"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
 )
@@ -282,25 +283,37 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		l.emit(goir.Op{Code: goir.OpIsInstGoError})
 		l.emit(goir.Op{Code: goir.OpBrTrue, Label: goErrLabel})
 	}
-	// A sync.Locker-shaped interface (Lock()/Unlock()) may hold an opaque shim handle
-	// (e.g. the RWMutex that database/sql's Rows iteration locks through RLocker()).
-	// Such handles share the System.Object CLR type, so no isinst branch above matched;
-	// route them to the runtime adapter that discriminates by concrete CLR type.
-	if isLockerIface(iface) {
+	// An opaque shim value may flow through an interface it satisfies (the RWMutex that
+	// database/sql's Rows locks through RLocker() as a sync.Locker; a syscall.Signal as
+	// an os.Signal). Such handles share the System.Object CLR type, so no isinst branch
+	// above matched; route each shim type whose method registry covers the interface to
+	// its method, discriminating by the value's concrete CLR class (Rt.IsShimKind). This
+	// is data-driven by the shim registries — no Go type is named here.
+	for _, si := range l.shimIfaceImplementers(iface, ifaceMethod) {
+		next := l.label()
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
-		l.emit(goir.Op{Code: goir.OpStrConst, Str: ifaceMethod.Name()})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: si.goName})
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Sync", Method: "LockerDispatch",
-			Params: []goir.Type{goir.TObject, goir.TString}, Ret: goir.TVoid,
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "IsShimKindStrict",
+			Params: []goir.Type{goir.TObject, goir.TString}, Ret: goir.TBool,
 		}})
+		l.emit(goir.Op{Code: goir.OpBrFalse, Label: next})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp}) // the shim handle is the receiver
+		for _, at := range argTmps {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: at})
+		}
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: si.ext})
+		if resultTmp >= 0 {
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: resultTmp})
+		}
 		l.emit(goir.Op{Code: goir.OpBr, Label: end})
-	} else {
-		// No match => nil interface method call.
-		l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: invalid memory address or nil pointer dereference"})
-		l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
-		l.emit(goir.Op{Code: goir.OpCallPanic})
-		l.emit(goir.Op{Code: goir.OpBr, Label: end})
+		l.mark(next)
 	}
+	// No match => nil interface method call.
+	l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: invalid memory address or nil pointer dereference"})
+	l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
+	l.emit(goir.Op{Code: goir.OpCallPanic})
+	l.emit(goir.Op{Code: goir.OpBr, Label: end})
 
 	for i, impl := range impls {
 		l.mark(labels[i])
@@ -592,28 +605,97 @@ func (l *funcLowerer) emitEmbedNav(start goir.Type, path []int, recvType goir.Ty
 	}
 }
 
-// isLockerIface reports whether iface is sync.Locker-shaped: exactly Lock() and
-// Unlock(), both with no parameters and no results. Such an interface may carry an
-// opaque shim handle (a mutex) that the isinst-based dispatch cannot identify.
-func isLockerIface(iface *types.Interface) bool {
-	if iface.NumMethods() != 2 {
-		return false
+// shimImpl is an opaque shim type that satisfies an interface, paired with the extern
+// for the method being dispatched.
+type shimImpl struct {
+	goName string
+	ext    *goir.Extern
+}
+
+// shimIfaceImplementers returns the opaque shim types that satisfy iface (checked with
+// types.Implements — a precise, full-signature test, not a method-name guess), each
+// paired with the extern for ifaceMethod. This lets a shim value flowing through an
+// interface (a sync.RWMutex as sync.Locker, a syscall.Signal as os.Signal) dispatch to
+// its method without goclr hardcoding any specific type — the set is derived from
+// opaqueShimTypes + shimMethodRegistry + go/types. Sorted by name for determinism.
+func (l *funcLowerer) shimIfaceImplementers(iface *types.Interface, ifaceMethod *types.Func) []shimImpl {
+	if iface.NumMethods() == 0 {
+		return nil
 	}
-	var hasLock, hasUnlock bool
-	for i := 0; i < iface.NumMethods(); i++ {
-		m := iface.Method(i)
-		sig, ok := m.Type().(*types.Signature)
-		if !ok || sig.Params().Len() != 0 || sig.Results().Len() != 0 {
-			return false
+	var out []shimImpl
+	for typeName := range opaqueShimTypes {
+		methods, ok := shimMethodRegistry[typeName]
+		if !ok {
+			continue
 		}
-		switch m.Name() {
-		case "Lock":
-			hasLock = true
-		case "Unlock":
-			hasUnlock = true
+		sf, ok := methods[ifaceMethod.Name()]
+		if !ok {
+			continue
 		}
+		named, ok := l.shimNamedType(typeName)
+		if !ok {
+			continue // the shim type is not in this program's import closure
+		}
+		if !types.Implements(named, iface) && !types.Implements(types.NewPointer(named), iface) {
+			continue
+		}
+		out = append(out, shimImpl{goName: typeName, ext: l.shimIfaceExtern(sf, ifaceMethod)})
 	}
-	return hasLock && hasUnlock
+	sort.Slice(out, func(i, j int) bool { return out[i].goName < out[j].goName })
+	return out
+}
+
+// shimNamedType resolves an opaque-shim type name ("sync.RWMutex") to its *types.Named,
+// scanning the program's import closure once.
+func (l *funcLowerer) shimNamedType(name string) (*types.Named, bool) {
+	if l.shimNamed == nil {
+		l.shimNamed = map[string]*types.Named{}
+		seen := map[*types.Package]bool{}
+		var visit func(p *types.Package)
+		visit = func(p *types.Package) {
+			if p == nil || seen[p] {
+				return
+			}
+			seen[p] = true
+			scope := p.Scope()
+			for _, n := range scope.Names() {
+				if opaqueShimTypes[p.Path()+"."+n] {
+					if tn, ok := scope.Lookup(n).(*types.TypeName); ok {
+						if nm, ok := tn.Type().(*types.Named); ok {
+							l.shimNamed[p.Path()+"."+n] = nm
+						}
+					}
+				}
+			}
+			for _, imp := range p.Imports() {
+				visit(imp)
+			}
+		}
+		visit(l.pkg.Types)
+	}
+	n, ok := l.shimNamed[name]
+	return n, ok
+}
+
+// shimIfaceExtern builds the extern for a shim method dispatched through an interface,
+// deriving the receiver (object) plus the parameter and result types from the interface
+// method's signature.
+func (l *funcLowerer) shimIfaceExtern(sf shimFunc, ifaceMethod *types.Func) *goir.Extern {
+	sig := ifaceMethod.Type().(*types.Signature)
+	params := []goir.Type{goir.TObject}
+	for i := 0; i < sig.Params().Len(); i++ {
+		pt, _ := l.goType(sig.Params().At(i).Type())
+		params = append(params, pt)
+	}
+	ret := goir.TVoid
+	switch sig.Results().Len() {
+	case 0:
+	case 1:
+		ret, _ = l.goType(sig.Results().At(0).Type())
+	default:
+		ret = goir.TObjectArray
+	}
+	return &goir.Extern{Assembly: shimAssembly, Namespace: shimAssembly, Type: sf.csType, Method: sf.csMethod, Params: params, Ret: ret}
 }
 
 // ifaceIsError reports whether iface's method set is exactly the error interface's

@@ -428,10 +428,12 @@ public static class Time
 }
 
 /// <summary>A time.Time value: Unix nanoseconds in UTC, plus a Go zero-value flag.</summary>
+[GoShim("time.Time")]
 public sealed class GoTime { public long N; public bool IsZero; }
 
 /// <summary>A *time.Location: UTC by default, or a fixed-offset zone from
 /// time.FixedZone (Name + OffsetSeconds).</summary>
+[GoShim("time.Location")]
 public sealed class GoLocation { public string Name = "UTC"; public int OffsetSeconds; }
 
 /// <summary>A *time.Ticker / *time.Timer: the C channel plus its driving timer.</summary>

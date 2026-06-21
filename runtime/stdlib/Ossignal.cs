@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using GoCLR.Runtime;
 
 /// <summary>An os.Signal (a syscall.Signal): a number and its Unix name.</summary>
+[GoShim("syscall.Signal")]
 public sealed class GoSignal { public int Num; public string Name = ""; }
 
 /// <summary>Shim for os/signal: register channels to receive process signals. SIGINT,
