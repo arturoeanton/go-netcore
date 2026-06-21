@@ -35,7 +35,7 @@ typedView[idx]                      →   a managed view struct over the []byte
 A TypedArray view becomes a small managed struct `{buf []byte; off int}` whose
 `get(i)`/`set(i,v)` call `binary` — no pointer reinterpretation, identical bytes.
 
-The delivery vehicle is the **overlay-resolution mechanism** (ROADMAP-M2.5 §0.1):
+The delivery vehicle is the **overlay-resolution mechanism**:
 the frontend loads with the `goclr` build tag and a `go/packages` `-overlay` JSON
 map that replaces the three offending files with goclr-safe versions kept in this
 repo under `overlay/`:

@@ -44,17 +44,34 @@ objects and property access, function calls/closures, `for`/`while` loops, array
 callbacks (`map`/`filter`/`reduce`/`sort`), `Object.keys`, and `JSON.stringify`/
 `JSON.parse` round-trips — all byte-identical to `go run`.
 
-A second validation target, **Gin** ([`examples/demo_gin`](examples/demo_gin/)), is
-under way: its closure compiles through the `go-playground/validator` (which exercises
-`reflect` heavily), `yaml.v3`, and Gin's form/header/query/JSON binding and rendering
-layers; the remaining frontier is the `x/net/http2` stack.
+## Highlight — a full Gin + database/sql + pure-Go SQLite stack on .NET
+
+A second validation target, **Gin**, now **runs end to end on the CLR**.
+[`examples/demo_gin_sql`](examples/demo_gin_sql/) is a Gin REST API backed by
+`database/sql` and the pure-Go, zero-cgo SQLite driver
+[go-r2-sqlite](https://github.com/arturoeanton/go-r2-sqlite) — **the entire stack
+compiled to IL by goclr**: the Gin router/middleware, the `database/sql` pool and
+`driver` layer, and the ~14k-line SQLite engine (B-tree, pager, SQL parser/VDBE) itself.
+Nothing native is loaded — no cgo, no managed database. Full CRUD, byte-accurate:
+
+```text
+GET  /notes      → [{"id":1,"text":"first note"},{"id":2,"text":"second note"}]
+GET  /notes/1    → {"id":1,"text":"first note"}
+POST /notes      → {"id":3,"text":"from goclr"}      (persisted)
+GET  /notes/999  → 404 {"error":"not found"}
+```
+
+[`examples/demo_gin`](examples/demo_gin/) is the router on its own (`/health`, `/ping`,
+`/hello/:name`). Driving this stack — Gin's binding/render, the `go-playground/validator`
+(reflect-heavy), `yaml.v3`, `database/sql`, and the SQLite engine — through goclr's
+backend forced a large set of general language and runtime features to be correct.
 
 ## Status
 
 The compiler runs end-to-end: front half + the ECMA-335 emitter + the .NET runtime
-+ a stdlib overlay. **179 conformance fixtures pass byte-for-byte vs `go run`.**
-See [ROADMAP.md](ROADMAP.md) / [ROADMAP-M2.5.md](ROADMAP-M2.5.md) for the milestone
-breakdown and [LIMITATIONS.md](LIMITATIONS.md) / [GAPS.md](GAPS.md) for the tracked
++ a stdlib overlay. **191 conformance fixtures pass byte-for-byte vs `go run`.**
+See [ROADMAP.md](ROADMAP.md) for the milestone breakdown and the done/pending
+checklist, and [LIMITATIONS.md](LIMITATIONS.md) / [GAPS.md](GAPS.md) for the tracked
 gaps.
 
 | Area | State |
@@ -70,9 +87,11 @@ gaps.
 | **P0 stdlib** (hardened) — fmt/strconv/strings/bytes/unicode/utf8/sort/math/errors/reflect(r+w)/encoding-json(M+U+streaming)/time/sync/math-rand/context/io/os | ✅ byte-exact |
 | **P1 stdlib** — net/http client+server, net TCP (+ParseIP/ParseMAC/ParseCIDR), crypto (sha/sha3/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio/io, log, math/big, container/list, os/exec, mime, net/mail, net/textproto, io/fs | ✅ |
 | **P2 stdlib** — encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM, crypto/sha3 (+SHAKE) | ✅ |
+| **P3 stdlib** — net/http server (HttpListener) + net/http/httptest + net/http/cookiejar, net UDP (UDPConn/UDPAddr), log/slog (text+JSON), os/signal (real SIGINT/TERM delivery), `database/sql` + `database/sql/driver` | ✅ |
+| **database/sql + a pure-Go SQLite engine** — `go-r2-sqlite` (zero-cgo, ~14k LOC) compiled through goclr; CREATE/INSERT/SELECT with INTEGER/REAL/TEXT scanned into Go types | ✅ |
 | **reflect — runtime type descriptors** ([REFLECT.md](REFLECT.md)) — precise `Kind`/`Name`/`String`/fields/tags (static + dynamic), `MapOf`/`SliceOf`/`PtrTo`/`ArrayOf`, `Implements`/`AssignableTo`, `Zero`/`New` | ✅ descriptor-backed |
 | **goja** — evaluates a large JS subset (arithmetic, strings, `Math`, objects, closures, loops, array callbacks, `JSON.stringify`/`parse`) byte-identical to `go run` | ✅ |
-| **Gin** — compiles through validator/yaml/binding/render; `x/net/http2` stack pending | 🟡 |
+| **Gin** — router, middleware, JSON binding/render run end to end; full CRUD over `database/sql` + a pure-Go SQLite engine ([`examples/demo_gin_sql`](examples/demo_gin_sql/)) | ✅ runs |
 | Echo (autocert/acme pending), AOT/perf (P4) | 🚧 |
 
 ## Requirements
@@ -87,7 +106,7 @@ gaps.
 go build -o bin/goclr ./cmd/goclr
 bin/goclr doctor                          # verify Go + .NET environment
 bin/goclr run ./tests/conformance/015_fib # fib(0..9), matches `go run`
-go test ./tests/conformance/              # all 179 fixtures vs `go run`
+go test ./tests/conformance/              # all 191 fixtures vs `go run`
 ```
 
 The first `build`/`run` compiles the `GoCLR.Runtime` and `GoCLR.Stdlib` C# projects

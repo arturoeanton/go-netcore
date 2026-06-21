@@ -80,19 +80,18 @@ the top of a goroutine prints the .NET unhandled-exception format
 and message are correct; the surrounding framing and the stack trace are not
 reproduced. (Conformance compares recovered panics, whose output is exact.)
 
-## goja validation target — compile tail closed; remaining is `reflect` interop
+## goja validation target — runs a large JS subset; full spec needs deeper reflect
 
 The typed box resolved goja's headline blocker (the `sort.StringSlice` /
 representation-collapse dispatch), and the addressable-fields + dispatch work that
-followed cleared the rest of the language tail. goja now **compiles through its
-entire non-reflect dependency closure** — `sort`/`cmp`/`slices`, all of `regexp2`,
-`go-sourcemap`, `google/pprof`, and **all of `golang.org/x/text`** (language,
-transform, unicode/norm, cases) — and back into goja's **own main package**
-(`array.go`, …). The only remaining compile blockers are goja's Go↔JS interop
-calls into **`reflect`** (`reflect.MakeSlice`, `MakeMap`, `MakeFunc`, deep
-`Value`/`Type` operations) — a large surface beyond the current read/write reflect
-shim. That deep-reflect work is the next milestone; until it lands, goja does not
-run end-to-end and `tests/validation/goja` is reported skipped.
+followed cleared the rest of the language tail. goja **compiles, loads, JITs, runs its
+package init, and evaluates a large JavaScript subset** byte-identical to `go run`
+(arithmetic, strings + string methods, `Math`, objects/property access, closures,
+loops, array callbacks `map`/`filter`/`reduce`/`sort`, `Object.keys`, and
+`JSON.stringify`/`parse` round-trips); `tests/validation/goja` passes. The remaining
+gap is goja's deepest Go↔JS interop into **`reflect`** (`MakeFunc`, deep `Value`/`Type`
+operations) needed for the *full* JS spec — a large surface beyond the current
+read/write reflect shim, and the deep-reflect milestone.
 
 ## Function values of shimmed stdlib functions
 
@@ -132,20 +131,27 @@ field through `b`, still aliases `a`'s array. A correct fix needs a compiler-emi
 deep copy (the runtime cannot distinguish an array-backed `GoSlice` from a real
 slice). Workaround: copy the array field explicitly, or hold it behind a pointer.
 
-## P1 items still deferred
+## Stdlib items still deferred
 
-These P1 packages need a larger feature or external module and are deferred:
+Done since this list was first written: **`net` UDP** (UDPConn/UDPAddr, loopback
+round-trip), **`log/slog`** (text + JSON), **`os/signal`** (real SIGINT/SIGTERM
+delivery), **`net/http/cookiejar`**, **`net/http/httptest`** (live server + recorder),
+**`database/sql` + `database/sql/driver`** (with the `go-r2-sqlite` engine), and
+**`mime/multipart`** (form parsing). Still deferred (need a larger feature or external
+module):
+
 - **`container/heap`** — `heap.Init/Push/Pop` call back into the user type's
   `Less/Swap/Push/Pop` (interface methods); calling Go methods from a shim needs an
   interface-method-callback bridge.
-- **`flag`** — needs command-line args forwarded from `goclr run` to the program
-  (`os.Args` plumbing).
-- **`net` UDP** — `PacketConn.WriteTo` takes a `net.Addr`; needs
-  `net.ResolveUDPAddr`/`*net.UDPAddr`. TCP (Listen/Dial/Conn) works.
 - **`x/sync/errgroup`** — shim written, but the import needs the external x/sync
   module present to type-check.
-- `log/slog`, `mime/multipart`, `os/signal`, `net/http` cookiejar/httptest,
-  `google/uuid` — not yet shimmed.
+- **`google/uuid`** — not yet shimmed.
+- **slog edges**: the automatic timestamp is omitted (so output is reproducible —
+  drop `slog.TimeKey` via `ReplaceAttr` to match `go run`); `WithGroup`/`LogAttrs` and
+  the `HandlerOptions.Level`/`ReplaceAttr` fields are accepted but not applied.
+- **os/signal edges**: `int(syscall.SIGINT)` (converting a signal constant to an
+  integer) is unsupported — a signal is an opaque `GoSignal`, not a bare int; print it
+  or compare `os.Signal` values instead.
 
 ## Interface dispatch keys on the boxed representation
 
@@ -167,6 +173,17 @@ two named types that share one runtime representation:
 
 A precise fix needs per-value runtime type tags (an itable), which is M3 scope.
 
+**Resolved cases.** Pointers to *non-struct* types are now discriminated by the
+pointee's runtime representation (`Rt.PtrPointeeKind`): a type switch / comma-ok over
+`*int64` vs `*string` vs `*[]byte` matches correctly — exactly what `database/sql`'s
+`convertAssign` needs to scan numbers and strings into their Go types. Residual: `*[]byte`
+and `*sql.RawBytes` share the slice representation and still can't be told apart.
+Opaque **shim** values flowing through an interface they satisfy (a `sync.RWMutex` as
+`sync.Locker`, a `syscall.Signal` as `os.Signal`) also dispatch correctly now — a general
+mechanism keyed on `types.Implements` + a self-declared `[GoShim]` CLR-class registry, with
+no Go type hardcoded in the compiler. A shim type participates once its value class carries
+the `[GoShim("pkg.Type")]` attribute.
+
 ### Incidental implementers whose method is a shim-type method
 
 A large program's import closure contains many types that *incidentally* satisfy a
@@ -180,20 +197,6 @@ diagnosable failure that fires only if such a value actually reaches that call s
 an embedded `*bufio.Reader` and is enumerated as an `io.ByteReader` implementer,
 yet never flows into one). If a real program hits the panic, the fix is to register
 that shim type's method as an extern (`shimMethodRegistry`).
-
-## goja / JavaScript evaluation
-
-goja now **compiles, loads, JITs, runs init, and evaluates a large JavaScript
-subset** (arithmetic, strings + string methods, `Math`, objects/property access,
-function calls/closures, `for`/`while` loops). The reflection-heavy interop is
-served by the typed box + a sample-based `reflect` overlay. What remains (see
-GAPS.md for detail):
-
-- **Array callbacks** — `[].map`/`reduce`: a typed-nil pointer crosses the
-  JS-callback ↔ native-function boundary (`getStr("length")` returns a typed nil),
-  tied to the typed-nil-in-interface gap below.
-- **`JSON.stringify`** of objects.
-- `fmt` formatting a non-nil `*goja.Exception` (`Exception.String`).
 
 ## Typed-nil pointer inside an interface
 

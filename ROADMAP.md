@@ -76,7 +76,7 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | M3 | goja: array callbacks (`map`/`reduce`), `JSON.stringify` | 🚧 |
 | M3 | `goclr test` (real `testing.T`); CI conformance matrix; stable compatibility report | 🚧 |
 
-**179 conformance fixtures pass byte-for-byte vs `go run`.** Tags
+**191 conformance fixtures pass byte-for-byte vs `go run`.** Tags
 `0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`,
 `0.0.27.goja-json-array-callbacks` (goja runs JSON + array callbacks),
 `0.0.28.reflect-type-descriptors` → `0.0.29.reflect-complete` (reflect descriptors).
@@ -88,9 +88,51 @@ See [REFLECT.md](REFLECT.md).
 
 **Validation targets.** goja evaluates a large JS subset (arithmetic, strings, Math,
 objects, closures, loops, array callbacks, `JSON.stringify`/`parse`) byte-identical to
-`go run`. Gin (v1.10.1) compiles through `validator` (reflect-heavy), `yaml.v3`, and
-its form/header/query/JSON binding and rendering; the `x/net/http2` stack is the
-remaining frontier before it runs. Echo is analyze-compatible (autocert/acme pending).
+`go run`. **Gin runs end to end** — `examples/demo_gin_sql` is a Gin REST API over
+`database/sql` and the pure-Go zero-cgo SQLite engine `go-r2-sqlite`, the whole stack
+compiled to IL (full CRUD, byte-accurate). Echo is analyze-compatible (autocert/acme
+pending).
+
+## Checklist (done / pending)
+
+Tracks what is implemented vs outstanding. Done items are verified byte-exact vs
+`go run` (conformance/validation) unless noted.
+
+### Compiler & runtime
+- [x] Multi-package lowering, globals + `init`, generics (monomorphized), goroutines/channels/`select`, `defer`/`panic`/`recover`, closures, complex
+- [x] Embedded struct field/method promotion (value + pointer), per-iteration loop vars, fixed arrays + keyed literals, `&slice[i]` / `&s.field`, identical-layout struct conversion
+- [x] Typed box (named non-struct identity through interfaces) + large-program emitter (4-byte heaps, `InitLocals`, fat headers)
+- [x] `reflect` runtime type descriptors — read + write paths (`Kind`/`Name`/`String`/fields/tags, `Set*`, `MapOf`/`SliceOf`/`PtrTo`, `Implements`/`AssignableTo`)
+- [x] Pointer-to-non-struct type discrimination (`*int64` vs `*string` vs `*[]byte`)
+- [x] General, agnostic shim-type-in-interface dispatch (`[GoShim]` registry + `types.Implements`; no Go type hardcoded)
+- [ ] Deep `reflect`: `MakeFunc`, deep `Value`/`Type` ops — the *full* JS spec in goja
+- [ ] Per-value runtime type tags / itable — two named-slice (or named-map) implementers of one interface
+- [ ] Typed-nil pointer kept distinct inside an interface (`var p *T; any(p) == nil` ⇒ false)
+- [ ] Uncaught-panic output in Go's `panic:` + goroutine-stack format (recovered panics already exact)
+- [ ] `%T`/`%#v` precise element types for dynamically-reached slices/maps; nil-map `%v` → `map[]`
+
+### Standard library
+- [x] **P0** fmt/strconv/strings/bytes/unicode/utf8/sort/math(+bits/big)/errors/reflect/encoding-json/time/sync/math-rand/context/io/os
+- [x] **P1** net/http client+server, net TCP, crypto (sha/sha3/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio, log, container/list, os/exec, mime, net/mail, net/textproto, io/fs, flag
+- [x] **P2** encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM, hash family
+- [x] **P3** net/http/httptest + cookiejar, net UDP, log/slog, os/signal (real SIGINT/TERM), `database/sql` + `database/sql/driver` (+ the `go-r2-sqlite` engine compiled through goclr), mime/multipart
+- [ ] `container/heap` (needs an interface-method-callback bridge), `container/ring`
+- [ ] `encoding/gob`, full `encoding/xml`, `text/template` / `html/template`
+- [ ] `crypto/rsa·ecdsa·x509·tls` (full key/cert surface), `net/smtp`, `archive/zip·tar`, `runtime/debug`, `text/tabwriter` / `text/scanner`
+- [ ] `golang.org/x/sync/errgroup` (needs the external module to type-check), `google/uuid`
+
+### Validation targets
+- [x] **goja** — large JS subset, byte-identical to `go run`
+- [x] **Gin** — router/middleware/binding/render + full CRUD over `database/sql` + SQLite
+- [ ] **Echo** — analyze-compatible; needs `crypto/x509` + `acme`/`autocert` (Phase 4)
+
+### Tooling & milestones
+- [ ] `goclr test` ≡ `go test` — run real package test suites under both and diff
+- [ ] CI conformance matrix published (visible per-fixture status)
+- [ ] Stable compatibility report (HTML/JSON) from `analyze`
+- [ ] Per-function coverage matrix (covered / stub / blocked), checked in CI
+- [ ] AOT / performance pass (P4)
+- [ ] Third-party ecosystem via overlay/compile-direct (GORM, redis, testify, gRPC, JWT, websocket)
 
 ## Milestones
 
@@ -227,14 +269,12 @@ just those two libs). Remaining LANGUAGE work — ALL required to close M2:
 gaps are a few stdlib-format niceties (float/complex println exact formatting,
 handled once fmt is overlaid). Next: **M2.5 stdlib overlay** → M3 goja.
 
-### M2.5 — stdlib overlay 🟡 (P0 ✅ hardened; P1 ✅; P2 ✅; P3 started)
-Full plan + live progress in `ROADMAP-M2.5.md` (overlay mechanism, missing core
-pkgs, reflect keystone, semantic-parity hazards, priority matrix). Delivery
-mechanism + P0 (hardened) + P1 (incl. net/http client+server, net TCP, crypto) +
-P2 (encoding/compress/aes) + P3 hash family done — each verified byte-exact vs
-`go run`. **146 conformance fixtures pass.** Tags `0.0.2.p0full` →
-`0.0.10.p3-hash`. See `LIMITATIONS.md` for tracked gaps and `GOJA-STRATEGY.md` for
-the goja/unsafe.Pointer plan (M3).
+### M2.5 — stdlib overlay ✅ (P0 hardened; P1; P2; P3 incl. database/sql)
+Delivery mechanism + P0 (hardened) + P1 (incl. net/http client+server, net TCP, crypto)
++ P2 (encoding/compress/aes) + P3 (net/http server, httptest/cookiejar, net UDP, slog,
+os/signal, `database/sql` + the go-r2-sqlite engine) done — each verified byte-exact vs
+`go run`. See the **done/pending checklist** above for the full breakdown, `LIMITATIONS.md`
+for tracked gaps, and `GOJA-STRATEGY.md` for the goja/unsafe.Pointer plan (M3).
 
 Foundations (the "how"):
 - ✅ **multi-package lowering** — compiles main + its transitive non-stdlib
@@ -277,8 +317,8 @@ The `reflect` **write-path** is done: `reflect.ValueOf(&x).Elem()` is settable a
 `CanSet`, and `reflect.New` write back through the GoPtr cell (threading through
 parent structs for nested field sets).
 
-**P0 is complete.** Remaining stdlib work is P1+ (net/http, net, crypto, database/sql,
-…) tracked in `ROADMAP-M2.5.md`. Next: **the typed-box keystone (M3)** — see below.
+**P0 is complete.** Remaining stdlib work (P1–P3 and beyond) is tracked in the
+done/pending checklist above. The typed-box keystone (M3) is in place — see below.
 
 Known documented limitations:
 - `time.Time` operates in **UTC** (Go uses Local in `time.Unix`/`Now`); use `.UTC()`
