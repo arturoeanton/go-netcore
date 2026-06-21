@@ -4,16 +4,17 @@ using System;
 using System.Reflection;
 using GoCLR.Runtime;
 
-/// <summary>reflect.Type handle: describes a value's type (kind inferred from the
-/// boxed representation; struct fields via .NET reflection over the emitted
-/// TypeDef).</summary>
-public sealed class GoReflectType { public object? Sample; }
+/// <summary>reflect.Type handle. Desc is the precise compile-time type descriptor
+/// (kind/name/fields/element/key); Sample is the legacy representative value, used
+/// only when no descriptor is available (a dynamic value reached through an
+/// interface).</summary>
+public sealed class GoReflectType { public object? Sample; public GoTypeDesc? Desc; }
 
-/// <summary>reflect.Value handle: wraps a (boxed) value. When settable (reached via
-/// Elem of a pointer, or a Field of a settable struct), Setter writes a new boxed
-/// value back into the underlying storage (the GoPtr cell, threading through parent
-/// structs as needed).</summary>
-public sealed class GoReflectValue { public object? V; public System.Action<object?>? Setter; }
+/// <summary>reflect.Value handle: wraps a (boxed) value plus its type descriptor.
+/// When settable (reached via Elem of a pointer, or a Field of a settable struct),
+/// Setter writes a new boxed value back into the underlying storage (the GoPtr cell,
+/// threading through parent structs as needed).</summary>
+public sealed class GoReflectValue { public object? V; public System.Action<object?>? Setter; public GoTypeDesc? Desc; }
 
 /// <summary>Shim for a subset of Go's <c>reflect</c> package (the read path used
 /// by fmt and encoding/json).</summary>
@@ -85,8 +86,16 @@ public static class Reflect
         return "";
     }
 
-    public static object TypeOf(object? x) => new GoReflectType { Sample = x };
-    public static object ValueOf(object? x) => new GoReflectValue { V = x };
+    public static object TypeOf(object? x, int descId) => new GoReflectType { Sample = x, Desc = TypeReg.ById(descId) };
+    public static object ValueOf(object? x, int descId) => new GoReflectValue { V = x, Desc = TypeReg.ById(descId) };
+
+    // A reflect.Type for a descriptor id (used by Elem/Key/Field.Type).
+    private static object RTypeById(int id)
+    {
+        var d = TypeReg.ById(id);
+        return new GoReflectType { Desc = d };
+    }
+    private static GoTypeDesc? TDesc(object t) => (t as GoReflectType)?.Desc;
 
     // reflect.MakeSlice(typ, len, cap): a slice Value of the type's element kind;
     // elements default to null (the zero for the interface element type goja uses),
@@ -114,17 +123,18 @@ public static class Reflect
     }
     public static bool DeepEqual(object? a, object? b) => Eq(a, b);
 
-    // --- reflect.Type methods ---
-    public static ulong Type_Kind(object t) => KindOf(((GoReflectType)t).Sample);
-    public static GoString Type_Name(object t) => GoString.FromDotNetString(TypeName(((GoReflectType)t).Sample));
-    public static GoString Type_String(object t) => Type_Name(t);
-    public static long Type_NumField(object t) => Fields(((GoReflectType)t).Sample)?.Length ?? 0;
-    public static object Type_Elem(object t) => new GoReflectType { Sample = ElemSample(((GoReflectType)t).Sample) };
+    // --- reflect.Type methods (prefer the precise descriptor; fall back to sample) ---
+    public static ulong Type_Kind(object t) { var d = TDesc(t); return d != null ? (ulong)d.Kind : KindOf(((GoReflectType)t).Sample); }
+    public static GoString Type_Name(object t) { var d = TDesc(t); return GoString.FromDotNetString(d != null ? d.Name : TypeName(((GoReflectType)t).Sample)); }
+    public static GoString Type_String(object t) { var d = TDesc(t); return GoString.FromDotNetString(d != null ? d.Str : TypeName(((GoReflectType)t).Sample)); }
+    public static long Type_NumField(object t) { var d = TDesc(t); return d != null ? d.Fields.Count : (Fields(((GoReflectType)t).Sample)?.Length ?? 0); }
+    public static object Type_Elem(object t) { var d = TDesc(t); return d != null ? RTypeById(d.ElemId) : new GoReflectType { Sample = ElemSample(((GoReflectType)t).Sample) }; }
 
     // --- reflect.Value methods (null receiver = the zero reflect.Value) ---
     private static object? RVal(object? v) => (v as GoReflectValue)?.V;
-    public static ulong Value_Kind(object? v) => KindOf(RVal(v));
-    public static object Value_Type(object? v) => new GoReflectType { Sample = RVal(v) };
+    private static GoTypeDesc? VDesc(object? v) => (v as GoReflectValue)?.Desc;
+    public static ulong Value_Kind(object? v) { var d = VDesc(v); return d != null ? (ulong)d.Kind : KindOf(RVal(v)); }
+    public static object Value_Type(object? v) => new GoReflectType { Sample = RVal(v), Desc = VDesc(v) };
     public static object? Value_Interface(object? v) => RVal(v);
     public static long Value_Int(object? v) => Convert.ToInt64(RVal(v) ?? 0L);
     public static ulong Value_Uint(object? v) => Convert.ToUInt64(RVal(v) ?? (ulong)0);
@@ -150,25 +160,28 @@ public static class Reflect
     {
         var s = (GoSlice)RVal(v)!;
         int idx = s.Off + (int)i;
+        var ed = VDesc(v) is GoTypeDesc d ? TypeReg.ById(d.ElemId) : null;
         // Settable: writes through the slice's shared backing array.
-        return new GoReflectValue { V = s.Data![idx], Setter = nv => s.Data[idx] = nv };
+        return new GoReflectValue { V = s.Data![idx], Setter = nv => s.Data[idx] = nv, Desc = ed };
     }
     public static object Value_Field(object? v, long i)
     {
         var parent = (GoReflectValue)v!;
         var obj = parent.V!;
         var f = Fields(obj)![(int)i];
-        var fv = new GoReflectValue { V = f.GetValue(obj) };
+        GoTypeDesc? fd = parent.Desc != null && (int)i < parent.Desc.Fields.Count ? TypeReg.ById(parent.Desc.Fields[(int)i].TypeId) : null;
+        var fv = new GoReflectValue { V = f.GetValue(obj), Desc = fd };
         if (parent.Setter != null)
             fv.Setter = nv => { f.SetValue(obj, Coerce(nv, f.FieldType)); parent.Setter(obj); };
         return fv;
     }
     public static object Value_Elem(object v)
     {
-        var x = ((GoReflectValue)v).V;
-        if (x is GoPtr p)
-            return new GoReflectValue { V = p.Value, Setter = nv => p.Value = nv };
-        return new GoReflectValue { V = x };
+        var rv = (GoReflectValue)v;
+        var ed = rv.Desc != null ? TypeReg.ById(rv.Desc.ElemId) : null;
+        if (rv.V is GoPtr p)
+            return new GoReflectValue { V = p.Value, Setter = nv => p.Value = nv, Desc = ed };
+        return new GoReflectValue { V = rv.V, Desc = ed };
     }
 
     // --- reflect.Value write path (settable values) ---
@@ -299,9 +312,15 @@ public static class Reflect
         _ => "invalid",
     };
 
-    // reflect.Type.Field(i) -> a StructField handle (Name + Tag accessible).
+    // reflect.Type.Field(i) -> a StructField handle (Name, Tag, Type, Anonymous).
     public static object Type_Field(object t, long i)
     {
+        var d = TDesc(t);
+        if (d != null && (int)i < d.Fields.Count)
+        {
+            var fd = d.Fields[(int)i];
+            return new GoStructField { Name = fd.Name, Tag = fd.Tag, FieldTypeId = fd.TypeId, Index = (int)i, Anonymous = fd.Anonymous };
+        }
         var obj = ((GoReflectType)t).Sample;
         var f = Fields(obj)![(int)i];
         return new GoStructField
@@ -325,7 +344,12 @@ public static class Reflect
         // []int{index}: a single-level field index path.
         return new GoSlice { Data = new object?[] { (long)((GoStructField)f).Index }, Off = 0, Len = 1, Cap = 1 };
     }
-    public static object StructField_Type(object f) => new GoReflectType { Sample = ZeroOf(((GoStructField)f).FieldType) };
+    public static object StructField_Type(object f)
+    {
+        var sf = (GoStructField)f;
+        if (sf.FieldTypeId >= 0) return RTypeById(sf.FieldTypeId);
+        return new GoReflectType { Sample = ZeroOf(sf.FieldType) };
+    }
 
     // --- reflect.StructTag.Get / Lookup (receiver is the raw tag string) ----
     public static GoString StructTag_Get(GoString tag, GoString key) =>
@@ -357,6 +381,8 @@ public static class Reflect
     // those descriptors); see LIMITATIONS.md.
     public static object Type_Key(object t)
     {
+        var d = TDesc(t);
+        if (d != null) return RTypeById(d.KeyId);
         var s = ((GoReflectType)t).Sample;
         if (s is GoMap m && m.Data != null)
             foreach (var k in m.Data.Keys) return new GoReflectType { Sample = k };
@@ -513,7 +539,7 @@ public static class Reflect
 }
 
 /// <summary>reflect.StructField handle (the subset code commonly reads).</summary>
-public sealed class GoStructField { public string Name = ""; public string Tag = ""; public System.Type? FieldType; public int Index; public bool Anonymous; }
+public sealed class GoStructField { public string Name = ""; public string Tag = ""; public System.Type? FieldType; public int FieldTypeId = -1; public int Index; public bool Anonymous; }
 
 /// <summary>reflect.Method handle. The runtime does not retain method sets, so
 /// these are produced only where a method list is reconstructed by name.</summary>

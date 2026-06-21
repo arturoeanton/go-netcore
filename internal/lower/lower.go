@@ -61,6 +61,13 @@ type lowerCtx struct {
 	// display name ("pkg.Type") for %T / reflect, registered at startup.
 	namedIds   map[*types.Named]int64
 	namedNames map[int64]string
+	// Runtime type descriptors (goclr's *rtype). Every type observed at a
+	// reflect.TypeOf/ValueOf site — and, recursively, its element/key/field types —
+	// is assigned a stable id (typeDescIds, keyed by the canonical type string) and a
+	// descriptor entry (typeDescs), registered at startup so reflect has precise type
+	// information without a sample value. See lower_typedesc.go.
+	typeDescIds map[string]int
+	typeDescs   []typeDescEntry
 }
 
 // varInit is a package-level variable initializer to run during program startup.
@@ -101,6 +108,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		globals:            map[*types.Var]int{},
 		namedIds:           map[*types.Named]int64{},
 		namedNames:         map[int64]string{},
+		typeDescIds:        map[string]int{},
 		bag:                bag,
 	}
 	prog := &goir.Program{}
@@ -352,6 +360,17 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 			cl.emit(goir.Op{Code: goir.OpStrConst, Str: f.Tag})
 			cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: regExt})
 		}
+	}
+	// Register runtime type descriptors (for reflect): kind, name, type string,
+	// element/key types, and struct fields — split across chunks like var inits.
+	for _, e := range c.typeDescs {
+		if len(cl.m.Code) > chunkOpBudget {
+			if !finishChunk(cl) {
+				return nil, false
+			}
+			cl = newChunk()
+		}
+		cl.emitOneTypeDesc(e)
 	}
 	for _, vi := range c.varInits {
 		// Start a fresh chunk once the current one is sizeable, keeping each

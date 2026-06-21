@@ -28,6 +28,10 @@ public static class Fmt
     private static bool TryStringer(object? v, out string s)
     {
         s = "";
+        // reflect's well-known types format via their String() shim (like error).
+        if (v is GoReflectType rt) { s = Reflect.Type_String(rt).ToDotNetString(); return true; }
+        if (v is GoNamed kn && Rt.NamedTypeName(kn.TypeId) == "reflect.Kind")
+        { s = GoKind.Name((int)System.Convert.ToInt64(kn.Value ?? 0L)); return true; }
         GoClosure? fn = null;
         if (v is GoNamed nm)
             _namedStringers.TryGetValue(nm.TypeId, out fn);
