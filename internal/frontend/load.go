@@ -16,7 +16,14 @@ import (
 // BuildTags are the build constraints goclr defines for every load. They mirror
 // the spec: code may guard CLR-specific implementations behind `goclr`/`clr`/
 // `net8`, and cgo is always disabled.
-var BuildTags = []string{"goclr", "clr", "net8"}
+//
+// `purego` and `nomsgpack` select dependency-friendly build variants for a target
+// goclr cannot lower: `purego` is the widely-honored tag that makes libraries
+// (x/sys/cpu, and others) take their no-assembly / no-unsafe path, which is exactly
+// what goclr needs since it emits neither; `nomsgpack` drops gin's MessagePack
+// binding, removing the ugorji/go/codec dependency (hand-written assembly + heavy
+// unsafe). Both are inert for programs that do not consult them.
+var BuildTags = []string{"goclr", "clr", "net8", "purego", "nomsgpack"}
 
 // LoadConfig controls a package load.
 type LoadConfig struct {
