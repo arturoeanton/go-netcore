@@ -147,6 +147,14 @@ func (l *funcLowerer) assign(s *ast.AssignStmt) {
 			l.sliceIndexWrite(ix, st, s.Rhs[0])
 		case goir.KMap:
 			l.mapIndexWrite(ix, st, s.Rhs[0])
+		case goir.KPtr:
+			// a[i] = v where a is *[N]T: Go auto-derefs the pointer to the array
+			// (slice-backed), so write through the dereferenced backing.
+			if st.Elem != nil && st.Elem.Kind == goir.KSlice {
+				l.ptrArrayIndexWrite(ix, *st.Elem, s.Rhs[0])
+			} else {
+				l.fail(ix.Pos(), "index assignment (only slice and map elements are supported)")
+			}
 		default:
 			l.fail(ix.Pos(), "index assignment (only slice and map elements are supported)")
 		}

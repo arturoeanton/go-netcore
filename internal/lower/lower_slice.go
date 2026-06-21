@@ -302,6 +302,17 @@ func (l *funcLowerer) sliceIndexRead(e *ast.IndexExpr, st goir.Type) {
 }
 
 // sliceIndexWrite lowers s[i] = v where s is a slice.
+// ptrArrayIndexWrite lowers a[i] = v where a is *[N]T: dereference the pointer to
+// the slice-backed array, then store into element i of the shared backing.
+func (l *funcLowerer) ptrArrayIndexWrite(e *ast.IndexExpr, arr goir.Type, rhs ast.Expr) {
+	l.expr(e.X)
+	l.emit(goir.Op{Code: goir.OpPtrGet})
+	l.emitUnbox(arr)
+	l.expr(e.Index)
+	l.emitBoxedElemInto(rhs, *arr.Elem)
+	l.emit(goir.Op{Code: goir.OpSliceSet})
+}
+
 func (l *funcLowerer) sliceIndexWrite(e *ast.IndexExpr, st goir.Type, rhs ast.Expr) {
 	l.expr(e.X)
 	l.expr(e.Index)
