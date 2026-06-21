@@ -18,6 +18,13 @@ public static class Bridge
         lock (Methods) Methods[(typeId, name.ToDotNetString())] = fn;
     }
 
+    /// <summary>Whether a bridge adapter is registered for value.method — lets a shim try
+    /// the callback path and fall back when the type has no generated adapter.</summary>
+    public static bool HasMethod(object? value, string name)
+    {
+        lock (Methods) return Methods.ContainsKey((TypeIdOf(value), name));
+    }
+
     private static long TypeIdOf(object? value) => value switch
     {
         GoPtr p => p.TypeId,

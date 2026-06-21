@@ -69,12 +69,18 @@ id sources don't already coincide, unify them in `namedIdentity`/`structReg` so 
 has ONE id regardless of how it's reached.
 
 ## After heap: remove the real hacks (each its own slice)
-- `Fmt.WriteTo`: when `w` is a user wrapper (not a direct sink), `CallMethod(w, "Write",
-  goBytes)` so the wrapper's real `Write` runs → delete the `Status` field heuristic in
-  `ResolveSink`. (Hot path — keep the heuristic as a fallback until the bridge is proven,
-  then remove.)
+- ✅ **DONE** — `Fmt.WriteTo`: `io.Writer` is now a `bridgeInterface`, so when `w` is a
+  user wrapper (not a direct sink) `Bridge.HasMethod(w,"Write")` is true and
+  `Bridge.CallMethod(w,"Write",goBytes)` drives the wrapper's own `Write` — echo.Response
+  fires WriteHeader-on-first-write (a non-200 status now commits correctly), gin's
+  responseWriter and any gzip/bufio writer run their real logic. The `Status`/`Code` field
+  heuristic in `ResolveSink` is deleted; `ResolveSink` remains only as a fallback for a
+  writer with no generated adapter (e.g. a named non-struct writer). Required fixing
+  `lookupNamedType` to scan from the **root** package (`c.root`), not `c.pkg` (stale after
+  the lowering loop) — otherwise `io.Writer` didn't resolve in a multi-package program and
+  no adapters were generated. Verified: echo `/missing` → 404, gin `/nope` → 404.
 - `io/fs.Stat`: `CallMethod(fsys, "Open", name)` → `CallMethod(file, "Stat")` → real
-  FileInfo; drop the stub.
+  FileInfo; drop the stub. (`io/fs.FS` would join `bridgeInterfaces`.)
 - `(*http.Server).Serve`: optional — drive `CallMethod(l, "Accept")` in a loop and speak
   HTTP/1.1 on the conn (removes the `Bound`-port-release bridge); larger, do last.
 

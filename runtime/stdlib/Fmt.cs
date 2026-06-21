@@ -117,6 +117,30 @@ public static class Fmt
     /// builder, or stdout/stderr); returns the byte count.</summary>
     internal static long WriteTo(object? w, string s)
     {
+        long n = Encoding.UTF8.GetByteCount(s);
+        // A known sink passed directly: write to it.
+        switch (w)
+        {
+            case null: Out(s); return n;
+            case GoStringBuilder sb: sb.SB.Append(s); return n;
+            case GoBuffer buf: foreach (byte b in Encoding.UTF8.GetBytes(s)) buf.B.Add(b); return n;
+            case GoFile f when f.Wr != null: { var b = Encoding.UTF8.GetBytes(s); f.Wr.Write(b, 0, b.Length); return n; }
+            case GoFile f when f.IsStderr: System.Console.Error.Write(s); System.Console.Error.Flush(); return n;
+            case GoFile: Out(s); return n;
+            case GoRespWriter rw: { var b = Encoding.UTF8.GetBytes(s); rw.Body.Write(b, 0, b.Length); return n; }
+        }
+        // A user io.Writer wrapper (echo.Response, gin's responseWriter, a gzip/bufio
+        // writer): drive its OWN Write through the callback bridge so its semantics run —
+        // echo.Response.Write fires WriteHeader-on-first-write (committing a non-200 status
+        // correctly), a compressing writer compresses — instead of punching straight through
+        // to the underlying sink and losing all of it.
+        if (Bridge.HasMethod(w, "Write"))
+        {
+            Bridge.CallMethod(w, "Write", GoStrings.ToByteSlice(GoString.FromDotNetString(s)));
+            return n;
+        }
+        // Fallback: a wrapper with no generated Write adapter (e.g. a named non-struct
+        // writer) — navigate its fields to an underlying known sink.
         switch (ResolveSink(w, 0))
         {
             case GoStringBuilder sb: sb.SB.Append(s); break;
@@ -126,12 +150,13 @@ public static class Fmt
             case GoRespWriter rw: { var b = Encoding.UTF8.GetBytes(s); rw.Body.Write(b, 0, b.Length); break; }
             default: Out(s); break;
         }
-        return Encoding.UTF8.GetByteCount(s);
+        return n;
     }
 
     // Resolve an io.Writer to a sink the runtime can write to, navigating user wrapper
-    // types (a struct/pointer embedding another writer, e.g. gin's responseWriter wraps
-    // http.ResponseWriter) to the underlying GoRespWriter/buffer/file.
+    // types (a struct/pointer embedding another writer) to the underlying sink. Only a
+    // fallback now: an io.Writer with a generated Write adapter is driven through the
+    // callback bridge instead (so its own Write semantics run).
     private static object? ResolveSink(object? w, int depth)
     {
         switch (w)
@@ -142,37 +167,19 @@ public static class Fmt
         }
         if (depth >= 8) return w;
         if (w is GoPtr p) return ResolveSink(GoPtrs.Get(p), depth + 1);
-        // A wrapper struct (e.g. echo.Response, gin's responseWriter) embeds the real
-        // writer plus its own bookkeeping. Writing straight to the underlying GoRespWriter
-        // bypasses the wrapper's WriteHeader-on-first-write, so a status the wrapper recorded
-        // in an int "Status"/"Code"/"status" field would be lost (every non-200 response
-        // would commit as 200). Propagate that pending status to the sink as we navigate to it.
-        object? sink = null;
-        int pendingStatus = 0;
         foreach (var f in w.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
         {
             var fv = f.GetValue(w);
-            if (sink == null)
+            switch (fv)
             {
-                switch (fv)
-                {
-                    case GoRespWriter: case GoBuffer: case GoStringBuilder: case GoFile: sink = fv; break;
-                    case GoPtr:
-                        var inner = ResolveSink(fv, depth + 1);
-                        if (inner is GoRespWriter or GoBuffer or GoStringBuilder or GoFile) sink = inner;
-                        break;
-                }
+                case GoRespWriter: case GoBuffer: case GoStringBuilder: case GoFile: return fv;
+                case GoPtr:
+                    var inner = ResolveSink(fv, depth + 1);
+                    if (inner is GoRespWriter or GoBuffer or GoStringBuilder or GoFile) return inner;
+                    break;
             }
-            if (pendingStatus == 0 && fv is long sl && (f.Name == "Status" || f.Name == "Code" || f.Name == "status")
-                && sl >= 100 && sl <= 599)
-                pendingStatus = (int)sl;
         }
-        if (sink is GoRespWriter rw && pendingStatus != 0 && !rw.WroteHeader)
-        {
-            rw.Status = pendingStatus;
-            rw.WroteHeader = true;
-        }
-        return sink ?? w;
+        return w;
     }
 
     public static object?[] Fprint(object? w, GoSlice args) { long n = WriteTo(w, Sprint(args).ToDotNetString()); return new object?[] { n, null }; }

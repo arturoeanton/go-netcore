@@ -60,6 +60,7 @@ type lowerCtx struct {
 	// with the runtime at startup; namedByName memoizes the import-closure type lookup.
 	bridges     []bridgeReg
 	namedByName map[string]*types.Named
+	root        *types.Package // main package; its import closure spans the whole program
 	// namedIds assigns each identity-bearing named type (non-struct underlying with
 	// a method set) a stable per-build id so a boxed value can carry its Go named-
 	// type identity — the typed box (see runtime GoNamed). namedNames maps id ->
@@ -125,6 +126,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	}
 	prog := &goir.Program{}
 	c.prog = prog
+	c.root = pkg.Types // the main package — its import closure reaches the whole program
 
 	// Collect the package set in dependency order (deps first, root last).
 	pkgs := collectPackages(pkg)
