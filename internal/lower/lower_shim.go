@@ -186,8 +186,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Equal": {"Bytes", "Equal"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
 		"HasPrefix": {"Bytes", "HasPrefix"}, "HasSuffix": {"Bytes", "HasSuffix"}, "Index": {"Bytes", "Index"},
 		"LastIndex": {"Bytes", "LastIndex"}, "LastIndexByte": {"Bytes", "LastIndexByte"},
-		"IndexByte": {"Bytes", "IndexByte"}, "Count": {"Bytes", "Count"}, "ToUpper": {"Bytes", "ToUpper"},
-		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Repeat": {"Bytes", "Repeat"},
+		"IndexByte": {"Bytes", "IndexByte"}, "IndexRune": {"Bytes", "IndexRune"}, "IndexAny": {"Bytes", "IndexAny"}, "Count": {"Bytes", "Count"}, "ToUpper": {"Bytes", "ToUpper"},
+		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Trim": {"Bytes", "Trim"}, "Repeat": {"Bytes", "Repeat"},
 		"Split": {"Bytes", "Split"}, "SplitAfterN": {"Bytes", "SplitAfterN"}, "Join": {"Bytes", "Join"},
 		"NewReader": {"Readers", "NewBytesReader"}, "NewBuffer": {"BytesBuffer", "NewBuffer"}, "NewBufferString": {"BytesBuffer", "NewBufferString"},
 	},
@@ -645,7 +645,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Sum64": {"MapHash", "Sum64"}, "Reset": {"MapHash", "Reset"}, "Size": {"MapHash", "Size"}, "BlockSize": {"MapHash", "BlockSize"},
 	},
 	"strings.Replacer": {
-		"Replace": {"Strings", "Replacer_Replace"},
+		"Replace": {"Strings", "Replacer_Replace"}, "WriteString": {"Strings", "Replacer_WriteString"},
 	},
 	"strings.Builder": {
 		"WriteString": {"StringsBuilder", "WriteString"}, "WriteByte": {"StringsBuilder", "WriteByte"},

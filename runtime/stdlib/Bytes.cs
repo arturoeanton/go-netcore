@@ -67,6 +67,31 @@ public static class Bytes
         for (int i = 0; i < b.Length; i++) if (b[i] == (byte)c) return i;
         return -1;
     }
+    // IndexAny(s, chars): byte index of the first rune in s that is one of the Unicode
+    // code points in chars (Go decodes s as UTF-8). -1 if none, or chars is empty.
+    public static long IndexAny(GoSlice s, GoString chars)
+    {
+        if (chars.Len == 0) return -1;
+        string str = System.Text.Encoding.UTF8.GetString(B(s));
+        string cs = chars.ToDotNetString();
+        long off = 0;
+        foreach (var rune in str.EnumerateRunes())
+        {
+            foreach (var cr in cs.EnumerateRunes())
+                if (cr.Value == rune.Value) return off;
+            off += System.Text.Encoding.UTF8.GetByteCount(rune.ToString());
+        }
+        return -1;
+    }
+    // IndexRune(s, r): byte index of the first occurrence of rune r. ASCII runes are
+    // a single byte (IndexByte); others are matched by their UTF-8 encoding.
+    public static long IndexRune(GoSlice s, int r)
+    {
+        if (r < 0x80) return IndexByte(s, r);
+        var enc = System.Text.Encoding.UTF8.GetBytes(
+            System.Text.Rune.IsValid(r) ? new System.Text.Rune(r).ToString() : System.Text.Rune.ReplacementChar.ToString());
+        return Idx(B(s), enc);
+    }
     public static long Count(GoSlice s, GoSlice sub)
     {
         byte[] b = B(s), sb = B(sub);
@@ -97,6 +122,29 @@ public static class Bytes
     {
         var str = System.Text.Encoding.UTF8.GetString(B(s)).Trim();
         return S(System.Text.Encoding.UTF8.GetBytes(str));
+    }
+    // Trim(s, cutset): drop leading and trailing UTF-8 runes that are in cutset.
+    public static GoSlice Trim(GoSlice s, GoString cutset)
+    {
+        string str = System.Text.Encoding.UTF8.GetString(B(s));
+        var set = new System.Collections.Generic.HashSet<int>();
+        foreach (var r in cutset.ToDotNetString().EnumerateRunes()) set.Add(r.Value);
+        int start = 0, end = str.Length;
+        while (start < end)
+        {
+            var r = System.Text.Rune.GetRuneAt(str, start);
+            if (!set.Contains(r.Value)) break;
+            start += r.Utf16SequenceLength;
+        }
+        while (end > start)
+        {
+            int prev = end - 1;
+            if (prev > start && char.IsLowSurrogate(str[prev])) prev--;
+            var r = System.Text.Rune.GetRuneAt(str, prev);
+            if (!set.Contains(r.Value)) break;
+            end = prev;
+        }
+        return S(System.Text.Encoding.UTF8.GetBytes(str.Substring(start, end - start)));
     }
     public static GoSlice Repeat(GoSlice s, long count)
     {

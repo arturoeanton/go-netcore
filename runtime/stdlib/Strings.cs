@@ -296,6 +296,15 @@ public static class Strings
         }
         return GoString.FromDotNetString(sb.ToString());
     }
+
+    // (*Replacer).WriteString(w io.Writer, s string) (n int, err error): replace, then
+    // write the result to w through the shared writer dispatch.
+    public static object?[] Replacer_WriteString(object r, object? w, GoString s)
+    {
+        var outp = Replacer_Replace(r, s);
+        long n = Fmt.WriteTo(w, outp.ToDotNetString());
+        return new object?[] { n, null };
+    }
 }
 
 /// <summary>A strings.Replacer: ordered old→new string pairs.</summary>
