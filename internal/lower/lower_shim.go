@@ -93,6 +93,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/subtle":   {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}},
 	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
 	"net/mail":        {"ParseAddress": {"Mail", "ParseAddress"}},
+	"net/http/cookiejar": {"New": {"Cookiejar", "New"}},
 	"net/textproto":   {"CanonicalMIMEHeaderKey": {"Textproto", "CanonicalMIMEHeaderKey"}, "TrimString": {"Textproto", "TrimString"}, "TrimBytes": {"Textproto", "TrimBytes"}},
 	"html/template":   {"New": {"Template", "New"}, "Must": {"Template", "Must"}, "JSEscapeString": {"Template", "JSEscapeString"}},
 	"text/template":   {"New": {"Template", "New"}, "Must": {"Template", "Must"}},
@@ -155,6 +156,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"SplitHostPort": {"Net", "SplitHostPort"}, "JoinHostPort": {"Net", "JoinHostPort"},
 		"ResolveTCPAddr": {"Net", "ResolveTCPAddr"}, "ResolveUDPAddr": {"Net", "ResolveUDPAddr"},
 		"ResolveIPAddr": {"Net", "ResolveIPAddr"}, "ResolveUnixAddr": {"Net", "ResolveUnixAddr"},
+		"ListenUDP": {"Net", "ListenUDP"}, "DialUDP": {"Net", "DialUDP"},
 	},
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
@@ -331,6 +333,7 @@ var opaqueShimTypes = map[string]bool{
 	"net.IPAddr":                   true,
 	"net.UnixAddr":                 true,
 	"net.PacketConn":               true,
+	"net.UDPConn":                  true,
 	"net/http.ResponseWriter":      true,
 	"net/http.Request":             true,
 	"mime/multipart.Form":          true,
@@ -370,6 +373,7 @@ var opaqueShimTypes = map[string]bool{
 	"mime/multipart.FileHeader":    true,
 	"mime/multipart.File":          true,
 	"net/http.Cookie":              true,
+	"net/http/cookiejar.Jar":       true,
 	"bufio.Writer":                 true,
 	"time.Ticker":                  true,
 	"time.Timer":                   true,
@@ -510,6 +514,9 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"net.IPNet": {
 		"IP": {"Net", "IPNet_IP"},
 	},
+	"net.UDPAddr": {
+		"IP": {"Net", "UDPAddr_IP"}, "Port": {"Net", "UDPAddr_Port"}, "Zone": {"Net", "UDPAddr_Zone"},
+	},
 	"sync.Cond": {
 		"L": {"Sync", "Cond_L"},
 	},
@@ -612,6 +619,9 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"encoding/xml.Name": {
 		"Space": {"Xml", "Name_SetSpace"}, "Local": {"Xml", "Name_SetLocal"},
 	},
+	"net.UDPAddr": {
+		"IP": {"Net", "UDPAddr_SetIP"}, "Port": {"Net", "UDPAddr_SetPort"},
+	},
 	"encoding/xml.StartElement": {
 		"Name": {"Xml", "Start_SetName"}, "Attr": {"Xml", "Start_SetAttr"},
 	},
@@ -693,6 +703,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"sync.Cond":                  {"Sync", "NewCondZero"},
 	"sync/atomic.Value":          {"Atomic", "NewValue"},
 	"net/http.Server":            {"HttpTypes", "NewServer"},
+	"net/http.Cookie":            {"Http", "NewCookie"},
 	"log.Logger":                 {"Log", "NewLoggerZero"},
 	"net/http.Transport":         {"HttpTypes", "NewTransport"},
 	"crypto/tls.Config":          {"HttpTypes", "NewTlsConfig"},
@@ -714,6 +725,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"math/big.Float":             {"Big", "FloatZero"},
 	"hash/maphash.Hash":          {"MapHash", "New"},
 	"net.IPNet":                  {"Net", "NewIPNet"},
+	"net.UDPAddr":                {"Net", "NewUDPAddr"},
 	"syscall.Flock_t":            {"Syscall", "NewFlockT"},
 	"encoding/xml.Name":          {"Xml", "NewXmlName"},
 	"encoding/xml.StartElement":  {"Xml", "NewXmlStart"},
@@ -873,6 +885,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net/http.Cookie": {
 		"String": {"Http", "Cookie_String"},
 	},
+	"net/http/cookiejar.Jar": {
+		"SetCookies": {"Cookiejar", "Jar_SetCookies"}, "Cookies": {"Cookiejar", "Jar_Cookies"},
+	},
 	"encoding/xml.Encoder": {
 		"Encode": {"Xml", "Encoder_Encode"}, "EncodeElement": {"Xml", "Encoder_EncodeElement"}, "EncodeToken": {"Xml", "Encoder_EncodeToken"},
 		"Flush": {"Xml", "Encoder_Flush"}, "Indent": {"Xml", "Encoder_Indent"}, "Close": {"Xml", "Encoder_Close"},
@@ -895,6 +910,15 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net.Conn": {
 		"Read": {"Net", "Conn_Read"}, "Write": {"Net", "Conn_Write"}, "Close": {"Net", "Conn_Close"},
+	},
+	"net.UDPConn": {
+		"ReadFromUDP": {"Net", "UDPConn_ReadFromUDP"}, "WriteToUDP": {"Net", "UDPConn_WriteToUDP"},
+		"Read": {"Net", "UDPConn_Read"}, "Write": {"Net", "UDPConn_Write"}, "Close": {"Net", "UDPConn_Close"},
+		"LocalAddr": {"Net", "UDPConn_LocalAddr"},
+		"SetReadDeadline": {"Net", "UDPConn_SetReadDeadline"}, "SetWriteDeadline": {"Net", "UDPConn_SetWriteDeadline"}, "SetDeadline": {"Net", "UDPConn_SetDeadline"},
+	},
+	"net.UDPAddr": {
+		"String": {"Net", "UDPAddr_String"}, "Network": {"Net", "UDPAddr_Network"},
 	},
 	"os/exec.Cmd": {
 		"Output": {"Exec", "Cmd_Output"}, "CombinedOutput": {"Exec", "Cmd_CombinedOutput"}, "Run": {"Exec", "Cmd_Run"},
@@ -1147,8 +1171,20 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 	// leave the direct-call path — and its receiver IR typing — exactly as before.
 	recv := namedOf(seln.Recv())
 	if len(seln.Index()) > 1 {
-		if mr := namedOf(fn.Type().(*types.Signature).Recv().Type()); mr != nil {
-			recv = mr
+		// A promoted method keys to the method's own receiver (an embedded shim field
+		// like sha3.SHAKE or sync.Mutex) — UNLESS the outer type is itself a registered
+		// shim that defines this method directly. An opaque shim such as net.UDPConn is
+		// one runtime handle whose methods are promoted from an unexported embedded type
+		// (net.conn); those stay keyed to the outer type, and emitEmbedNav is a no-op on
+		// an opaque (non-struct) receiver, so the handle is passed through unchanged.
+		outerHas := false
+		if recv != nil && recv.Obj() != nil && recv.Obj().Pkg() != nil {
+			_, outerHas = shimMethodRegistry[recv.Obj().Pkg().Path()+"."+recv.Obj().Name()][fn.Name()]
+		}
+		if !outerHas {
+			if mr := namedOf(fn.Type().(*types.Signature).Recv().Type()); mr != nil {
+				recv = mr
+			}
 		}
 	}
 	if recv == nil || recv.Obj() == nil || recv.Obj().Pkg() == nil {

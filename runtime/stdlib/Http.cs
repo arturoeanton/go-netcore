@@ -282,6 +282,10 @@ public static class Http
         return "";
     }
 
+    // Zero value for an http.Cookie composite literal (&http.Cookie{...}); field
+    // initializers then assign through Cookie_SetName/Value/... on this instance.
+    public static object NewCookie() => new GoCookie();
+
     // (*http.Request).Cookie(name) (*http.Cookie, error): parse the Cookie header.
     public static object?[] Req_Cookie(object r, GoString name)
     {

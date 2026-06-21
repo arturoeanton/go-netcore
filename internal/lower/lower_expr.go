@@ -228,6 +228,7 @@ func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 				}
 			}
 			l.emitZeroValue(t)
+			l.applyShimFields(e, t, l.pkg.TypesInfo.TypeOf(e))
 			return t
 		}
 		l.fail(e.Pos(), "composite literal of "+t.Shim)
@@ -241,6 +242,13 @@ func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 			l.ptrNew(*t.Elem)
 			return t
 		}
+		// &shim{...}: an opaque shim and its pointer are the same runtime object, so
+		// build the shim value (zero + field setters) directly.
+		if t.Elem != nil && t.Elem.Kind == goir.KObject && t.Elem.Shim != "" {
+			l.emitZeroValue(*t.Elem)
+			l.applyShimFields(e, *t.Elem, l.pkg.TypesInfo.TypeOf(e))
+			return *t.Elem
+		}
 		l.fail(e.Pos(), "composite literal (pointer)")
 		return goir.TVoid
 	default:
@@ -249,6 +257,61 @@ func (l *funcLowerer) compositeLit(e *ast.CompositeLit) goir.Type {
 	}
 	l.structLit(e, t)
 	return t
+}
+
+// applyShimFields applies the keyed field initializers of an opaque-shim composite
+// literal (e.g. http.Cookie{Name: "x", MaxAge: 60}) by calling each field's registered
+// setter on the zero value left on the stack by emitZeroValue. litType is the literal's
+// go/types type (a shim value or pointer), used to coerce each value to the field type.
+func (l *funcLowerer) applyShimFields(e *ast.CompositeLit, t goir.Type, litType types.Type) {
+	if len(e.Elts) == 0 {
+		return
+	}
+	setters, ok := shimFieldSetRegistry[t.Shim]
+	if !ok {
+		l.fail(e.Pos(), "field initializers in "+t.Shim+" literal")
+		return
+	}
+	var st *types.Struct
+	if named := namedOf(litType); named != nil {
+		st, _ = named.Underlying().(*types.Struct)
+	}
+	tmp := l.addLocal(nil, t)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+	for _, elt := range e.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			l.fail(elt.Pos(), "positional field in "+t.Shim+" literal")
+			continue
+		}
+		id, ok := kv.Key.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		sf, ok := setters[id.Name]
+		if !ok {
+			l.fail(kv.Pos(), "field "+id.Name+" in "+t.Shim+" literal")
+			continue
+		}
+		ft := l.exprType(kv.Value)
+		if st != nil {
+			for i := 0; i < st.NumFields(); i++ {
+				if st.Field(i).Name() == id.Name {
+					if it, ok := l.goType(st.Field(i).Type()); ok {
+						ft = it
+					}
+					break
+				}
+			}
+		}
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.exprCoerced(kv.Value, ft)
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: sf.csType, Method: sf.csMethod,
+			Params: []goir.Type{goir.TObject, ft}, Ret: goir.TVoid,
+		}})
+	}
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 }
 
 // structLit builds a struct composite literal of type st (keyed or positional),

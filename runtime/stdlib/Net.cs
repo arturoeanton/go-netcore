@@ -122,6 +122,125 @@ public static class Net
     }
     public static object? PC_Close(object pc) { ((GoPacketConn)pc).U.Close(); return null; }
 
+    // ---- typed UDP: net.UDPConn / net.UDPAddr ------------------------------
+    private static byte[] SliceToBytes(GoSlice p)
+    {
+        var b = new byte[p.Len];
+        for (int i = 0; i < p.Len; i++) b[i] = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
+        return b;
+    }
+
+    // A net.UDPAddr is carried in the shared GoNetAddr (Str/Port/Ip).
+    private static GoNetAddr MakeUDPAddr(IPAddress ip, int port) =>
+        new GoNetAddr { Str = new IPEndPoint(ip, port).ToString(), Port = port, Ip = Bytes(ip.GetAddressBytes()) };
+
+    private static IPEndPoint? EndpointOf(object? o)
+    {
+        var a = o switch { GoNetAddr g => g, GoPtr p => GoPtrs.Get(p) as GoNetAddr, _ => o as GoNetAddr };
+        if (a == null) return null;
+        IPAddress ip = a.Ip is GoSlice s && s.Len > 0 ? new IPAddress(SliceToBytes(s)) : IPAddress.Any;
+        return new IPEndPoint(ip, (int)a.Port);
+    }
+
+    public static object?[] ListenUDP(GoString network, object? laddr)
+    {
+        try
+        {
+            var ep = EndpointOf(laddr) ?? new IPEndPoint(IPAddress.Any, 0);
+            var s = new Socket(ep.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+            s.Bind(ep);
+            return new object?[] { new GoUDPConn { Sock = s }, null };
+        }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("listen udp: " + e.Message)) }; }
+    }
+
+    public static object?[] DialUDP(GoString network, object? laddr, object? raddr)
+    {
+        try
+        {
+            var rep = EndpointOf(raddr);
+            var lep = EndpointOf(laddr) ?? new IPEndPoint(IPAddress.Any, 0);
+            var s = new Socket((rep ?? lep).AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+            s.Bind(lep);
+            if (rep != null) s.Connect(rep);
+            return new object?[] { new GoUDPConn { Sock = s, Remote = rep }, null };
+        }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("dial udp: " + e.Message)) }; }
+    }
+
+    public static object?[] UDPConn_ReadFromUDP(object c, GoSlice b)
+    {
+        try
+        {
+            var buf = new byte[b.Len];
+            EndPoint ep = new IPEndPoint(IPAddress.Any, 0);
+            int n = ((GoUDPConn)c).Sock.ReceiveFrom(buf, ref ep);
+            for (int i = 0; i < n; i++) b.Data![b.Off + i] = (int)buf[i];
+            var rip = (IPEndPoint)ep;
+            return new object?[] { (long)n, MakeUDPAddr(rip.Address, rip.Port), null };
+        }
+        catch (System.Exception e) { return new object?[] { 0L, null, new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+
+    public static object?[] UDPConn_WriteToUDP(object c, GoSlice b, object? addr)
+    {
+        try
+        {
+            var ep = EndpointOf(addr);
+            int n = ((GoUDPConn)c).Sock.SendTo(SliceToBytes(b), ep!);
+            return new object?[] { (long)n, null };
+        }
+        catch (System.Exception e) { return new object?[] { 0L, new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+
+    public static object?[] UDPConn_Read(object c, GoSlice b)
+    {
+        try
+        {
+            var buf = new byte[b.Len];
+            int n = ((GoUDPConn)c).Sock.Receive(buf);
+            for (int i = 0; i < n; i++) b.Data![b.Off + i] = (int)buf[i];
+            return new object?[] { (long)n, null };
+        }
+        catch (System.Exception e) { return new object?[] { 0L, new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+
+    public static object?[] UDPConn_Write(object c, GoSlice b)
+    {
+        try { return new object?[] { (long)((GoUDPConn)c).Sock.Send(SliceToBytes(b)), null }; }
+        catch (System.Exception e) { return new object?[] { 0L, new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+
+    public static object? UDPConn_Close(object c) { ((GoUDPConn)c).Sock.Close(); return null; }
+
+    public static object UDPConn_LocalAddr(object c)
+    {
+        var ep = (IPEndPoint)((GoUDPConn)c).Sock.LocalEndPoint!;
+        return MakeUDPAddr(ep.Address, ep.Port);
+    }
+
+    // Deadlines map to socket timeouts; a zero time clears them. The Go time value is
+    // opaque here, so a non-zero deadline arms a long receive timeout to avoid hangs.
+    public static object? UDPConn_SetReadDeadline(object c, object? t) { return null; }
+    public static object? UDPConn_SetWriteDeadline(object c, object? t) { return null; }
+    public static object? UDPConn_SetDeadline(object c, object? t) { return null; }
+
+    // net.UDPAddr (GoNetAddr) accessors and zero value.
+    public static object NewUDPAddr() => new GoNetAddr();
+    public static GoSlice UDPAddr_IP(object a) => ((GoNetAddr)a).Ip ?? NilBytes();
+    public static long UDPAddr_Port(object a) => ((GoNetAddr)a).Port;
+    public static GoString UDPAddr_Zone(object a) => GoString.FromDotNetString("");
+    public static void UDPAddr_SetIP(object a, GoSlice ip) { ((GoNetAddr)a).Ip = ip; }
+    public static void UDPAddr_SetPort(object a, long port) { ((GoNetAddr)a).Port = port; }
+    public static GoString UDPAddr_Network(object a) => GoString.FromDotNetString("udp");
+    public static GoString UDPAddr_String(object a)
+    {
+        var g = (GoNetAddr)a;
+        if (g.Str.Length > 0) return GoString.FromDotNetString(g.Str);
+        IPAddress ip = g.Ip is GoSlice s && s.Len > 0 ? new IPAddress(SliceToBytes(s)) : IPAddress.Any;
+        return GoString.FromDotNetString(new IPEndPoint(ip, (int)g.Port).ToString());
+    }
+
     // --- address parsing (net.IP / net.HardwareAddr are []byte) -------------
     private static GoSlice Bytes(byte[] b)
     {
@@ -282,7 +401,18 @@ public static class Net
         return new object?[] { new GoNetAddr { Str = a }, null };
     }
     public static object?[] ResolveTCPAddr(GoString n, GoString a) => ResolveAddr(n, a);
-    public static object?[] ResolveUDPAddr(GoString n, GoString a) => ResolveAddr(n, a);
+    // net.ResolveUDPAddr parses host:port so the returned *UDPAddr carries IP and Port
+    // (ListenUDP/DialUDP and addr.Port/addr.IP need them, not just the string form).
+    public static object?[] ResolveUDPAddr(GoString n, GoString a)
+    {
+        try
+        {
+            var (host, port) = Parse(a.ToDotNetString());
+            var ip = host == "0.0.0.0" ? IPAddress.Loopback : IPAddress.Parse(host == "localhost" ? "127.0.0.1" : host);
+            return new object?[] { MakeUDPAddr(ip, port), null };
+        }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("resolve udp: " + e.Message)) }; }
+    }
     public static object?[] ResolveIPAddr(GoString n, GoString a) => ResolveAddr(n, a);
     public static object?[] ResolveUnixAddr(GoString n, GoString a) => ResolveAddr(n, a);
 }
@@ -295,3 +425,6 @@ public sealed class GoNetOpError { public string Op = ""; public string Net = ""
 
 /// <summary>A net.PacketConn over a UdpClient.</summary>
 public sealed class GoPacketConn { public UdpClient U = null!; }
+
+/// <summary>A net.UDPConn over a DGRAM socket (ReceiveFrom/SendTo, or connected I/O).</summary>
+public sealed class GoUDPConn { public Socket Sock = null!; public IPEndPoint? Remote; }
