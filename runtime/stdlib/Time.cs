@@ -185,6 +185,106 @@ public static class Time
     public static GoString Time_String(object t) => GoString.FromDotNetString(DoFormat((GoTime)t, "2006-01-02 15:04:05.999999999 -0700 MST"));
     public static GoString Time_Format(object t, GoString layout) => GoString.FromDotNetString(DoFormat((GoTime)t, layout.ToDotNetString()));
 
+    // time.Parse(layout, value) (Time, error): the inverse of Format — walk the Go
+    // reference-time layout, consuming the matching run from value for each token.
+    // Returns the zero Time and an error if value does not match the layout. The
+    // result is in UTC (goclr's time is UTC-only; see LIMITATIONS.md).
+    public static object?[] Parse(GoString layout, GoString value)
+    {
+        string lay = layout.ToDotNetString(), val = value.ToDotNetString();
+        // Go defaults a missing year to 0; goclr's GoTime counts nanoseconds from the
+        // Unix epoch (representable range ~1678..2262), so a yearless layout uses 1970
+        // to keep the parsed clock fields exact without overflowing (see LIMITATIONS.md).
+        int year = 1970, month = 1, day = 1, hour = 0, min = 0, sec = 0, nsec = 0;
+        bool hasPM = false, pm = false;
+        int li = 0, vi = 0;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+
+        bool Tok(string tok) =>
+            li + tok.Length <= lay.Length && string.CompareOrdinal(lay, li, tok, 0, tok.Length) == 0 && (li += tok.Length) >= 0;
+        int ReadInt(int max)
+        {
+            if (vi < val.Length && val[vi] == ' ') vi++; // tolerate space padding (_2)
+            int start = vi, n = 0;
+            while (vi < val.Length && n < max && char.IsDigit(val[vi])) { vi++; n++; }
+            if (vi == start) throw new System.FormatException();
+            return int.Parse(val.Substring(start, vi - start), inv);
+        }
+        int ReadName(string[] names)
+        {
+            for (int m = 0; m < names.Length; m++)
+                if (vi + names[m].Length <= val.Length && string.CompareOrdinal(val, vi, names[m], 0, names[m].Length) == 0)
+                { vi += names[m].Length; return m; }
+            throw new System.FormatException();
+        }
+        void ReadFrac()
+        {
+            if (vi < val.Length && val[vi] == '.')
+            {
+                vi++;
+                int s = vi;
+                while (vi < val.Length && char.IsDigit(val[vi])) vi++;
+                string d = val.Substring(s, vi - s);
+                if (d.Length > 9) d = d.Substring(0, 9);
+                if (d.Length > 0) nsec = int.Parse(d.PadRight(9, '0'), inv);
+            }
+        }
+        void SkipZone()
+        {
+            if (vi < val.Length && (val[vi] == 'Z')) { vi++; return; }
+            while (vi < val.Length && (val[vi] == '+' || val[vi] == '-' || val[vi] == ':' || char.IsDigit(val[vi]))) vi++;
+        }
+
+        try
+        {
+            while (li < lay.Length)
+            {
+                if (Tok("2006")) year = ReadInt(4);
+                else if (Tok("06")) year = 2000 + ReadInt(2);
+                else if (Tok("January")) month = ReadName(MonthsLong) + 1;
+                else if (Tok("Jan")) month = ReadName(MonthsAbbr) + 1;
+                else if (Tok("01")) month = ReadInt(2);
+                else if (Tok("Monday")) ReadName(DaysLong);
+                else if (Tok("Mon")) ReadName(DaysAbbr);
+                else if (Tok("02") || Tok("_2")) day = ReadInt(2);
+                else if (Tok("15")) hour = ReadInt(2);
+                else if (Tok("03")) hour = ReadInt(2);
+                else if (Tok("04")) min = ReadInt(2);
+                else if (Tok("05")) sec = ReadInt(2);
+                else if (Tok("PM") || Tok("pm"))
+                {
+                    hasPM = true;
+                    if (vi + 2 <= val.Length) { pm = val.Substring(vi, 2).ToUpperInvariant() == "PM"; vi += 2; }
+                }
+                else if (Tok(".000000000") || Tok(".000000") || Tok(".000") ||
+                         Tok(".999999999") || Tok(".999999") || Tok(".999")) ReadFrac();
+                else if (Tok("Z07:00") || Tok("Z0700") || Tok("Z07")) SkipZone();
+                else if (Tok("-07:00") || Tok("-0700") || Tok("-07")) SkipZone();
+                else if (Tok("MST")) { while (vi < val.Length && char.IsLetter(val[vi])) vi++; }
+                else if (Tok("3")) hour = ReadInt(2);
+                else if (Tok("2")) day = ReadInt(2);
+                else if (Tok("1")) month = ReadInt(2);
+                else if (Tok("4")) min = ReadInt(2);
+                else if (Tok("5")) sec = ReadInt(2);
+                else
+                {
+                    if (vi < val.Length && val[vi] == lay[li]) { vi++; li++; }
+                    else throw new System.FormatException();
+                }
+            }
+            if (hasPM) { if (pm && hour < 12) hour += 12; else if (!pm && hour == 12) hour = 0; }
+            var dt = new System.DateTime(year, month, day, hour, min, sec, System.DateTimeKind.Utc);
+            var t = FromDateTime(dt);
+            t.N += nsec;
+            return new object?[] { t, null };
+        }
+        catch
+        {
+            return new object?[] { new GoTime { IsZero = true },
+                new GoError("parsing time \"" + val + "\" as \"" + lay + "\": cannot parse") };
+        }
+    }
+
     private static long ZeroDate(object t, System.Func<System.DateTime, int> f, int zero)
         => ((GoTime)t).IsZero ? zero : f(ToDateTime((GoTime)t));
 
