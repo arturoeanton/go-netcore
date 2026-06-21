@@ -370,7 +370,7 @@ func (l *funcLowerer) ptrStructFieldRead(e *ast.SelectorExpr, pt goir.Type) {
 	}
 	// Promoted field through embedded fields (p.f where f is in an embed).
 	if path, ok := l.promotedFieldPath(e); ok {
-		l.emitFieldChain(st, path)
+		l.emitFieldChain(e.Sel.Name, l.exprType(e), e.Pos(), st, path)
 		return
 	}
 	l.fail(e.Pos(), "unknown field "+e.Sel.Name)
@@ -438,7 +438,7 @@ func (l *funcLowerer) emitEmbeddedIfaceValue(sel *ast.SelectorExpr, embedPath []
 		l.emitUnbox(*bt.Elem)
 		bt = *bt.Elem
 	}
-	l.emitFieldChain(bt, embedPath)
+	l.emitFieldChain("", goir.TVoid, token.NoPos, bt, embedPath)
 }
 
 // concreteMethodCall lowers recv.Method(args) where recv's static type is a type
@@ -753,7 +753,7 @@ func (l *funcLowerer) promotedMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr,
 	} else {
 		l.expr(sel.X)
 	}
-	embType := l.emitFieldChain(baseType, embedPath)
+	embType := l.emitFieldChain("", goir.TVoid, token.NoPos, baseType, embedPath)
 	if !recvIsPtr && embType.Kind == goir.KPtr {
 		// value receiver, pointer embed: dereference to the value.
 		l.emit(goir.Op{Code: goir.OpPtrGet})
@@ -817,7 +817,7 @@ func (l *funcLowerer) promotedPtrRecvValueEmbed(e *ast.CallExpr, sel *ast.Select
 
 	// Lift the embedded value into a GoPtr cell.
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
-	l.emitFieldChain(baseType, embedPath)
+	l.emitFieldChain("", goir.TVoid, token.NoPos, baseType, embedPath)
 	l.emitBox(embType)
 	l.ptrNew(embType)
 	cellLoc := l.addLocal(nil, goir.PtrType(embType))

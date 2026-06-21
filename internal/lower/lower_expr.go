@@ -157,7 +157,7 @@ func (l *funcLowerer) fieldRead(e *ast.SelectorExpr) {
 	// go/types gives the full index path; emit a ldfld chain through it.
 	if path, ok := l.promotedFieldPath(e); ok {
 		l.expr(e.X)
-		l.emitFieldChain(bt, path)
+		l.emitFieldChain(e.Sel.Name, l.exprType(e), e.Pos(), bt, path)
 		return
 	}
 	l.fail(e.Pos(), "unknown field "+e.Sel.Name)
@@ -181,7 +181,7 @@ func (l *funcLowerer) promotedFieldPath(e *ast.SelectorExpr) ([]int, bool) {
 // starting from a struct value already on the stack, dereferencing any embedded
 // pointer field along the way. The final field's value is left on the stack, and
 // its type is returned.
-func (l *funcLowerer) emitFieldChain(structType goir.Type, path []int) goir.Type {
+func (l *funcLowerer) emitFieldChain(fieldName string, resultType goir.Type, pos token.Pos, structType goir.Type, path []int) goir.Type {
 	cur := structType
 	for _, idx := range path {
 		if cur.Kind == goir.KPtr {
@@ -189,8 +189,17 @@ func (l *funcLowerer) emitFieldChain(structType goir.Type, path []int) goir.Type
 			l.emitUnbox(*cur.Elem)
 			cur = *cur.Elem
 		}
+		// The chain reached an embedded opaque shim (e.g. ecdsa.PrivateKey embeds
+		// ecdsa.PublicKey): the remaining promoted field is the shim's, so call its
+		// registered getter on the shim handle now on the stack.
+		if fieldName != "" && cur.Kind == goir.KObject && cur.Shim != "" {
+			if ext, ok := shimFieldExtern(cur.Shim, fieldName, resultType); ok {
+				l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+				return resultType
+			}
+		}
 		if cur.Kind != goir.KStruct || idx >= len(cur.Struct.Fields) {
-			l.fail(0, "promoted field path")
+			l.fail(pos, "promoted field path")
 			return goir.TVoid
 		}
 		l.emit(goir.Op{Code: goir.OpLdFld, Struct: cur.Struct, Field: idx})

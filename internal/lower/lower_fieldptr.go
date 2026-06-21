@@ -2,6 +2,7 @@ package lower
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
@@ -231,7 +232,7 @@ func (l *funcLowerer) emitFieldAliasPtr(emitPtr func(), ptrType, root goir.Type,
 		cl.emitEnvArg(0, ptrType)
 		cl.emit(goir.Op{Code: goir.OpPtrGet})
 		cl.emitUnbox(root)
-		cl.emitFieldChain(root, path)
+		cl.emitFieldChain("", ft, token.NoPos, root, path)
 		cl.emitBox(ft)
 	})
 	l.buildAccessorClosure(cap, func(cl *funcLowerer) {
@@ -261,7 +262,7 @@ func (l *funcLowerer) emitFieldAliasGlobal(gi int, root goir.Type, path []int, f
 	last := path[len(path)-1]
 	l.buildAccessorClosure(nil, func(cl *funcLowerer) {
 		cl.emit(goir.Op{Code: goir.OpLdGlobal, Int: int64(gi)})
-		cl.emitFieldChain(root, path)
+		cl.emitFieldChain("", ft, token.NoPos, root, path)
 		cl.emitBox(ft)
 	})
 	l.buildAccessorClosure(nil, func(cl *funcLowerer) {
