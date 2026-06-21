@@ -94,11 +94,21 @@ func unparen(e ast.Expr) ast.Expr {
 // ptrNew emits OpPtrNew, tagging the cell with the pointee's named struct type id
 // (0 for non-struct pointees) so pointer-receiver interface dispatch can match it.
 func (l *funcLowerer) ptrNew(pointee goir.Type) {
-	id := 0
+	id := int64(0)
 	if pointee.Kind == goir.KStruct {
-		id = pointee.Struct.Id
+		id = int64(pointee.Struct.Id)
 	}
-	l.emit(goir.Op{Code: goir.OpPtrNew, Int: int64(id)})
+	l.emit(goir.Op{Code: goir.OpPtrNew, Int: id})
+}
+
+// ptrNewId is ptrNew with an explicit type id for a non-struct pointee — used for a
+// pointer to a named non-struct type (&IntHeap{...}) so the GoPtr carries that type's
+// typed-box id and the callback bridge / interface dispatch can resolve its methods.
+func (l *funcLowerer) ptrNewId(pointee goir.Type, id int64) {
+	if id == 0 && pointee.Kind == goir.KStruct {
+		id = int64(pointee.Struct.Id)
+	}
+	l.emit(goir.Op{Code: goir.OpPtrNew, Int: id})
 }
 
 // declareLocal creates a local for obj. Address-taken locals become GoPtr cells
@@ -253,10 +263,16 @@ func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 		}
 		l.fail(e.Pos(), "address-of field "+x.Sel.Name)
 	case *ast.CompositeLit:
-		// &T{...}: a fresh cell holding the composite value.
+		// &T{...}: a fresh cell holding the composite value. For a named non-struct T
+		// (&IntHeap{...}) tag the pointer with T's typed-box id so the callback bridge
+		// and interface dispatch can resolve T's methods through the pointer.
 		t := l.compositeLit(x)
 		l.emitBox(t)
-		l.ptrNew(t)
+		if id, ok := l.namedIdentity(l.pkg.TypesInfo.TypeOf(x)); ok {
+			l.ptrNewId(t, id)
+		} else {
+			l.ptrNew(t)
+		}
 	case *ast.IndexExpr:
 		// &s[i] on a slice (or slice-backed array): a pointer aliasing the
 		// element's slot in the backing array, so the slice and the pointer

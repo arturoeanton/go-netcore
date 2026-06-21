@@ -61,6 +61,12 @@ type lowerCtx struct {
 	bridges     []bridgeReg
 	namedByName map[string]*types.Named
 	root        *types.Package // main package; its import closure spans the whole program
+	// typeIdSeq is ONE counter shared by struct ids and typed-box named ids, so every
+	// runtime-dispatched type (a struct reached as *T, or a named non-struct reached as a
+	// typed box) has a globally-unique id. This lets the callback bridge key one table by
+	// the id a GoPtr/GoNamed carries without a struct-id ↔ named-id collision. (struct.Id
+	// is a dispatch key only; the metadata TypeDefRow is assigned separately in emit.)
+	typeIdSeq int64
 	// namedIds assigns each identity-bearing named type (non-struct underlying with
 	// a method set) a stable per-build id so a boxed value can carry its Go named-
 	// type identity — the typed box (see runtime GoNamed). namedNames maps id ->
@@ -826,7 +832,7 @@ func (c *lowerCtx) structFor(named *types.Named) *goir.Struct {
 		c.structReg[named] = s
 		return s
 	}
-	s := &goir.Struct{Name: name, GoName: named.Obj().Name(), Id: len(c.structOrder) + 1}
+	s := &goir.Struct{Name: name, GoName: named.Obj().Name(), Id: int(c.nextTypeId())}
 	c.structReg[named] = s // register before fields to tolerate references
 	c.structByName[name] = s
 	c.structOrder = append(c.structOrder, s)
@@ -849,7 +855,7 @@ func (c *lowerCtx) structForAnon(st *types.Struct) *goir.Struct {
 	if s, ok := c.anonStructReg[key]; ok {
 		return s
 	}
-	id := len(c.structOrder) + 1
+	id := int(c.nextTypeId())
 	s := &goir.Struct{Name: "__anon" + itoa(id), GoName: key, Id: id}
 	c.anonStructReg[key] = s
 	c.structOrder = append(c.structOrder, s)

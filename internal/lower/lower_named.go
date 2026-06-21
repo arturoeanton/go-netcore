@@ -42,10 +42,17 @@ func (c *lowerCtx) namedIdentity(t types.Type) (id int64, ok bool) {
 	if id, ok := c.namedIds[named]; ok {
 		return id, true
 	}
-	id = int64(len(c.namedIds) + 1)
+	id = c.nextTypeId() // shared with struct ids so the id is globally unique
 	c.namedIds[named] = id
 	c.namedNames[id] = namedDisplayName(named)
 	return id, true
+}
+
+// nextTypeId returns the next id from the single counter shared by struct ids and
+// typed-box named ids, so every runtime-dispatched type has a globally-unique id.
+func (c *lowerCtx) nextTypeId() int64 {
+	c.typeIdSeq++
+	return c.typeIdSeq
 }
 
 // namedDisplayName renders a named type as Go's fmt does for %T: "pkg.Name"

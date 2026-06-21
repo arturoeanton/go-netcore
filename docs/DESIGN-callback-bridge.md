@@ -68,6 +68,21 @@ the clean id path), then extend to the named-slice id and add that fixture. If t
 id sources don't already coincide, unify them in `namedIdentity`/`structReg` so a value
 has ONE id regardless of how it's reached.
 
+**✅ DONE — type-id unification.** Struct ids (`structFor`) and typed-box named ids
+(`namedIdentity`) now draw from one shared counter (`lowerCtx.typeIdSeq` /
+`nextTypeId`), so every runtime-dispatched type has a globally-unique id and the bridge
+keys one table without a struct-id ↔ named-id collision. `&CompositeLit` of a named
+non-struct type tags its `GoPtr` with that type's id (`ptrNewId`), and
+`collectBridgeMethods` registers adapters for named non-struct implementers (iterating
+`c.namedIds`) as well as structs. Result: the idiomatic `type IntHeap []int` heap works
+(fixture 395_heap_named_slice, byte-exact). `struct.Id` is a dispatch key only (the
+metadata `TypeDefRow` is assigned separately in emit), so the change is invisible to the
+emitter; conformance 194 + typed-box/stringer/interface-dispatch all stay green.
+**Still open:** an implementer reached BY VALUE (a value-receiver struct passed by value
+→ boxed struct value has no pointer id; a named map/slice passed by value → the adapter
+expects a `GoPtr` to deref). Needs `TypeIdOf` to recover a struct value's id from its CLR
+class + the adapter to handle a non-`GoPtr` receiver form.
+
 ## After heap: remove the real hacks (each its own slice)
 - ✅ **DONE** — `Fmt.WriteTo`: `io.Writer` is now a `bridgeInterface`, so when `w` is a
   user wrapper (not a direct sink) `Bridge.HasMethod(w,"Write")` is true and

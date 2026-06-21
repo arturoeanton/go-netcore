@@ -140,14 +140,17 @@ delivery), **`net/http/cookiejar`**, **`net/http/httptest`** (live server + reco
 **`mime/multipart`** (form parsing). Still deferred (need a larger feature or external
 module):
 
-- **`container/heap`** — works for a **struct** receiver type: `heap.Init/Push/Pop/
-  Fix/Remove` drive the user type's `Less/Swap/Push/Pop` through the interface
-  method-callback bridge (`Bridge.CallMethod` + compiler-generated per-method
-  adapters; see `docs/DESIGN-callback-bridge.md`). A **named non-struct** receiver
-  (the idiomatic `type IntHeap []int`) is not yet supported — its pointer carries no
-  type id (`ptrNew` tags struct pointees only), so the bridge can't resolve its
-  methods and throws a clear error. Use a struct wrapper (`type H struct{ data []int }`)
-  meanwhile; unifying the pointer type id is the documented follow-up.
+- **`container/heap`** — works, including the idiomatic **named-slice** implementer
+  (`type IntHeap []int` reached as `*IntHeap`): `heap.Init/Push/Pop/Fix/Remove` drive
+  the user type's `Less/Swap/Push/Pop` through the interface method-callback bridge
+  (`Bridge.CallMethod` + compiler-generated per-method adapters; see
+  `docs/DESIGN-callback-bridge.md`). Struct ids and typed-box named ids now share one
+  counter, so `&IntHeap{...}` carries `IntHeap`'s unified id and the bridge resolves its
+  methods through the pointer. **Remaining bridge gap:** an implementer reached BY VALUE
+  rather than through a pointer — a value-receiver struct passed by value, or a named
+  map/slice passed by value (`fstest.MapFS`) — isn't dispatched: the boxed value carries
+  no pointer id (struct value) / the generated adapter expects a `GoPtr` to deref (named
+  value). Pass such implementers by pointer.
 - **`io/fs.Stat`** — real over **`os.DirFS`** and any `fs.FS` whose `Open` returns an
   `*os.File` (echo's defaultFS, `http.FS(os.DirFS(...))`): the `fsys.Open` call goes
   through the callback bridge and an `os.File`-backed `FileInfo` is read back. A user

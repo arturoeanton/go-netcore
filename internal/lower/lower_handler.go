@@ -151,6 +151,12 @@ func (c *lowerCtx) collectBridgeMethods() {
 		for named, st := range c.structReg {
 			c.registerBridgeAdapters(named, st.Id, iface)
 		}
+		// Named non-struct implementers (a typed-box type like `type IntHeap []int`
+		// reached as *IntHeap, or a named map reached by value): keyed by the same
+		// unified id their GoPtr/GoNamed carries.
+		for named, id := range c.namedIds {
+			c.registerBridgeAdapters(named, int(id), iface)
+		}
 	}
 }
 
