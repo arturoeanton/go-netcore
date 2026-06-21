@@ -51,23 +51,15 @@ public sealed class GoShake
     }
 }
 
-/// <summary>A crypto.Hash (the hash-function identifier enum).</summary>
-[GoShim("crypto.Hash")]
-public sealed class GoCryptoHash { public int Id; }
-
 /// <summary>Shims for crypto/sha256, sha1, sha512, md5, hmac, and crypto/rand.</summary>
 public static class Crypto
 {
-    // crypto.Hash constants (the Go enum values) and methods.
-    public static object CH_MD5() => new GoCryptoHash { Id = 2 };
-    public static object CH_SHA1() => new GoCryptoHash { Id = 3 };
-    public static object CH_SHA256() => new GoCryptoHash { Id = 5 };
-    public static object CH_SHA384() => new GoCryptoHash { Id = 6 };
-    public static object CH_SHA512() => new GoCryptoHash { Id = 7 };
-    public static bool CHash_Available(object h) => true;
-    public static long CHash_Size(object h) => ((GoCryptoHash)h).Id switch { 2 => 16, 3 => 20, 5 => 32, 6 => 48, 7 => 64, _ => 0 };
-    public static object CHash_New(object h) => ((GoCryptoHash)h).Id switch { 2 => Md5New(), 3 => Sha1New(), 6 => Sha384New(), 7 => Sha512New(), _ => Sha256New() };
-    public static object CHash_HashFunc(object h) => h;
+    // crypto.Hash is a named uint (its constants fold to their enum values: MD5=2,
+    // SHA1=3, SHA256=5, SHA384=6, SHA512=7); its methods operate on that value.
+    public static bool CHash_Available(ulong h) => true;
+    public static long CHash_Size(ulong h) => h switch { 2 => 16, 3 => 20, 5 => 32, 6 => 48, 7 => 64, _ => 0 };
+    public static object CHash_New(ulong h) => h switch { 2 => Md5New(), 3 => Sha1New(), 6 => Sha384New(), 7 => Sha512New(), _ => Sha256New() };
+    public static ulong CHash_HashFunc(ulong h) => h;
 
     private static GoHash H(string algo, int size, int block) => new() { Algo = algo, Size = size, Block = block };
 

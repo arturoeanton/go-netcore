@@ -50,7 +50,7 @@ public static class Url
     }
 
     // (*url.URL).Query() url.Values: parse RawQuery into a map[string][]string.
-    public static object URL_Query(object u)
+    public static GoMap URL_Query(object u)
     {
         var m = GoMaps.Make();
         string q = ((GoUrl)u).RawQuery;
@@ -66,6 +66,47 @@ public static class Url
                 m.Data[key] = GoSlices.AppendOne(vals, GoString.FromDotNetString(v));
             }
         return m;
+    }
+
+    // url.Values (map[string][]string) methods. The receiver is the GoMap produced by
+    // URL_Query / Req_Form; values are GoSlices of GoString.
+    public static GoString Values_Get(GoMap m, GoString key)
+    {
+        if (m.Data is var d && d != null && d.TryGetValue(key, out var v) && v is GoSlice s && s.Len > 0
+            && s.Data![s.Off] is GoString gs)
+            return gs;
+        return GoString.FromDotNetString("");
+    }
+    public static void Values_Set(GoMap m, GoString key, GoString val)
+    {
+        m.Data![key] = new GoSlice { Data = new object?[] { val }, Off = 0, Len = 1, Cap = 1 };
+    }
+    public static void Values_Add(GoMap m, GoString key, GoString val)
+    {
+        var d = m.Data!;
+        GoSlice vals = d.TryGetValue(key, out var ex) && ex is GoSlice sl ? sl : new GoSlice { Data = new object?[0], Off = 0, Len = 0, Cap = 0 };
+        d[key] = GoSlices.AppendOne(vals, val);
+    }
+    public static void Values_Del(GoMap m, GoString key) => m.Data!.Remove(key);
+    public static bool Values_Has(GoMap m, GoString key) => m.Data!.ContainsKey(key);
+    public static GoString Values_Encode(GoMap m)
+    {
+        var d = m.Data!;
+        var keys = new System.Collections.Generic.List<GoString>();
+        foreach (var k in d.Keys) keys.Add((GoString)k!);
+        keys.Sort((a, b) => string.CompareOrdinal(a.ToDotNetString(), b.ToDotNetString()));
+        var sb = new System.Text.StringBuilder();
+        foreach (var k in keys)
+        {
+            string ek = Escape(k.ToDotNetString(), false);
+            if (d[k] is GoSlice s)
+                for (int i = 0; i < s.Len; i++)
+                {
+                    if (sb.Length > 0) sb.Append('&');
+                    sb.Append(ek).Append('=').Append(Escape(((GoString)s.Data![s.Off + i]!).ToDotNetString(), false));
+                }
+        }
+        return GoString.FromDotNetString(sb.ToString());
     }
 
     // (*url.URL).RequestURI(): the path (or opaque) plus the raw query.

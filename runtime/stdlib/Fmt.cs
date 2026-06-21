@@ -142,20 +142,37 @@ public static class Fmt
         }
         if (depth >= 8) return w;
         if (w is GoPtr p) return ResolveSink(GoPtrs.Get(p), depth + 1);
-        // A wrapper struct: find an embedded writer field.
+        // A wrapper struct (e.g. echo.Response, gin's responseWriter) embeds the real
+        // writer plus its own bookkeeping. Writing straight to the underlying GoRespWriter
+        // bypasses the wrapper's WriteHeader-on-first-write, so a status the wrapper recorded
+        // in an int "Status"/"Code"/"status" field would be lost (every non-200 response
+        // would commit as 200). Propagate that pending status to the sink as we navigate to it.
+        object? sink = null;
+        int pendingStatus = 0;
         foreach (var f in w.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
         {
             var fv = f.GetValue(w);
-            switch (fv)
+            if (sink == null)
             {
-                case GoRespWriter: case GoBuffer: case GoStringBuilder: case GoFile: return fv;
-                case GoPtr:
-                    var inner = ResolveSink(fv, depth + 1);
-                    if (inner is GoRespWriter or GoBuffer or GoStringBuilder or GoFile) return inner;
-                    break;
+                switch (fv)
+                {
+                    case GoRespWriter: case GoBuffer: case GoStringBuilder: case GoFile: sink = fv; break;
+                    case GoPtr:
+                        var inner = ResolveSink(fv, depth + 1);
+                        if (inner is GoRespWriter or GoBuffer or GoStringBuilder or GoFile) sink = inner;
+                        break;
+                }
             }
+            if (pendingStatus == 0 && fv is long sl && (f.Name == "Status" || f.Name == "Code" || f.Name == "status")
+                && sl >= 100 && sl <= 599)
+                pendingStatus = (int)sl;
         }
-        return w;
+        if (sink is GoRespWriter rw && pendingStatus != 0 && !rw.WroteHeader)
+        {
+            rw.Status = pendingStatus;
+            rw.WroteHeader = true;
+        }
+        return sink ?? w;
     }
 
     public static object?[] Fprint(object? w, GoSlice args) { long n = WriteTo(w, Sprint(args).ToDotNetString()); return new object?[] { n, null }; }

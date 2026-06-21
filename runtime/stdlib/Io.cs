@@ -9,6 +9,10 @@ public static class Io
     public static readonly GoError EOFSentinel = new(GoString.FromDotNetString("EOF"));
     public static object EOF() => EOFSentinel;
 
+    // io.Discard (io.Writer): a sink that swallows writes. A throwaway bytes buffer
+    // serves — io.Copy(io.Discard, r) just drains r.
+    public static object Discard() => new GoBuffer();
+
     /// <summary>The single io.ErrUnexpectedEOF sentinel.</summary>
     public static readonly GoError ErrUnexpectedEOFSentinel = new(GoString.FromDotNetString("unexpected EOF"));
     public static object ErrUnexpectedEOF() => ErrUnexpectedEOFSentinel;

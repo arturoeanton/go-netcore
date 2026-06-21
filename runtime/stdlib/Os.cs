@@ -9,6 +9,10 @@ public sealed class GoFile { public bool IsStderr; public bool IsStdin; public S
 /// <summary>An os.SyscallError (a syscall-tagged error).</summary>
 public sealed class GoSyscallError { public string Syscall = ""; public object? Err; }
 
+/// <summary>An fs.FS rooted at a directory (os.DirFS). An opaque handle; goclr's serving
+/// paths don't traverse it.</summary>
+public sealed class GoDirFS { public string Root = ""; }
+
 /// <summary>An os.FileInfo: the fields fs.FileInfo exposes through its methods.</summary>
 public sealed class GoFileInfo
 {
@@ -269,6 +273,17 @@ public static class Os
     public static object NewFile(ulong fd, GoString name) => new GoFile { Path = name.ToDotNetString() };
 
     // os.Remove(name) error / os.RemoveAll(path) error.
+    // os.UserCacheDir / UserConfigDir / UserHomeDir (string, error).
+    public static object?[] UserCacheDir() => new object?[] { GoString.FromDotNetString(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData)), null };
+    public static object?[] UserConfigDir() => new object?[] { GoString.FromDotNetString(System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData)), null };
+    public static object?[] UserHomeDir() => new object?[] { GoString.FromDotNetString(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile)), null };
+
+    // os.Rename(old, new) error — atomic-ish replace (autocert's cache write).
+    public static object? Rename(GoString o, GoString n)
+    {
+        try { System.IO.File.Move(o.ToDotNetString(), n.ToDotNetString(), overwrite: true); return null; }
+        catch (System.Exception e) { return new GoError(GoString.FromDotNetString("rename " + o.ToDotNetString() + " " + n.ToDotNetString() + ": " + e.Message)); }
+    }
     public static object? Remove(GoString name)
     {
         try
@@ -310,6 +325,17 @@ public static class Os
 
     public static GoString Getenv(GoString key) =>
         GoString.FromDotNetString(System.Environment.GetEnvironmentVariable(key.ToDotNetString()) ?? "");
+
+    // os.DirFS(dir) fs.FS: a filesystem rooted at dir. Returned as an opaque handle; the
+    // fs.FS helpers (fs.Stat/fs.Sub) don't traverse it under goclr's serving paths.
+    public static object DirFS(GoString dir) => new GoDirFS { Root = dir.ToDotNetString() };
+
+    // os.Getwd() (string, error): the process's current working directory.
+    public static object?[] Getwd()
+    {
+        try { return new object?[] { GoString.FromDotNetString(System.IO.Directory.GetCurrentDirectory()), null }; }
+        catch (System.Exception e) { return new object?[] { GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
 
     public static object?[] LookupEnv(GoString key)
     {

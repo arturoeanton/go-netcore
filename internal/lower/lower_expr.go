@@ -190,9 +190,14 @@ func (l *funcLowerer) emitFieldChain(fieldName string, resultType goir.Type, pos
 			cur = *cur.Elem
 		}
 		// The chain reached an embedded opaque shim (e.g. ecdsa.PrivateKey embeds
-		// ecdsa.PublicKey): the remaining promoted field is the shim's, so call its
-		// registered getter on the shim handle now on the stack.
-		if fieldName != "" && cur.Kind == goir.KObject && cur.Shim != "" {
+		// ecdsa.PublicKey). The one handle represents the whole embedded chain, so any
+		// further navigation into it is a no-op: for a leaf field read, call the shim's
+		// registered getter; for navigation (no field name), stop with the handle on the
+		// stack — the promoted method/field then resolves on it.
+		if cur.Kind == goir.KObject && cur.Shim != "" {
+			if fieldName == "" {
+				return cur
+			}
 			if ext, ok := shimFieldExtern(cur.Shim, fieldName, resultType); ok {
 				l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
 				return resultType

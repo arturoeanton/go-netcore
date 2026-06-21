@@ -462,6 +462,18 @@ public static class Json
     // type descriptor through a method call, so this decodes into the canonical Go
     // shape (Go's interface{} mapping) and writes it through the pointer — exact for
     // map[string]any / []any / *any targets, best-effort widening for sized fields.
+    // json error types referenced by type switches (echo's binder). The shim's decode
+    // path returns a plain GoError, so these are never instantiated — they exist only so
+    // `case *json.UnmarshalTypeError` / `*json.SyntaxError` compiles.
+    public static GoString UTE_Error(object e) => GoString.FromDotNetString("json: cannot unmarshal value into Go value");
+    public static object? UTE_Type(object e) => null;
+    public static GoString UTE_Value(object e) => GoString.FromDotNetString("");
+    public static GoString UTE_Field(object e) => GoString.FromDotNetString("");
+    public static GoString UTE_Struct(object e) => GoString.FromDotNetString("");
+    public static long UTE_Offset(object e) => 0;
+    public static GoString SyntaxErr_Error(object e) => GoString.FromDotNetString("json: syntax error");
+    public static long SyntaxErr_Offset(object e) => 0;
+
     public static object? Decoder_Decode(object dec, object? target)
     {
         try { SetPtr(target, ((GoJsonDecoder)dec).DecodeValue()); return null; }

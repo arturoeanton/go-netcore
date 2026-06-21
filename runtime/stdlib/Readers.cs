@@ -44,6 +44,17 @@ public static class Readers
         return new GoReader { Data = d };
     }
 
+    // io.LimitReader(r, n) io.Reader — read at most n bytes. goclr drains readers
+    // eagerly, so this truncates the drained content to n bytes.
+    public static object LimitReader(object? r, long n)
+    {
+        var all = Drain(r);
+        int len = n < 0 ? 0 : (n < all.Length ? (int)n : all.Length);
+        var d = new byte[len];
+        System.Array.Copy(all, d, len);
+        return new GoReader { Data = d };
+    }
+
     // Drain a reader the runtime understands to its remaining bytes.
     internal static byte[] Drain(object? r)
     {

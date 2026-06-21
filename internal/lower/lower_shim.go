@@ -84,12 +84,14 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/elliptic": {"P224": {"Crypto509", "P224"}, "P256": {"Crypto509", "P256"}, "P384": {"Crypto509", "P384"}, "P521": {"Crypto509", "P521"}},
 	"crypto/ecdsa":    {"GenerateKey": {"Crypto509", "EcdsaGenerateKey"}},
 	"encoding/asn1":   {"Marshal": {"Asn1", "Marshal"}, "Unmarshal": {"Asn1", "Unmarshal"}},
+	"encoding/pem":    {"Decode": {"Pem", "Decode"}, "EncodeToMemory": {"Pem", "EncodeToMemory"}, "Encode": {"Pem", "Encode"}},
 	"crypto/rsa":      {"GenerateKey": {"Crypto509", "RsaGenerateKey"}},
+	"crypto/tls":      {"Server": {"HttpTypes", "TlsServer"}, "Client": {"HttpTypes", "TlsClient"}, "X509KeyPair": {"HttpTypes", "X509KeyPair"}, "LoadX509KeyPair": {"HttpTypes", "LoadX509KeyPair"}, "NewListener": {"HttpTypes", "NewListener"}},
 	"crypto/x509": {
 		"CreateCertificate": {"Crypto509", "CreateCertificate"}, "ParseCertificate": {"Crypto509", "ParseCertificate"}, "ParseCertificates": {"Crypto509", "ParseCertificates"},
 		"MarshalECPrivateKey": {"Crypto509", "MarshalECPrivateKey"}, "ParseECPrivateKey": {"Crypto509", "ParseECPrivateKey"},
 		"MarshalPKCS1PrivateKey": {"Crypto509", "MarshalPKCS1PrivateKey"}, "ParsePKCS1PrivateKey": {"Crypto509", "ParsePKCS1PrivateKey"},
-		"ParsePKCS8PrivateKey": {"Crypto509", "ParsePKCS8PrivateKey"},
+		"ParsePKCS8PrivateKey": {"Crypto509", "ParsePKCS8PrivateKey"}, "CreateCertificateRequest": {"Crypto509", "CreateCertificateRequest"},
 	},
 	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}, "Sum512": {"Crypto", "Sha512Sum512"}, "Sum384": {"Crypto", "Sha512Sum384"}},
 	"crypto/md5":    {"New": {"Crypto", "Md5New"}, "Sum": {"Crypto", "Md5Sum"}},
@@ -171,11 +173,14 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"io": {
 		"WriteString": {"Io", "WriteString"}, "ReadAll": {"Readers", "ReadAll"}, "Copy": {"Readers", "Copy"},
-		"ReadFull": {"Io", "ReadFull"}, "NopCloser": {"Io", "NopCloser"},
+		"ReadFull": {"Io", "ReadFull"}, "NopCloser": {"Io", "NopCloser"}, "LimitReader": {"Readers", "LimitReader"},
 	},
 	"bufio": {
 		"NewScanner": {"Bufio", "NewScanner"}, "NewWriter": {"Bufio", "NewWriter"}, "NewWriterSize": {"Bufio", "NewWriterSize"},
 		"NewReader": {"Bufio", "NewReader"}, "NewReaderSize": {"Bufio", "NewReaderSize"},
+	},
+	"io/fs": {
+		"Stat": {"Fs", "Stat"}, "Sub": {"Fs", "Sub"}, "ValidPath": {"Fs", "ValidPath"},
 	},
 	"net": {
 		"Listen": {"Net", "Listen"}, "Dial": {"Net", "Dial"}, "FileListener": {"Net", "FileListener"},
@@ -190,7 +195,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"}, "NewServeMux": {"Http", "NewServeMux"},
 		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"}, "Error": {"Http", "Error"},
 		"NewResponseController": {"Http", "NewResponseController"}, "SetCookie": {"Http", "SetCookie"},
-		"ServeFile": {"Http", "ServeFile"}, "FileServer": {"Http", "FileServer"}, "StripPrefix": {"Http", "StripPrefix"}, "Serve": {"Http", "Serve"}, "ListenAndServeTLS": {"Http", "ListenAndServeTLS"},
+		"ServeFile": {"Http", "ServeFile"}, "ServeContent": {"Http", "ServeContent"}, "FileServer": {"Http", "FileServer"}, "StripPrefix": {"Http", "StripPrefix"}, "Serve": {"Http", "Serve"}, "ListenAndServeTLS": {"Http", "ListenAndServeTLS"},
 		"NewRequest": {"Http", "NewRequest"}, "NewRequestWithContext": {"Http", "NewRequestWithContext"}, "ParseTime": {"Http", "ParseTime"},
 	},
 	"math/rand/v2": {
@@ -229,7 +234,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"time": {
 		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},
-		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
+		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "UnixMilli": {"Time", "UnixMilli"}, "UnixMicro": {"Time", "UnixMicro"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"},
 		"FixedZone": {"Time", "FixedZone"}, "NewTicker": {"Time", "NewTicker"}, "NewTimer": {"Time", "NewTimer"},
 		"Parse": {"Time", "Parse"}, "LoadLocation": {"Time", "LoadLocation"}, "ParseDuration": {"Time", "ParseDuration"}, "ParseInLocation": {"Time", "ParseInLocation"},
 		"Tick": {"Time", "Tick"}, "AfterFunc": {"Time", "AfterFunc"},
@@ -248,10 +253,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ReverseBytes16": {"MathBits", "ReverseBytes16"}, "ReverseBytes32": {"MathBits", "ReverseBytes32"}, "Reverse32": {"MathBits", "Reverse32"},
 	},
 	"os": {
-		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"},
+		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"}, "Getwd": {"Os", "Getwd"}, "DirFS": {"Os", "DirFS"},
 		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
-		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "TempDir": {"Os", "TempDir"},
+		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "Rename": {"Os", "Rename"}, "UserCacheDir": {"Os", "UserCacheDir"}, "UserConfigDir": {"Os", "UserConfigDir"}, "UserHomeDir": {"Os", "UserHomeDir"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "TempDir": {"Os", "TempDir"},
 		"Stat": {"Os", "Stat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"},
 	},
 	"bytes": {
@@ -361,6 +366,8 @@ var opaqueShimTypes = map[string]bool{
 	"net.IPAddr":                   true,
 	"net.UnixAddr":                 true,
 	"net.PacketConn":               true,
+	"net.TCPConn":                  true,
+	"net.TCPListener":              true,
 	"net.UDPConn":                  true,
 	"net/http.ResponseWriter":      true,
 	"net/http.Request":             true,
@@ -371,7 +378,6 @@ var opaqueShimTypes = map[string]bool{
 	"net/http.ServeMux":            true,
 	"net/http.HTTP2Config":         true,
 	"net/http.Protocols":           true,
-	"crypto.Hash":                  true,
 	"crypto/elliptic.Curve":        true,
 	"crypto/ecdsa.PrivateKey":      true,
 	"crypto/ecdsa.PublicKey":       true,
@@ -379,9 +385,15 @@ var opaqueShimTypes = map[string]bool{
 	"crypto/rsa.PublicKey":         true,
 	"crypto/x509.Certificate":      true,
 	"crypto/x509.CertificateRequest": true,
+	"encoding/pem.Block":           true,
+	"encoding/json.UnmarshalTypeError": true,
+	"encoding/json.SyntaxError":     true,
+	"encoding/xml.UnsupportedTypeError": true,
+	"encoding/xml.SyntaxError":      true,
 	"crypto/x509/pkix.Name":        true,
 	"crypto/x509/pkix.Extension":   true,
 	"crypto/tls.Config":            true,
+	"crypto/tls.Certificate":       true,
 	"crypto/tls.Conn":              true,
 	"crypto/tls.ConnectionState":   true,
 	"crypto/tls.Dialer":            true,
@@ -444,11 +456,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"log/slog.LevelKey":              {"Slog", "KeyLevel"},
 	"log/slog.SourceKey":             {"Slog", "KeySource"},
 	"crypto/rand.Reader":             {"Crypto", "RandReader"},
-	"crypto.MD5":                     {"Crypto", "CH_MD5"},
-	"crypto.SHA1":                    {"Crypto", "CH_SHA1"},
-	"crypto.SHA256":                  {"Crypto", "CH_SHA256"},
-	"crypto.SHA384":                  {"Crypto", "CH_SHA384"},
-	"crypto.SHA512":                  {"Crypto", "CH_SHA512"},
+	"io.Discard":                     {"Io", "Discard"},
 	"net/http.DefaultClient":         {"Http", "DefaultClient"},
 	"os.Interrupt":                   {"Os", "Interrupt"},
 	"os.Kill":                        {"Os", "Kill"},
@@ -603,6 +611,21 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"ExtKeyUsage": {"Crypto509", "Cert_ExtKeyUsage"}, "ExtraExtensions": {"Crypto509", "Cert_ExtraExtensions"},
 		"IPAddresses": {"Crypto509", "Cert_IPAddresses"}, "PublicKey": {"Crypto509", "Cert_PublicKey"},
 	},
+	"encoding/pem.Block": {
+		"Type": {"Pem", "Block_Type"}, "Bytes": {"Pem", "Block_Bytes"}, "Headers": {"Pem", "Block_Headers"},
+	},
+	"encoding/json.UnmarshalTypeError": {
+		"Type": {"Json", "UTE_Type"}, "Value": {"Json", "UTE_Value"}, "Field": {"Json", "UTE_Field"}, "Struct": {"Json", "UTE_Struct"}, "Offset": {"Json", "UTE_Offset"},
+	},
+	"encoding/json.SyntaxError": {
+		"Offset": {"Json", "SyntaxErr_Offset"},
+	},
+	"encoding/xml.UnsupportedTypeError": {
+		"Type": {"Json", "UTE_Type"},
+	},
+	"encoding/xml.SyntaxError": {
+		"Line": {"Json", "SyntaxErr_Offset"}, "Msg": {"Json", "UTE_Struct"},
+	},
 	"crypto/x509/pkix.Name": {
 		"CommonName": {"Crypto509", "PkixName_CommonName"}, "Organization": {"Crypto509", "PkixName_Organization"},
 	},
@@ -613,10 +636,10 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"X": {"Crypto509", "EcKey_X"}, "Y": {"Crypto509", "EcKey_Y"}, "Curve": {"Crypto509", "EcKey_Curve"},
 	},
 	"crypto/ecdsa.PrivateKey": {
-		"PublicKey": {"Crypto509", "EcdsaPublic"},
+		"PublicKey": {"Crypto509", "EcdsaPublic"}, "X": {"Crypto509", "EcKey_X"}, "Y": {"Crypto509", "EcKey_Y"}, "Curve": {"Crypto509", "EcKey_Curve"},
 	},
 	"crypto/rsa.PrivateKey": {
-		"PublicKey": {"Crypto509", "RsaPublic"},
+		"PublicKey": {"Crypto509", "RsaPublic"}, "N": {"Crypto509", "RsaKey_N"}, "E": {"Crypto509", "RsaKey_E"},
 	},
 	"sync.Cond": {
 		"L": {"Sync", "Cond_L"},
@@ -648,6 +671,9 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"MinVersion": {"HttpTypes", "Config_MinVersion"}, "MaxVersion": {"HttpTypes", "Config_MaxVersion"},
 		"InsecureSkipVerify": {"HttpTypes", "Config_InsecureSkipVerify"}, "GetCertificate": {"HttpTypes", "Config_GetCertificate"}, "PreferServerCipherSuites": {"HttpTypes", "Config_PreferServerCipherSuites"},
 		"ServerName": {"HttpTypes", "Config_ServerName"}, "RootCAs": {"HttpTypes", "Config_RootCAs"}, "Certificates": {"HttpTypes", "Config_Certificates"}, "ClientAuth": {"HttpTypes", "Config_ClientAuth"},
+	},
+	"crypto/tls.Certificate": {
+		"PrivateKey": {"HttpTypes", "Cert_PrivateKey"}, "Leaf": {"HttpTypes", "Cert_Leaf"}, "Certificate": {"HttpTypes", "Cert_Certificate"}, "OCSPStaple": {"HttpTypes", "Cert_OCSPStaple"},
 	},
 	"net/http.Transport": {
 		"HTTP2": {"HttpTypes", "Transport_HTTP2"}, "TLSClientConfig": {"HttpTypes", "Transport_TLSClientConfig"}, "Proxy": {"HttpTypes", "Transport_Proxy"},
@@ -735,6 +761,12 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 		"ExtraExtensions": {"Crypto509", "Cert_SetExtraExtensions"}, "IPAddresses": {"Crypto509", "Cert_SetIPAddresses"},
 		"PublicKey": {"Crypto509", "Cert_SetPublicKey"},
 	},
+	"encoding/pem.Block": {
+		"Type": {"Pem", "Block_SetType"}, "Bytes": {"Pem", "Block_SetBytes"}, "Headers": {"Pem", "Block_SetHeaders"},
+	},
+	"crypto/x509.CertificateRequest": {
+		"Subject": {"Crypto509", "CertReq_SetSubject"}, "DNSNames": {"Crypto509", "CertReq_SetDNSNames"},
+	},
 	"crypto/x509/pkix.Name": {
 		"CommonName": {"Crypto509", "PkixName_SetCommonName"}, "Organization": {"Crypto509", "PkixName_SetOrganization"}, "Country": {"Crypto509", "PkixName_SetCountry"},
 	},
@@ -764,6 +796,7 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"net/http.Server": {
 		"TLSConfig": {"HttpTypes", "Server_SetTLSConfig"}, "TLSNextProto": {"HttpTypes", "Server_SetTLSNextProto"}, "IdleTimeout": {"HttpTypes", "Server_SetIdleTimeout"},
 		"Addr": {"HttpTypes", "Server_SetAddr"}, "Handler": {"HttpTypes", "Server_SetHandler"},
+		"ErrorLog": {"HttpTypes", "Server_SetErrorLog"}, "ReadTimeout": {"HttpTypes", "Server_SetReadTimeout"}, "WriteTimeout": {"HttpTypes", "Server_SetWriteTimeout"}, "ReadHeaderTimeout": {"HttpTypes", "Server_SetReadHeaderTimeout"}, "MaxHeaderBytes": {"HttpTypes", "Server_SetMaxHeaderBytes"},
 	},
 	"net/http.Transport": {
 		"TLSNextProto": {"HttpTypes", "Transport_SetTLSNextProto"}, "TLSClientConfig": {"HttpTypes", "Transport_SetTLSClientConfig"}, "HTTP2": {"HttpTypes", "Transport_SetHTTP2"},
@@ -771,6 +804,10 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"crypto/tls.Config": {
 		"NextProtos": {"HttpTypes", "Config_SetNextProtos"}, "PreferServerCipherSuites": {"HttpTypes", "Config_SetPreferServerCipherSuites"},
 		"ServerName": {"HttpTypes", "Config_SetServerName"}, "MinVersion": {"HttpTypes", "Config_SetMinVersion"}, "MaxVersion": {"HttpTypes", "Config_SetMaxVersion"}, "InsecureSkipVerify": {"HttpTypes", "Config_SetInsecureSkipVerify"},
+		"Certificates": {"HttpTypes", "Config_SetCertificates"}, "GetCertificate": {"HttpTypes", "Config_SetGetCertificate"},
+	},
+	"crypto/tls.Certificate": {
+		"PrivateKey": {"HttpTypes", "Cert_SetPrivateKey"}, "Leaf": {"HttpTypes", "Cert_SetLeaf"}, "Certificate": {"HttpTypes", "Cert_SetCertificate"}, "OCSPStaple": {"HttpTypes", "Cert_SetOCSPStaple"},
 	},
 	"net/url.URL": {
 		"Path": {"Url", "URL_SetPath"}, "Scheme": {"Url", "URL_SetScheme"},
@@ -834,6 +871,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"log.Logger":                 {"Log", "NewLoggerZero"},
 	"net/http.Transport":         {"HttpTypes", "NewTransport"},
 	"crypto/tls.Config":          {"HttpTypes", "NewTlsConfig"},
+	"crypto/tls.Certificate":     {"HttpTypes", "NewTlsCert"},
 	"crypto/tls.Conn":            {"HttpTypes", "NewTlsConn"},
 	"crypto/tls.ConnectionState": {"HttpTypes", "NewTlsConnState"},
 	"net/http.HTTP2Config":       {"HttpTypes", "NewHTTP2Config"},
@@ -855,6 +893,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"net.UDPAddr":                {"Net", "NewUDPAddr"},
 	"log/slog.Attr":              {"Slog", "NewAttr"},
 	"log/slog.HandlerOptions":    {"Slog", "NewHandlerOptions"},
+	"encoding/pem.Block":         {"Pem", "NewBlock"},
 	"crypto/x509/pkix.Name":      {"Crypto509", "NewPkixName"},
 	"crypto/x509/pkix.Extension": {"Crypto509", "NewPkixExt"},
 	"crypto/x509.Certificate":    {"Crypto509", "NewCertificate"},
@@ -897,6 +936,18 @@ var binaryMethods = map[string]shimFunc{
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
+	"encoding/json.UnmarshalTypeError": {
+		"Error": {"Json", "UTE_Error"},
+	},
+	"encoding/json.SyntaxError": {
+		"Error": {"Json", "SyntaxErr_Error"},
+	},
+	"encoding/xml.UnsupportedTypeError": {
+		"Error": {"Json", "UTE_Error"},
+	},
+	"encoding/xml.SyntaxError": {
+		"Error": {"Json", "SyntaxErr_Error"},
+	},
 	"net/http.ServeMux": {
 		"Handle": {"Http", "Mux_Handle"}, "HandleFunc": {"Http", "Mux_HandleFunc"}, "ServeHTTP": {"Http", "Mux_ServeHTTP"}, "Handler": {"Http", "Mux_Handler"},
 	},
@@ -960,6 +1011,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net/url.URL": {
 		"IsAbs": {"Url", "URL_IsAbs"}, "String": {"Url", "URL_String"},
 		"ResolveReference": {"Url", "URL_ResolveReference"}, "Query": {"Url", "URL_Query"}, "RequestURI": {"Url", "URL_RequestURI"},
+	},
+	"net/url.Values": {
+		"Get": {"Url", "Values_Get"}, "Set": {"Url", "Values_Set"}, "Add": {"Url", "Values_Add"},
+		"Del": {"Url", "Values_Del"}, "Has": {"Url", "Values_Has"}, "Encode": {"Url", "Values_Encode"},
 	},
 	"strings.Reader": {
 		"ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
@@ -1034,6 +1089,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"crypto.Hash": {
 		"Available": {"Crypto", "CHash_Available"}, "Size": {"Crypto", "CHash_Size"}, "New": {"Crypto", "CHash_New"}, "HashFunc": {"Crypto", "CHash_HashFunc"},
 	},
+	"crypto/x509.Certificate": {
+		"VerifyHostname": {"Crypto509", "Cert_VerifyHostname"}, "CheckSignatureFrom": {"Crypto509", "Cert_CheckSignatureFrom"},
+	},
 	"crypto/ecdsa.PrivateKey": {"Public": {"Crypto509", "EcdsaPublic"}},
 	"crypto/rsa.PrivateKey":   {"Public": {"Crypto509", "RsaPublic"}},
 	"net/http/httptest.Server": {
@@ -1056,14 +1114,24 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net/http.Request": {
 		"ParseForm": {"Http", "Req_ParseForm"}, "ParseMultipartForm": {"Http", "Req_ParseMultipartForm"}, "Context": {"Http", "Req_Context"},
 		"WithContext": {"Http", "Req_WithContext"}, "Clone": {"Http", "Req_Clone"}, "UserAgent": {"Http", "Req_UserAgent"}, "Referer": {"Http", "Req_Referer"}, "Cookie": {"Http", "Req_Cookie"}, "Cookies": {"Http", "Req_Cookies"}, "FormFile": {"Http", "Req_FormFile"}, "MultipartReader": {"Http", "Req_MultipartReader"},
+		"FormValue": {"Http", "Req_FormValue"}, "PostFormValue": {"Http", "Req_PostFormValue"},
 	},
 	"net/http.ResponseWriter": {
 		"Write": {"Http", "RW_Write"}, "WriteHeader": {"Http", "RW_WriteHeader"}, "Header": {"Http", "RW_Header"},
 	},
-	"net.Listener": {
-		"Accept": {"Net", "Listener_Accept"}, "Close": {"Net", "Listener_Close"},
+	// net.Listener is an interface, not a concrete shim handle: keep it OUT of this
+	// registry so a method call on a net.Listener value goes through interface dispatch
+	// (matching net.TCPListener for a plain GoListener, or navigating the embedded shim
+	// for a wrapper like echo's tcpKeepAliveListener) rather than being short-circuited
+	// here with the raw interface value passed as the receiver.
+	"net.TCPListener": {
+		"Accept": {"Net", "Listener_Accept"}, "AcceptTCP": {"Net", "Listener_AcceptTCP"}, "Close": {"Net", "Listener_Close"}, "Addr": {"Net", "Listener_Addr"},
 	},
 	"net.Conn": {
+		"Read": {"Net", "Conn_Read"}, "Write": {"Net", "Conn_Write"}, "Close": {"Net", "Conn_Close"},
+	},
+	"net.TCPConn": {
+		"SetKeepAlive": {"Net", "TCPConn_SetKeepAlive"}, "SetKeepAlivePeriod": {"Net", "TCPConn_SetKeepAlivePeriod"}, "SetNoDelay": {"Net", "TCPConn_SetNoDelay"}, "SetLinger": {"Net", "TCPConn_SetLinger"},
 		"Read": {"Net", "Conn_Read"}, "Write": {"Net", "Conn_Write"}, "Close": {"Net", "Conn_Close"},
 	},
 	"net.UDPConn": {
@@ -1185,6 +1253,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net.IP": {
 		"To4": {"Net", "IP_To4"}, "To16": {"Net", "IP_To16"}, "Equal": {"Net", "IP_Equal"}, "String": {"Net", "IP_String"},
+		"IsLoopback": {"Net", "IP_IsLoopback"}, "IsLinkLocalUnicast": {"Net", "IP_IsLinkLocalUnicast"}, "IsLinkLocalMulticast": {"Net", "IP_IsLinkLocalMulticast"},
+		"IsMulticast": {"Net", "IP_IsMulticast"}, "IsPrivate": {"Net", "IP_IsPrivate"}, "IsUnspecified": {"Net", "IP_IsUnspecified"}, "IsGlobalUnicast": {"Net", "IP_IsGlobalUnicast"},
 	},
 	"net.IPNet": {
 		"Contains": {"Net", "IPNet_Contains"}, "String": {"Net", "IPNet_String"},

@@ -4,10 +4,14 @@ using System.Net;
 using System.Net.Sockets;
 using GoCLR.Runtime;
 
-/// <summary>A net.Listener over a TcpListener.</summary>
-public sealed class GoListener { public TcpListener L = null!; }
+/// <summary>A net.Listener over a TcpListener. Tagged as the concrete *net.TCPListener
+/// so a <c>l.(*net.TCPListener)</c> assertion (echo's newListener) succeeds.</summary>
+[GoShim("net.TCPListener")]
+public sealed class GoListener { public TcpListener L = null!; public string Addr = ""; }
 
-/// <summary>A net.Conn over a TcpClient/NetworkStream.</summary>
+/// <summary>A net.Conn over a TcpClient/NetworkStream. Tagged as *net.TCPConn so a
+/// <c>c.(*net.TCPConn)</c> assertion succeeds.</summary>
+[GoShim("net.TCPConn")]
 public sealed class GoConn { public TcpClient C = null!; public NetworkStream S = null!; }
 
 /// <summary>Shim for a subset of Go's <c>net</c> (TCP client/server).</summary>
@@ -21,17 +25,35 @@ public static class Net
         return (host.Length == 0 ? "0.0.0.0" : host, port);
     }
 
+    // Listeners bound by net.Listen, keyed by the address string. (*http.Server).Serve
+    // serves over the HttpListener backend, which binds the same port itself; it releases
+    // the matching entry here first so the two don't collide. See Server_Serve.
+    internal static readonly System.Collections.Generic.Dictionary<string, TcpListener> Bound =
+        new(System.StringComparer.Ordinal);
+
     public static object?[] Listen(GoString network, GoString address)
     {
         try
         {
-            var (host, port) = Parse(address.ToDotNetString());
+            string addr = address.ToDotNetString();
+            var (host, port) = Parse(addr);
             var ip = host == "0.0.0.0" ? IPAddress.Any : IPAddress.Parse(host == "localhost" ? "127.0.0.1" : host);
             var l = new TcpListener(ip, port);
             l.Start();
-            return new object?[] { new GoListener { L = l }, null };
+            lock (Bound) Bound[addr] = l;
+            return new object?[] { new GoListener { L = l, Addr = addr }, null };
         }
         catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("listen: " + e.Message)) }; }
+    }
+
+    // Release (stop and forget) the listener bound to addr, freeing the port. Returns true
+    // if one was held. Used by (*http.Server).Serve before it rebinds via HttpListener.
+    internal static bool ReleaseBound(string addr)
+    {
+        TcpListener? l;
+        lock (Bound) { if (!Bound.TryGetValue(addr, out l)) return false; Bound.Remove(addr); }
+        try { l!.Stop(); } catch { }
+        return true;
     }
 
     // net.FileListener(f) (net.Listener, error): serving on a raw fd isn't supported
@@ -57,6 +79,14 @@ public static class Net
         catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("accept: " + e.Message)) }; }
     }
     public static object? Listener_Close(object lo) { ((GoListener)lo).L.Stop(); return null; }
+    // (*net.TCPListener).AcceptTCP() (*net.TCPConn, error): same as Accept, typed concrete.
+    public static object?[] Listener_AcceptTCP(object lo) => Listener_Accept(lo);
+    // (net.Listener).Addr() net.Addr: the bound local endpoint.
+    public static object Listener_Addr(object lo)
+    {
+        var ep = ((GoListener)lo).L.LocalEndpoint as IPEndPoint;
+        return new GoNetAddr { Str = ep != null ? ep.ToString() : "" };
+    }
 
     // net.Conn methods.
     public static object?[] Conn_Read(object co, GoSlice p)
@@ -83,6 +113,12 @@ public static class Net
         catch (System.Exception e) { return new object?[] { 0L, new GoError(GoString.FromDotNetString(e.Message)) }; }
     }
     public static object? Conn_Close(object co) { ((GoConn)co).C.Close(); return null; }
+
+    // net.TCPConn tuning (autocert's listener sets keep-alive on accepted conns).
+    public static object? TCPConn_SetKeepAlive(object c, bool b) => null;
+    public static object? TCPConn_SetKeepAlivePeriod(object c, long d) => null;
+    public static object? TCPConn_SetNoDelay(object c, bool b) => null;
+    public static object? TCPConn_SetLinger(object c, long sec) => null;
 
     // ---- UDP (PacketConn) --------------------------------------------------
     public static object?[] ListenPacket(GoString network, GoString address)
@@ -319,6 +355,57 @@ public static class Net
         var b = Raw(ip);
         try { return GoString.FromDotNetString(new IPAddress(b).ToString()); }
         catch { return GoString.FromDotNetString("<nil>"); }
+    }
+
+    // net.IP predicates (operate on the 4- or 16-byte slice; mirror Go's classification).
+    public static bool IP_IsLoopback(GoSlice ip)
+    {
+        var b = Raw(IP_To4(ip));
+        if (b.Length == 4) return b[0] == 127;
+        var v = Raw(ip);
+        if (v.Length == 16) { for (int i = 0; i < 15; i++) if (v[i] != 0) return false; return v[15] == 1; }
+        return false;
+    }
+    public static bool IP_IsLinkLocalUnicast(GoSlice ip)
+    {
+        var b = Raw(IP_To4(ip));
+        if (b.Length == 4) return b[0] == 169 && b[1] == 254;
+        var v = Raw(ip);
+        return v.Length == 16 && v[0] == 0xfe && (v[1] & 0xc0) == 0x80;
+    }
+    public static bool IP_IsLinkLocalMulticast(GoSlice ip)
+    {
+        var b = Raw(IP_To4(ip));
+        if (b.Length == 4) return b[0] == 224 && b[1] == 0 && b[2] == 0;
+        var v = Raw(ip);
+        return v.Length == 16 && v[0] == 0xff && (v[1] & 0x0f) == 0x02;
+    }
+    public static bool IP_IsMulticast(GoSlice ip)
+    {
+        var b = Raw(IP_To4(ip));
+        if (b.Length == 4) return (b[0] & 0xf0) == 0xe0;
+        var v = Raw(ip);
+        return v.Length == 16 && v[0] == 0xff;
+    }
+    public static bool IP_IsPrivate(GoSlice ip)
+    {
+        var b = Raw(IP_To4(ip));
+        if (b.Length == 4)
+            return b[0] == 10 || (b[0] == 172 && (b[1] & 0xf0) == 16) || (b[0] == 192 && b[1] == 168);
+        var v = Raw(ip);
+        return v.Length == 16 && (v[0] & 0xfe) == 0xfc;
+    }
+    public static bool IP_IsUnspecified(GoSlice ip)
+    {
+        var b = Raw(ip);
+        foreach (var x in b) if (x != 0) return false;
+        return b.Length == 4 || b.Length == 16;
+    }
+    public static bool IP_IsGlobalUnicast(GoSlice ip)
+    {
+        var b = Raw(ip);
+        return (b.Length == 4 || b.Length == 16) && !IP_IsUnspecified(ip) && !IP_IsLoopback(ip)
+            && !IP_IsMulticast(ip) && !IP_IsLinkLocalUnicast(ip);
     }
 
     // net.IPNet field reads (opaque GoNetAddr).

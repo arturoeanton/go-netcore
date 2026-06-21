@@ -321,8 +321,11 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 		return
 	}
 	// Field write on an opaque stdlib shim (e.g. url.URL.Path = …) -> setter extern.
+	// The setter's value parameter mirrors the FIELD's Go type, not the RHS's concrete
+	// type: assigning a *T (GoPtr) to an interface field (e.g. http.Server.Handler) must
+	// box to object, which exprCoerced does once Params[1] is the field type.
 	if bt.Kind == goir.KObject && bt.Shim != "" {
-		if ext, ok := shimFieldSetExtern(bt.Shim, sel.Sel.Name, l.exprType(rhs)); ok {
+		if ext, ok := shimFieldSetExtern(bt.Shim, sel.Sel.Name, l.exprType(sel)); ok {
 			l.expr(sel.X)
 			l.exprCoerced(rhs, ext.Params[1])
 			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})

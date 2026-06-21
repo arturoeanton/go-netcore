@@ -144,8 +144,31 @@ public static class Http
 
     // http.CanonicalHeaderKey(s): canonical MIME header key ("content-type" -> "Content-Type").
     public static GoString CanonicalHeaderKey(GoString s) => Textproto.CanonicalMIMEHeaderKey(s);
-    // http.StatusText(code): the text for an HTTP status code.
-    public static GoString StatusText(long code) => GoString.FromDotNetString(((System.Net.HttpStatusCode)(int)code).ToString());
+    // http.StatusText(code): Go's reason phrase for a status code (e.g. 404 -> "Not Found").
+    // The .NET enum names drop the spaces ("NotFound"), so map the common codes explicitly.
+    public static GoString StatusText(long code) => GoString.FromDotNetString(code switch
+    {
+        100 => "Continue", 101 => "Switching Protocols", 102 => "Processing", 103 => "Early Hints",
+        200 => "OK", 201 => "Created", 202 => "Accepted", 203 => "Non-Authoritative Information",
+        204 => "No Content", 205 => "Reset Content", 206 => "Partial Content",
+        300 => "Multiple Choices", 301 => "Moved Permanently", 302 => "Found", 303 => "See Other",
+        304 => "Not Modified", 307 => "Temporary Redirect", 308 => "Permanent Redirect",
+        400 => "Bad Request", 401 => "Unauthorized", 402 => "Payment Required", 403 => "Forbidden",
+        404 => "Not Found", 405 => "Method Not Allowed", 406 => "Not Acceptable",
+        407 => "Proxy Authentication Required", 408 => "Request Timeout", 409 => "Conflict",
+        410 => "Gone", 411 => "Length Required", 412 => "Precondition Failed",
+        413 => "Request Entity Too Large", 414 => "Request URI Too Long",
+        415 => "Unsupported Media Type", 416 => "Requested Range Not Satisfiable",
+        417 => "Expectation Failed", 418 => "I'm a teapot", 421 => "Misdirected Request",
+        422 => "Unprocessable Entity", 423 => "Locked", 424 => "Failed Dependency",
+        426 => "Upgrade Required", 428 => "Precondition Required", 429 => "Too Many Requests",
+        431 => "Request Header Fields Too Large", 451 => "Unavailable For Legal Reasons",
+        500 => "Internal Server Error", 501 => "Not Implemented", 502 => "Bad Gateway",
+        503 => "Service Unavailable", 504 => "Gateway Timeout", 505 => "HTTP Version Not Supported",
+        506 => "Variant Also Negotiates", 507 => "Insufficient Storage", 508 => "Loop Detected",
+        510 => "Not Extended", 511 => "Network Authentication Required",
+        _ => "",
+    });
     // http.DetectContentType(data): best-effort content sniff.
     public static GoString DetectContentType(GoSlice data) => GoString.FromDotNetString("application/octet-stream");
 
@@ -163,11 +186,21 @@ public static class Http
         try
         {
             string a = addr.ToDotNetString();
-            // ":8080" -> bind IPv4 loopback (HttpListener mishandles bracketed IPv6 host
-            // headers); "host:8080" -> bind that host.
-            string host = a.StartsWith(":") ? "127.0.0.1" + a : a;
             var listener = new HttpListener();
-            listener.Prefixes.Add("http://" + host + "/");
+            // ":8080" -> Go binds every interface and accepts any Host header. HttpListener
+            // matches by prefix, so register both loopback names (127.0.0.1 and localhost)
+            // — otherwise a request to one is 404'd by the listener before reaching a
+            // handler. "host:8080" -> bind that host. (HttpListener mishandles bracketed
+            // IPv6 host headers, so an explicit host is used verbatim.)
+            if (a.StartsWith(":"))
+            {
+                listener.Prefixes.Add("http://127.0.0.1" + a + "/");
+                listener.Prefixes.Add("http://localhost" + a + "/");
+            }
+            else
+            {
+                listener.Prefixes.Add("http://" + a + "/");
+            }
             listener.Start();
             while (true)
             {
@@ -409,6 +442,17 @@ public static class Http
         }
         catch (System.Exception) { RW_WriteHeader(w, 404); }
     }
+    // http.ServeContent(w, r, name, modtime, content io.ReadSeeker): write the content's
+    // bytes with a Content-Type derived from the name (echo's c.Attachment / fs serving).
+    public static void ServeContent(object w, object r, GoString name, object modtime, object? content)
+    {
+        byte[] data = Readers.Drain(content);
+        var hdr = RW_Header(w);
+        if (Header_Get((GoMap)hdr, GoString.FromDotNetString("Content-Type")).ToDotNetString() == "")
+            Header_Set(hdr, GoString.FromDotNetString("Content-Type"), GoString.FromDotNetString(ContentTypeByExt(name.ToDotNetString())));
+        RW_WriteHeader(w, 200);
+        RW_Write(w, BytesToSlice(data));
+    }
     private static GoSlice BytesToSlice(byte[] b)
     {
         var d = new object?[b.Length];
@@ -554,17 +598,39 @@ public static class Http
         }
         return new object?[] { null, null, new GoError("http: no such file") };
     }
-    public static object Req_Form(object r)
+    public static GoMap Req_Form(object r)
     {
         var rq = (GoRequest)r;
         if (rq.Form == null) Req_ParseForm(r);
         return rq.Form!;
     }
-    public static object Req_PostForm(object r)
+    public static GoMap Req_PostForm(object r)
     {
         var rq = (GoRequest)r;
         if (rq.PostForm == null) Req_ParseForm(r);
         return rq.PostForm!;
+    }
+
+    // (*http.Request).FormValue(key): first value for key from Form (query + body).
+    public static GoString Req_FormValue(object r, GoString key)
+    {
+        var rq = (GoRequest)r;
+        if (rq.Form == null) Req_ParseForm(r);
+        return FirstValue(rq.Form!, key);
+    }
+    // (*http.Request).PostFormValue(key): first value for key from PostForm (body only).
+    public static GoString Req_PostFormValue(object r, GoString key)
+    {
+        var rq = (GoRequest)r;
+        if (rq.PostForm == null) Req_ParseForm(r);
+        return FirstValue(rq.PostForm!, key);
+    }
+    private static GoString FirstValue(GoMap m, GoString key)
+    {
+        if (m.Data != null && m.Data.TryGetValue(key, out var v) && v is GoSlice s && s.Len > 0
+            && s.Data![s.Off] is GoString gs)
+            return gs;
+        return GoString.FromDotNetString("");
     }
 
     private static void AddQuery(GoMap m, string q)
@@ -723,6 +789,8 @@ public sealed class GoFieldBag
 public sealed class GoHttpServer { public readonly GoFieldBag F = new(); }
 public sealed class GoHttpTransport { public readonly GoFieldBag F = new(); }
 public sealed class GoTlsConfig { public readonly GoFieldBag F = new(); }
+[GoShim("crypto/tls.Certificate")]
+public sealed class GoTlsCert { public readonly GoFieldBag F = new(); }
 public sealed class GoHTTP2Config { public readonly GoFieldBag F = new(); }
 public sealed class GoHttpProtocols { public bool H1, H2, UH2; }
 public sealed class GoTlsConn { }
@@ -738,11 +806,24 @@ public static class HttpTypes
 
     // *http.Server: read/write through the field bag; methods are no-ops.
     public static void Server_RegisterOnShutdown(object s, object? f) { }
-    public static object? Server_Serve(object s, object? l) => Io.EOFSentinel;
+    // (*http.Server).Serve(l): goclr serves over the HttpListener backend rather than the
+    // caller's net.Listener, so release the port l already bound (echo's newListener grabs
+    // it before calling Serve) and serve on the same address with the server's Handler.
+    public static object? Server_Serve(object s, object? l)
+    {
+        string addr = l is GoListener gl && gl.Addr.Length > 0 ? gl.Addr : Server_Addr(s).ToDotNetString();
+        Net.ReleaseBound(addr);
+        return Http.ListenAndServe(GoString.FromDotNetString(addr), SF(s).Get("Handler"));
+    }
     public static void Server_SetKeepAlivesEnabled(object s, bool v) { }
     public static GoString Server_Addr(object s) => SF(s).Get("Addr") is GoString g ? g : GoString.FromDotNetString("");
     public static void Server_SetAddr(object s, GoString v) => SF(s).Set("Addr", v);
     public static void Server_SetHandler(object s, object? v) => SF(s).Set("Handler", v);
+    public static void Server_SetErrorLog(object s, object? v) => SF(s).Set("ErrorLog", v);
+    public static void Server_SetReadTimeout(object s, long v) => SF(s).Set("ReadTimeout", v);
+    public static void Server_SetWriteTimeout(object s, long v) => SF(s).Set("WriteTimeout", v);
+    public static void Server_SetReadHeaderTimeout(object s, long v) => SF(s).Set("ReadHeaderTimeout", v);
+    public static void Server_SetMaxHeaderBytes(object s, long v) => SF(s).Set("MaxHeaderBytes", v);
     // (*http.Server).ListenAndServe[TLS]: serve over the HttpListener backend using the
     // server's Addr + Handler (TLS isn't terminated here — both share the plain path).
     public static object? Server_ListenAndServe(object s) => Http.ListenAndServe(Server_Addr(s), SF(s).Get("Handler"));
@@ -803,8 +884,19 @@ public static class HttpTypes
     public static void Config_SetMinVersion(object c, long v) => CF(c).Set("MinVersion", v);
     public static void Config_SetMaxVersion(object c, long v) => CF(c).Set("MaxVersion", v);
     public static void Config_SetInsecureSkipVerify(object c, bool v) => CF(c).Set("InsecureSkipVerify", v);
+    public static void Config_SetGetCertificate(object c, object? v) => CF(c).Set("GetCertificate", v);
     public static object? Config_RootCAs(object c) => CF(c).Get("RootCAs");
     public static object? Config_Certificates(object c) => CF(c).Get("Certificates");
+    public static void Config_SetCertificates(object c, object? v) => CF(c).Set("Certificates", v);
+    // tls.Certificate field reads/writes (autocert paths; empty under plain serving).
+    public static object? Cert_PrivateKey(object c) => ((GoTlsCert)c).F.Get("PrivateKey");
+    public static object? Cert_Leaf(object c) => ((GoTlsCert)c).F.Get("Leaf");
+    public static object? Cert_Certificate(object c) => ((GoTlsCert)c).F.Get("Certificate");
+    public static object? Cert_OCSPStaple(object c) => ((GoTlsCert)c).F.Get("OCSPStaple");
+    public static void Cert_SetPrivateKey(object c, object? v) => ((GoTlsCert)c).F.Set("PrivateKey", v);
+    public static void Cert_SetLeaf(object c, object? v) => ((GoTlsCert)c).F.Set("Leaf", v);
+    public static void Cert_SetCertificate(object c, object? v) => ((GoTlsCert)c).F.Set("Certificate", v);
+    public static void Cert_SetOCSPStaple(object c, object? v) => ((GoTlsCert)c).F.Set("OCSPStaple", v);
     public static long Config_ClientAuth(object c) => CF(c).GetL("ClientAuth");
 
     // *http.HTTP2Config field reads.
@@ -860,6 +952,14 @@ public static class HttpTypes
     public static object NewServer() => new GoHttpServer();
     public static object NewTransport() => new GoHttpTransport();
     public static object NewTlsConfig() => new GoTlsConfig();
+    public static object NewTlsCert() => new GoTlsCert();
+    // tls.NewListener(inner, config): wrap a net.Listener for TLS. Under goclr's plain
+    // serving the TLS handshake is never performed, so the inner listener passes through.
+    public static object? NewListener(object? inner, object? config) => inner;
+    // tls.X509KeyPair / tls.LoadX509KeyPair: parse a PEM cert+key into a tls.Certificate.
+    // Plain HTTP serving never exercises this; the handle is an opaque placeholder.
+    public static object?[] X509KeyPair(GoSlice certPEM, GoSlice keyPEM) => new object?[] { new GoTlsCert(), null };
+    public static object?[] LoadX509KeyPair(GoString certFile, GoString keyFile) => new object?[] { new GoTlsCert(), null };
     public static object NewHTTP2Config() => new GoHTTP2Config();
     public static object NewProtocols() => new GoHttpProtocols();
     public static object NewTlsConn() => new GoTlsConn();
@@ -867,6 +967,10 @@ public static class HttpTypes
     public static object?[] Dialer_DialContext(object d, object? ctx, GoString network, GoString addr) => new object?[] { null, new GoError(GoString.FromDotNetString("tls: dial not supported")) };
     public static object?[] Dialer_Dial(object d, GoString network, GoString addr) => new object?[] { null, new GoError(GoString.FromDotNetString("tls: dial not supported")) };
     public static object NewTlsConnState() => new GoTlsConnState();
+    // tls.Server(conn, config) / tls.Client(conn, config) *Conn — the HttpListener
+    // backend terminates TLS itself, so these wrap the conn opaquely (dead path here).
+    public static object TlsServer(object? conn, object? config) => new GoTlsConn();
+    public static object TlsClient(object? conn, object? config) => new GoTlsConn();
 
     // http.ServeMux + http.DefaultServeMux.
     private static readonly GoServeMux _defaultMux = new();

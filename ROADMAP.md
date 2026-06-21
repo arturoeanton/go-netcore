@@ -90,8 +90,10 @@ See [REFLECT.md](REFLECT.md).
 objects, closures, loops, array callbacks, `JSON.stringify`/`parse`) byte-identical to
 `go run`. **Gin runs end to end** — `examples/demo_gin_sql` is a Gin REST API over
 `database/sql` and the pure-Go zero-cgo SQLite engine `go-r2-sqlite`, the whole stack
-compiled to IL (full CRUD, byte-accurate). Echo is analyze-compatible (autocert/acme
-pending).
+compiled to IL (full CRUD, byte-accurate). **Echo now runs too** — `examples/demo_echo`
+serves plain HTTP/JSON (router, path params, status codes) with its entire
+`crypto/x509` + `acme`/`autocert` TLS closure lowered to IL (the TLS path is a no-op
+shim; plain HTTP is fully exercised).
 
 ## Checklist (done / pending)
 
@@ -124,7 +126,9 @@ Tracks what is implemented vs outstanding. Done items are verified byte-exact vs
 ### Validation targets
 - [x] **goja** — large JS subset, byte-identical to `go run`
 - [x] **Gin** — router/middleware/binding/render + full CRUD over `database/sql` + SQLite
-- [ ] **Echo** — analyze-compatible; needs `crypto/x509` + `acme`/`autocert` (Phase 4)
+- [x] **Echo** — compiles + serves plain HTTP/JSON on the CLR (router, path params, status
+  codes); the `crypto/x509` + `acme`/`autocert` TLS closure lowers (TLS path is a no-op
+  shim, plain HTTP fully exercised) — see `examples/demo_echo`
 
 ### Tooling & milestones
 - [ ] `goclr test` ≡ `go test` — run real package test suites under both and diff
@@ -361,7 +365,7 @@ partway" to **evaluating JavaScript**:
 - 🚧 overlay package + Kestrel host
 
 ### M5 — Echo
-- 🚧 compile Echo v4 + run basic app
+- ✅ compile Echo v4 + run basic app (router + path params + JSON over the CLR; `examples/demo_echo`)
 
 ### M6 — Echo + goja target
 - 🚧 the `cmd/server` service end-to-end

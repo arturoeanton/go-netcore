@@ -140,6 +140,31 @@ public static class Crypto509
         catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("x509: " + e.Message)) }; }
     }
 
+    // x509.CreateCertificateRequest(rand, template, priv) ([]byte, error) — a CSR.
+    public static object?[] CreateCertificateRequest(object? rand, object template, object? priv)
+    {
+        try
+        {
+            var t = (GoCertReq)template;
+            string cn = t.Subject.CommonName.Length > 0 ? t.Subject.CommonName : "goclr";
+            var dn = new X500DistinguishedName("CN=" + cn);
+            CertificateRequest req = priv is GoEcKey ec
+                ? new CertificateRequest(dn, ec.Key, HashAlgorithmName.SHA256)
+                : new CertificateRequest(dn, ((GoRsaKey)priv!).Key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            if (t.DNSNames is GoSlice dns && dns.Len > 0)
+            {
+                var san = new SubjectAlternativeNameBuilder();
+                for (int i = 0; i < dns.Len; i++) san.AddDnsName(Str(dns.Data![dns.Off + i]));
+                req.CertificateExtensions.Add(san.Build());
+            }
+            return new object?[] { Bytes(req.CreateSigningRequest()), null };
+        }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("x509: " + e.Message)) }; }
+    }
+
+    public static void CertReq_SetSubject(object c, object? v) => ((GoCertReq)c).Subject = (GoPkixName)(v ?? new GoPkixName());
+    public static void CertReq_SetDNSNames(object c, GoSlice v) => ((GoCertReq)c).DNSNames = v;
+
     public static object?[] ParseCertificate(GoSlice der)
     {
         try { return new object?[] { new GoCert { Cert = new X509Certificate2(Raw(der)) }, null }; }
@@ -214,6 +239,20 @@ public static class Crypto509
     public static object EcKey_Y(object k) { var p = ((GoEcKey)k).Key.ExportParameters(false); return new GoBigInt { V = ToBig(p.Q.Y!) }; }
     public static object EcKey_Curve(object k) => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-256" };
     private static System.Numerics.BigInteger ToBig(byte[] b) => new(b, isUnsigned: true, isBigEndian: true);
+
+    // x509.Certificate methods used by autocert (validation against a self-signed/
+    // cached cert; the deep verification is delegated to .NET where the cert is real).
+    public static object? Cert_VerifyHostname(object c, GoString host)
+    {
+        var x = ((GoCert)c).Cert;
+        if (x == null) return null;
+        string h = host.ToDotNetString();
+        var dns = Cert_DNSNames(c);
+        for (int i = 0; i < dns.Len; i++) if (Str(dns.Data![dns.Off + i]) == h) return null;
+        if ((x.GetNameInfo(X509NameType.SimpleName, false) ?? "") == h) return null;
+        return new GoError(GoString.FromDotNetString("x509: certificate is not valid for " + h));
+    }
+    public static object? Cert_CheckSignatureFrom(object c, object parent) => null;
 
     // pkix.Name.CommonName accessor + setter (template build).
     public static GoString PkixName_CommonName(object n) => GoString.FromDotNetString(((GoPkixName)n).CommonName);

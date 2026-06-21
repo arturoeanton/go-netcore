@@ -159,6 +159,8 @@ public static class Time
     // Construction.
     public static object Now() => new GoTime { N = (System.DateTime.UtcNow - Epoch).Ticks * 100, IsZero = false };
     public static object Unix(long sec, long nsec) => new GoTime { N = sec * Second + nsec, IsZero = false };
+    public static object UnixMilli(long msec) => new GoTime { N = msec * Millisecond, IsZero = false };
+    public static object UnixMicro(long usec) => new GoTime { N = usec * Microsecond, IsZero = false };
     public static object Date(long year, long month, long day, long hour, long min, long sec, long nsec, object? loc)
     {
         var dt = new System.DateTime((int)year, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)
