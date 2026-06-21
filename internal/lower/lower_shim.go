@@ -144,8 +144,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
-		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"},
-		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"},
+		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"}, "NewServeMux": {"Http", "NewServeMux"},
+		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"}, "Error": {"Http", "Error"},
 	},
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
@@ -295,9 +295,11 @@ var opaqueShimTypes = map[string]bool{
 	"net.PacketConn":               true,
 	"net/http.ResponseWriter":      true,
 	"net/http.Request":             true,
+	"mime/multipart.Form":          true,
 	"net/http.Server":              true,
 	"log.Logger":                   true,
 	"net/http.Transport":           true,
+	"net/http.ServeMux":            true,
 	"net/http.HTTP2Config":         true,
 	"net/http.Protocols":           true,
 	"crypto/tls.Config":            true,
@@ -353,6 +355,16 @@ var shimVarRegistry = map[string]shimFunc{
 	"io.EOF":                         {"Io", "EOF"},
 	"io.ErrUnexpectedEOF":            {"Io", "ErrUnexpectedEOF"},
 	"net.ErrClosed":                  {"Net", "ErrClosed"},
+	"net/http.ErrAbortHandler":       {"Http", "ErrAbortHandler"},
+	"net/http.ErrBodyNotAllowed":     {"Http", "ErrBodyNotAllowed"},
+	"net/http.ErrNotSupported":       {"Http", "ErrNotSupported"},
+	"net/http.ErrSkipAltProtocol":    {"Http", "ErrSkipAltProtocol"},
+	"net/http.ErrServerClosed":       {"Http", "ErrServerClosed"},
+	"net/http.ErrHandlerTimeout":     {"Http", "ErrHandlerTimeout"},
+	"net/http.NoBody":                {"Http", "NoBody"},
+	"net/http.DefaultServeMux":       {"Http", "DefaultServeMux"},
+	"net/http.LocalAddrContextKey":   {"Http", "LocalAddrContextKey"},
+	"net/http.ServerContextKey":      {"Http", "ServerContextKey"},
 	"os.ErrDeadlineExceeded":         {"Os", "ErrDeadlineExceeded"},
 	"os.ErrNotExist":                 {"Os", "ErrNotExist"},
 	"os.ErrExist":                    {"Os", "ErrExist"},
@@ -475,9 +487,14 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"Name": {"Reflect", "Method_Name"}, "Index": {"Reflect", "Method_Index"},
 		"PkgPath": {"Reflect", "Method_PkgPath"},
 	},
+	"mime/multipart.Form": {
+		"Value": {"Multipart", "Form_Value"}, "File": {"Multipart", "Form_File"},
+	},
 	"net/http.Request": {
 		"Method": {"Http", "Req_Method"}, "URL": {"Http", "Req_URL"}, "Body": {"Http", "Req_Body"},
 		"Host": {"Http", "Req_Host"}, "RemoteAddr": {"Http", "Req_RemoteAddr"}, "Form": {"Http", "Req_Form"}, "PostForm": {"Http", "Req_PostForm"}, "Header": {"Http", "Req_Header"},
+		"ContentLength": {"Http", "Req_ContentLength"}, "Trailer": {"Http", "Req_Trailer"}, "TLS": {"Http", "Req_TLS"}, "MultipartForm": {"Http", "Req_MultipartForm"},
+		"Proto": {"Http", "Req_Proto"}, "ProtoMajor": {"Http", "Req_ProtoMajor"}, "ProtoMinor": {"Http", "Req_ProtoMinor"}, "RequestURI": {"Http", "Req_RequestURI"}, "Context": {"Http", "Req_Context"},
 	},
 }
 
@@ -504,6 +521,9 @@ var opaqueShimClone = map[string]shimFunc{
 
 var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"sync.Cond": {"L": {"Sync", "Cond_SetL"}},
+	"net/http.Request": {
+		"ContentLength": {"Http", "Req_SetContentLength"}, "Trailer": {"Http", "Req_SetTrailer"}, "TLS": {"Http", "Req_SetTLS"}, "Body": {"Http", "Req_SetBody"},
+	},
 	"net/http.Server": {
 		"TLSConfig": {"HttpTypes", "Server_SetTLSConfig"}, "TLSNextProto": {"HttpTypes", "Server_SetTLSNextProto"}, "IdleTimeout": {"HttpTypes", "Server_SetIdleTimeout"},
 	},
@@ -610,6 +630,12 @@ var binaryMethods = map[string]shimFunc{
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
+	"net/http.ServeMux": {
+		"Handle": {"Http", "Mux_Handle"}, "HandleFunc": {"Http", "Mux_HandleFunc"}, "ServeHTTP": {"Http", "Mux_ServeHTTP"}, "Handler": {"Http", "Mux_Handler"},
+	},
+	"mime/multipart.Form": {
+		"RemoveAll": {"Multipart", "Form_RemoveAll"},
+	},
 	"crypto/tls.Conn": {
 		"Close": {"HttpTypes", "Conn_Close"}, "LocalAddr": {"HttpTypes", "Conn_LocalAddr"}, "RemoteAddr": {"HttpTypes", "Conn_RemoteAddr"},
 		"Read": {"HttpTypes", "Conn_Read"}, "Write": {"HttpTypes", "Conn_Write"}, "Handshake": {"HttpTypes", "Conn_Handshake"}, "HandshakeContext": {"HttpTypes", "Conn_HandshakeContext"},
@@ -628,7 +654,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"HTTP1": {"HttpTypes", "Proto_HTTP1"}, "HTTP2": {"HttpTypes", "Proto_HTTP2"}, "UnencryptedHTTP2": {"HttpTypes", "Proto_UnencryptedHTTP2"},
 	},
 	"net/http.Header": {
-		"Get": {"Http", "Header_Get"}, "Set": {"Http", "Header_Set"}, "Add": {"Http", "Header_Add"}, "Del": {"Http", "Header_Del"}, "Values": {"Http", "Header_Values"},
+		"Get": {"Http", "Header_Get"}, "Set": {"Http", "Header_Set"}, "Add": {"Http", "Header_Add"}, "Del": {"Http", "Header_Del"}, "Values": {"Http", "Header_Values"}, "Clone": {"Http", "Header_Clone"}, "Write": {"Http", "Header_Write"},
 	},
 	"html/template.Template": {
 		"New": {"Template", "Tmpl_New"}, "Delims": {"Template", "Tmpl_Delims"}, "Funcs": {"Template", "Tmpl_Funcs"},
@@ -700,6 +726,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http.Request": {
 		"ParseForm": {"Http", "Req_ParseForm"}, "ParseMultipartForm": {"Http", "Req_ParseMultipartForm"}, "Context": {"Http", "Req_Context"},
+		"WithContext": {"Http", "Req_WithContext"}, "Clone": {"Http", "Req_Clone"}, "UserAgent": {"Http", "Req_UserAgent"}, "Referer": {"Http", "Req_Referer"}, "Cookie": {"Http", "Req_Cookie"}, "Cookies": {"Http", "Req_Cookies"},
 	},
 	"net/http.ResponseWriter": {
 		"Write": {"Http", "RW_Write"}, "WriteHeader": {"Http", "RW_WriteHeader"}, "Header": {"Http", "RW_Header"},

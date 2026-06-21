@@ -11,7 +11,7 @@ public sealed class GoResponse { public int StatusCode; public string Status = "
 public sealed class GoRespWriter { public HttpListenerResponse Resp = null!; public bool WroteHeader; public GoMap? Headers; }
 
 /// <summary>An *http.Request handle (server side).</summary>
-public sealed class GoRequest { public string Method = ""; public GoUrl Url = new(); public GoReader Body = new(); public string Host = ""; public string RemoteAddr = ""; public GoMap? Form; public GoMap? PostForm; public GoMap? Header; public byte[] RawBody = System.Array.Empty<byte>(); }
+public sealed class GoRequest { public string Method = ""; public GoUrl Url = new(); public GoReader Body = new(); public string Host = ""; public string RemoteAddr = ""; public GoMap? Form; public GoMap? PostForm; public GoMap? Header; public byte[] RawBody = System.Array.Empty<byte>(); public readonly GoFieldBag Extra = new(); }
 
 /// <summary>Shim for Go's <c>net/http</c> client (over a pooled HttpClient).
 /// Server-side and streaming bodies are out of scope; the body is read eagerly.</summary>
@@ -56,6 +56,34 @@ public static class Http
 
     // io.ReadCloser.Close on a response body is a no-op (body already buffered).
     public static object? Body_Close(object r) => null;
+
+    // http sentinel errors + well-known vars.
+    public static readonly GoError ErrAbortHandlerSentinel = new(GoString.FromDotNetString("net/http: abort Handler"));
+    public static object ErrAbortHandler() => ErrAbortHandlerSentinel;
+    public static readonly GoError ErrBodyNotAllowedSentinel = new(GoString.FromDotNetString("http: request method or response status code does not allow body"));
+    public static object ErrBodyNotAllowed() => ErrBodyNotAllowedSentinel;
+    public static readonly GoError ErrNotSupportedSentinel = new(GoString.FromDotNetString("feature not supported"));
+    public static object ErrNotSupported() => ErrNotSupportedSentinel;
+    public static readonly GoError ErrSkipAltProtocolSentinel = new(GoString.FromDotNetString("net/http: skip alternate protocol"));
+    public static object ErrSkipAltProtocol() => ErrSkipAltProtocolSentinel;
+    public static readonly GoError ErrServerClosedSentinel = new(GoString.FromDotNetString("http: Server closed"));
+    public static object ErrServerClosed() => ErrServerClosedSentinel;
+    public static readonly GoError ErrHandlerTimeoutSentinel = new(GoString.FromDotNetString("http: Handler timeout"));
+    public static object ErrHandlerTimeout() => ErrHandlerTimeoutSentinel;
+    private static readonly GoReader _noBody = new();
+    public static object NoBody() => _noBody;
+    private static readonly object _localAddrKey = new();
+    public static object LocalAddrContextKey() => _localAddrKey;
+    private static readonly object _serverCtxKey = new();
+    public static object ServerContextKey() => _serverCtxKey;
+
+    // http.Error(w, msg, code): write the status code and message.
+    public static void Error(object w, GoString msg, long code)
+    {
+        RW_WriteHeader(w, code);
+        var by = (msg.ToDotNetString() + "\n");
+        Fmt.WriteTo(w, by);
+    }
 
     // http.CanonicalHeaderKey(s): canonical MIME header key ("content-type" -> "Content-Type").
     public static GoString CanonicalHeaderKey(GoString s) => Textproto.CanonicalMIMEHeaderKey(s);
@@ -129,6 +157,27 @@ public static class Http
     // (*http.Request).Context(): goclr has no per-request cancellation, so this is a
     // fresh background context.
     public static object Req_Context(object r) => Context.Background();
+
+    // Extra *http.Request fields read/written by x/net/http2 (stored in the field bag).
+    public static long Req_ContentLength(object r) => ((GoRequest)r).Extra.GetL("ContentLength");
+    public static void Req_SetContentLength(object r, long v) => ((GoRequest)r).Extra.Set("ContentLength", v);
+    public static object? Req_Trailer(object r) => ((GoRequest)r).Extra.Get("Trailer");
+    public static void Req_SetTrailer(object r, object? v) => ((GoRequest)r).Extra.Set("Trailer", v);
+    public static object? Req_TLS(object r) => ((GoRequest)r).Extra.Get("TLS");
+    public static void Req_SetTLS(object r, object? v) => ((GoRequest)r).Extra.Set("TLS", v);
+    public static object? Req_MultipartForm(object r) => ((GoRequest)r).Extra.Get("MultipartForm");
+    public static void Req_SetBody(object r, object? v) => ((GoRequest)r).Extra.Set("Body", v);
+    public static GoString Req_Proto(object r) => GoString.FromDotNetString("HTTP/1.1");
+    public static long Req_ProtoMajor(object r) => 1;
+    public static long Req_ProtoMinor(object r) => 1;
+    public static GoString Req_RequestURI(object r) => Url.URL_RequestURI(((GoRequest)r).Url);
+    // (*http.Request).WithContext/Clone: goclr has no request context, so return self.
+    public static object Req_WithContext(object r, object? ctx) => r;
+    public static object Req_Clone(object r, object? ctx) => r;
+    public static GoString Req_UserAgent(object r) => GoString.FromDotNetString("");
+    public static GoString Req_Referer(object r) => GoString.FromDotNetString("");
+    public static object?[] Req_Cookie(object r, GoString name) => new object?[] { null, new GoError("http: named cookie not present") };
+    public static GoSlice Req_Cookies(object r) => default;
 
     /// <summary>http.ErrNotMultipart — the sentinel ParseMultipartForm returns for a
     /// non-multipart request (gin checks errors.Is(err, http.ErrNotMultipart)).</summary>
@@ -248,6 +297,15 @@ public static class Http
     }
     public static void Header_Del(object h, GoString key) => ((GoMap)h).Data?.Remove(Canon(key));
     public static GoString Header_Values(object h, GoString key) => Header_Get(h, key);
+    public static object Header_Clone(object h)
+    {
+        var src = (GoMap)h;
+        if (src.Data == null) return new GoMap { Data = null };
+        var m = GoMaps.Make();
+        foreach (var kv in src.Data) m.Data![kv.Key] = kv.Value;
+        return m;
+    }
+    public static object? Header_Write(object h, object? w) => null;
 
     // *http.Request field getters.
     public static GoString Req_Method(object r) => GoString.FromDotNetString(((GoRequest)r).Method);
@@ -279,6 +337,7 @@ public sealed class GoHTTP2Config { public readonly GoFieldBag F = new(); }
 public sealed class GoHttpProtocols { public bool H1, H2, UH2; }
 public sealed class GoTlsConn { }
 public sealed class GoTlsConnState { public readonly GoFieldBag F = new(); }
+public sealed class GoServeMux { }
 
 public static class HttpTypes
 {
@@ -388,4 +447,13 @@ public static class HttpTypes
     public static object NewProtocols() => new GoHttpProtocols();
     public static object NewTlsConn() => new GoTlsConn();
     public static object NewTlsConnState() => new GoTlsConnState();
+
+    // http.ServeMux + http.DefaultServeMux.
+    private static readonly GoServeMux _defaultMux = new();
+    public static object DefaultServeMux() => _defaultMux;
+    public static object NewServeMux() => new GoServeMux();
+    public static void Mux_Handle(object m, GoString pat, object? h) { }
+    public static void Mux_HandleFunc(object m, GoString pat, object? h) { }
+    public static void Mux_ServeHTTP(object m, object? w, object? r) { }
+    public static object?[] Mux_Handler(object m, object? r) => new object?[] { null, GoString.FromDotNetString("") };
 }
