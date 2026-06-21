@@ -15,6 +15,15 @@ type handlerReg struct {
 	closureID int
 }
 
+// bridgeReg records a generated method-callback adapter to register with the runtime at
+// startup, keyed by the implementing type's runtime id + the Go method name, so a shim
+// can drive that method via GoRuntime.CallMethod.
+type bridgeReg struct {
+	id        int64
+	method    string
+	closureID int
+}
+
 // collectHandlers finds every struct type implementing http.Handler (a ServeHTTP
 // method) and generates a closure the net/http server shim can invoke to drive the
 // handler. This bridges goclr's static interface dispatch across the shim boundary:
@@ -58,13 +67,23 @@ func serveHTTPMethod(named *types.Named) (fn *types.Func, ptrRecv, ok bool) {
 	return f, isPointerType(sig.Recv().Type()), true
 }
 
-// buildHandlerClosure emits a lifted method adapting args[0]=receiver (a GoPtr),
-// args[1]=ResponseWriter, args[2]=*Request to ServeHTTP's parameters, then calls it.
+// buildHandlerClosure adapts the http.Handler.ServeHTTP contract (no result) — a thin
+// wrapper over the general buildMethodAdapter.
 func (c *lowerCtx) buildHandlerClosure(m *goir.Method, src recvSource) int {
+	return c.buildMethodAdapter(m, src)
+}
+
+// buildMethodAdapter emits a receiver-first dispatch closure for ANY method: it unpacks
+// args[0]=receiver (adapted per src — a GoPtr used directly for a pointer receiver, or
+// dereferenced for a value receiver) and args[1..n]=the method's params, calls the
+// lowered method, and returns its (boxed) result or null for a void method. This is the
+// adapter both the net/http handler bridge and the general interface-callback bridge
+// (container/heap, …) register so a shim can drive the method through GoRuntime.CallMethod.
+func (c *lowerCtx) buildMethodAdapter(m *goir.Method, src recvSource) int {
 	id := len(c.closures)
 	method := &goir.Method{
-		Name:    fmt.Sprintf("__handler_%d", id),
-		GoName:  fmt.Sprintf("__handler_%d", id),
+		Name:    fmt.Sprintf("__adapter_%d", id),
+		GoName:  fmt.Sprintf("__adapter_%d", id),
 		Params:  []goir.Type{goir.TObjectArray, goir.TObjectArray}, // env, args
 		Ret:     goir.TObject,
 		Results: []goir.Type{goir.TObject},
@@ -89,17 +108,130 @@ func (c *lowerCtx) buildHandlerClosure(m *goir.Method, src recvSource) int {
 		cl.emit(goir.Op{Code: goir.OpPtrGet})
 		cl.emitUnbox(recvType)
 	}
-	// ResponseWriter from args[1], *Request from args[2].
-	for i := 1; i <= 2; i++ {
+	// Each declared param from args[i].
+	for i := 1; i < len(m.Params); i++ {
 		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
 		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
 		cl.emit(goir.Op{Code: goir.OpLdElemRef})
 		cl.emitUnbox(m.Params[i])
 	}
 	cl.emit(goir.Op{Code: goir.OpCallMethod, Callee: m})
-	cl.emit(goir.Op{Code: goir.OpLdNull})
+	// Return the (boxed) result, or null for a void method.
+	if m.Ret == goir.TVoid {
+		cl.emit(goir.Op{Code: goir.OpLdNull})
+	} else {
+		cl.emitBox(m.Ret)
+	}
 	cl.emit(goir.Op{Code: goir.OpRet})
 	return id
+}
+
+// bridgeInterfaces are the stdlib interfaces a C# shim calls back through via
+// GoRuntime.CallMethod. For each one present in the import closure, collectBridgeMethods
+// generates + registers an adapter per (implementing type, method). Keyed by "pkg.Type".
+var bridgeInterfaces = []string{
+	"container/heap.Interface",
+}
+
+// collectBridgeMethods generates the method-callback adapters every concrete implementer
+// of a bridgeInterface needs, registered at startup by the implementer's runtime type id.
+func (c *lowerCtx) collectBridgeMethods() {
+	for _, ifaceName := range bridgeInterfaces {
+		named := c.lookupNamedType(ifaceName)
+		if named == nil {
+			continue // the program doesn't import this package
+		}
+		iface, ok := named.Underlying().(*types.Interface)
+		if !ok {
+			continue
+		}
+		for named, st := range c.structReg {
+			c.registerBridgeAdapters(named, st.Id, iface)
+		}
+	}
+}
+
+// lookupNamedType resolves a "importpath.TypeName" to its *types.Named anywhere in the
+// program's import closure (any named type, not only opaque shims), scanning once.
+func (c *lowerCtx) lookupNamedType(name string) *types.Named {
+	if c.namedByName == nil {
+		c.namedByName = map[string]*types.Named{}
+		seen := map[*types.Package]bool{}
+		var visit func(p *types.Package)
+		visit = func(p *types.Package) {
+			if p == nil || seen[p] {
+				return
+			}
+			seen[p] = true
+			scope := p.Scope()
+			for _, n := range scope.Names() {
+				if tn, ok := scope.Lookup(n).(*types.TypeName); ok {
+					if nm, ok := tn.Type().(*types.Named); ok {
+						c.namedByName[p.Path()+"."+n] = nm
+					}
+				}
+			}
+			for _, imp := range p.Imports() {
+				visit(imp)
+			}
+		}
+		visit(c.pkg.Types)
+	}
+	return c.namedByName[name]
+}
+
+// registerBridgeAdapters: if struct type `named` implements `iface`, generate an adapter
+// for each interface method and record it under the type id the *T (GoPtr) carries.
+func (c *lowerCtx) registerBridgeAdapters(named *types.Named, typeID int, iface *types.Interface) {
+	ptr := types.NewPointer(named)
+	if !types.Implements(ptr, iface) && !types.Implements(named, iface) {
+		return
+	}
+	for i := 0; i < iface.NumMethods(); i++ {
+		im := iface.Method(i)
+		obj, _, _ := types.LookupFieldOrMethod(ptr, true, im.Pkg(), im.Name())
+		fn, isFn := obj.(*types.Func)
+		if !isFn {
+			continue
+		}
+		m := c.byFunc[fn]
+		if m == nil {
+			continue
+		}
+		c.needsInvoker = true
+		c.invokeMethod()
+		// The bridge always hands the adapter a *T (GoPtr): a pointer-receiver method
+		// uses it directly, a value-receiver method dereferences to the struct value.
+		src := ptrDeref
+		if isPointerType(fn.Type().(*types.Signature).Recv().Type()) {
+			src = ptrDirect
+		}
+		c.bridges = append(c.bridges, bridgeReg{
+			id:        int64(typeID),
+			method:    im.Name(),
+			closureID: c.buildMethodAdapter(m, src),
+		})
+	}
+}
+
+// emitBridgeRegistrations appends the startup calls that register every collected
+// method-callback adapter with the runtime, keyed by (implementing type id, method name).
+func (l *funcLowerer) emitBridgeRegistrations() {
+	for _, br := range l.bridges {
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(br.closureID)})
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+		l.emit(goir.Op{Code: goir.OpNewObjArray})
+		fnLoc := l.addLocal(nil, goir.TFunc)
+		l.emit(goir.Op{Code: goir.OpClosNew})
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: fnLoc})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: br.id})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: br.method})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: fnLoc})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Bridge", Method: "RegisterMethod",
+			Params: []goir.Type{goir.TInt64, goir.TString, goir.TFunc}, Ret: goir.TVoid,
+		}})
+	}
 }
 
 // emitHandlerRegistrations appends the startup calls that register every collected

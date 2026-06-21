@@ -56,6 +56,10 @@ type lowerCtx struct {
 	// with the fmt runtime at startup.
 	stringers []stringerReg
 	handlers  []handlerReg
+	// bridges holds generated method-callback adapters (container/heap, …) to register
+	// with the runtime at startup; namedByName memoizes the import-closure type lookup.
+	bridges     []bridgeReg
+	namedByName map[string]*types.Named
 	// namedIds assigns each identity-bearing named type (non-struct underlying with
 	// a method set) a stable per-build id so a boxed value can carry its Go named-
 	// type identity — the typed box (see runtime GoNamed). namedNames maps id ->
@@ -222,6 +226,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	// Bridge http.Handler implementers (e.g. gin's *Engine) so the net/http server
 	// shim can drive them across the static-dispatch boundary.
 	c.collectHandlers()
+	c.collectBridgeMethods()
 
 	// Startup: run package-var initializers and init() functions before main.
 	if init, ok := c.buildInit(); !ok {
@@ -376,7 +381,7 @@ func (c *lowerCtx) taggedStructs() []*goir.Struct {
 // then each init() function. Returns nil if there is nothing to do.
 func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	tagged := c.taggedStructs()
-	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.handlers) == 0 && len(c.namedNames) == 0 {
+	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.handlers) == 0 && len(c.bridges) == 0 && len(c.namedNames) == 0 {
 		return nil, true
 	}
 	// The package-var initializers and tag registrations are emitted into a series
@@ -409,6 +414,7 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	cl.emitRegisterNamedTypes()
 	cl.emitStringerRegistrations()
 	cl.emitHandlerRegistrations()
+	cl.emitBridgeRegistrations()
 	// Register struct field tags first so reflect/json see them everywhere.
 	regExt := &goir.Extern{
 		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Reflect", Method: "RegisterTag",

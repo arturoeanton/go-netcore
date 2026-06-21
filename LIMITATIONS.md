@@ -140,9 +140,14 @@ delivery), **`net/http/cookiejar`**, **`net/http/httptest`** (live server + reco
 **`mime/multipart`** (form parsing). Still deferred (need a larger feature or external
 module):
 
-- **`container/heap`** — `heap.Init/Push/Pop` call back into the user type's
-  `Less/Swap/Push/Pop` (interface methods); calling Go methods from a shim needs an
-  interface-method-callback bridge.
+- **`container/heap`** — works for a **struct** receiver type: `heap.Init/Push/Pop/
+  Fix/Remove` drive the user type's `Less/Swap/Push/Pop` through the interface
+  method-callback bridge (`Bridge.CallMethod` + compiler-generated per-method
+  adapters; see `docs/DESIGN-callback-bridge.md`). A **named non-struct** receiver
+  (the idiomatic `type IntHeap []int`) is not yet supported — its pointer carries no
+  type id (`ptrNew` tags struct pointees only), so the bridge can't resolve its
+  methods and throws a clear error. Use a struct wrapper (`type H struct{ data []int }`)
+  meanwhile; unifying the pointer type id is the documented follow-up.
 - **`x/sync/errgroup`** — shim written, but the import needs the external x/sync
   module present to type-check.
 - **`google/uuid`** — not yet shimmed.
