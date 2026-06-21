@@ -375,17 +375,9 @@ type extern struct {
 // declares object/long). It is the ratchet: a NEW divergence fails the test, and a fixed
 // entry is reported as "stale" so the baseline can only shrink. Keyed by "Class.Method".
 //
-// 34 of the original 38 (http.Request/Response header fields, TLS Config/Cert,
-// xml/template) have been aligned to the emitted types. The 4 remaining are the
-// crypto/sha3 constructors: Go 1.24's sha3.New256 returns the concrete *sha3.SHA3
-// (a pointer -> GoPtr), but the shim models the hasher as a GoHash handle (object).
-// They can't be aligned by signature alone (making *SHA3 an opaque shim breaks its
-// hash.Hash method dispatch); a proper fix models sha3.SHA3 as an opaque type WITH a
-// method registry. Tracked here meanwhile. Keyed by "Class.Method".
-var knownSignatureGaps = map[string]bool{
-	"Crypto.Sha3_224New": true, "Crypto.Sha3_256New": true,
-	"Crypto.Sha3_384New": true, "Crypto.Sha3_512New": true,
-}
+// All of the original 38 divergences have been aligned to the emitted types — the
+// baseline is empty. Keep it that way: fix the shim, don't add an entry.
+var knownSignatureGaps = map[string]bool{}
 
 // shimCorpus are packages whose compilation exercises a broad shim surface. Each is built
 // with GOCLR_SHIM_MANIFEST set so the externs it emits are validated. Missing ones (e.g.

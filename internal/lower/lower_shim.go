@@ -338,6 +338,7 @@ var opaqueShimTypes = map[string]bool{
 	"os.File":                      true,
 	"os.FileInfo":                  true,
 	"crypto/sha3.SHAKE":            true,
+	"crypto/sha3.SHA3":             true,
 	"io/fs.FileInfo":               true,
 	"time.Time":                    true,
 	"time.Location":                true,
@@ -1194,6 +1195,13 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"encoding/binary.bigEndian":    binaryMethods,
 	"encoding/binary.ByteOrder":    binaryMethods,
 	"hash.Hash": {
+		"Write": {"Crypto", "Hash_Write"}, "Sum": {"Crypto", "Hash_Sum"}, "Reset": {"Crypto", "Hash_Reset"},
+		"Size": {"Crypto", "Hash_Size"}, "BlockSize": {"Crypto", "Hash_BlockSize"},
+	},
+	// Go 1.24's crypto/sha3.New* return the concrete *sha3.SHA3 (not hash.Hash). It is an
+	// opaque shim handle (the GoHash the constructor builds); its hash.Hash methods reuse
+	// the shared Hash_* shims, which operate on that GoHash.
+	"crypto/sha3.SHA3": {
 		"Write": {"Crypto", "Hash_Write"}, "Sum": {"Crypto", "Hash_Sum"}, "Reset": {"Crypto", "Hash_Reset"},
 		"Size": {"Crypto", "Hash_Size"}, "BlockSize": {"Crypto", "Hash_BlockSize"},
 	},
