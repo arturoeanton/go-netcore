@@ -7,8 +7,17 @@ using GoCLR.Runtime;
 /// <summary>An *http.Response handle (status + body snapshot).</summary>
 public sealed class GoResponse { public int StatusCode; public string Status = ""; public GoReader Body = new(); public long ContentLength; public readonly GoFieldBag Extra = new(); }
 
-/// <summary>An http.ResponseWriter backed by an HttpListenerResponse.</summary>
-public sealed class GoRespWriter { public HttpListenerResponse Resp = null!; public bool WroteHeader; public GoMap? Headers; }
+/// <summary>An http.ResponseWriter backed by an HttpListenerResponse. The body is
+/// buffered until the handler returns so headers (which a framework may set after the
+/// first write, e.g. gin's Content-Type) are committed before the body is flushed.</summary>
+public sealed class GoRespWriter
+{
+    public HttpListenerResponse Resp = null!;
+    public bool WroteHeader;
+    public int Status = 200;
+    public GoMap? Headers;
+    public readonly System.IO.MemoryStream Body = new();
+}
 
 /// <summary>An http.ResponseController over a response writer.</summary>
 public sealed class GoResponseController { public object? W; }
@@ -163,7 +172,7 @@ public static class Http
                 var req = MakeRequest(ctx.Request);
                 try { Dispatch(handler, w, req, ctx.Request.Url?.AbsolutePath ?? "/"); }
                 catch (System.Exception) { }
-                try { FlushHeaders(w); } catch { }
+                try { Commit(w); } catch { }
                 try { ctx.Response.OutputStream.Close(); } catch { }
             }
         }
@@ -522,13 +531,23 @@ public static class Http
     public static object?[] RW_Write(object w, GoSlice p)
     {
         var rw = AsRW(w);
-        FlushHeaders(rw);
         var buf = new byte[p.Len];
         for (int i = 0; i < p.Len; i++) buf[i] = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
-        rw.Resp.OutputStream.Write(buf, 0, buf.Length);
+        rw.Body.Write(buf, 0, buf.Length);
         return new object?[] { (long)p.Len, null };
     }
-    public static void RW_WriteHeader(object w, long code) { var rw = AsRW(w); FlushHeaders(rw); if (!rw.WroteHeader) { rw.Resp.StatusCode = (int)code; rw.WroteHeader = true; } }
+    // WriteHeader records the status; nothing is committed until the handler returns
+    // (Commit), so a later header set still takes effect.
+    public static void RW_WriteHeader(object w, long code) { var rw = AsRW(w); if (!rw.WroteHeader) { rw.Status = (int)code; rw.WroteHeader = true; } }
+
+    // Commit flushes the recorded status, headers, and buffered body to the listener.
+    // Called once after the handler returns.
+    internal static void Commit(GoRespWriter rw)
+    {
+        try { rw.Resp.StatusCode = rw.Status; } catch { }
+        FlushHeaders(rw);
+        try { var b = rw.Body.GetBuffer(); rw.Resp.OutputStream.Write(b, 0, (int)rw.Body.Length); } catch { }
+    }
 
     // http.Redirect(w, r, url, code): set Location and write the status code.
     public static void Redirect(object w, object? r, GoString url, long code)
@@ -547,7 +566,7 @@ public static class Http
     }
     private static void FlushHeaders(GoRespWriter rw)
     {
-        if (rw.WroteHeader || rw.Headers?.Data == null) return;
+        if (rw.Headers?.Data == null) return;
         foreach (var kv in rw.Headers.Data)
         {
             string k = ((GoString)kv.Key).ToDotNetString();
