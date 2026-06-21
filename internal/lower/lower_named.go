@@ -27,6 +27,11 @@ func (c *lowerCtx) namedIdentity(t types.Type) (id int64, ok bool) {
 	case *types.Struct, *types.Interface, nil:
 		return 0, false // structs carry CLR identity; interfaces aren't concrete
 	}
+	// An opaque shim type (syscall.Signal -> GoSignal) already has a distinct CLR
+	// class as its identity, so it must not also be wrapped in a typed box.
+	if isOpaqueShimType(named) {
+		return 0, false
+	}
 	// Only types observable by identity at runtime — those with a method set on T
 	// or *T (Stringer/Error, sort.Interface implementers, enums with String, …).
 	// Method-less named types keep their bare representation (a documented gap for

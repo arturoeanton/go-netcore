@@ -28,6 +28,10 @@ public static class Os
     public static object Stderr() => StderrFile;
     public static object Stdin() => StdinFile;
 
+    // os.Interrupt == syscall.SIGINT, os.Kill == syscall.SIGKILL (os.Signal values).
+    public static object Interrupt() => Ossignal.Sig(2);
+    public static object Kill() => Ossignal.Sig(9);
+
     // (*os.File).Fd() uintptr: the conventional descriptor number (stdin 0, stdout 1,
     // stderr 2). Consumers use it only to ask isatty whether the stream is a terminal;
     // under goclr isatty always reports false, so the exact value just needs to be the

@@ -17,4 +17,14 @@ public static class Syscall
     // syscall.Fsync(fd) error: durability is a no-op — within a single .NET process the
     // backing FileStream already observes its own writes (read-after-write is coherent).
     public static object? Fsync(long fd) => null;
+
+    // syscall.Signal constants (as os.Signal values).
+    public static object SIGHUP() => Ossignal.Sig(1);
+    public static object SIGINT() => Ossignal.Sig(2);
+    public static object SIGQUIT() => Ossignal.Sig(3);
+    public static object SIGKILL() => Ossignal.Sig(9);
+    public static object SIGUSR1() => Ossignal.Sig(10);
+    public static object SIGUSR2() => Ossignal.Sig(12);
+    public static object SIGPIPE() => Ossignal.Sig(13);
+    public static object SIGTERM() => Ossignal.Sig(15);
 }

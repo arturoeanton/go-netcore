@@ -14,6 +14,16 @@ func (l *funcLowerer) expr(e ast.Expr) {
 	if !l.ok {
 		return
 	}
+	// A shimmed stdlib package symbol (os.Stdout, syscall.SIGINT) resolves to an
+	// accessor extern even when it is a typed constant the type checker would otherwise
+	// fold to a bare integer — the shim value (e.g. a GoSignal) carries identity the
+	// folded constant would lose.
+	if _, isSel := e.(*ast.SelectorExpr); isSel {
+		if ext, ok := l.shimVarExtern(e); ok {
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+			return
+		}
+	}
 	// Constant folding handles literals, named constants, iota, and constant
 	// sub-expressions uniformly.
 	if tv := l.pkg.TypesInfo.Types[e]; tv.Value != nil {

@@ -93,6 +93,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/subtle":   {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}},
 	"mime":            {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
 	"net/mail":        {"ParseAddress": {"Mail", "ParseAddress"}},
+	"os/signal": {
+		"Notify": {"Ossignal", "Notify"}, "Stop": {"Ossignal", "Stop"},
+		"Reset": {"Ossignal", "Reset"}, "Ignore": {"Ossignal", "Ignore"},
+	},
 	"log/slog": {
 		"New": {"Slog", "New"}, "NewTextHandler": {"Slog", "NewTextHandler"}, "NewJSONHandler": {"Slog", "NewJSONHandler"},
 		"Default": {"Slog", "DefaultLogger"}, "SetDefault": {"Slog", "SetDefault"},
@@ -392,6 +396,8 @@ var opaqueShimTypes = map[string]bool{
 	"log/slog.HandlerOptions":      true,
 	"log/slog.TextHandler":         true,
 	"log/slog.JSONHandler":         true,
+	"syscall.Signal":               true,
+	"os.Signal":                    true,
 	"net/http/httptest.Server":            true,
 	"net/http/httptest.ResponseRecorder":  true,
 	"bufio.Writer":                 true,
@@ -414,6 +420,16 @@ var shimVarRegistry = map[string]shimFunc{
 	"log/slog.MessageKey":            {"Slog", "KeyMessage"},
 	"log/slog.LevelKey":              {"Slog", "KeyLevel"},
 	"log/slog.SourceKey":             {"Slog", "KeySource"},
+	"os.Interrupt":                   {"Os", "Interrupt"},
+	"os.Kill":                        {"Os", "Kill"},
+	"syscall.SIGHUP":                 {"Syscall", "SIGHUP"},
+	"syscall.SIGINT":                 {"Syscall", "SIGINT"},
+	"syscall.SIGQUIT":                {"Syscall", "SIGQUIT"},
+	"syscall.SIGKILL":                {"Syscall", "SIGKILL"},
+	"syscall.SIGUSR1":                {"Syscall", "SIGUSR1"},
+	"syscall.SIGUSR2":                {"Syscall", "SIGUSR2"},
+	"syscall.SIGPIPE":                {"Syscall", "SIGPIPE"},
+	"syscall.SIGTERM":                {"Syscall", "SIGTERM"},
 	"time.UTC":                       {"Time", "UTC"},
 	"time.Local":                     {"Time", "Local"},
 	"encoding/base64.StdEncoding":    {"Base64", "StdEncoding"},
@@ -716,11 +732,18 @@ func (l *funcLowerer) shimVarExtern(e ast.Expr) (*goir.Extern, bool) {
 	if !ok {
 		return nil, false
 	}
-	v, ok := l.pkg.TypesInfo.Uses[sel.Sel].(*types.Var)
-	if !ok || v.Pkg() == nil {
+	// Accept a package var OR a typed const (e.g. syscall.SIGINT): both name a shim
+	// value the accessor must produce rather than fold to a constant.
+	obj := l.pkg.TypesInfo.Uses[sel.Sel]
+	if obj == nil || obj.Pkg() == nil {
 		return nil, false
 	}
-	sf, ok := shimVarRegistry[v.Pkg().Path()+"."+v.Name()]
+	switch obj.(type) {
+	case *types.Var, *types.Const:
+	default:
+		return nil, false
+	}
+	sf, ok := shimVarRegistry[obj.Pkg().Path()+"."+obj.Name()]
 	if !ok {
 		return nil, false
 	}
@@ -929,6 +952,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"log/slog.Logger": {
 		"Info": {"Slog", "Logger_Info"}, "Debug": {"Slog", "Logger_Debug"}, "Warn": {"Slog", "Logger_Warn"},
 		"Error": {"Slog", "Logger_Error"}, "With": {"Slog", "Logger_With"},
+	},
+	"syscall.Signal": {
+		"String": {"Ossignal", "Signal_String"}, "Signal": {"Ossignal", "Signal_Signal"},
 	},
 	"net/http/httptest.Server": {
 		"Close": {"Httptest", "Server_Close"}, "Client": {"Httptest", "Server_Client"}, "Start": {"Httptest", "Server_Start"},
