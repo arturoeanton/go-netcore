@@ -729,6 +729,71 @@ func (l *funcLowerer) explicitGenericFun(fun ast.Expr) (*ast.Ident, *types.Func,
 }
 
 // callExpr lowers a call and returns its result type (TVoid for none).
+// unsafeBuiltin reports whether sel names an `unsafe.<X>` builtin (unsafe.String,
+// unsafe.SliceData, …), returning its name.
+func (l *funcLowerer) unsafeBuiltin(sel *ast.SelectorExpr) (string, bool) {
+	if _, ok := l.pkg.TypesInfo.Uses[sel.Sel].(*types.Builtin); !ok {
+		return "", false
+	}
+	if id, ok := sel.X.(*ast.Ident); ok {
+		if pkgName, ok := l.pkg.TypesInfo.Uses[id].(*types.PkgName); ok && pkgName.Imported().Path() == "unsafe" {
+			return sel.Sel.Name, true
+		}
+	}
+	return "", false
+}
+
+// unsafeDataArg matches `unsafe.<builtin>(X)` (X = a []byte or string) and returns X.
+func (l *funcLowerer) unsafeDataArg(arg ast.Expr, builtin string) (ast.Expr, bool) {
+	call, ok := unparen(arg).(*ast.CallExpr)
+	if !ok {
+		return nil, false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil, false
+	}
+	if name, ok := l.unsafeBuiltin(sel); ok && name == builtin && len(call.Args) == 1 {
+		return call.Args[0], true
+	}
+	return nil, false
+}
+
+// unsafeCall lowers the safe `string ↔ []byte` reinterpret idioms expressed with Go 1.20+
+// unsafe builtins, as a copying conversion (goclr has no raw memory; see
+// docs/DESIGN-unsafe-pointer.md). Only the composed forms are representable:
+//
+//	unsafe.String(unsafe.SliceData(b), n)  ->  string(b[:n])
+//	unsafe.Slice(unsafe.StringData(s), n)  ->  []byte(s[:n])
+func (l *funcLowerer) unsafeCall(e *ast.CallExpr, name string) goir.Type {
+	switch name {
+	case "String":
+		if x, ok := l.unsafeDataArg(e.Args[0], "SliceData"); ok {
+			ret := l.exprType(e) // string
+			l.expr(x)            // the []byte
+			l.exprCoerced(e.Args[1], goir.TInt64)
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Unsafe", Method: "String",
+				Params: []goir.Type{l.exprType(x), goir.TInt64}, Ret: ret,
+			}})
+			return ret
+		}
+	case "Slice":
+		if x, ok := l.unsafeDataArg(e.Args[0], "StringData"); ok {
+			ret := l.exprType(e) // []byte
+			l.expr(x)            // the string
+			l.exprCoerced(e.Args[1], goir.TInt64)
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Unsafe", Method: "Slice",
+				Params: []goir.Type{goir.TString, goir.TInt64}, Ret: ret,
+			}})
+			return ret
+		}
+	}
+	l.fail(e.Pos(), "unsafe."+name+" (only the unsafe.String/Slice string↔[]byte reinterpret idiom is supported)")
+	return goir.TVoid
+}
+
 func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 	// Type conversions: T(x), including []byte(s) / []rune(s) where the call
 	// target is a type expression rather than a plain identifier.
@@ -737,6 +802,10 @@ func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 	}
 	// Method calls: recv.Method(args).
 	if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
+		// unsafe.String/Slice — the safe string<->[]byte reinterpret idioms.
+		if name, ok := l.unsafeBuiltin(sel); ok {
+			return l.unsafeCall(e, name)
+		}
 		if seln := l.pkg.TypesInfo.Selections[sel]; seln != nil && seln.Kind() == types.MethodVal {
 			return l.methodCall(e, sel, seln)
 		}
