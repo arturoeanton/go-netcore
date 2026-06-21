@@ -794,6 +794,48 @@ func (l *funcLowerer) unsafeCall(e *ast.CallExpr, name string) goir.Type {
 	return goir.TVoid
 }
 
+// headerViewConversion recognizes `(*reflect.SliceHeader)(unsafe.Pointer(&x))` /
+// `(*reflect.StringHeader)(...)` and lowers it to a read-only header view over x (a
+// GoHeaderView, see Reflect.SH_*), so .Data/.Len/.Cap reads — the only safe use, e.g.
+// computing a sub-slice's byte offset within its parent — work without raw memory.
+func (l *funcLowerer) headerViewConversion(e *ast.CallExpr) (goir.Type, bool) {
+	pt, ok := l.pkg.TypesInfo.TypeOf(e).Underlying().(*types.Pointer)
+	if !ok {
+		return goir.TVoid, false
+	}
+	named, ok := types.Unalias(pt.Elem()).(*types.Named)
+	if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "reflect" {
+		return goir.TVoid, false
+	}
+	var method string
+	switch named.Obj().Name() {
+	case "SliceHeader":
+		method = "SliceHeaderOf"
+	case "StringHeader":
+		method = "StringHeaderOf"
+	default:
+		return goir.TVoid, false
+	}
+	inner, ok := unparen(e.Args[0]).(*ast.CallExpr)
+	if !ok || len(inner.Args) != 1 {
+		return goir.TVoid, false
+	}
+	if b, ok := l.pkg.TypesInfo.TypeOf(inner).Underlying().(*types.Basic); !ok || b.Kind() != types.UnsafePointer {
+		return goir.TVoid, false
+	}
+	addr, ok := unparen(inner.Args[0]).(*ast.UnaryExpr)
+	if !ok || addr.Op != token.AND {
+		return goir.TVoid, false
+	}
+	ret := goir.Type{Kind: goir.KObject, Shim: "reflect." + named.Obj().Name()}
+	l.expr(addr.X) // the slice (SliceHeader) or string (StringHeader)
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Reflect", Method: method,
+		Params: []goir.Type{l.exprType(addr.X)}, Ret: ret,
+	}})
+	return ret, true
+}
+
 func (l *funcLowerer) callExpr(e *ast.CallExpr) goir.Type {
 	// Type conversions: T(x), including []byte(s) / []rune(s) where the call
 	// target is a type expression rather than a plain identifier.
@@ -903,6 +945,10 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 	if len(e.Args) != 1 {
 		l.fail(e.Pos(), "conversion")
 		return goir.TVoid
+	}
+	// (*reflect.SliceHeader)(unsafe.Pointer(&x)) — a read-only header view over x.
+	if t, ok := l.headerViewConversion(e); ok {
+		return t
 	}
 	// A conversion to unsafe.Pointer that reached here is an UNRECOGNIZED reinterpret
 	// (the safe string↔[]byte idioms and reflect.*Header reads short-circuit earlier, in

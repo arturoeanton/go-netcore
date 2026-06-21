@@ -615,7 +615,53 @@ public static class Reflect
         new GoClosure { Id = -1, Native = _ => g() };
     private static GoClosure MakeSet(System.Action<object?> sset) =>
         new GoClosure { Id = -1, Native = a => { sset(a != null && a.Length > 0 ? a[0] : null); return null; } };
+
+    // ---- reflect.SliceHeader / reflect.StringHeader (read-only views) ----------------
+    // goclr has no raw memory, but a slice's Off into its shared backing is enough for the
+    // safe use of these deprecated headers: computing a sub-slice's byte offset within its
+    // parent (the difference of their .Data). .Data = a STABLE per-backing base + Off, so
+    // for two slices over the same backing the difference equals the offset; .Len/.Cap are
+    // the slice's. Header field WRITES (reconstructing a slice from another's header) are a
+    // raw-memory operation goclr can't model — those stay overlay cases.
+    // See docs/DESIGN-unsafe-pointer.md.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, object> HeaderBaseIds = new();
+    private static long _headerBaseSeq;
+    private const long HeaderScale = 1L << 40; // > any realistic backing length, so Off never crosses a base
+
+    private static long BaseId(object? backing)
+    {
+        if (backing == null) return 0;
+        if (!HeaderBaseIds.TryGetValue(backing, out var box))
+        {
+            box = System.Threading.Interlocked.Increment(ref _headerBaseSeq);
+            HeaderBaseIds.Add(backing, box);
+        }
+        return (long)box;
+    }
+
+    public static object SliceHeaderOf(GoSlice s) => new GoHeaderView { Slice = s, IsSlice = true };
+    public static object StringHeaderOf(GoString s) => new GoHeaderView { StrBytes = s.Bytes };
+
+    public static ulong SH_Data(object h)
+    {
+        var v = (GoHeaderView)h;
+        if (v.IsSlice)
+        {
+            if (v.Slice.Data == null) return 0UL;
+            // Go collapses a zero-capacity slice's pointer to the array base (the offset can
+            // never be used to address an element), so a sub-slice with cap 0 has Data == base.
+            long off = v.Slice.Cap == 0 ? 0 : v.Slice.Off;
+            return (ulong)(BaseId(v.Slice.Data) * HeaderScale + off);
+        }
+        return v.StrBytes == null || v.StrBytes.Length == 0 ? 0UL : (ulong)(BaseId(v.StrBytes) * HeaderScale);
+    }
+    public static long SH_Len(object h) { var v = (GoHeaderView)h; return v.IsSlice ? v.Slice.Len : (v.StrBytes?.Length ?? 0); }
+    public static long SH_Cap(object h) { var v = (GoHeaderView)h; return v.IsSlice ? v.Slice.Cap : (v.StrBytes?.Length ?? 0); }
 }
+
+/// <summary>A read-only reflect.SliceHeader / reflect.StringHeader view over a goclr
+/// slice/string (see Reflect.SH_*).</summary>
+public sealed class GoHeaderView { public GoSlice Slice; public bool IsSlice; public byte[]? StrBytes; }
 
 /// <summary>reflect.StructField handle (the subset code commonly reads).</summary>
 public sealed class GoStructField { public string Name = ""; public string Tag = ""; public System.Type? FieldType; public int FieldTypeId = -1; public int Index; public bool Anonymous; }

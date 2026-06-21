@@ -316,6 +316,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 var opaqueShimTypes = map[string]bool{
 	"reflect.Type":                 true,
 	"reflect.Value":                true,
+	"reflect.SliceHeader":          true,
+	"reflect.StringHeader":         true,
 	"sync.Mutex":                   true,
 	"sync.Cond":                    true,
 	"sync/atomic.Value":            true,
@@ -721,6 +723,12 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"ContentLength": {"Http", "Req_ContentLength"}, "Trailer": {"Http", "Req_Trailer"}, "TLS": {"Http", "Req_TLS"}, "MultipartForm": {"Http", "Req_MultipartForm"},
 		"Proto": {"Http", "Req_Proto"}, "ProtoMajor": {"Http", "Req_ProtoMajor"}, "ProtoMinor": {"Http", "Req_ProtoMinor"}, "RequestURI": {"Http", "Req_RequestURI"}, "Context": {"Http", "Req_Context"},
 		"Cancel": {"Http", "Req_Cancel"}, "GetBody": {"Http", "Req_GetBody"}, "Close": {"Http", "Req_Close"},
+	},
+	"reflect.SliceHeader": {
+		"Data": {"Reflect", "SH_Data"}, "Len": {"Reflect", "SH_Len"}, "Cap": {"Reflect", "SH_Cap"},
+	},
+	"reflect.StringHeader": {
+		"Data": {"Reflect", "SH_Data"}, "Len": {"Reflect", "SH_Len"},
 	},
 }
 

@@ -6,12 +6,19 @@ goclr's value model has **no raw memory**: a `GoSlice` is `object[]`-backed, a `
 is a .NET string, a `GoPtr` is a cell with get/set closures. There is no `*byte` pointing
 into a slice's backing array, and no addressable struct layout. So:
 
-- **Pointer arithmetic / header manipulation is fundamentally impossible** —
-  `reflect.SliceHeader{Data,Len,Cap}` field writes (`bh.Data = sh.Data`),
-  `unsafe.Offsetof` used for real layout, comparing two slices' `.Data` addresses
-  (go-toml/v2 `internal/danger.SubsliceOffset`), `unsafe.Add` over real memory, quic-go's
-  OOB socket buffers. These stay **overlay** territory (replace the file with goclr-safe
-  Go) — supporting `unsafe.Pointer` would NOT remove them.
+- **Pointer arithmetic / header *writes* are fundamentally impossible** —
+  `reflect.SliceHeader{Data,Len,Cap}` field writes (`bh.Data = sh.Data`) that reconstruct a
+  slice/string from a foreign header, `unsafe.Offsetof` used for real layout, `unsafe.Add`
+  over real memory, quic-go's OOB socket buffers. These stay **overlay** territory (replace
+  the file with goclr-safe Go) — supporting `unsafe.Pointer` would NOT remove them.
+- **Header *reads* for offset arithmetic ARE supported** — comparing two slices' `.Data`
+  fields to recover a sub-slice's byte offset (go-toml/v2 `internal/danger.SubsliceOffset`)
+  is now a first-class capability: `(*reflect.SliceHeader)(unsafe.Pointer(&x)).Data` lowers
+  to a read-only header view (`Reflect.SliceHeaderOf`/`SH_Data`) whose `.Data` is
+  `stable_per_backing_base*scale + Off`, so two views over the same backing differ by exactly
+  the offset (with Go's zero-cap-collapses-to-base quirk replicated). `.Len`/`.Cap` are the
+  slice's. No overlay needed. String header *offset diffs* remain unsupportable (.NET
+  substrings don't share backing storage); only `.Len` is meaningful there.
 - **The `string ↔ []byte` zero-copy reinterpret is semantically a conversion** — it just
   avoids the copy. goclr can compile it as the safe `string(b)` / `[]byte(s)`. Correct,
   not zero-copy (irrelevant to correctness).
@@ -62,9 +69,15 @@ overlay regardless — which is why the modern builtins are the better investmen
    - Type caveat: `SliceData`/`StringData` "return" `*byte`/`*T` but we leave a slice/string
      on the stack; this is safe only because the sole consumer we support is the matching
      `String`/`Slice` builtin. If the value flows elsewhere, fail (don't silently miscompile).
-3. **Old easy idiom** (optional, follow-up): in the `*X` deref lowering, recognize
+3. **Old easy idiom** (DONE): in the `*X` deref lowering, recognize
    `*(*string)(unsafe.Pointer(&b))` / `*(*[]byte)(unsafe.Pointer(&s))` and emit the
-   conversion. The SliceHeader-write form stays an overlay.
+   conversion. The SliceHeader-*write* form stays an overlay.
+3b. **Header-read offset idiom** (DONE): in `conversion()`, recognize
+   `(*reflect.SliceHeader)(unsafe.Pointer(&x))` / `(*reflect.StringHeader)(...)` and lower to
+   a read-only `GoHeaderView` (`Reflect.SliceHeaderOf`/`StringHeaderOf`); `.Data`/`.Len`/`.Cap`
+   read via `SH_Data`/`SH_Len`/`SH_Cap`. Agnostic — general compiler capability, no per-lib
+   overlay. Covers go-toml's `SubsliceOffset` ([]byte-backed). See fixture
+   `400_reflect_sliceheader_offset`.
 4. **Fixtures**: round-trip `b2s`/`s2b` byte-exact vs `go run`; assert a real pointer-arith
    `unsafe` still errors with GCLR0201.
 
@@ -72,7 +85,7 @@ overlay regardless — which is why the modern builtins are the better investmen
 
 - Modern Go code using the idiomatic 1.20+ `string↔[]byte` conversions compiles (a real
   completeness/compat win; e.g. newer stdlib-style helpers).
-- It does NOT remove the existing overlays (fasttemplate/validator/go-toml use the hard
-  header forms) — those remain the documented overlay mechanism.
-- KrakenD/Lura's go-toml `SubsliceOffset` needs a go-toml overlay (compute the offset via
-  `GoSlice.Off` semantics), independent of this.
+- It does NOT remove the fasttemplate/validator overlays — those use the hard header *write*
+  forms (reconstructing a slice from a foreign header), which remain overlay-only.
+- KrakenD/Lura's go-toml `SubsliceOffset` no longer needs an overlay: the read-only
+  `reflect.SliceHeader.Data` offset path (idiom 3b above) compiles it directly.
