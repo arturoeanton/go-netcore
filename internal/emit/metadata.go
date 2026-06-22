@@ -172,6 +172,17 @@ func (w *writer) u32(v uint32) { *w.b = binary.LittleEndian.AppendUint32(*w.b, v
 
 // heap writes a #Strings/#GUID/#Blob heap index. HeapSizes is 0x07, so every heap
 // reference in the tables stream is 4 bytes (programs may exceed a 64 KiB heap).
-func (w *writer) heap(v uint32)  { *w.b = binary.LittleEndian.AppendUint32(*w.b, v) }
+func (w *writer) heap(v uint32) { *w.b = binary.LittleEndian.AppendUint32(*w.b, v) }
+
+// idx writes a metadata table index (simple or coded), 4 bytes when wide else 2.
+// Per ECMA-335 II.24.2.6 the width is fixed for the whole table by the referenced
+// tables' row counts, so the reader and writer must agree on it (computed in buildTables).
+func (w *writer) idx(v uint32, wide bool) {
+	if wide {
+		*w.b = binary.LittleEndian.AppendUint32(*w.b, v)
+	} else {
+		*w.b = binary.LittleEndian.AppendUint16(*w.b, uint16(v))
+	}
+}
 func (w *writer) u64(v uint64)   { *w.b = binary.LittleEndian.AppendUint64(*w.b, v) }
 func (w *writer) bytes(p []byte) { *w.b = append(*w.b, p...) }
