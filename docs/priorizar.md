@@ -16,7 +16,11 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 9. 🟡 GORM target chico — DISTANCIA MEDIDA (tag `0.0.62.gorm-distance`): no hay gap de
    compilador; es una cadena de shims (time ✓, runtime caller ✓ stub, slog handler pendiente)
    + necesita dialector/driver pure-Go. Esfuerzo multi-paso, no un cierre único.
-10. ⬜ performance / AOT
+10. 🟡 performance / AOT — EVALUADO (tag `0.0.63.perf-assess`): startup chico ~20ms (bien),
+    goja ~3.2s (JIT-bound); ReadyToRun es la palanca real (necesita publish project); AOT
+    inviable sin rework (reflection en el mecanismo de shims); typed-IL/menos-boxing = lever
+    de throughput. configProperties (TieredPGO off) para favorecer startup de programas cortos.
+    Documentado en GAPS.md.
 
 ## Lista priorizada completa (50)
 
@@ -139,3 +143,11 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   stack Go; gorm loguea SQL sin file:line, lo tolera). Próximo muro: handler `log/slog` de
   gorm; y para ORM completo falta dialector/driver pure-Go. Fixture 410 (time methods).
   Documentado en GAPS.md. Esfuerzo multi-paso, no cierre único.
+- 🟡 **#10 performance / AOT (evaluado)** — tag `0.0.63.perf-assess`. Medido: hello-world
+  ~20ms (startup ya bueno), goja (~15MB) ~3.2s (JIT-bound). Palancas + distancia documentadas
+  en GAPS.md: **ReadyToRun** (crossgen vía publish project) = mayor win de startup para
+  programas grandes; **NativeAOT inviable sin rework** (el runtime de shims usa reflection:
+  InvokeShim/MethodInfo.Invoke, scan de `[GoShim]`, reflect — el trimming los rompe);
+  **typed-IL/menos-boxing** = lever de throughput (reescritura de backend). Mejora concreta:
+  `configProperties` con TieredPGO=false (favorece startup de programas cortos; servidores
+  apenas lo notan). Linker test verde, JSON válido.

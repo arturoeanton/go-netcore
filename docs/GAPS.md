@@ -319,3 +319,30 @@ also need a **pure-Go dialector/driver** (the cgo-free `glebarez/sqlite` or a go
 the existing `go-r2-sqlite`). So GORM is a multi-step shim/overlay campaign — not a single
 compiler gap — and is left as a staged target; the generally-useful shims it surfaced
 (time multi-return methods, the runtime caller stubs) are landed independently.
+
+## Performance & AOT distance (2026-06)
+
+Measured, not yet engineered — the levers and their distance:
+
+- **Startup is already good for typical programs**: a hello-world goclr `.dll` starts in
+  ~20 ms. A *large* assembly is JIT-bound: goja (~15 MB) takes ~3.2 s to first output,
+  almost entirely first-run JIT of its method set. Tiered compilation (quick-JIT-first) is
+  already on by default, so config tuning yields little here.
+- **ReadyToRun (crossgen)** is the realistic lever for large-program startup: precompiling
+  the app + `GoCLR.Runtime`/`GoCLR.Stdlib` to native via `dotnet publish
+  -p:PublishReadyToRun=true` would cut goja's cold JIT. It needs a generated publish project
+  (the current output is loose framework-dependent dlls) — a packaging task, not a compiler
+  change. This is the highest-value next perf step.
+- **NativeAOT is infeasible without rework.** The shim runtime is reflection-heavy by
+  design — `Closures.InvokeShim` (`MethodInfo.Invoke`), the `[GoShim]` attribute scan
+  (`GoShim.cs`), `reflect`'s `Value_FieldByName`/`TypeReg`, the callback bridge — all of
+  which NativeAOT's trimming removes or can't invoke. AOT would require routing the shim
+  surface through source-generated, statically-rooted dispatch (no `MethodInfo.Invoke`,
+  no attribute scanning). Large; tracked, not started.
+- **Throughput** is bounded by the object-boxed value model (every `any`/interface/slice
+  element is a boxed `object`). Typed IL / specialized slices (roadmap "Typed IL, no mass
+  boxing") is the lever — a substantial backend change, also the prerequisite that makes the
+  emitted code more AOT/trim-friendly.
+
+The emitted assembly already links against Release-built runtime/stdlib; the
+runtimeconfig carries a `configProperties` block as the place to tune host options.
