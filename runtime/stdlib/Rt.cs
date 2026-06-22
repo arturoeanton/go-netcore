@@ -175,6 +175,13 @@ public static class Rt
         return ShimTypes.IsStrict(v!, goName.ToDotNetString());
     }
 
+    // BoxNilPtr boxes a concrete pointer into an interface. A non-nil pointer is returned
+    // as-is; a nil pointer becomes a non-null GoPtr carrying the pointee's type id, so the
+    // interface is non-nil — Go keeps the dynamic type even when the pointer is nil
+    // (`var p *T; var i any = p; i == nil` is false). Method dispatch / type assertion then
+    // resolve through the GoPtr's id exactly as for a non-nil pointer (a nil receiver).
+    public static object BoxNilPtr(GoPtr? p, long typeId) => (object?)p ?? GoPtrs.New(null, typeId);
+
     public static GoPtr ElemAddr(GoSlice s, long i)
     {
         if (s.Data == null || i < 0 || i >= s.Len)

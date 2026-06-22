@@ -119,7 +119,8 @@ Tracks what is implemented vs outstanding. Done items are verified byte-exact vs
 - [x] General, agnostic shim-type-in-interface dispatch (`[GoShim]` registry + `types.Implements`; no Go type hardcoded)
 - [ ] Deep `reflect`: `MakeFunc`, deep `Value`/`Type` ops — the *full* JS spec in goja
 - [ ] Per-value runtime type tags / itable — two named-slice (or named-map) implementers of one interface
-- [ ] Typed-nil pointer kept distinct inside an interface (`var p *T; any(p) == nil` ⇒ false)
+- [x] Typed-nil pointer kept distinct inside an interface (`var p *T; any(p) == nil` ⇒ false;
+  the `err != nil` gotcha is faithful). Residual: the recovered pointer's own `== nil` — see LIMITATIONS
 - [ ] Uncaught-panic output in Go's `panic:` + goroutine-stack format (recovered panics already exact)
 - [ ] `%T`/`%#v` precise element types for dynamically-reached slices/maps; nil-map `%v` → `map[]`
 

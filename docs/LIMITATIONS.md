@@ -233,12 +233,21 @@ that shim type's method as an extern (`shimMethodRegistry`).
 
 ## Typed-nil pointer inside an interface
 
-A nil pointer stored into an interface (`var p *T; var i any = p`) compares
-`i == nil` **true** in goclr, where Go reports **false** (Go's interface keeps the
-static type, so the interface is non-nil even though the pointed-to value is nil).
-A consequence: code that distinguishes "nil interface" from "interface holding a
-typed nil" (some library `Value` hierarchies) can diverge. A precise fix needs a
-typed-nil representation that survives boxing.
+A nil pointer stored into an interface (`var p *T; var i any = p`, or `return p` where the
+result type is `error`) now compares `i == nil` **false**, matching Go — the interface
+keeps the dynamic type even when the pointer is nil (the classic `err != nil` gotcha is
+faithful). `exprCoerced` boxes a nil concrete pointer into a non-null `GoPtr` carrying the
+pointee's type id (`Rt.BoxNilPtr`), so `== nil` (reference compare) is correctly false and
+type assertion / method dispatch resolve the dynamic type. Fixture 404_typed_nil_interface.
+
+**Residual:** the *recovered* pointer compares against `nil` as non-nil. After
+`p := i.(*T)` (or inside a method called on the typed-nil interface), `p == nil` is
+**false** in goclr where Go yields **true** — because the recovered value is a non-null
+`GoPtr` with a null payload, and goclr compares pointer identity, not payload. So a
+method with an `if recv == nil { … }` guard called on a typed-nil interface does not take
+the guard (and will nil-deref if it then uses the receiver, as Go would only if the guard
+were absent). Fixing this precisely needs pointer `== nil` to test the payload for every
+pointer, a wide change deferred to keep the bare-pointer path (the common case) low-risk.
 
 ## `slices` / `cmp`
 

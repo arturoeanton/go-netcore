@@ -449,7 +449,19 @@ func (l *funcLowerer) exprCoerced(e ast.Expr, target goir.Type) {
 	}
 	l.expr(e)
 	if target.Kind == goir.KObject {
-		l.emitBox(l.exprType(e))
+		st := l.exprType(e)
+		l.emitBox(st)
+		// A concrete pointer converted to an interface stays non-nil even when the
+		// pointer is nil — Go keeps the dynamic type (`var p *T; var i any = p; i == nil`
+		// is false). Box a possibly-nil GoPtr into a non-null GoPtr carrying the pointee's
+		// id; a non-nil pointer passes through unchanged.
+		if st.Kind == goir.KPtr {
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: l.pointerBoxID(st, l.pkg.TypesInfo.TypeOf(e))})
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "BoxNilPtr",
+				Params: []goir.Type{st, goir.TInt64}, Ret: goir.TObject,
+			}})
+		}
 		// Converting a named non-struct value into an interface tags it with its
 		// named-type identity (the typed box), so dispatch/fmt/%T can recover it.
 		l.maybeWrapNamed(l.pkg.TypesInfo.TypeOf(e))
@@ -463,6 +475,22 @@ func (l *funcLowerer) exprCoerced(e ast.Expr, target goir.Type) {
 			Params: []goir.Type{target}, Ret: target,
 		}})
 	}
+}
+
+// pointerBoxID returns the pointee type id a boxed pointer should carry: a struct's
+// dispatch id, a named non-struct's typed-box id, else 0 (e.g. *int — no methods, the id
+// only needs to make the interface non-nil). Used by exprCoerced so a nil concrete pointer
+// boxed into an interface still resolves its dynamic type.
+func (l *funcLowerer) pointerBoxID(st goir.Type, gt types.Type) int64 {
+	if st.Elem != nil && st.Elem.Kind == goir.KStruct {
+		return int64(st.Elem.Struct.Id)
+	}
+	if pt, ok := gt.Underlying().(*types.Pointer); ok {
+		if id, ok := l.namedIdentity(pt.Elem()); ok {
+			return id
+		}
+	}
+	return 0
 }
 
 // typeAssert lowers the single-value form x.(T): unbox.any panics on mismatch.

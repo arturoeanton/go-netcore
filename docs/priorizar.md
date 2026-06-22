@@ -7,7 +7,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 
 1. ✅ `goclr test` compatible con `go test` — tag `0.0.52.goclr-test`
 2. ✅ Compatibility report estable HTML/JSON — tag `0.0.53.compat-report`
-3. ⬜ typed-nil en interfaces (`var p *T; any(p) == nil` ⇒ `false`)
+3. ✅ typed-nil en interfaces (`var p *T; any(p) == nil` ⇒ `false`) — tag `0.0.54.typed-nil-iface`
 4. ⬜ `reflect.StructField.Name` / `.Tag` directo
 5. ⬜ function values de funciones shimmed
 6. ⬜ formato de panic no recuperado igual a Go
@@ -22,7 +22,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 2. ✅ Compatibility report estable HTML/JSON — alta, altísimo · tag `0.0.53.compat-report`
 3. ⬜ Matriz de cobertura por función stdlib/externa — alta/media, alto
 4. ⬜ Errores accionables `GCLR05xx/GCLR07xx` (símbolo, por qué, workaround, build tag, overlay) — alta, alto
-5. ⬜ typed-nil en interfaces — media, altísimo
+5. ✅ typed-nil en interfaces — media, altísimo · tag `0.0.54.typed-nil-iface` (residual documentado: `== nil` del puntero recuperado)
 6. ⬜ panic no recuperado con formato Go (`panic:` + goroutine stack) — media, alto
 7. ⬜ `reflect.StructField.Name` / `.Tag` directo — alta/media, alto
 8. ⬜ function values de funciones shimmed (`strings.TrimFunc(s, unicode.IsSpace)`) — media, alto
@@ -82,3 +82,9 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   gana `--html` (reporte autocontenido, inline CSS, badges por estado) + `-o <file>`; el
   JSON gana un `summary` estable (counts OK/WARN/FAIL + cobertura stdlib full/partial/pending).
   `internal/analysis/html.go` + tests. Package-by-package, accionable y publicable como artefacto.
+- ✅ **#3 typed-nil en interfaces** — tag `0.0.54.typed-nil-iface`. `exprCoerced` boxea un
+  puntero concreto nil en un `GoPtr{Value:null, TypeId}` (no-null) vía `Rt.BoxNilPtr`, así
+  `var p *T; any(p) == nil` es `false` (el gotcha clásico `err != nil` ahora es fiel) y
+  assert/dispatch resuelven el tipo dinámico. Un solo punto de contacto (bajo riesgo),
+  conformance 205 verde + echo compila. Fixture 404. Residual documentado en LIMITATIONS:
+  el `== nil` del puntero recuperado de la interfaz (compara identidad, no payload).
