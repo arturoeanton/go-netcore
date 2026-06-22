@@ -10,7 +10,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 3. ✅ typed-nil en interfaces (`var p *T; any(p) == nil` ⇒ `false`) — tag `0.0.54.typed-nil-iface`
 4. ✅ `reflect.StructField.Name` / `.Tag` directo — tag `0.0.55.reflect-structfield`
 5. ✅ function values de funciones shimmed — tag `0.0.56.shim-func-value`
-6. ⬜ formato de panic no recuperado igual a Go
+6. ✅ formato de panic no recuperado igual a Go — tag `0.0.57.panic-format`
 7. ⬜ deep `reflect` mínimo (más goja/libs)
 8. ⬜ `text/template` + `google/uuid` + `errgroup` + testify
 9. ⬜ GORM target chico
@@ -23,7 +23,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 3. ⬜ Matriz de cobertura por función stdlib/externa — alta/media, alto
 4. ⬜ Errores accionables `GCLR05xx/GCLR07xx` (símbolo, por qué, workaround, build tag, overlay) — alta, alto
 5. ✅ typed-nil en interfaces — media, altísimo · tag `0.0.54.typed-nil-iface` (residual documentado: `== nil` del puntero recuperado)
-6. ⬜ panic no recuperado con formato Go (`panic:` + goroutine stack) — media, alto
+6. ✅ panic no recuperado con formato Go (`panic:` + goroutine stack) — media, alto · tag `0.0.57.panic-format`
 7. ✅ `reflect.StructField.Name` / `.Tag` directo — alta/media, alto · tag `0.0.55.reflect-structfield`
 8. ✅ function values de funciones shimmed (`strings.TrimFunc(s, unicode.IsSpace)`) — media, alto · tag `0.0.56.shim-func-value`
 9. ⬜ `%T` / `%#v` / nil maps más exactos — media, medio/alto
@@ -100,3 +100,9 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   del parámetro → `InvokeShim` ahora detecta el último parámetro `GoSlice` y empaqueta la
   cola (salvo que el caller ya pasara el slice). Fixture 406 byte-exacto (valor, arg, slice,
   callback unicode, variádica, method value de tipo shim).
+- ✅ **#6 panic no recuperado formato Go** — tag `0.0.57.panic-format`. Un entry sintético
+  (`__goclr_entry`) corre `init()`+`main()` dentro de try/catch(GoPanicException) →
+  `Rt.FatalPanic`, que imprime `panic: <value>` + `goroutine 1 [running]:` + frames y sale
+  con exit 2 (antes: volcado .NET "Unhandled exception", exit 255). Recuperados intactos
+  (path de defer/recover no tocado). Frames = stack CLR (no hay metadata de stack Go).
+  Conformance verde (wrapper transparente en happy path). Test `tests/panicfmt`.

@@ -73,12 +73,14 @@ Remaining edges (documented, not silent):
 ## Uncaught panic output format
 
 A panic that is **recovered** behaves exactly like Go (including runtime panics:
-integer divide-by-zero, index out of range, nil dereference). A panic that reaches
-the top of a goroutine prints the .NET unhandled-exception format
-(`Unhandled exception. GoCLR.Runtime.GoPanicException: panic: …`) rather than Go's
-`panic: …` followed by a goroutine stack trace and `exit status 2`. The panic value
-and message are correct; the surrounding framing and the stack trace are not
-reproduced. (Conformance compares recovered panics, whose output is exact.)
+integer divide-by-zero, index out of range, nil dereference). An **uncaught** panic now
+crashes in Go's shape — `panic: <value>`, a blank line, a `goroutine 1 [running]:` header,
+and **exit status 2** — instead of the .NET unhandled-exception dump. A synthetic entry
+wrapper runs `init()`/`main()` inside a top-level handler (`Rt.FatalPanic`); see
+`tests/panicfmt`. The frames printed under the header are the **CLR** stack (goclr has no
+Go-format stack metadata with source positions / `+0x` offsets), so the crash is Go-shaped
+and debuggable but not byte-identical to `go run`'s goroutine trace. The `exit status 2`
+line itself is printed by `go run` (the wrapper), not the program; the program exits 2.
 
 ## goja validation target — runs a large JS subset; full spec needs deeper reflect
 

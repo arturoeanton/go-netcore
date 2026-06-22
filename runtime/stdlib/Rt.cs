@@ -175,6 +175,25 @@ public static class Rt
         return ShimTypes.IsStrict(v!, goName.ToDotNetString());
     }
 
+    // FatalPanic reports an uncaught panic in Go's shape (panic: <value> + a goroutine
+    // header) instead of the .NET unhandled-exception dump, then exits with status 2 — so a
+    // crash reads like Go, not like an alien CLR stack. The .NET frames are kept under the
+    // goroutine header for debugging (goclr has no Go-format stack metadata). Recovered
+    // panics never reach here (they unwind through the deferred-recover path).
+    public static void FatalPanic(object? ex)
+    {
+        var p = ex as GoPanicException ?? new GoPanicException(ex);
+        var sb = new System.Text.StringBuilder();
+        sb.Append(p.Message); // "panic: <value>"
+        sb.Append("\n\ngoroutine 1 [running]:\n");
+        var st = p.StackTrace;
+        if (!string.IsNullOrEmpty(st)) sb.Append(st).Append('\n');
+        System.Console.Out.Flush();
+        System.Console.Error.Write(sb.ToString());
+        System.Console.Error.Flush();
+        System.Environment.Exit(2);
+    }
+
     // BoxNilPtr boxes a concrete pointer into an interface. A non-nil pointer is returned
     // as-is; a nil pointer becomes a non-null GoPtr carrying the pointee's type id, so the
     // interface is non-nil — Go keeps the dynamic type even when the pointer is nil

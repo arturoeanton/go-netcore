@@ -121,7 +121,8 @@ Tracks what is implemented vs outstanding. Done items are verified byte-exact vs
 - [ ] Per-value runtime type tags / itable — two named-slice (or named-map) implementers of one interface
 - [x] Typed-nil pointer kept distinct inside an interface (`var p *T; any(p) == nil` ⇒ false;
   the `err != nil` gotcha is faithful). Residual: the recovered pointer's own `== nil` — see LIMITATIONS
-- [ ] Uncaught-panic output in Go's `panic:` + goroutine-stack format (recovered panics already exact)
+- [x] Uncaught-panic output in Go's shape: `panic: <value>` + `goroutine 1 [running]:` header
+  + exit status 2 (a synthetic entry wrapper → `Rt.FatalPanic`; frames are the CLR stack, see LIMITATIONS)
 - [ ] `%T`/`%#v` precise element types for dynamically-reached slices/maps; nil-map `%v` → `map[]`
 
 ### Standard library

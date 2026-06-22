@@ -240,11 +240,12 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	c.collectBridgeMethods()
 
 	// Startup: run package-var initializers and init() functions before main.
+	var initMethod *goir.Method
 	if init, ok := c.buildInit(); !ok {
 		return nil, false
 	} else if init != nil {
 		prog.Methods = append(prog.Methods, init)
-		prog.Entry.Code = append([]goir.Op{{Code: goir.OpCallMethod, Callee: init}}, prog.Entry.Code...)
+		initMethod = init
 	}
 
 	// buildInit may lower package-var initializers / init() bodies that introduce
@@ -255,11 +256,52 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	}
 
 	c.finishInvoke()
-	if c.needsInvoker && prog.Entry != nil {
-		prog.Entry.Code = append([]goir.Op{{Code: goir.OpRegisterInvoker}}, prog.Entry.Code...)
-	}
+
+	// Wrap the entry: run init() then the user main() inside a top-level panic handler, so
+	// an uncaught panic prints Go-style (`panic: …` + a goroutine header, exit 2) instead of
+	// a .NET unhandled-exception dump. The user main keeps its own name; the synthetic
+	// wrapper becomes the assembly entry point.
+	prog.Entry = c.buildEntryWrapper(prog.Entry, initMethod)
+	prog.Methods = append(prog.Methods, prog.Entry)
+
 	prog.Structs = c.structOrder
 	return prog, true
+}
+
+// buildEntryWrapper synthesizes the program entry point: it registers the goroutine
+// invoker (if needed), then calls init() and the user main() inside a try/catch that hands
+// an uncaught GoPanicException to Rt.FatalPanic (Go-style report + exit 2).
+func (c *lowerCtx) buildEntryWrapper(realMain, init *goir.Method) *goir.Method {
+	m := &goir.Method{Name: "__goclr_entry", GoName: "__goclr_entry", Ret: goir.TVoid}
+	cl := &funcLowerer{lowerCtx: c, m: m, ok: true}
+	cl.locals = map[types.Object]int{}
+	cl.cells = map[int]goir.Type{}
+
+	if c.needsInvoker {
+		cl.emit(goir.Op{Code: goir.OpRegisterInvoker})
+	}
+	tryStart, handlerStart, handlerEnd, lEnd := cl.label(), cl.label(), cl.label(), cl.label()
+	cl.mark(tryStart)
+	if init != nil {
+		cl.emit(goir.Op{Code: goir.OpCallMethod, Callee: init})
+	}
+	cl.emit(goir.Op{Code: goir.OpCallMethod, Callee: realMain})
+	cl.emit(goir.Op{Code: goir.OpLeave, Label: lEnd})
+	cl.mark(handlerStart)
+	// The catch pushes the GoPanicException; FatalPanic reports it and exits (never returns).
+	cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "FatalPanic",
+		Params: []goir.Type{goir.TObject}, Ret: goir.TVoid,
+	}})
+	cl.emit(goir.Op{Code: goir.OpLeave, Label: lEnd})
+	cl.mark(handlerEnd)
+	cl.mark(lEnd)
+	cl.emit(goir.Op{Code: goir.OpRet})
+	m.EH = append(m.EH, goir.EHClause{
+		TryStart: tryStart, TryEnd: handlerStart,
+		HandlerStart: handlerStart, HandlerEnd: handlerEnd,
+	})
+	return m
 }
 
 // drainMonoTodo lowers every queued generic-function instantiation body until the
