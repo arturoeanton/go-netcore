@@ -162,7 +162,11 @@ module):
 - **`x/sync/errgroup`** — works: compiles from source and runs (concurrent goroutines +
   first-error propagation), now that `context.WithCancelCause`/`context.Cause` are shimmed.
   See `examples/demo_errgroup` (requires `go mod vendor`).
-- **`google/uuid`** — not yet exercised (not in the module graph).
+- **`google/uuid`** — works: compiles from source and runs (v4 with a custom rand reader,
+  v5 `NewSHA1`, parse/format, version/variant, nil). Closed the stdlib gaps it needs:
+  `os.Getuid`/`Getgid`, `net.Interfaces` (empty list — no host-NIC enumeration),
+  `bytes.EqualFold`, `encoding/hex.Encode`/`Decode`, and the io.Reader callback bridge.
+  See `examples/demo_uuid` (requires `go mod vendor`).
 - **slog edges**: the automatic timestamp is omitted (so output is reproducible —
   drop `slog.TimeKey` via `ReplaceAttr` to match `go run`); `WithGroup`/`LogAttrs` and
   the `HandlerOptions.Level`/`ReplaceAttr` fields are accepted but not applied.

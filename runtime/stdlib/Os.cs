@@ -397,6 +397,29 @@ public static class Os
 
     public static void Exit(long code) => System.Environment.Exit((int)code);
     public static long Getpid() => System.Environment.ProcessId;
+    // .NET has no portable getuid/getgid; report a stable non-root value (these feed rarely
+    // used paths such as google/uuid's DCE UUIDs). On Unix the real ids are read when
+    // available, else a fixed fallback so the value is deterministic.
+    public static long Getuid() => UnixId("id -u", 1000);
+    public static long Getgid() => UnixId("id -g", 1000);
+    public static long Getppid() => System.Environment.ProcessId; // best-effort
+
+    private static long UnixId(string cmd, long fallback)
+    {
+        try
+        {
+            if (System.OperatingSystem.IsWindows()) return -1;
+            var parts = cmd.Split(' ');
+            var psi = new System.Diagnostics.ProcessStartInfo(parts[0], parts.Length > 1 ? parts[1] : "")
+            { RedirectStandardOutput = true, UseShellExecute = false };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) return fallback;
+            string outp = p.StandardOutput.ReadToEnd().Trim();
+            p.WaitForExit();
+            return long.TryParse(outp, out var id) ? id : fallback;
+        }
+        catch { return fallback; }
+    }
 
     public static object?[] ReadFile(GoString name)
     {

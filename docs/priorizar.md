@@ -12,7 +12,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 5. ✅ function values de funciones shimmed — tag `0.0.56.shim-func-value`
 6. ✅ formato de panic no recuperado igual a Go — tag `0.0.57.panic-format`
 7. ✅ deep `reflect` mínimo (`MakeFunc`/`Value.Call`/`Method.Call`) — tag `0.0.58.reflect-deep`
-8. 🟡 `text/template` + `google/uuid` + `errgroup`(✅ tag `0.0.59.errgroup`) + testify — errgroup cerrado; resto pendiente (template = stub grande, uuid/testify = deps no vendored)
+8. 🟡 `text/template` + `google/uuid`(✅ tag `0.0.61.uuid`) + `errgroup`(✅ tag `0.0.59`) + testify — errgroup + uuid cerrados; pendiente: text/template (stub grande), testify (no vendored)
 9. ⬜ GORM target chico
 10. ⬜ performance / AOT
 
@@ -45,7 +45,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 25. ✅ `container/ring` — alta, bajo/medio · tag `0.0.60.container-ring` (compila de source)
 26. ⬜ `text/scanner` y `text/tabwriter` — media, medio
 27. ✅ `golang.org/x/sync/errgroup` — alta/media, alto · tag `0.0.59.errgroup` (compila de source + corre; agregado `context.WithCancelCause`/`Cause`)
-28. ⬜ `google/uuid` — alta, alto
+28. ✅ `google/uuid` — alta, alto · tag `0.0.61.uuid` (compila de source + corre; cerró os.Getuid, net.Interfaces, bytes.EqualFold, hex.Encode/Decode, bridge io.Reader)
 29. ⬜ Testify — media, alto
 30. ⬜ JWT libraries — media, alto
 31. ⬜ Redis client pure-Go — media/difícil, alto
@@ -123,3 +123,10 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 - ✅ **#25 container/ring** — tag `0.0.60.container-ring`. Agregado a `compileFromSource`
   (Go puro: lista circular con punteros, sin deps). Fixture 408 byte-exacto (New/Next/Prev/
   Move/Do/Len/Link). Conformance verde.
+- ✅ **#8/#28 google/uuid** — tag `0.0.61.uuid`. `github.com/google/uuid` compila de source
+  y corre (v4 con rander custom, v5 NewSHA1, parse/format, version/variant, nil). Cadena de
+  gaps cerrada: `os.Getuid`/`Getgid`/`Getppid`, `net.Interfaces` (lista vacía — sin
+  enumeración de NICs), `bytes.EqualFold`, `encoding/hex.Encode`/`Decode`, y el **bridge de
+  io.Reader** (`io.ReadFull` dispara el `Read` del reader de usuario — simétrico a io.Writer;
+  `io.Reader` agregado a `bridgeInterfaces`). `examples/demo_uuid` byte-exacto. Fixture 409
+  (bytes.EqualFold + hex.Encode/Decode + io.ReadFull con reader de usuario). Conformance verde.

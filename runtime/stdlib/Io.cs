@@ -42,6 +42,20 @@ public static class Io
             case GoBuffer gb:
                 { int avail = gb.B.Count - gb.Pos; got = System.Math.Min(want, avail);
                   for (int i = 0; i < got; i++) buf.Data![buf.Off + i] = (int)gb.B[gb.Pos + i]; gb.Pos += got; break; }
+            case not null when Bridge.HasMethod(r, "Read"):
+                { // A user io.Reader: drive its own Read through the callback bridge, filling
+                  // buf in place (the chunk GoSlice aliases buf's backing array).
+                  got = 0;
+                  while (got < want)
+                  {
+                      var chunk = new GoSlice { Data = buf.Data, Off = buf.Off + got, Len = want - got, Cap = want - got };
+                      var res = Bridge.CallMethod(r, "Read", new object?[] { chunk }) as object?[];
+                      int n = res != null && res.Length > 0 && res[0] != null ? (int)System.Convert.ToInt64(res[0]) : 0;
+                      object? rerr = res != null && res.Length > 1 ? res[1] : null;
+                      got += n;
+                      if (rerr != null || n == 0) break;
+                  }
+                  break; }
             default:
                 { var data = Readers.Drain(r); got = System.Math.Min(want, data.Length);
                   for (int i = 0; i < got; i++) buf.Data![buf.Off + i] = (int)data[i]; break; }

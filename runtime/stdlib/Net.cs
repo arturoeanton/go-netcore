@@ -31,6 +31,12 @@ public static class Net
     internal static readonly System.Collections.Generic.Dictionary<string, TcpListener> Bound =
         new(System.StringComparer.Ordinal);
 
+    // net.Interfaces() ([]Interface, error): goclr does not enumerate host NICs, so report
+    // an empty list (no error) — callers that read a MAC for an id (google/uuid's v1 node)
+    // fall back to a random value, as Go does on a host with no usable interface.
+    public static object?[] Interfaces() =>
+        new object?[] { default(GoSlice), null };
+
     public static object?[] Listen(GoString network, GoString address)
     {
         try

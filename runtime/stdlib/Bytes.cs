@@ -38,6 +38,9 @@ public static class Bytes
     }
 
     public static bool Equal(GoSlice a, GoSlice b) => B(a).AsSpan().SequenceEqual(B(b));
+    // bytes.EqualFold: case-insensitive equality (delegates to the string form).
+    public static bool EqualFold(GoSlice a, GoSlice b) =>
+        Strings.EqualFold(GoString.FromBytes(B(a)), GoString.FromBytes(B(b)));
     public static long Compare(GoSlice a, GoSlice b) => B(a).AsSpan().SequenceCompareTo(B(b));
     public static bool Contains(GoSlice s, GoSlice sub) => Idx(B(s), B(sub)) >= 0;
     public static bool HasPrefix(GoSlice s, GoSlice p) => B(s).AsSpan().StartsWith(B(p));
