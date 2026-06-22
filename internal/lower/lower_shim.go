@@ -1453,8 +1453,18 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 	// When the only implementers are shim handles (hash.Hash, context.Context, …) the
 	// short-circuit below is correct and faster, so keep it.
 	if iface, isIface := seln.Recv().Underlying().(*types.Interface); isIface {
-		if len(l.implementers(iface)) > 0 {
-			return nil, false
+		// Only a NON-stdlib-from-source implementer should flip this to interface
+		// dispatch. A compileFromSource stdlib package (e.g. io, now lowered) contributes
+		// internal types like io.nopCloser that implement io.ReadCloser but never flow as
+		// the receiver of a shim-backed interface field (an http response Body is always a
+		// GoReader handle): counting them would route resp.Body.Close() through
+		// interfaceDispatch, where the GoReader matches no enumerated implementer and the
+		// call nil-panics. User implementers (and other lowered app types) still suppress
+		// the short-circuit, preserving the net.Listener / GoFileInfo fix.
+		for _, impl := range l.implementers(iface) {
+			if pkg := impl.named.Obj().Pkg(); pkg == nil || !compileFromSource[pkg.Path()] {
+				return nil, false
+			}
 		}
 	}
 	// For a method promoted from an embedded shim field (struct{ *sha3.SHAKE }),

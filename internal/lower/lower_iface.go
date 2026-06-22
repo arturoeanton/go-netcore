@@ -674,7 +674,11 @@ func (l *funcLowerer) shimIfaceImplementers(iface *types.Interface, ifaceMethod 
 }
 
 // shimNamedType resolves an opaque-shim type name ("sync.RWMutex") to its *types.Named,
-// scanning the program's import closure once.
+// scanning the program's import closure once. The scan starts from c.root (the main
+// package, whose closure spans the whole program), NOT l.pkg — l.pkg is whichever package
+// is being lowered when this is first called, and a narrow-closure package (e.g. io,
+// lowered from source, imports only errors+sync) would otherwise freeze an incomplete map
+// that misses shim types like bytes.Buffer reachable only from main.
 func (l *funcLowerer) shimNamedType(name string) (*types.Named, bool) {
 	if l.shimNamed == nil {
 		l.shimNamed = map[string]*types.Named{}
@@ -699,7 +703,7 @@ func (l *funcLowerer) shimNamedType(name string) (*types.Named, bool) {
 				visit(imp)
 			}
 		}
-		visit(l.pkg.Types)
+		visit(l.root)
 	}
 	n, ok := l.shimNamed[name]
 	return n, ok

@@ -406,25 +406,35 @@ they are verified independent of the (still-incomplete) fiber build:
   `GoHash32` digest with a `crc32` algo branch; `IEEETable` is an opaque `*Table` handle that
   `Update` ignores (only the IEEE polynomial is materialised). Fixture 414.
 
-Next blocker on the chain: **`io.MultiWriter`** (gzip `WriteTo`). It needs heterogeneous
-`io.Writer` dispatch from a shim — writing the same bytes to a shim digest (`GoHash32`) *and* a
-user writer through one call — which is the itable/bridge dispatch the compiler does for a real
-`w.Write(p)` interface call but a C# shim cannot yet replicate. Cleanest fix is lowering
-`io.MultiWriter` from real Go source so the per-writer `Write` calls go through normal interface
-dispatch; deferred as its own task. fasthttp's own unsafe (step 3) is still untouched.
+**`io.MultiWriter` — LANDED** (gzip `WriteTo`, fixture 415). `"io"` is now in
+`compileFromSource`: `io` is pure Go (imports only `errors`+`sync`), its full source lowers, and
+because `shimExtern` precedes `byFunc` in `namedFuncCall` the existing `io.Copy`/`ReadAll`/
+`WriteString` shims keep winning — only the un-shimmed funcs (`MultiWriter`/`MultiReader`/
+`TeeReader`/`Pipe`) come from source, so their per-writer/-reader `Write`/`Read` go through normal
+interface dispatch. The heterogeneous-dispatch problem (digest + user writer in one call) solves
+itself this way.
 
-**From-source spike (deferred, not landed).** Adding `"io"` to `compileFromSource` was tried and
-is *viable*: `io` is pure Go (imports only `errors`+`sync`), its full source lowers, and because
-`shimExtern` is consulted before `byFunc` in `namedFuncCall`, the existing `io.Copy`/`ReadAll`/
-`WriteString` shims keep winning while only the un-shimmed funcs (`MultiWriter`/`MultiReader`/
-`TeeReader`/`Pipe`) come from source. With it, `io.MultiWriter` compiles and `multiWriter.Write`
-is correctly dispatched **through the callback bridge** (`Bridge.CallMethod → __adapter → io_multiWriter_Write`)
-— the heterogeneous-dispatch problem solves itself. What remains is a runtime nil-deref inside the
-generated `multiWriter.Write` at the inner `w.Write(p)` over a shim writer (`bytes.Buffer`): the
-shim writer type is not yet enumerated as a bridge `io.Writer` implementer, so the nested
-interface call returns null. Two things must land together before this is shippable: (1) fix the
-nested-call nil-deref (enumerate shim writer types as bridge implementers, or have the from-source
-`w.Write` fall through to the shim writer path), and (2) a full regression pass — putting `io` in
-`compileFromSource` is high-blast-radius (every program links it), so the entire conformance suite
-+ goja/gin/echo validation targets must stay green. Left as a focused session, not an unattended
-checkpoint.
+Two real bugs surfaced and were fixed, both **general** (not io-specific):
+
+1. **`shimNamedType` scanned `l.pkg`, not `c.root`.** The opaque-shim-name→`*types.Named` map is
+   built once, lazily, from whichever package first triggers it. With `io` lowered from source,
+   `io` (narrow closure: `errors`+`sync`) triggered it first and froze a map missing `bytes.Buffer`
+   etc. — so `w.Write(p)` over a shim writer matched no implementer and nil-panicked. Fixed by
+   scanning from `c.root` (the main package, whose closure spans the whole program). This is the
+   same `c.root`-not-`c.pkg` lesson the io.Writer bridge commit learned for `lookupNamedType`;
+   `shimNamedType` had the identical latent bug, dormant until a narrow-closure from-source package
+   triggered it first.
+2. **`shimMethodExtern`'s interface guard over-triggered on from-source stdlib implementers.** The
+   guard suppresses the shim short-circuit when an interface receiver has lowered implementers (so a
+   user `fs.FileInfo` isn't mis-cast to the one shim handle — the net.Listener/GoFileInfo fix). But
+   `io`-from-source adds internal types (`io.nopCloser`) implementing `io.ReadCloser`, which flipped
+   `resp.Body.Close()` (resp.Body is always a `GoReader` handle) into interface dispatch, where it
+   matched nothing and nil-panicked (regressed conformance 388). Fixed by ignoring implementers from
+   `compileFromSource` stdlib packages in that guard — they never flow as a shim-backed interface
+   field's receiver; user/app implementers still suppress the short-circuit.
+
+Regression pass (io is high-blast-radius — every program links it): full conformance suite (415
+fixtures incl. the httptest loopback-server fixture 388) green, `goja` demo byte-exact, lower/emit/
+analysis tests (incl. the shim-signature validators) green. The `gin_sql` startup panic and the
+`gin`/`echo` IPv6/HttpListener serving-bridge binding quirk are **pre-existing** (identical with
+`io`-from-source disabled) and orthogonal to this change. fasthttp's core (step 3) is next.
