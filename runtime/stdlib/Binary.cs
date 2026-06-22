@@ -134,6 +134,55 @@ public static class Binary
     private static byte Get(GoSlice b, int i) => (byte)System.Convert.ToInt64(b.Data![b.Off + i]);
     private static void Set(GoSlice b, int i, byte v) => b.Data![b.Off + i] = (int)v;
 
+    // readOne reads a single byte from any io.ByteReader. Known shim reader types
+    // are read directly; a user reader is driven through the callback bridge.
+    // Returns the byte in [0,255], or -1 with err set on EOF/error.
+    private static int ReadOne(object? r, out object? err)
+    {
+        object?[]? res = r switch
+        {
+            GoReader => Readers.Reader_ReadByte(r),
+            GoBuffer => BytesBuffer.ReadByte(r),
+            not null when Bridge.HasMethod(r, "ReadByte") => Bridge.CallMethod(r, "ReadByte", System.Array.Empty<object?>()) as object?[],
+            _ => null,
+        };
+        if (res == null) { err = Io.EOFSentinel; return -1; }
+        err = res.Length > 1 ? res[1] : null;
+        int b = res.Length > 0 && res[0] != null ? (int)System.Convert.ToInt64(res[0]) : 0;
+        if (err != null) return -1;
+        return b & 0xff;
+    }
+
+    private static readonly GoError ErrOverflow = new(GoString.FromDotNetString("binary: varint overflows a 64-bit integer"));
+
+    // ReadUvarint mirrors encoding/binary.ReadUvarint, reading LEB128 from an io.ByteReader.
+    public static object?[] ReadUvarint(object? r)
+    {
+        ulong x = 0; int s = 0;
+        for (int i = 0; ; i++)
+        {
+            int b = ReadOne(r, out var err);
+            if (err != null) return new object?[] { x, err };
+            if (b < 0x80)
+            {
+                if (i == 9 && b > 1) return new object?[] { (ulong)0, ErrOverflow };
+                return new object?[] { x | ((ulong)b << s), null };
+            }
+            x |= (ulong)(b & 0x7f) << s;
+            s += 7;
+        }
+    }
+
+    // ReadVarint mirrors encoding/binary.ReadVarint (zig-zag decode over ReadUvarint).
+    public static object?[] ReadVarint(object? r)
+    {
+        var ux = ReadUvarint(r);
+        ulong u = System.Convert.ToUInt64(ux[0] ?? (ulong)0);
+        long x = (long)(u >> 1);
+        if ((u & 1) != 0) x = ~x;
+        return new object?[] { x, ux[1] };
+    }
+
     public static uint Uint16(object o, GoSlice b)
     {
         var e = (GoByteOrder)o;

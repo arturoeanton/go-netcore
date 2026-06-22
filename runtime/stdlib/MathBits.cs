@@ -42,4 +42,6 @@ public static class MathBits
     public static uint ReverseBytes16(uint x) => System.Buffers.Binary.BinaryPrimitives.ReverseEndianness((ushort)x);
     public static uint ReverseBytes32(uint x) => System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(x);
     public static uint Reverse32(uint x) { uint r = 0; for (int i = 0; i < 32; i++) { r = (r << 1) | (x & 1); x >>= 1; } return r; }
+    public static uint Reverse16(uint x) { uint r = 0; for (int i = 0; i < 16; i++) { r = (r << 1) | (x & 1); x >>= 1; } return r & 0xffff; }
+    public static int Reverse8(int x) { int v = x & 0xff; int r = 0; for (int i = 0; i < 8; i++) { r = (r << 1) | (v & 1); v >>= 1; } return r & 0xff; }
 }

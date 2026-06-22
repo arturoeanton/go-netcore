@@ -397,6 +397,11 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 	if l.pointerRootedFieldWrite(sel, rhs) {
 		return
 	}
+	// s[i].A.B.x = v : a nested field of a slice/array element (the element is a boxed
+	// struct with no stable managed address), read-modify-write the whole element.
+	if l.sliceElemRootedFieldWrite(sel, rhs) {
+		return
+	}
 	// global.field = v : a field of a package-level struct global is reached via
 	// ldsfld, not ldloca; RMW through the global.
 	if gi, ok := l.globalRef(sel.X); ok {
@@ -406,6 +411,86 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 	l.lvalueAddr(sel.X)
 	l.exprCoerced(rhs, bt.Struct.Fields[fi].Type)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+}
+
+// sliceElemRootedFieldWrite handles `s[i].A.B.x = v` — a (possibly nested) field of a
+// slice/array element. The element is a boxed struct with no stable managed address, so
+// it is read into a temp, the field path is navigated with ldflda, and the temp is written
+// back. Returns false if the chain is not rooted at a slice/array element.
+func (l *funcLowerer) sliceElemRootedFieldWrite(sel *ast.SelectorExpr, rhs ast.Expr) bool {
+	var path []int
+	cur := ast.Expr(sel)
+	for {
+		s, ok := unparen(cur).(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		seln := l.pkg.TypesInfo.Selections[s]
+		if seln == nil || seln.Kind() != types.FieldVal {
+			return false
+		}
+		path = append(append([]int{}, seln.Index()...), path...)
+		if ix, ok := unparen(s.X).(*ast.IndexExpr); ok {
+			xt := l.exprType(ix.X)
+			sliceTy := xt
+			isPtrArray := xt.Kind == goir.KPtr && xt.Elem != nil && xt.Elem.Kind == goir.KSlice
+			if isPtrArray {
+				sliceTy = *xt.Elem
+			}
+			if elemTy := l.exprType(s.X); (xt.Kind == goir.KSlice || isPtrArray) && elemTy.Kind == goir.KStruct {
+				l.emitSliceElemRootedWrite(ix, sliceTy, isPtrArray, elemTy, path, rhs)
+				return true
+			}
+		}
+		if l.exprType(s.X).Kind != goir.KStruct {
+			return false
+		}
+		cur = s.X
+	}
+}
+
+// emitSliceElemRootedWrite reads s[i] into a temp, navigates path (ldflda for all but the
+// last index, stfld for the last), then writes the temp back into the slice/array.
+func (l *funcLowerer) emitSliceElemRootedWrite(ix *ast.IndexExpr, sliceTy goir.Type, isPtrArray bool, elemTy goir.Type, path []int, rhs ast.Expr) {
+	sliceTmp := l.addLocal(nil, sliceTy)
+	idxTmp := l.addLocal(nil, goir.TInt64)
+	elemTmp := l.addLocal(nil, elemTy)
+
+	l.expr(ix.X)
+	if isPtrArray {
+		l.emit(goir.Op{Code: goir.OpPtrGet})
+		l.emitUnbox(sliceTy)
+	}
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: sliceTmp})
+	l.expr(ix.Index)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: idxTmp})
+
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxTmp})
+	l.emit(goir.Op{Code: goir.OpSliceGet})
+	l.emitUnbox(elemTy)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: elemTmp})
+
+	l.emit(goir.Op{Code: goir.OpLdLocA, Local: elemTmp})
+	curT := elemTy
+	for i := 0; i < len(path)-1; i++ {
+		fi := path[i]
+		if fi >= len(curT.Struct.Fields) || curT.Struct.Fields[fi].Type.Kind != goir.KStruct {
+			l.fail(ix.Pos(), "nested field write through a non-struct field")
+			return
+		}
+		l.emit(goir.Op{Code: goir.OpLdFldA, Struct: curT.Struct, Field: fi})
+		curT = curT.Struct.Fields[fi].Type
+	}
+	last := path[len(path)-1]
+	l.exprCoerced(rhs, curT.Struct.Fields[last].Type)
+	l.emit(goir.Op{Code: goir.OpStFld, Struct: curT.Struct, Field: last})
+
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: elemTmp})
+	l.emitBox(elemTy)
+	l.emit(goir.Op{Code: goir.OpSliceSet})
 }
 
 // pointerRootedFieldWrite handles assignment to a field reached through a chain of
@@ -863,6 +948,16 @@ func (l *funcLowerer) rangeStmt(s *ast.RangeStmt) {
 		l.rangeSlice(s, xt)
 		return
 	}
+	// range over *[N]T (pointer to array): deref to the backing slice, then range.
+	if xt.Kind == goir.KPtr && xt.Elem != nil && xt.Elem.Kind == goir.KSlice {
+		elemTy := *xt.Elem
+		l.rangeSliceWith(s, elemTy, func() {
+			l.expr(s.X)
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emitUnbox(elemTy)
+		})
+		return
+	}
 	if xt.Kind == goir.KMap {
 		// rangeMap allocates its own break/continue labels internally and cannot
 		// accept pre-allocated ones, so a labeled break/continue over a map range
@@ -988,9 +1083,16 @@ func (l *funcLowerer) rangeInt(s *ast.RangeStmt) {
 // rangeSlice lowers `for k, v := range s` over a slice: an index loop exposing
 // the index (k, int) and the unboxed element (v).
 func (l *funcLowerer) rangeSlice(s *ast.RangeStmt, st goir.Type) {
+	l.rangeSliceWith(s, st, func() { l.expr(s.X) })
+}
+
+// rangeSliceWith lowers a slice/array range whose backing slice is produced by
+// loadX (it pushes the GoSlice). Splitting the source-load out lets a range over
+// a *[N]T pointer-to-array deref the pointer first and reuse the same loop body.
+func (l *funcLowerer) rangeSliceWith(s *ast.RangeStmt, st goir.Type, loadX func()) {
 	elem := *st.Elem
 	sLocal := l.addLocal(nil, st)
-	l.expr(s.X)
+	loadX()
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: sLocal})
 
 	idxLocal := l.addLocal(nil, goir.TInt64)

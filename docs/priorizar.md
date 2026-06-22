@@ -187,3 +187,13 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   (dead code al servir; runtime-crashea si se usa — documentado). Muro: deps de fasthttp —
   `andybalholm/brotli` pega un gap de lowering (`s[i].a.b = v`, asignación a campo anidado de
   elemento de slice) + fasthttp es unsafe-heavy. Documentado en GAPS.md.
+- 🟢 **Fiber — destrabe ronda 2** — tag `0.0.67.fiber-compress-shims`. Cerrados como features/shims
+  generales (cada uno con fixture standalone, byte-exact vs `go run`):
+  - `s[i].a.b = v` (escritura a campo anidado de elemento de slice/array, incl. `*[N]T`) — fixture 411.
+  - **`range` sobre `*[N]T`** (puntero a array) — feature Go que faltaba; deref al slice y rangea — fixture 412.
+  - `encoding/binary.ReadUvarint`/`ReadVarint` sobre cualquier `io.ByteReader` (readers shim directo,
+    reader de usuario vía callback-bridge) — fixture 413.
+  - `math/bits.Reverse8`/`Reverse16`; `hash/crc32.Update`/`NewIEEE`/`IEEETable` (CRC de gzip) — fixture 414.
+  Próximo muro: **`io.MultiWriter`** (gzip `WriteTo`) — requiere dispatch `io.Writer` heterogéneo
+  desde un shim (digest `GoHash32` + writer de usuario en una llamada); fix limpio = bajar
+  `io.MultiWriter` desde fuente Go real. Diferido como tarea propia. Detalle en GAPS.md.

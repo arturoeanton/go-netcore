@@ -361,3 +361,25 @@ element** (`nodes[pos].u.shortcut = …`, i.e. `s[i].a.b = v`) — and fasthttp 
 unsafe-heavy (its own buffer/socket code). So supporting Fiber means: (1) the `s[i].a.b = v`
 lowering, (2) working through brotli/gzip compression, (3) fasthttp's unsafe (overlay or the
 safe build tag where it offers one). A staged target, like gin's x/net/http2 was.
+
+### Progress (2026-06, tag `0.0.67.fiber-compress-shims`)
+
+Step (1) is **done** (`s[i].a.b = v`, fixture 411) and several compression-layer gaps from
+step (2) are closed as generally-useful, data-driven shims — each with a standalone fixture so
+they are verified independent of the (still-incomplete) fiber build:
+
+- **`range` over `*[N]T`** (pointer-to-array): deref to the backing slice then range. General
+  Go feature, was missing. Fixture 412. (`klauspost/compress/flate` huffman tables.)
+- **`math/bits.Reverse8` / `Reverse16`** (flate huffman code building). Fixture 414.
+- **`encoding/binary.ReadUvarint` / `ReadVarint`** over any `io.ByteReader` (known shim readers
+  read directly; a user reader is driven through the callback bridge). Fixture 413.
+- **`hash/crc32.Update` / `NewIEEE` / `IEEETable`** (gzip CRC). `NewIEEE()` reuses the existing
+  `GoHash32` digest with a `crc32` algo branch; `IEEETable` is an opaque `*Table` handle that
+  `Update` ignores (only the IEEE polynomial is materialised). Fixture 414.
+
+Next blocker on the chain: **`io.MultiWriter`** (gzip `WriteTo`). It needs heterogeneous
+`io.Writer` dispatch from a shim — writing the same bytes to a shim digest (`GoHash32`) *and* a
+user writer through one call — which is the itable/bridge dispatch the compiler does for a real
+`w.Write(p)` interface call but a C# shim cannot yet replicate. Cleanest fix is likely lowering
+`io.MultiWriter` from real Go source so the per-writer `Write` calls go through normal interface
+dispatch; deferred as its own task. fasthttp's own unsafe (step 3) is still untouched.

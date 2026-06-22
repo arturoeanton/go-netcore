@@ -12,6 +12,7 @@ public static class Hashes
     private static byte[] B(GoSlice s) { var b = new byte[s.Len]; for (int i = 0; i < s.Len; i++) b[i] = (byte)System.Convert.ToInt64(s.Data![s.Off + i]); return b; }
 
     // ---- FNV ----
+    public static object Crc32NewIEEE() => new GoHash32 { H = 0, Algo = "crc32" };
     public static object Fnv32() => new GoHash32 { H = 2166136261u, Algo = "fnv32" };
     public static object Fnv32a() => new GoHash32 { H = 2166136261u, Algo = "fnv32a" };
     public static object Fnv64() => new GoHash64 { H = 14695981039346656037ul, Algo = "fnv64" };
@@ -20,6 +21,7 @@ public static class Hashes
     public static object?[] H32_Write(object ho, GoSlice p)
     {
         var h = (GoHash32)ho;
+        if (h.Algo == "crc32") { h.H = Crc32Update(h.H, null, p); return new object?[] { (long)p.Len, null }; }
         foreach (byte b in B(p))
         {
             if (h.Algo == "fnv32a") { h.H ^= b; h.H *= 16777619u; }
@@ -29,7 +31,7 @@ public static class Hashes
     }
     public static uint H32_Sum32(object ho) => ((GoHash32)ho).H;
     public static long H32_Size(object ho) => 4;
-    public static void H32_Reset(object ho) => ((GoHash32)ho).H = 2166136261u;
+    public static void H32_Reset(object ho) => ((GoHash32)ho).H = ((GoHash32)ho).Algo == "crc32" ? 0u : 2166136261u;
 
     public static object?[] H64_Write(object ho, GoSlice p)
     {
@@ -63,6 +65,17 @@ public static class Hashes
         uint c = 0xFFFFFFFFu;
         foreach (byte b in B(data)) c = CrcTable[(c ^ b) & 0xFF] ^ (c >> 8);
         return c ^ 0xFFFFFFFFu;
+    }
+    // Opaque *crc32.Table handle (a non-generic GoPtr cell, matching how goclr
+    // marshals *crc32.Table). Only the IEEE table is materialised, so Crc32Update
+    // ignores it and always uses the IEEE polynomial.
+    public static object Crc32IEEETable() => new GoCLR.Runtime.GoPtr { Value = "crc32.IEEE" };
+    // crc32.Update(crc, tab, p): fold p into the running IEEE CRC of crc.
+    public static uint Crc32Update(uint crc, GoCLR.Runtime.GoPtr tab, GoSlice p)
+    {
+        crc = ~crc;
+        foreach (byte b in B(p)) crc = CrcTable[(crc ^ b) & 0xFF] ^ (crc >> 8);
+        return ~crc;
     }
 
     // ---- Adler32 ----
