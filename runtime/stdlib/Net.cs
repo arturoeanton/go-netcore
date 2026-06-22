@@ -292,6 +292,24 @@ public static class Net
     }
     private static GoSlice NilBytes() => new() { Data = null, Off = 0, Len = 0, Cap = 0 };
 
+    // net package-level IP vars. IPv4(a,b,c,d) is the 16-byte IPv4-in-IPv6 form
+    // (10 zero bytes, 0xff, 0xff, then the 4 octets) — matching Go's net.IPv4.
+    private static GoSlice IPv4Bytes(byte a, byte b, byte c, byte d) =>
+        Bytes(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d });
+    private static GoSlice IPv6Bytes(params byte[] last) // 16 bytes, last N filled, rest zero
+    {
+        var b = new byte[16];
+        for (int i = 0; i < last.Length; i++) b[16 - last.Length + i] = last[i];
+        return Bytes(b);
+    }
+    public static object IPv4zero() => IPv4Bytes(0, 0, 0, 0);
+    public static object IPv4bcast() => IPv4Bytes(255, 255, 255, 255);
+    public static object IPv4allsys() => IPv4Bytes(224, 0, 0, 1);
+    public static object IPv4allrouter() => IPv4Bytes(224, 0, 0, 2);
+    public static object IPv6zero() => IPv6Bytes();
+    public static object IPv6unspecified() => IPv6Bytes();
+    public static object IPv6loopback() => IPv6Bytes(1);
+
     // net.ParseIP(s) net.IP: the IP's bytes, or nil if s is not a valid IP.
     public static GoSlice ParseIP(GoString s) =>
         IPAddress.TryParse(s.ToDotNetString(), out var ip) ? Bytes(ip.GetAddressBytes()) : NilBytes();

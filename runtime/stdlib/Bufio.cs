@@ -12,7 +12,7 @@ public sealed class GoScanner
 }
 
 /// <summary>A bufio.Reader over an underlying runtime reader.</summary>
-public sealed class GoBufReader { public object? R; }
+public sealed class GoBufReader { public object? R; public int Pending = -1; public int Last = -1; }
 
 /// <summary>A bufio.ReadWriter pairing a Reader and a Writer.</summary>
 public sealed class GoBufReadWriter { public object R = new GoBufReader(); public object W = new GoBufWriter(); }
@@ -38,10 +38,22 @@ public static class Bufio
     public static object?[] Reader_ReadByte(object br)
     {
         var b = (GoBufReader)br;
+        if (b.Pending >= 0) { int v = b.Pending; b.Pending = -1; b.Last = v; return new object?[] { v, null }; }
         var one = new GoSlice { Data = new object?[1], Off = 0, Len = 1, Cap = 1 };
         var r = Io.ReadFull(b.R, one);
         if (r[1] != null) return new object?[] { 0, r[1] };
+        b.Last = (int)System.Convert.ToInt64(one.Data![0]);
         return new object?[] { one.Data![0], null };
+    }
+    // bufio.Reader.UnreadByte: unread the last byte returned by ReadByte so the next
+    // ReadByte returns it again. Errors if the last op was not a successful ReadByte.
+    public static object? Reader_UnreadByte(object br)
+    {
+        var b = (GoBufReader)br;
+        if (b.Last < 0) return new GoError(GoString.FromDotNetString("bufio: invalid use of UnreadByte"));
+        b.Pending = b.Last;
+        b.Last = -1;
+        return null;
     }
     public static void Reader_Reset(object br, object? r) => ((GoBufReader)br).R = r;
     public static long Reader_Buffered(object br) => 0;

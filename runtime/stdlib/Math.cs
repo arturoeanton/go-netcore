@@ -33,6 +33,7 @@ public static class Math
     public static double Min(double x, double y) => SM.Min(x, y);
     public static double Mod(double x, double y) => x % y; // C# % on doubles is fmod, like Go's Mod
     public static double Pow(double x, double y) => SM.Pow(x, y);
+    public static double Pow10(long n) => SM.Pow(10, n);
     public static double Remainder(double x, double y) => SM.IEEERemainder(x, y);
     public static double Round(double x) => SM.Round(x, System.MidpointRounding.AwayFromZero);
     public static bool Signbit(double x) => double.IsNegative(x);

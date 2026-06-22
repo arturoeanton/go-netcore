@@ -169,6 +169,7 @@ public static class Time
         var t = FromDateTime(dt); t.N += nsec; return t;
     }
     public static long Since(object t) => (System.DateTime.UtcNow - Epoch).Ticks * 100 - ((GoTime)t).N;
+    public static long Until(object t) => ((GoTime)t).N - (System.DateTime.UtcNow - Epoch).Ticks * 100;
 
     // Methods (receiver passed as first arg).
     public static long Time_Unix(object t) => ((GoTime)t).N / Second;

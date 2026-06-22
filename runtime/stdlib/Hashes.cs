@@ -13,6 +13,8 @@ public static class Hashes
 
     // ---- FNV ----
     public static object Crc32NewIEEE() => new GoHash32 { H = 0, Algo = "crc32" };
+    // adler32.New(): a running digest. H packs (b<<16)|a; the initial value is 1 (a=1, b=0).
+    public static object Adler32New() => new GoHash32 { H = 1, Algo = "adler32" };
     public static object Fnv32() => new GoHash32 { H = 2166136261u, Algo = "fnv32" };
     public static object Fnv32a() => new GoHash32 { H = 2166136261u, Algo = "fnv32a" };
     public static object Fnv64() => new GoHash64 { H = 14695981039346656037ul, Algo = "fnv64" };
@@ -22,6 +24,13 @@ public static class Hashes
     {
         var h = (GoHash32)ho;
         if (h.Algo == "crc32") { h.H = Crc32Update(h.H, null, p); return new object?[] { (long)p.Len, null }; }
+        if (h.Algo == "adler32")
+        {
+            uint a = h.H & 0xffff, b = h.H >> 16;
+            foreach (byte by in B(p)) { a = (a + by) % 65521; b = (b + a) % 65521; }
+            h.H = (b << 16) | a;
+            return new object?[] { (long)p.Len, null };
+        }
         foreach (byte b in B(p))
         {
             if (h.Algo == "fnv32a") { h.H ^= b; h.H *= 16777619u; }
