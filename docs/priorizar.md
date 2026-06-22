@@ -9,7 +9,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 2. ✅ Compatibility report estable HTML/JSON — tag `0.0.53.compat-report`
 3. ✅ typed-nil en interfaces (`var p *T; any(p) == nil` ⇒ `false`) — tag `0.0.54.typed-nil-iface`
 4. ✅ `reflect.StructField.Name` / `.Tag` directo — tag `0.0.55.reflect-structfield`
-5. ⬜ function values de funciones shimmed
+5. ✅ function values de funciones shimmed — tag `0.0.56.shim-func-value`
 6. ⬜ formato de panic no recuperado igual a Go
 7. ⬜ deep `reflect` mínimo (más goja/libs)
 8. ⬜ `text/template` + `google/uuid` + `errgroup` + testify
@@ -25,7 +25,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 5. ✅ typed-nil en interfaces — media, altísimo · tag `0.0.54.typed-nil-iface` (residual documentado: `== nil` del puntero recuperado)
 6. ⬜ panic no recuperado con formato Go (`panic:` + goroutine stack) — media, alto
 7. ✅ `reflect.StructField.Name` / `.Tag` directo — alta/media, alto · tag `0.0.55.reflect-structfield`
-8. ⬜ function values de funciones shimmed (`strings.TrimFunc(s, unicode.IsSpace)`) — media, alto
+8. ✅ function values de funciones shimmed (`strings.TrimFunc(s, unicode.IsSpace)`) — media, alto · tag `0.0.56.shim-func-value`
 9. ⬜ `%T` / `%#v` / nil maps más exactos — media, medio/alto
 10. ⬜ tipo exacto para composites reflejados dinámicamente — media/difícil, alto
 11. ⬜ per-value runtime type tags / itable — difícil, altísimo
@@ -94,3 +94,9 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   el builder de descriptors → ahora "string"/"int"), y (b) `Type.FieldByName` panicaba
   (faltaba el shim → agregado `Reflect.Type_FieldByName` devolviendo `(StructField, bool)`).
   Fixture 405 byte-exacto (tags json/xml/validate, anónimos, PkgPath, Lookup, FieldByName).
+- ✅ **#5 function values de funciones shimmed** — tag `0.0.56.shim-func-value`. La mayoría
+  ya andaba (`Closures.FromShim` envuelve el extern); cerrado el gap variádico: una func
+  shim variádica como valor (`fmt.Sprintf`) no empaquetaba sus args trailing en el `GoSlice`
+  del parámetro → `InvokeShim` ahora detecta el último parámetro `GoSlice` y empaqueta la
+  cola (salvo que el caller ya pasara el slice). Fixture 406 byte-exacto (valor, arg, slice,
+  callback unicode, variádica, method value de tipo shim).

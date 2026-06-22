@@ -34,6 +34,23 @@ public static class NativeClosures
     {
         var ps = mi.GetParameters();
         var conv = new object?[ps.Length];
+        // A variadic shim (e.g. fmt.Sprintf(format, args ...any)) lowers its trailing
+        // parameter to a GoSlice. Called through a function value, the trailing arguments
+        // arrive unpacked, so pack them here — unless the caller already passed the slice
+        // (f(args...) / a non-variadic []T parameter), in which case the last arg is a GoSlice.
+        bool lastIsSlice = ps.Length > 0 && ps[ps.Length - 1].ParameterType == typeof(GoSlice);
+        if (lastIsSlice && (args.Length != ps.Length || !(args[ps.Length - 1] is GoSlice)))
+        {
+            int nFixed = ps.Length - 1;
+            for (int i = 0; i < nFixed; i++)
+                conv[i] = Coerce(i < args.Length ? args[i] : null, ps[i].ParameterType);
+            int extra = args.Length - nFixed;
+            if (extra < 0) extra = 0;
+            var data = new object?[extra];
+            for (int i = 0; i < extra; i++) data[i] = args[nFixed + i];
+            conv[nFixed] = new GoSlice { Data = data, Off = 0, Len = extra, Cap = extra };
+            return mi.Invoke(null, conv);
+        }
         for (int i = 0; i < ps.Length; i++)
             conv[i] = Coerce(i < args.Length ? args[i] : null, ps[i].ParameterType);
         return mi.Invoke(null, conv);

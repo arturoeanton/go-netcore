@@ -95,10 +95,12 @@ read/write reflect shim, and the deep-reflect milestone.
 
 ## Function values of shimmed stdlib functions
 
-Passing a shimmed stdlib function *as a value* (e.g. `strings.TrimFunc(s,
-unicode.IsSpace)`) is unsupported — only func literals / local func values work as
-callback arguments. Wrapping a shim function reference in a native closure is a
-separate feature.
+Supported. A shimmed stdlib function taken *as a value* (`up := strings.ToUpper`),
+passed as a callback (`strings.Map(unicode.ToUpper, s)`), stored in a slice of func
+values, or used as a shim method value (`w := b.WriteString`) all work — the reference is
+wrapped in a native closure (`Closures.FromShim`) that invokes the shim by reflection.
+Variadic shim function values (`sp := fmt.Sprintf; sp("%d", 1)`) pack their trailing
+arguments into the shim's slice parameter. Fixture 406_shim_func_value.
 
 ## Unicode special-casing
 
