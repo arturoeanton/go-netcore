@@ -393,6 +393,12 @@ var opaqueShimTypes = map[string]bool{
 	"crypto/x509.Certificate":      true,
 	"crypto/x509.CertificateRequest": true,
 	"encoding/pem.Block":           true,
+	// These json/xml error types are opaque shims so their methods/fields (.Error(), .Type,
+	// .Offset, …) resolve to Json.cs shims — echo's binder calls them. The json/xml decode
+	// shims always return a plain GoError, so a real instance is never produced; a type
+	// switch `case *json.SyntaxError` therefore must use the PRECISE matcher (IsShimKindStrict,
+	// keyed on the registered [GoShim] CLR class) — the loose IsShimKind heuristic falsely
+	// matched every GoError. See emitTypeMatch and LIMITATIONS.md.
 	"encoding/json.UnmarshalTypeError": true,
 	"encoding/json.SyntaxError":     true,
 	"encoding/xml.UnsupportedTypeError": true,

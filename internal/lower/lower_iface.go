@@ -932,12 +932,16 @@ func (l *funcLowerer) emitTypeMatch(valLocal int, gt types.Type, t goir.Type, ma
 	}
 	// An opaque shim type (time.Time, sync.Mutex, …) lowers to System.Object, so
 	// `isinst object` would match *every* boxed value — a type switch `case time.Time`
-	// must not capture a plain int64. Discriminate by the concrete shim CLR class.
+	// must not capture a plain int64. Discriminate by the concrete shim CLR class via the
+	// PRECISE matcher: only a value whose registered [GoShim] class is exactly this type
+	// matches. The loose IsShimKind heuristic ("any unregistered non-primitive") falsely
+	// matched a plain GoError against a never-instantiated opaque error stub
+	// (`case *json.SyntaxError` capturing errors.New) — strict matching is correct here.
 	if t.Kind == goir.KObject && t.Shim != "" {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
 		l.emit(goir.Op{Code: goir.OpStrConst, Str: t.Shim})
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "IsShimKind",
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "IsShimKindStrict",
 			Params: []goir.Type{goir.TObject, goir.TString}, Ret: goir.TBool,
 		}})
 		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matchLabel})

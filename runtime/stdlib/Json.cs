@@ -462,9 +462,11 @@ public static class Json
     // type descriptor through a method call, so this decodes into the canonical Go
     // shape (Go's interface{} mapping) and writes it through the pointer — exact for
     // map[string]any / []any / *any targets, best-effort widening for sized fields.
-    // json error types referenced by type switches (echo's binder). The shim's decode
-    // path returns a plain GoError, so these are never instantiated — they exist only so
-    // `case *json.UnmarshalTypeError` / `*json.SyntaxError` compiles.
+    // json/xml error types referenced by type switches (echo's binder reads .Type/.Offset/
+    // .Line and calls .Error()). The shim decode path always returns a plain GoError, so a
+    // real instance is never produced — these getters exist only so the opaque type compiles;
+    // a `case *json.SyntaxError` is matched by the PRECISE IsShimKindStrict path (keyed on the
+    // registered [GoShim] CLR class), so it never captures an unrelated GoError.
     public static GoString UTE_Error(object e) => GoString.FromDotNetString("json: cannot unmarshal value into Go value");
     public static object? UTE_Type(object e) => null;
     public static GoString UTE_Value(object e) => GoString.FromDotNetString("");

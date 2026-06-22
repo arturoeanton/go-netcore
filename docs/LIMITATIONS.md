@@ -200,6 +200,20 @@ mechanism keyed on `types.Implements` + a self-declared `[GoShim]` CLR-class reg
 no Go type hardcoded in the compiler. A shim type participates once its value class carries
 the `[GoShim("pkg.Type")]` attribute.
 
+### Shimmed-package error types in a type switch
+
+`encoding/json`/`encoding/xml` are shimmed, and their error types
+(`*json.SyntaxError`, `*json.UnmarshalTypeError`, `*xml.SyntaxError`,
+`*xml.UnsupportedTypeError`) are opaque shim handles so a `case *json.SyntaxError:` and
+the field/method reads inside it (`.Offset`, `.Error()`, …) compile (echo's binder uses
+them). The decode shims always return a **plain `GoError`**, never one of these typed
+errors, so a `case *json.SyntaxError:` is matched by the *precise* `IsShimKindStrict`
+path — it never falsely captures an unrelated error (`errors.New`, `fmt.Errorf`), which
+the old loose heuristic did. The residual: a genuine JSON/XML syntax error returned by
+the shim is a generic `GoError`, so that `case` does not match it and the error falls to
+`default` (an under-match — the conservative direction, vs. the previous dangerous
+over-match). `err.Error()` (the message) is still correct through the `error` interface.
+
 ### Incidental implementers whose method is a shim-type method
 
 A large program's import closure contains many types that *incidentally* satisfy a
