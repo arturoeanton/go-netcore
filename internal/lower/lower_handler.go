@@ -178,6 +178,73 @@ func (c *lowerCtx) collectBridgeMethods() {
 	}
 }
 
+// collectReflectMethods registers a callback-bridge adapter for each method of the MAIN
+// package's struct/named types, so reflect.Value.Method/MethodByName(...).Call drives the
+// method through Bridge.CallMethod. Scoped to the program's own types (the common case —
+// validators/ORMs reflecting on user structs): registering every method of a large
+// reflect-heavy dependency closure (goja: thousands of types) would bloat the assembly past
+// its IL/metadata limits. Only runs when the program imports reflect.
+func (c *lowerCtx) collectReflectMethods() {
+	if c.lookupNamedType("reflect.Value") == nil {
+		return // program doesn't use reflect
+	}
+	for named, st := range c.structReg {
+		if named.Obj().Pkg() != c.root {
+			continue
+		}
+		if c.registerReflectMethods(named, st.Id) {
+			if c.bridgeClrLinks == nil {
+				c.bridgeClrLinks = map[string]int64{}
+			}
+			c.bridgeClrLinks[st.Name] = int64(st.Id)
+		}
+	}
+	for named, id := range c.namedIds {
+		if named.Obj().Pkg() != c.root {
+			continue
+		}
+		c.registerReflectMethods(named, int(id))
+	}
+}
+
+// registerReflectMethods registers an adapter for each method in named's method set
+// (value + pointer receivers), keyed by the type's runtime id + method name. Returns
+// whether any adapter was registered.
+func (c *lowerCtx) registerReflectMethods(named *types.Named, typeID int) bool {
+	seen := map[string]bool{}
+	registered := false
+	for _, recv := range []types.Type{named, types.NewPointer(named)} {
+		ms := types.NewMethodSet(recv)
+		for i := 0; i < ms.Len(); i++ {
+			fn, ok := ms.At(i).Obj().(*types.Func)
+			if !ok || seen[fn.Name()] {
+				continue
+			}
+			if !fn.Exported() { // reflect can only call exported methods
+				continue
+			}
+			m := c.byFunc[fn]
+			if m == nil {
+				continue
+			}
+			seen[fn.Name()] = true
+			c.needsInvoker = true
+			c.invokeMethod()
+			src := valBridge
+			if isPointerType(fn.Type().(*types.Signature).Recv().Type()) {
+				src = ptrDirect
+			}
+			c.bridges = append(c.bridges, bridgeReg{
+				id:        int64(typeID),
+				method:    fn.Name(),
+				closureID: c.buildMethodAdapter(m, src),
+			})
+			registered = true
+		}
+	}
+	return registered
+}
+
 // lookupNamedType resolves a "importpath.TypeName" to its *types.Named anywhere in the
 // program's import closure (any named type, not only opaque shims), scanning once.
 func (c *lowerCtx) lookupNamedType(name string) *types.Named {

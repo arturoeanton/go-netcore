@@ -513,10 +513,33 @@ public static class Reflect
         (k >= GoKind.Int && k <= GoKind.Uintptr) || k == GoKind.Float32 || k == GoKind.Float64 || k == GoKind.Complex64 || k == GoKind.Complex128;
 
     // --- reflect: free constructors ---------------------------------------
-    // reflect.MakeFunc(typ, fn): fn is the implementing Go closure; return a Value
-    // carrying that callable so Value.Call() can invoke it.
-    public static object MakeFunc(object typ, GoClosure fn) =>
-        new GoReflectValue { V = fn };
+    // reflect.MakeFunc(typ, fn): fn implements the function as func([]Value) []Value. Return
+    // a Value wrapping an ADAPTER closure with the target signature's raw calling convention:
+    // it packs the call arguments into a []reflect.Value, invokes fn, and unpacks the
+    // returned []reflect.Value to raw result(s). The adapter works whether the value is
+    // called via Value.Call or extracted with .Interface() and called natively.
+    public static object MakeFunc(object typ, GoClosure fn)
+    {
+        var adapter = new GoClosure
+        {
+            Id = -1,
+            Native = callArgs =>
+            {
+                callArgs ??= System.Array.Empty<object?>();
+                var rv = new object?[callArgs.Length];
+                for (int i = 0; i < callArgs.Length; i++)
+                    rv[i] = new GoReflectValue { V = callArgs[i] }; // reflect.ValueOf(arg)
+                var argsSlice = new GoSlice { Data = rv, Off = 0, Len = rv.Length, Cap = rv.Length };
+                var res = GoCLR.Runtime.GoRuntime.InvokeArgs(fn, new object?[] { argsSlice });
+                if (res is not GoSlice outs || outs.Data == null || outs.Len == 0) return null;
+                if (outs.Len == 1) return RVal(outs.Data[outs.Off]); // unwrap the single result Value
+                var ret = new object?[outs.Len];
+                for (int i = 0; i < outs.Len; i++) ret[i] = RVal(outs.Data[outs.Off + i]);
+                return ret; // multi-result tuple
+            },
+        };
+        return new GoReflectValue { V = adapter };
+    }
 
     public static long Copy(object dst, object src)
     {
@@ -604,8 +627,34 @@ public static class Reflect
     }
     // Method(i) as a callable Value. The runtime does not retain method sets, so a
     // bound method Value is produced only on the (unreached) path where NumMethod>0.
-    public static object Value_Method(object? v, long i) => new GoReflectValue { V = null };
-    public static object Value_MethodByName(object? v, GoString name) => new GoReflectValue { V = null };
+    // Method(i)/MethodByName(name): a bound-method Value. The receiver is captured and the
+    // method is driven through the callback bridge (adapters registered by the compiler for
+    // every method when the program imports reflect), so the returned Value is callable via
+    // .Call or .Interface(). Returns an invalid Value when no such method exists.
+    public static object Value_Method(object? v, long i)
+    {
+        var d = (v as GoReflectValue)?.Desc;
+        if (d != null && (int)i >= 0 && (int)i < d.Methods.Count)
+            return BoundMethod(RVal(v), d.Methods[(int)i]);
+        return new GoReflectValue { V = null };
+    }
+    public static object Value_MethodByName(object? v, GoString name)
+    {
+        var recv = RVal(v);
+        string n = name.ToDotNetString();
+        if (recv == null || !Bridge.HasMethod(recv, n)) return new GoReflectValue { V = null };
+        return BoundMethod(recv, n);
+    }
+    private static object BoundMethod(object? recv, string name)
+    {
+        if (recv == null || !Bridge.HasMethod(recv, name)) return new GoReflectValue { V = null };
+        var bound = new GoClosure
+        {
+            Id = -1,
+            Native = callArgs => Bridge.CallMethod(recv, name, callArgs ?? System.Array.Empty<object?>()),
+        };
+        return new GoReflectValue { V = bound };
+    }
     public static bool Value_OverflowInt(object? v, long x) => false;
     public static bool Value_OverflowUint(object? v, ulong x) => false;
     public static bool Value_OverflowFloat(object? v, double x) => false;

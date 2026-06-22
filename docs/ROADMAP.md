@@ -117,7 +117,9 @@ Tracks what is implemented vs outstanding. Done items are verified byte-exact vs
 - [x] `reflect` runtime type descriptors — read + write paths (`Kind`/`Name`/`String`/fields/tags, `Set*`, `MapOf`/`SliceOf`/`PtrTo`, `Implements`/`AssignableTo`)
 - [x] Pointer-to-non-struct type discrimination (`*int64` vs `*string` vs `*[]byte`)
 - [x] General, agnostic shim-type-in-interface dispatch (`[GoShim]` registry + `types.Implements`; no Go type hardcoded)
-- [ ] Deep `reflect`: `MakeFunc`, deep `Value`/`Type` ops — the *full* JS spec in goja
+- [x] Deep `reflect` (minimal): `Value.Call`, `MakeFunc` (build a callable from
+  `func([]Value)[]Value`), `Value.Method`/`MethodByName(...).Call` for the program's own
+  types — fixture 407. Remaining: reflecting methods across a large dependency closure
 - [ ] Per-value runtime type tags / itable — two named-slice (or named-map) implementers of one interface
 - [x] Typed-nil pointer kept distinct inside an interface (`var p *T; any(p) == nil` ⇒ false;
   the `err != nil` gotcha is faithful). Residual: the recovered pointer's own `== nil` — see LIMITATIONS

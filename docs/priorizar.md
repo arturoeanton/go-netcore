@@ -11,7 +11,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 4. ✅ `reflect.StructField.Name` / `.Tag` directo — tag `0.0.55.reflect-structfield`
 5. ✅ function values de funciones shimmed — tag `0.0.56.shim-func-value`
 6. ✅ formato de panic no recuperado igual a Go — tag `0.0.57.panic-format`
-7. ⬜ deep `reflect` mínimo (más goja/libs)
+7. ✅ deep `reflect` mínimo (`MakeFunc`/`Value.Call`/`Method.Call`) — tag `0.0.58.reflect-deep`
 8. ⬜ `text/template` + `google/uuid` + `errgroup` + testify
 9. ⬜ GORM target chico
 10. ⬜ performance / AOT
@@ -29,7 +29,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 9. ⬜ `%T` / `%#v` / nil maps más exactos — media, medio/alto
 10. ⬜ tipo exacto para composites reflejados dinámicamente — media/difícil, alto
 11. ⬜ per-value runtime type tags / itable — difícil, altísimo
-12. ⬜ deep `reflect`: `MakeFunc`, `Value`/`Type` profundas — difícil, altísimo
+12. ✅ deep `reflect` mínimo: `MakeFunc`, `Value.Call`, `Method.Call` — difícil, altísimo · tag `0.0.58.reflect-deep` (reflejar métodos de deps grandes queda fuera de scope)
 13. ⬜ copiado profundo de arrays `[N]T` dentro de structs — media/difícil, medio/alto
 14. 🟡 `sync.Pool` y `sync.Cond` (Pool existe; Cond pendiente) — media, medio/alto
 15. 🟡 `regexp` más Go/RE2 exacto — media/difícil, alto
@@ -106,3 +106,12 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   con exit 2 (antes: volcado .NET "Unhandled exception", exit 255). Recuperados intactos
   (path de defer/recover no tocado). Frames = stack CLR (no hay metadata de stack Go).
   Conformance verde (wrapper transparente en happy path). Test `tests/panicfmt`.
+- ✅ **#7 deep reflect mínimo** — tag `0.0.58.reflect-deep`. `Value.Call` ya andaba.
+  **MakeFunc**: devuelve un adapter con la convención raw (`func(int,int)int`) que empaqueta
+  los args en `[]reflect.Value`, invoca el closure usuario `func([]Value)[]Value` y
+  desempaqueta el resultado (single/multi/void) — sirve a `.Interface()` y a `.Call`.
+  **Value.Method/MethodByName(...).Call**: bound-method Value vía el callback-bridge;
+  `collectReflectMethods` registra adapters por método. **GOTCHA: registrar TODOS los
+  métodos de TODO el closure rompió goja** (reflect-heavy, miles de tipos → assembly corrupto
+  `BadImageFormatException`); acotado a tipos del **paquete main** (`named.Obj().Pkg()==c.root`)
+  — caso común (validators/ORM sobre structs propios), goja vuelve a correr. Fixture 407.

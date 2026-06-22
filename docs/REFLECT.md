@@ -61,6 +61,14 @@ Conformance fixtures `375`–`378`, plus the validator/gin closure:
   `ConvertibleTo`, `Comparable`, `PkgPath`.
 - **Construction & values** — `Zero`, `New` (so `New(t).Elem().Set(...)` works),
   `MakeSlice`, `MakeMap`; the settable write path (`Set*`, `Field`, `Index`, `Elem`).
+- **Dynamic invocation** (fixture 407) — `Value.Call` invokes a function value;
+  `reflect.MakeFunc` builds a callable from a `func([]Value) []Value` implementation
+  (usable via `.Interface()` or `.Call`, single/multi/void results);
+  `Value.Method(i)` / `Value.MethodByName(name)` return a bound method `Value` that
+  `.Call`s through the callback bridge. Method-call adapters are registered for the
+  **program's own** (main-package) types — reflecting a method on a large dependency
+  closure (goja's thousands of internal types) is out of scope to keep the assembly within
+  its IL/metadata limits.
 
 ## Known limit
 

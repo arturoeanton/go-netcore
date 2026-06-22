@@ -238,6 +238,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	// shim can drive them across the static-dispatch boundary.
 	c.collectHandlers()
 	c.collectBridgeMethods()
+	c.collectReflectMethods()
 
 	// Startup: run package-var initializers and init() functions before main.
 	var initMethod *goir.Method
