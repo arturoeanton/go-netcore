@@ -125,6 +125,23 @@ public static class Net
     public static object? TCPConn_SetKeepAlivePeriod(object c, long d) => null;
     public static object? TCPConn_SetNoDelay(object c, bool b) => null;
     public static object? TCPConn_SetLinger(object c, long sec) => null;
+    // net.Conn deadline methods: goclr's sockets are synchronous/blocking and do not honor
+    // per-read/write timeouts, so these are no-ops that succeed (fasthttp's serveConn sets
+    // them around every read/write and bails on an error — a missing method would otherwise
+    // fail interface dispatch and silently kill the worker before the handler runs).
+    public static object? Conn_SetReadDeadline(object c, object? t) => null;
+    public static object? Conn_SetWriteDeadline(object c, object? t) => null;
+    public static object? Conn_SetDeadline(object c, object? t) => null;
+    public static object Conn_LocalAddr(object c)
+    {
+        try { var ep = ((GoConn)c).C.Client.LocalEndPoint as IPEndPoint; return new GoNetAddr { Str = ep?.ToString() ?? "" }; }
+        catch { return new GoNetAddr { Str = "" }; }
+    }
+    public static object Conn_RemoteAddr(object c)
+    {
+        try { var ep = ((GoConn)c).C.Client.RemoteEndPoint as IPEndPoint; return new GoNetAddr { Str = ep?.ToString() ?? "" }; }
+        catch { return new GoNetAddr { Str = "" }; }
+    }
 
     // ---- UDP (PacketConn) --------------------------------------------------
     public static object?[] ListenPacket(GoString network, GoString address)

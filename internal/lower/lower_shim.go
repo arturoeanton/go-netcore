@@ -1249,6 +1249,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net.TCPConn": {
 		"SetKeepAlive": {"Net", "TCPConn_SetKeepAlive"}, "SetKeepAlivePeriod": {"Net", "TCPConn_SetKeepAlivePeriod"}, "SetNoDelay": {"Net", "TCPConn_SetNoDelay"}, "SetLinger": {"Net", "TCPConn_SetLinger"},
 		"Read": {"Net", "Conn_Read"}, "Write": {"Net", "Conn_Write"}, "Close": {"Net", "Conn_Close"},
+		"SetReadDeadline": {"Net", "Conn_SetReadDeadline"}, "SetWriteDeadline": {"Net", "Conn_SetWriteDeadline"}, "SetDeadline": {"Net", "Conn_SetDeadline"},
+		"LocalAddr": {"Net", "Conn_LocalAddr"}, "RemoteAddr": {"Net", "Conn_RemoteAddr"},
 	},
 	"net.UDPConn": {
 		"ReadFromUDP": {"Net", "UDPConn_ReadFromUDP"}, "WriteToUDP": {"Net", "UDPConn_WriteToUDP"},
