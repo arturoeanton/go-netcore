@@ -135,7 +135,8 @@ Tracks what is implemented vs outstanding. Done items are verified byte-exact vs
 - [x] **P4** `crypto/x509` + `acme`/`autocert` closure (lowered for Echo; TLS path a no-op shim), `container/heap` (via the interface method-callback bridge, incl. the named-slice implementer), `encoding/xml` (real reflection Marshal/Encode + token API), `encoding/pem`/asn1, `reflect.SliceHeader`/`StringHeader` read-only offset views
 - [ ] `container/ring`, `encoding/gob`, `text/template` / `html/template`
 - [ ] `crypto/rsa·ecdsa·x509·tls` (full key/cert surface), `net/smtp`, `archive/zip·tar`, `runtime/debug`, `text/tabwriter` / `text/scanner`
-- [ ] `golang.org/x/sync/errgroup` (needs the external module to type-check), `google/uuid`
+- [x] `golang.org/x/sync/errgroup` — compiles from source + runs (added `context.WithCancelCause`/`Cause`), `examples/demo_errgroup`
+- [ ] `google/uuid`, testify, `text/template`/`html/template` (currently no-op stubs)
 
 ### Validation targets
 - [x] **goja** — large JS subset, byte-identical to `go run`

@@ -12,7 +12,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 5. ✅ function values de funciones shimmed — tag `0.0.56.shim-func-value`
 6. ✅ formato de panic no recuperado igual a Go — tag `0.0.57.panic-format`
 7. ✅ deep `reflect` mínimo (`MakeFunc`/`Value.Call`/`Method.Call`) — tag `0.0.58.reflect-deep`
-8. ⬜ `text/template` + `google/uuid` + `errgroup` + testify
+8. 🟡 `text/template` + `google/uuid` + `errgroup`(✅ tag `0.0.59.errgroup`) + testify — errgroup cerrado; resto pendiente (template = stub grande, uuid/testify = deps no vendored)
 9. ⬜ GORM target chico
 10. ⬜ performance / AOT
 
@@ -44,7 +44,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 24. ⬜ Portable PDB / posiciones / stack traces — difícil, alto
 25. ⬜ `container/ring` — alta, bajo/medio
 26. ⬜ `text/scanner` y `text/tabwriter` — media, medio
-27. ⬜ `golang.org/x/sync/errgroup` — alta/media, alto
+27. ✅ `golang.org/x/sync/errgroup` — alta/media, alto · tag `0.0.59.errgroup` (compila de source + corre; agregado `context.WithCancelCause`/`Cause`)
 28. ⬜ `google/uuid` — alta, alto
 29. ⬜ Testify — media, alto
 30. ⬜ JWT libraries — media, alto
@@ -115,3 +115,8 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   métodos de TODO el closure rompió goja** (reflect-heavy, miles de tipos → assembly corrupto
   `BadImageFormatException`); acotado a tipos del **paquete main** (`named.Obj().Pkg()==c.root`)
   — caso común (validators/ORM sobre structs propios), goja vuelve a correr. Fixture 407.
+- ✅ **#8/#27 errgroup** — tag `0.0.59.errgroup`. `golang.org/x/sync/errgroup` compila de
+  source y corre (goroutines concurrentes + propagación del primer error). Gap cerrado:
+  `context.WithCancelCause`/`context.Cause` (+ `GoContext.CauseVal`/`CancelCause`).
+  `examples/demo_errgroup` byte-exacto. Resto de #8 pendiente: text/template (stub no-op
+  grande), google/uuid + testify (no vendored).

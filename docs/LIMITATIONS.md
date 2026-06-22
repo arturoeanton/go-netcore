@@ -159,9 +159,10 @@ module):
   403_fs_fileinfo_dispatch. (Note: `testing/fstest.MapFS` is standard-library code that is
   not lowered, so its methods can't be bridged — that is a stdlib-coverage gap, not a
   dispatch gap; a user-defined in-memory `fs.FS` works.)
-- **`x/sync/errgroup`** — shim written, but the import needs the external x/sync
-  module present to type-check.
-- **`google/uuid`** — not yet shimmed.
+- **`x/sync/errgroup`** — works: compiles from source and runs (concurrent goroutines +
+  first-error propagation), now that `context.WithCancelCause`/`context.Cause` are shimmed.
+  See `examples/demo_errgroup` (requires `go mod vendor`).
+- **`google/uuid`** — not yet exercised (not in the module graph).
 - **slog edges**: the automatic timestamp is omitted (so output is reproducible —
   drop `slog.TimeKey` via `ReplaceAttr` to match `go run`); `WithGroup`/`LogAttrs` and
   the `HandlerOptions.Level`/`ReplaceAttr` fields are accepted but not applied.

@@ -11,9 +11,17 @@ public sealed class GoContext
     public object? Key, Val;
     public GoChan? DoneCh;     // non-null only for cancelable contexts
     public object? ErrVal;     // set once on cancel/timeout
+    public object? CauseVal;   // the cancel cause (WithCancelCause); == ErrVal for a plain cancel
 
     public GoChan? Done() => DoneCh ?? Parent?.Done();
     public object? Err() => ErrVal ?? Parent?.Err();
+
+    public object? Cause()
+    {
+        for (var c = this; c != null; c = c.Parent)
+            if (c.CauseVal != null) return c.CauseVal;
+        return Err();
+    }
 
     public object? Value(object? key)
     {
@@ -34,6 +42,20 @@ public sealed class GoContext
         {
             if (ErrVal != null) return;
             ErrVal = err;
+            CauseVal = err;
+            DoneCh?.Close();
+        }
+    }
+
+    // CancelCause: Err() stays Canceled, but Cause() reports the supplied cause (or Canceled
+    // when the cause is nil), as Go's context.WithCancelCause does.
+    public void CancelCause(object? cause)
+    {
+        lock (this)
+        {
+            if (ErrVal != null) return;
+            ErrVal = Context.Canceled();
+            CauseVal = cause ?? Context.Canceled();
             DoneCh?.Close();
         }
     }
@@ -60,6 +82,17 @@ public static class Context
         var cancel = NativeClosures.Make(_ => { ctx.Cancel(CanceledErr); return null; });
         return new object?[] { ctx, cancel };
     }
+
+    // WithCancelCause(parent) (ctx, CancelCauseFunc): the cancel func takes a cause error.
+    public static object?[] WithCancelCause(object parent)
+    {
+        var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
+        var cancel = NativeClosures.Make(a => { ctx.CancelCause(a != null && a.Length > 0 ? a[0] : null); return null; });
+        return new object?[] { ctx, cancel };
+    }
+
+    // context.Cause(ctx): the cancellation cause, or nil if not cancelled.
+    public static object? Cause(object ctx) => ((GoContext)ctx).Cause();
 
     public static object?[] WithTimeout(object parent, long timeout)
     {

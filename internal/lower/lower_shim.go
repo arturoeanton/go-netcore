@@ -227,7 +227,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"context": {
 		"Background": {"Context", "Background"}, "TODO": {"Context", "TODO"},
 		"WithValue": {"Context", "WithValue"}, "WithCancel": {"Context", "WithCancel"},
-		"WithTimeout": {"Context", "WithTimeout"},
+		"WithTimeout": {"Context", "WithTimeout"}, "WithCancelCause": {"Context", "WithCancelCause"},
+		"Cause": {"Context", "Cause"},
 	},
 	"sort": {
 		"Ints": {"Sort", "Ints"}, "Float64s": {"Sort", "Float64s"}, "Strings": {"Sort", "Strings"},
