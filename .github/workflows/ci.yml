@@ -64,6 +64,9 @@ jobs:
           dotnet build runtime/dotnet/GoCLR.Runtime.csproj -c Release
           dotnet build runtime/stdlib/GoCLR.Stdlib.csproj -c Release
       - name: Run conformance suite
+        # The harness writes a per-fixture pass/skip/fail matrix to GITHUB_STEP_SUMMARY,
+        # so the run page shows a visible conformance matrix (published even when a fixture
+        # fails, pinpointing exactly which regressed) rather than a single pass/fail.
         env:
           GOCLR_RUNTIME_DLL: ${{ github.workspace }}/runtime/dotnet/bin/Release/net8.0/GoCLR.Runtime.dll
           GOCLR_STDLIB_DLL: ${{ github.workspace }}/runtime/stdlib/bin/Release/net8.0/GoCLR.Stdlib.dll

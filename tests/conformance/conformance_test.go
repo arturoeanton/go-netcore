@@ -9,12 +9,72 @@
 package conformance
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 )
+
+// fixtureResult records one fixture's outcome for the published conformance matrix.
+type fixtureResult struct {
+	name   string
+	status string // "pass", "skip", "fail"
+	detail string
+}
+
+var (
+	resultsMu sync.Mutex
+	results   []fixtureResult
+)
+
+func recordResult(name, status, detail string) {
+	resultsMu.Lock()
+	results = append(results, fixtureResult{name, status, detail})
+	resultsMu.Unlock()
+}
+
+// writeMatrix emits a per-fixture status table to GITHUB_STEP_SUMMARY (or the file named
+// by GOCLR_CONFORMANCE_SUMMARY), so CI publishes a visible conformance matrix rather than a
+// single pass/fail. No-op when neither is set (local runs).
+func writeMatrix() {
+	path := os.Getenv("GOCLR_CONFORMANCE_SUMMARY")
+	if path == "" {
+		path = os.Getenv("GITHUB_STEP_SUMMARY")
+	}
+	if path == "" || len(results) == 0 {
+		return
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].name < results[j].name })
+	var pass, skip, fail int
+	for _, r := range results {
+		switch r.status {
+		case "pass":
+			pass++
+		case "skip":
+			skip++
+		case "fail":
+			fail++
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "## Conformance matrix (`go run` vs `goclr run`)\n\n")
+	fmt.Fprintf(&b, "**%d passed · %d skipped · %d failed** of %d fixtures.\n\n", pass, skip, fail, len(results))
+	fmt.Fprintf(&b, "| Fixture | Status |\n|---|---|\n")
+	for _, r := range results {
+		icon := map[string]string{"pass": "✅ pass", "skip": "⏭️ skip", "fail": "❌ fail"}[r.status]
+		fmt.Fprintf(&b, "| %s | %s |\n", r.name, icon)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(b.String())
+}
 
 func TestConformance(t *testing.T) {
 	if testing.Short() {
@@ -46,18 +106,28 @@ func TestConformance(t *testing.T) {
 
 			clrOut, clrCode, clrStderr := runGoclr(t, goclr, pkg)
 			if strings.Contains(clrStderr, "GCLR0301") {
+				recordResult(name, "skip", "outside current backend subset")
 				t.Skipf("outside current backend subset:\n%s", strings.TrimSpace(clrStderr))
 			}
 
+			failed := false
 			if clrCode != goCode {
+				failed = true
 				t.Errorf("exit code mismatch: go=%d goclr=%d\ngoclr stderr:\n%s", goCode, clrCode, clrStderr)
 			}
 			if clrOut != goOut {
+				failed = true
 				t.Errorf("output mismatch:\n--- go ---\n%q\n--- goclr ---\n%q", goOut, clrOut)
+			}
+			if failed {
+				recordResult(name, "fail", "")
+			} else {
+				recordResult(name, "pass", "")
 			}
 			ran++
 		})
 	}
+	writeMatrix()
 }
 
 // buildGoclr compiles the CLI to a temp binary and returns its path.
