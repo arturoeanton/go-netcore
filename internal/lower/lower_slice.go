@@ -23,11 +23,29 @@ func isValueType(t goir.Type) bool {
 func (l *funcLowerer) emitBox(t goir.Type) {
 	if isValueType(t) {
 		l.emit(goir.Op{Code: goir.OpBox, BoxTy: t})
+		return
+	}
+	if t.Kind == goir.KMap {
+		// A nil map boxed into an interface must stay a typed, non-nil-interface value so
+		// fmt prints map[] and `i == nil` is false, matching Go. BoxMap turns a null map
+		// into a GoMap{Data:null} sentinel; emitUnbox reverses it.
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "BoxMap",
+			Params: []goir.Type{goir.TObject}, Ret: goir.TObject,
+		}})
 	}
 }
 
 // emitUnbox unboxes the object on top of the stack into a value of type t.
 func (l *funcLowerer) emitUnbox(t goir.Type) {
+	if t.Kind == goir.KMap {
+		// Collapse the boxed nil-map sentinel back to null before the cast, so map
+		// operations and `m == nil` see the bare nil-map representation.
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "UnboxMap",
+			Params: []goir.Type{goir.TObject}, Ret: goir.TObject,
+		}})
+	}
 	l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: t})
 }
 

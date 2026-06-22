@@ -54,6 +54,17 @@ public static class Rt
     /// <summary>A slice is nil iff its backing array is null (Go's `s == nil`).</summary>
     public static bool SliceIsNil(GoSlice s) => s.Data == null;
 
+    /// <summary>Boxes a map into an interface. A nil map (null reference) becomes a
+    /// non-null GoMap with null Data, so the interface is non-nil and fmt prints
+    /// "map[]" — Go keeps the map type even when the map is nil (`var m map[K]V; var i
+    /// any = m; i == nil` is false). UnboxMap restores the bare nil-map (null) on the
+    /// way out, so map operations and `m == nil` after a type assertion stay correct.</summary>
+    public static object BoxMap(object? m) => m ?? new GoMap();
+
+    /// <summary>Unboxes a map from an interface, collapsing the nil-map sentinel
+    /// (a GoMap whose Data is null) back to the null the rest of the map lowering uses.</summary>
+    public static object? UnboxMap(object? m) => m is GoMap g && g.Data == null ? null : m;
+
     /// <summary>Go value equality (==) for structs and fixed arrays: compares fields
     /// and elements recursively, matching Go's element-wise semantics rather than the
     /// reference identity of the boxed runtime objects.</summary>
