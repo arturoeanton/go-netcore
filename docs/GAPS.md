@@ -304,3 +304,18 @@ CE runtime runs without them). The probe surfaced two real goclr gaps, both fixe
 `regexp.(*Regexp).FindAllStringSubmatch` and Go 1.22+ type aliases (`types.Unalias` in
 the type lowering). So the distance to KrakenD is an overlay/build-tag campaign on
 Lura's deps plus the plugin limit — not compiler work.
+
+## GORM distance (2026-06)
+
+Measured by compiling `gorm.io/gorm/schema.Parse` (the reflect-heavy core that turns a
+tagged struct into a table/column schema) through goclr. **No goclr language/compiler gap
+blocks it** — the walls are a chain of small stdlib/dependency method gaps, each a shim:
+fixed so far are `time.Time.Date`/`Clock`/`AddDate` (via jinzhu/now) and the
+`runtime.Callers`/`CallersFrames`/`(*Frames).Next`/`runtime.Frame` caller-location
+machinery (stubbed — goclr has no Go stack metadata, so gorm logs SQL without a
+`file:line`, which gorm tolerates). The next wall is gorm's `log/slog` handler wrapper
+(`slog.Handler.Enabled`/`Handle`/`WithAttrs`). Beyond schema parsing, full ORM operations
+also need a **pure-Go dialector/driver** (the cgo-free `glebarez/sqlite` or a goclr port of
+the existing `go-r2-sqlite`). So GORM is a multi-step shim/overlay campaign — not a single
+compiler gap — and is left as a staged target; the generally-useful shims it surfaced
+(time multi-return methods, the runtime caller stubs) are landed independently.

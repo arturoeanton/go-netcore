@@ -7,6 +7,14 @@ using GoCLR.Runtime;
 /// goja paths that build one are reflect-bridge diagnostics, not core evaluation.</summary>
 public sealed class GoRuntimeFunc { public long Pc; }
 
+/// <summary>A runtime.Frame: goclr has no Go-format stack metadata, so every field reports
+/// its zero (File="", Line=0, PC=0). Used by gorm's caller-location helper, which falls back
+/// to no location when PC is 0.</summary>
+public sealed class GoFrame { }
+
+/// <summary>A *runtime.Frames iterator over runtime.CallersFrames — always empty.</summary>
+public sealed class GoFrames { }
+
 /// <summary>Shim for the subset of Go's <c>runtime</c> package that goja references.</summary>
 public static class Goruntime
 {
@@ -26,6 +34,19 @@ public static class Goruntime
     // runtime.Stack(buf, all) int: goclr keeps no reflectable goroutine stacks, so
     // nothing is written and 0 is returned (used only by debug paths).
     public static long Stack(GoSlice buf, bool all) => 0;
+
+    // runtime.Callers(skip, pc) int / CallersFrames(callers) *Frames / (*Frames).Next() ->
+    // (Frame, more): no Go stack metadata, so report zero frames. gorm's CallerFrame falls
+    // back to runtime.Frame{} (PC 0 => no file:line in logged SQL).
+    public static long Callers(long skip, GoSlice pc) => 0;
+    public static object CallersFrames(GoSlice callers) => new GoFrames();
+    public static object FrameZero() => new GoFrame();
+    public static object?[] Frames_Next(object frames) => new object?[] { new GoFrame(), false };
+    public static GoString Frame_File(object f) => GoString.FromDotNetString("");
+    public static GoString Frame_Function(object f) => GoString.FromDotNetString("");
+    public static long Frame_Line(object f) => 0;
+    public static ulong Frame_PC(object f) => 0;
+    public static ulong Frame_Entry(object f) => 0;
 
     public static long GOMAXPROCS(long n) => System.Environment.ProcessorCount;
     public static long NumCPU() => System.Environment.ProcessorCount;

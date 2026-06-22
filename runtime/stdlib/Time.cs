@@ -176,6 +176,11 @@ public static class Time
     public static long Time_UnixMilli(object t) => ((GoTime)t).N / Millisecond;
     public static long Time_Year(object t) => ZeroDate(t, dt => dt.Year, 1);
     public static long Time_YearDay(object t) => ZeroDate(t, dt => dt.DayOfYear, 1);
+    // (t Time).Date() (year int, month Month, day int) and Clock() (hour, min, sec int).
+    public static object?[] Time_Date(object t) =>
+        new object?[] { Time_Year(t), Time_Month(t), Time_Day(t) };
+    public static object?[] Time_Clock(object t) =>
+        new object?[] { Time_Hour(t), Time_Minute(t), Time_Second(t) };
     // UTC-only: the zone is always UTC with a zero offset.
     public static object?[] Time_Zone(object t) => new object?[] { GoString.FromDotNetString("UTC"), 0L };
     public static object Time_In(object t, object loc) => t;       // UTC-only: location is ignored
@@ -188,6 +193,13 @@ public static class Time
     public static long Time_Nanosecond(object t) => ((GoTime)t).N % Second;
     public static long Time_Weekday(object t) => ZeroDate(t, dt => (int)dt.DayOfWeek, 1);
     public static object Time_Add(object t, long d) => new GoTime { N = ((GoTime)t).N + d, IsZero = false };
+    // (t Time).AddDate(years, months, days int) Time — calendar arithmetic.
+    public static object Time_AddDate(object t, long years, long months, long days)
+    {
+        var dt = ToDateTime((GoTime)t).AddYears((int)years).AddMonths((int)months).AddDays((int)days);
+        long nsRemainder = ((GoTime)t).N % 100; // preserve sub-100ns part the DateTime tick can't hold
+        var r = FromDateTime(dt); r.N += nsRemainder; return r;
+    }
     public static object Time_Round(object t, long d) { var n = ((GoTime)t).N; if (d <= 0) return new GoTime { N = n, IsZero = ((GoTime)t).IsZero }; long r = n % d; long h = d / 2; n = r + r < d ? n - r : n - r + d; return new GoTime { N = n, IsZero = false }; }
     public static object Time_Truncate(object t, long d) { var n = ((GoTime)t).N; if (d <= 0) return new GoTime { N = n, IsZero = ((GoTime)t).IsZero }; return new GoTime { N = n - n % d, IsZero = false }; }
     public static long Time_Sub(object t, object u) => ((GoTime)t).N - ((GoTime)u).N;

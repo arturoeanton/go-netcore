@@ -13,7 +13,9 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 6. ✅ formato de panic no recuperado igual a Go — tag `0.0.57.panic-format`
 7. ✅ deep `reflect` mínimo (`MakeFunc`/`Value.Call`/`Method.Call`) — tag `0.0.58.reflect-deep`
 8. 🟡 `text/template` + `google/uuid`(✅ tag `0.0.61.uuid`) + `errgroup`(✅ tag `0.0.59`) + testify — errgroup + uuid cerrados; pendiente: text/template (stub grande), testify (no vendored)
-9. ⬜ GORM target chico
+9. 🟡 GORM target chico — DISTANCIA MEDIDA (tag `0.0.62.gorm-distance`): no hay gap de
+   compilador; es una cadena de shims (time ✓, runtime caller ✓ stub, slog handler pendiente)
+   + necesita dialector/driver pure-Go. Esfuerzo multi-paso, no un cierre único.
 10. ⬜ performance / AOT
 
 ## Lista priorizada completa (50)
@@ -130,3 +132,10 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   io.Reader** (`io.ReadFull` dispara el `Read` del reader de usuario — simétrico a io.Writer;
   `io.Reader` agregado a `bridgeInterfaces`). `examples/demo_uuid` byte-exacto. Fixture 409
   (bytes.EqualFold + hex.Encode/Decode + io.ReadFull con reader de usuario). Conformance verde.
+- 🟡 **#9 GORM (distancia medida)** — tag `0.0.62.gorm-distance`. Compilé
+  `gorm.io/gorm/schema.Parse` por goclr: NO hay gap de compilador, es una cadena de shims.
+  Cerrados y commiteados (útiles standalone): `time.Time.Date`/`Clock`/`AddDate` (jinzhu/now)
+  + `runtime.Callers`/`CallersFrames`/`Frames.Next`/`runtime.Frame` (stub — sin metadata de
+  stack Go; gorm loguea SQL sin file:line, lo tolera). Próximo muro: handler `log/slog` de
+  gorm; y para ORM completo falta dialector/driver pure-Go. Fixture 410 (time methods).
+  Documentado en GAPS.md. Esfuerzo multi-paso, no cierre único.

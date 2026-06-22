@@ -42,6 +42,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"runtime": {
 		"FuncForPC": {"Goruntime", "FuncForPC"}, "GOMAXPROCS": {"Goruntime", "GOMAXPROCS"}, "Caller": {"Goruntime", "Caller"}, "Stack": {"Goruntime", "Stack"},
+		"Callers": {"Goruntime", "Callers"}, "CallersFrames": {"Goruntime", "CallersFrames"},
 		"NumCPU": {"Goruntime", "NumCPU"}, "NumGoroutine": {"Goruntime", "NumGoroutine"},
 		"GC": {"Goruntime", "GC"}, "Gosched": {"Goruntime", "Gosched"}, "Version": {"Goruntime", "Version"},
 	},
@@ -346,6 +347,8 @@ var opaqueShimTypes = map[string]bool{
 	"crypto/sha3.SHAKE":              true,
 	"crypto/sha3.SHA3":               true,
 	"io/fs.FileInfo":                 true,
+	"runtime.Frame":                  true,
+	"runtime.Frames":                 true,
 	"time.Time":                      true,
 	"time.Location":                  true,
 	"math/rand.Rand":                 true,
@@ -740,6 +743,10 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"reflect.StringHeader": {
 		"Data": {"Reflect", "SH_Data"}, "Len": {"Reflect", "SH_Len"},
 	},
+	"runtime.Frame": {
+		"File": {"Goruntime", "Frame_File"}, "Function": {"Goruntime", "Frame_Function"},
+		"Line": {"Goruntime", "Frame_Line"}, "PC": {"Goruntime", "Frame_PC"}, "Entry": {"Goruntime", "Frame_Entry"},
+	},
 }
 
 // shimFieldExtern returns the getter extern for a shim type's readable field.
@@ -887,6 +894,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"sync.Map":                       {"Sync", "NewMap"},
 	"sync.Pool":                      {"Sync", "NewPool"},
 	"sync.Cond":                      {"Sync", "NewCondZero"},
+	"runtime.Frame":                  {"Goruntime", "FrameZero"},
 	"sync/atomic.Value":              {"Atomic", "NewValue"},
 	"net/http.Server":                {"HttpTypes", "NewServer"},
 	"net/http.Cookie":                {"Http", "NewCookie"},
@@ -959,6 +967,7 @@ var binaryMethods = map[string]shimFunc{
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
+	"runtime.Frames": {"Next": {"Goruntime", "Frames_Next"}},
 	"encoding/json.UnmarshalTypeError": {
 		"Error": {"Json", "UTE_Error"},
 	},
@@ -1369,9 +1378,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"time.Time": {
 		"Unix": {"Time", "Time_Unix"}, "UnixNano": {"Time", "Time_UnixNano"}, "UnixMilli": {"Time", "Time_UnixMilli"},
 		"Year": {"Time", "Time_Year"}, "Month": {"Time", "Time_Month"}, "Day": {"Time", "Time_Day"},
+		"Date": {"Time", "Time_Date"}, "Clock": {"Time", "Time_Clock"},
 		"Hour": {"Time", "Time_Hour"}, "Minute": {"Time", "Time_Minute"}, "Second": {"Time", "Time_Second"},
 		"Nanosecond": {"Time", "Time_Nanosecond"}, "Weekday": {"Time", "Time_Weekday"},
-		"Add": {"Time", "Time_Add"}, "Sub": {"Time", "Time_Sub"}, "Round": {"Time", "Time_Round"}, "Truncate": {"Time", "Time_Truncate"},
+		"Add": {"Time", "Time_Add"}, "AddDate": {"Time", "Time_AddDate"}, "Sub": {"Time", "Time_Sub"}, "Round": {"Time", "Time_Round"}, "Truncate": {"Time", "Time_Truncate"},
 		"Before": {"Time", "Time_Before"}, "After": {"Time", "Time_After"}, "Equal": {"Time", "Time_Equal"},
 		"IsZero": {"Time", "Time_IsZero"}, "UTC": {"Time", "Time_UTC"}, "Local": {"Time", "Time_Local"},
 		"String": {"Time", "Time_String"}, "Format": {"Time", "Time_Format"}, "AppendFormat": {"Time", "Time_AppendFormat"},
