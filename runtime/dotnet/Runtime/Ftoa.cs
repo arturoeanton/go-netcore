@@ -22,6 +22,23 @@ public static class GoFtoa
         return neg ? "-" + body : body;
     }
 
+    /// <summary>strconv.FormatFloat(f, 'g', -1, 32) — the shortest form fmt's %v/%g use
+    /// for a float32. A float32 has fewer significant digits than a float64, so it must
+    /// be formatted from its own 32-bit shortest round-trip (.NET float "R"), not by
+    /// widening to double (which would print the spurious tail, e.g. 0.10000000149011612).</summary>
+    public static string Shortest(float f)
+    {
+        if (float.IsNaN(f)) return "NaN";
+        if (float.IsPositiveInfinity(f)) return "+Inf";
+        if (float.IsNegativeInfinity(f)) return "-Inf";
+        bool neg = float.IsNegative(f);
+        if (neg) f = -f;
+        if (!ShortestDigitsFromR(f.ToString("R", Inv), out string digits, out int dp)) return neg ? "-0" : "0";
+        int exp = dp - 1;
+        string body = (exp < -4 || exp >= 6) ? FmtE(digits, exp) : FmtF(digits, dp);
+        return neg ? "-" + body : body;
+    }
+
     /// <summary>strconv.FormatFloat(d, 'e', -1, 64) — shortest digits in exponent form.</summary>
     public static string ShortestE(double d, char e = 'e')
     {
@@ -40,7 +57,14 @@ public static class GoFtoa
     {
         neg = double.IsNegative(d);
         if (neg) d = -d;
-        string r = d.ToString("R", Inv);
+        return ShortestDigitsFromR(d.ToString("R", Inv), out digits, out dp);
+    }
+
+    // Parses a .NET round-trip ("R") numeric string of a non-negative magnitude into the
+    // bare significant-digit string and dp = digit count left of the decimal point. Shared
+    // by the double and float32 shortest formatters. Returns false when the value is zero.
+    private static bool ShortestDigitsFromR(string r, out string digits, out int dp)
+    {
         int ePos = r.IndexOfAny(new[] { 'E', 'e' });
         int exp10 = 0;
         string mant = r;

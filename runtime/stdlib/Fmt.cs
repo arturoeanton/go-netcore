@@ -274,8 +274,8 @@ public static class Fmt
             case 'F': return FloatVerb(v, sp, () => GoFtoa.FormatF(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
             case 'e': return FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
             case 'E': return FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec, 'E'), verb);
-            case 'g': return FloatVerb(v, sp, () => sp.Prec < 0 ? GoFtoa.Shortest(ToDouble(v)) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
-            case 'G': return FloatVerb(v, sp, () => sp.Prec < 0 ? GoFtoa.Shortest(ToDouble(v)) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
+            case 'g': return FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gf ? GoFtoa.Shortest(gf) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
+            case 'G': return FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gF ? GoFtoa.Shortest(gF) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
             case 'p': return v == null ? "<nil>" : "0x" + (System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(v) & 0xffffff).ToString("x", Inv);
             case 'T': return GoTypeName(v);
             case 'w': // %w (Errorf) formats the wrapped error like %v
@@ -420,7 +420,8 @@ public static class Fmt
                     case '\n': sb.Append("\\n"); break;
                     case '\t': sb.Append("\\t"); break;
                     case '\r': sb.Append("\\r"); break;
-                    default: if (c < 0x20) sb.Append("\\x").Append(((int)c).ToString("x2", Inv)); else sb.Append(c); break;
+                    // Non-printable ASCII (control chars 0x00-0x1F and DEL 0x7F) escape as \xNN.
+                    default: if (c < 0x20 || c == 0x7f) sb.Append("\\x").Append(((int)c).ToString("x2", Inv)); else sb.Append(c); break;
                 }
                 i++;
             }
@@ -490,7 +491,7 @@ public static class Fmt
             case ushort ush: return ush.ToString(Inv);
             case byte by: return by.ToString(Inv);
             case sbyte sb: return sb.ToString(Inv);
-            case float fl: return FormatFloatV(fl);
+            case float fl: return GoFtoa.Shortest(fl);
             case double d: return FormatFloatV(d);
             case GoString gs: return gs.ToDotNetString();
             case IGoError e: return e.Error().ToDotNetString();
