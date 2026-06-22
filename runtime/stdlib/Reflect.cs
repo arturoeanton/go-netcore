@@ -416,6 +416,12 @@ public static class Reflect
     public static GoString StructField_PkgPath(object f) =>
         GoString.FromDotNetString(((GoStructField)f).Name.Length > 0 && char.IsUpper(((GoStructField)f).Name[0]) ? "" : "main");
     public static bool StructField_Anonymous(object f) => ((GoStructField)f).Anonymous;
+    // StructField.IsExported(): an exported field has an upper-case first rune.
+    public static bool StructField_IsExported(object f)
+    {
+        string n = ((GoStructField)f).Name;
+        return n.Length > 0 && char.IsUpper(n[0]);
+    }
     public static GoSlice StructField_Index(object f)
     {
         // []int{index}: a single-level field index path.
@@ -574,6 +580,20 @@ public static class Reflect
             { m.Data?.Remove(k!); return; }
         m.Data![k!] = RVal(elem);
     }
+    // reflect.Value.CanConvert(t): whether v is convertible to type t. Numeric kinds convert
+    // among themselves, strings to strings; otherwise the kinds must match (a conservative
+    // subset of Go's rules, enough for testify's numeric value comparisons).
+    public static bool Value_CanConvert(object v, object t)
+    {
+        ulong sk = KindOf(RVal(v));
+        var d = TDesc(t);
+        ulong tk = d != null ? (ulong)d.Kind : KindOf(((GoReflectType)t).Sample);
+        bool Numeric(ulong k) => k >= KInt && k <= KComplex128;
+        if (Numeric(sk) && Numeric(tk)) return true;
+        if (sk == KString && tk == KString) return true;
+        return sk == tk;
+    }
+
     public static object Value_Convert(object v, object t)
     {
         var src = RVal(v);

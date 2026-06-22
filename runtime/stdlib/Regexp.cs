@@ -34,6 +34,12 @@ public static class Regexp
 
     // *Regexp methods.
     public static bool Re_MatchString(object r, GoString s) => ((GoRegexp)r).Re.IsMatch(s.ToDotNetString());
+    public static bool Re_Match(object r, GoSlice b)
+    {
+        var bytes = new byte[b.Len];
+        for (int i = 0; i < b.Len; i++) bytes[i] = (byte)System.Convert.ToInt64(b.Data![b.Off + i]);
+        return ((GoRegexp)r).Re.IsMatch(GoString.FromBytes(bytes).ToDotNetString());
+    }
     public static GoString Re_FindString(object r, GoString s) { var m = ((GoRegexp)r).Re.Match(s.ToDotNetString()); return GoString.FromDotNetString(m.Success ? m.Value : ""); }
     public static GoString Re_String(object r) => GoString.FromDotNetString(((GoRegexp)r).Re.ToString());
     public static GoSlice Re_FindAllStringSubmatchIndex(object r, GoString gs, long n)

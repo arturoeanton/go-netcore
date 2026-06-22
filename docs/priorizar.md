@@ -3,7 +3,17 @@
 Leyenda: ✅ hecho · 🟡 parcial · ⬜ pendiente. Cada ✅ se cierra con fixture/validación
 byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.md).
 
-## Orden recomendado (foco actual, serializado — uno a la vez)
+## Orden 2 (nuevo foco, serializado — uno a la vez)
+
+1. ✅ Testify mínimo — tag `0.0.64.testify` (`goclr test` + testify/assert corren en el CLR)
+2. ⬜ JWT library
+3. ⬜ text/template
+4. ⬜ per-function stdlib coverage matrix
+5. ⬜ GORM mini target con una sola entidad
+6. ⬜ bench/startup report
+7. ⬜ NativeAOT smoke
+
+## Orden recomendado (foco previo, serializado — uno a la vez)
 
 1. ✅ `goclr test` compatible con `go test` — tag `0.0.52.goclr-test`
 2. ✅ Compatibility report estable HTML/JSON — tag `0.0.53.compat-report`
@@ -12,7 +22,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 5. ✅ function values de funciones shimmed — tag `0.0.56.shim-func-value`
 6. ✅ formato de panic no recuperado igual a Go — tag `0.0.57.panic-format`
 7. ✅ deep `reflect` mínimo (`MakeFunc`/`Value.Call`/`Method.Call`) — tag `0.0.58.reflect-deep`
-8. 🟡 `text/template` + `google/uuid`(✅ tag `0.0.61.uuid`) + `errgroup`(✅ tag `0.0.59`) + testify — errgroup + uuid cerrados; pendiente: text/template (stub grande), testify (no vendored)
+8. 🟡 `text/template` + `google/uuid`(✅ `0.0.61`) + `errgroup`(✅ `0.0.59`) + testify(✅ `0.0.64.testify`) — solo text/template pendiente (stub grande)
 9. 🟡 GORM target chico — DISTANCIA MEDIDA (tag `0.0.62.gorm-distance`): no hay gap de
    compilador; es una cadena de shims (time ✓, runtime caller ✓ stub, slog handler pendiente)
    + necesita dialector/driver pure-Go. Esfuerzo multi-paso, no un cierre único.
@@ -52,7 +62,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 26. ⬜ `text/scanner` y `text/tabwriter` — media, medio
 27. ✅ `golang.org/x/sync/errgroup` — alta/media, alto · tag `0.0.59.errgroup` (compila de source + corre; agregado `context.WithCancelCause`/`Cause`)
 28. ✅ `google/uuid` — alta, alto · tag `0.0.61.uuid` (compila de source + corre; cerró os.Getuid, net.Interfaces, bytes.EqualFold, hex.Encode/Decode, bridge io.Reader)
-29. ⬜ Testify — media, alto
+29. ✅ Testify — media, alto · tag `0.0.64.testify` (assert.* corre bajo `goclr test`; cerró safe tag, hex.Dump, Value.CanConvert, StructField.IsExported, regexp.Match, os.Lstat, runtime.Goexit)
 30. ⬜ JWT libraries — media, alto
 31. ⬜ Redis client pure-Go — media/difícil, alto
 32. ⬜ WebSocket — media/difícil, alto
@@ -151,3 +161,10 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   **typed-IL/menos-boxing** = lever de throughput (reescritura de backend). Mejora concreta:
   `configProperties` con TieredPGO=false (favorece startup de programas cortos; servidores
   apenas lo notan). Linker test verde, JSON válido.
+- ✅ **#29 testify** — tag `0.0.64.testify`. `github.com/stretchr/testify/assert` corre en el
+  CLR bajo `goclr test`: Equal (incl. struct deep-equal), NotEqual, Greater, Len, ElementsMatch,
+  Contains (string/map), NoError/Error/Nil + los mensajes de fallo ricos de testify. Cadena de
+  gaps cerrada (útiles standalone): build tag **`safe`** (path no-unsafe de go-spew),
+  `encoding/hex.Dump`, `reflect.Value.CanConvert`, `reflect.StructField.IsExported`,
+  `(*regexp.Regexp).Match`, `os.Lstat`, `runtime.Goexit` (abort coarse). `examples/demo_testify`
+  (PASS + el path de FALLO con exit 1 verificado). Conformance + echo verdes.

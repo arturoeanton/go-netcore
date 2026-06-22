@@ -217,6 +217,10 @@ public static class Os
     public static object ErrClosed() => ErrClosedSentinel;
 
     // os.Stat(name) (FileInfo, error).
+    // os.Lstat is os.Stat without following symlinks; goclr does not model symlinks, so it
+    // is the same stat.
+    public static object?[] Lstat(GoString name) => Stat(name);
+
     public static object?[] Stat(GoString name)
     {
         string p = name.ToDotNetString();

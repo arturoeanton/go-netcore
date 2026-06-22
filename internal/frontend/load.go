@@ -23,7 +23,7 @@ import (
 // what goclr needs since it emits neither; `nomsgpack` drops gin's MessagePack
 // binding, removing the ugorji/go/codec dependency (hand-written assembly + heavy
 // unsafe). Both are inert for programs that do not consult them.
-var BuildTags = []string{"goclr", "clr", "net8", "purego", "nomsgpack"}
+var BuildTags = []string{"goclr", "clr", "net8", "purego", "nomsgpack", "safe"}
 
 // LoadConfig controls a package load.
 type LoadConfig struct {

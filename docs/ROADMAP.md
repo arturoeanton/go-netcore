@@ -136,7 +136,8 @@ Tracks what is implemented vs outstanding. Done items are verified byte-exact vs
 - [x] `container/ring` (compiles from source) · [ ] `encoding/gob`, `text/template` / `html/template`
 - [ ] `crypto/rsa·ecdsa·x509·tls` (full key/cert surface), `net/smtp`, `archive/zip·tar`, `runtime/debug`, `text/tabwriter` / `text/scanner`
 - [x] `golang.org/x/sync/errgroup` — compiles from source + runs (added `context.WithCancelCause`/`Cause`), `examples/demo_errgroup`
-- [ ] `google/uuid`, testify, `text/template`/`html/template` (currently no-op stubs)
+- [x] `google/uuid` (runs), testify (runs under `goclr test`; `examples/demo_testify`)
+- [ ] `text/template`/`html/template` (currently no-op stubs)
 
 ### Validation targets
 - [x] **goja** — large JS subset, byte-identical to `go run`

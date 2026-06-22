@@ -67,6 +67,35 @@ public static class Hex
         _ => -1,
     };
 
+    // hex.Dump(data): a `hexdump -C` style dump (8-digit offset, 16 hex bytes split 8|8,
+    // then the printable ASCII in |...|), matching encoding/hex.Dump byte for byte.
+    public static GoString Dump(GoSlice data)
+    {
+        int len = data.Len;
+        if (len == 0) return GoString.FromDotNetString("");
+        var sb = new System.Text.StringBuilder();
+        byte[] b = new byte[len];
+        for (int i = 0; i < len; i++) b[i] = (byte)System.Convert.ToInt64(data.Data![data.Off + i]);
+        for (int off = 0; off < len; off += 16)
+        {
+            sb.Append(off.ToString("x8")).Append("  ");
+            for (int i = 0; i < 16; i++)
+            {
+                if (off + i < len) sb.Append(HexDigits[b[off + i] >> 4]).Append(HexDigits[b[off + i] & 0xf]).Append(' ');
+                else sb.Append("   ");
+                if (i == 7) sb.Append(' ');
+            }
+            sb.Append('|');
+            for (int i = 0; i < 16 && off + i < len; i++)
+            {
+                byte c = b[off + i];
+                sb.Append(c >= 0x20 && c < 0x7f ? (char)c : '.');
+            }
+            sb.Append("|\n");
+        }
+        return GoString.FromDotNetString(sb.ToString());
+    }
+
     public static long EncodedLen(long n) => n * 2;
     public static long DecodedLen(long n) => n / 2;
 }

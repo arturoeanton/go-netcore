@@ -15,6 +15,10 @@ public sealed class GoFrame { }
 /// <summary>A *runtime.Frames iterator over runtime.CallersFrames — always empty.</summary>
 public sealed class GoFrames { }
 
+/// <summary>Thrown by runtime.Goexit to terminate the current goroutine (coarse — does not
+/// run deferred functions).</summary>
+public sealed class GoExitException : System.Exception { }
+
 /// <summary>Shim for the subset of Go's <c>runtime</c> package that goja references.</summary>
 public static class Goruntime
 {
@@ -53,6 +57,10 @@ public static class Goruntime
     public static long NumGoroutine() => 1;
     public static void GC() => System.GC.Collect();
     public static void Gosched() => System.Threading.Thread.Yield();
+    // runtime.Goexit(): terminate the current goroutine. goclr models it as a coarse abort
+    // (a thrown GoExitException) — it does NOT run the goroutine's deferred functions, unlike
+    // Go. Used by testify's CollectT.FailNow on the Eventually path.
+    public static void Goexit() => throw new GoExitException();
     // runtime.Version(): a Go version string (gin parses it to check Go >= 1.18).
     public static GoString Version() => GoString.FromDotNetString("go1.22.0");
 }

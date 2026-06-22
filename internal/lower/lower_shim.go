@@ -42,7 +42,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"runtime": {
 		"FuncForPC": {"Goruntime", "FuncForPC"}, "GOMAXPROCS": {"Goruntime", "GOMAXPROCS"}, "Caller": {"Goruntime", "Caller"}, "Stack": {"Goruntime", "Stack"},
-		"Callers": {"Goruntime", "Callers"}, "CallersFrames": {"Goruntime", "CallersFrames"},
+		"Callers": {"Goruntime", "Callers"}, "CallersFrames": {"Goruntime", "CallersFrames"}, "Goexit": {"Goruntime", "Goexit"},
 		"NumCPU": {"Goruntime", "NumCPU"}, "NumGoroutine": {"Goruntime", "NumGoroutine"},
 		"GC": {"Goruntime", "GC"}, "Gosched": {"Goruntime", "Gosched"}, "Version": {"Goruntime", "Version"},
 	},
@@ -78,7 +78,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/hex": {
 		"EncodeToString": {"Hex", "EncodeToString"}, "DecodeString": {"Hex", "DecodeString"},
-		"Encode": {"Hex", "Encode"}, "Decode": {"Hex", "Decode"},
+		"Encode": {"Hex", "Encode"}, "Decode": {"Hex", "Decode"}, "Dump": {"Hex", "Dump"},
 		"EncodedLen": {"Hex", "EncodedLen"}, "DecodedLen": {"Hex", "DecodedLen"},
 	},
 	"crypto/sha256":   {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}, "Sum256": {"Crypto", "Sha256Sum256"}, "Sum224": {"Crypto", "Sha256Sum224"}},
@@ -266,7 +266,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Getuid": {"Os", "Getuid"}, "Getgid": {"Os", "Getgid"}, "Getppid": {"Os", "Getppid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
 		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "Rename": {"Os", "Rename"}, "UserCacheDir": {"Os", "UserCacheDir"}, "UserConfigDir": {"Os", "UserConfigDir"}, "UserHomeDir": {"Os", "UserHomeDir"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "MkdirTemp": {"Os", "MkdirTemp"}, "TempDir": {"Os", "TempDir"},
-		"Stat": {"Os", "Stat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"}, "Mkdir": {"Os", "Mkdir"},
+		"Stat": {"Os", "Stat"}, "Lstat": {"Os", "Lstat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"}, "Mkdir": {"Os", "Mkdir"},
 	},
 	"bytes": {
 		"Equal": {"Bytes", "Equal"}, "EqualFold": {"Bytes", "EqualFold"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
@@ -1073,6 +1073,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"reflect.StructTag": {
 		"Get": {"Reflect", "StructTag_Get"}, "Lookup": {"Reflect", "StructTag_Lookup"},
 	},
+	"reflect.StructField": {
+		"IsExported": {"Reflect", "StructField_IsExported"},
+	},
 	"runtime.Func": {
 		"Name": {"Goruntime", "Func_Name"}, "FileLine": {"Goruntime", "Func_FileLine"},
 		"Entry": {"Goruntime", "Func_Entry"},
@@ -1233,7 +1236,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Size": {"Crypto", "Hash_Size"}, "BlockSize": {"Crypto", "Hash_BlockSize"},
 	},
 	"regexp.Regexp": {
-		"MatchString": {"Regexp", "Re_MatchString"}, "FindString": {"Regexp", "Re_FindString"},
+		"MatchString": {"Regexp", "Re_MatchString"}, "Match": {"Regexp", "Re_Match"}, "FindString": {"Regexp", "Re_FindString"},
 		"FindStringSubmatch": {"Regexp", "Re_FindStringSubmatch"}, "FindAllString": {"Regexp", "Re_FindAllString"},
 		"FindAllStringSubmatch": {"Regexp", "Re_FindAllStringSubmatch"},
 		"ReplaceAllString":      {"Regexp", "Re_ReplaceAllString"}, "Split": {"Regexp", "Re_Split"},
@@ -1413,7 +1416,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetInt": {"Reflect", "Value_SetInt"}, "SetUint": {"Reflect", "Value_SetUint"},
 		"SetFloat": {"Reflect", "Value_SetFloat"}, "SetBool": {"Reflect", "Value_SetBool"},
 		"SetString": {"Reflect", "Value_SetString"}, "Set": {"Reflect", "Value_Set"},
-		"SetMapIndex": {"Reflect", "Value_SetMapIndex"}, "Convert": {"Reflect", "Value_Convert"},
+		"SetMapIndex": {"Reflect", "Value_SetMapIndex"}, "Convert": {"Reflect", "Value_Convert"}, "CanConvert": {"Reflect", "Value_CanConvert"},
 		"Addr": {"Reflect", "Value_Addr"}, "Cap": {"Reflect", "Value_Cap"},
 		"SetLen": {"Reflect", "Value_SetLen"}, "SetCap": {"Reflect", "Value_SetCap"},
 		"Slice": {"Reflect", "Value_Slice"}, "Pointer": {"Reflect", "Value_Pointer"},
