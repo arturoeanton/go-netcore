@@ -107,6 +107,22 @@ public static class Context
         return new object?[] { ctx, cancel };
     }
 
+    // context.WithDeadline(parent, deadline time.Time) (Context, CancelFunc): cancel with
+    // DeadlineExceeded when the deadline passes. deadline is a GoTime (nanoseconds in .N).
+    public static object?[] WithDeadline(object parent, object? deadline)
+    {
+        var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
+        var cancel = NativeClosures.Make(_ => { ctx.Cancel(CanceledErr); return null; });
+        long nowNs = (System.DateTime.UtcNow - new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)).Ticks * 100;
+        long deadlineNs = deadline is GoTime t ? t.N : nowNs;
+        double ms = (deadlineNs - nowNs) / 1_000_000.0;
+        if (ms > 0)
+            System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.Cancel(DeadlineErr));
+        else
+            ctx.Cancel(DeadlineErr);
+        return new object?[] { ctx, cancel };
+    }
+
     // context.Context method shims (receiver as first arg).
     public static object? Context_Value(object ctx, object? key) => ((GoContext)ctx).Value(key);
     public static object? Context_Err(object ctx) => ((GoContext)ctx).Err();

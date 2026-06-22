@@ -87,6 +87,16 @@ public static class Sync
     public static object?[] Map_Load(object m, object key) =>
         ((GoSyncMap)m).D.TryGetValue(key, out var v) ? new object?[] { v, true } : new object?[] { null, false };
     public static void Map_Delete(object m, object key) => ((GoSyncMap)m).D.TryRemove(key, out _);
+    // sync.Map.Range(f func(key, value any) bool): call f for each entry; stop if it
+    // returns false. Iterate a snapshot so f may Store/Delete during the walk (as Go allows).
+    public static void Map_Range(object m, GoClosure f)
+    {
+        foreach (var kv in System.Linq.Enumerable.ToArray(((GoSyncMap)m).D))
+        {
+            var cont = GoRuntime.InvokeArgs(f, kv.Key, kv.Value);
+            if (cont is bool b && !b) break;
+        }
+    }
     public static object?[] Map_LoadOrStore(object m, object key, object? val)
     {
         var d = ((GoSyncMap)m).D;

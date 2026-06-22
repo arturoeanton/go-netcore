@@ -272,9 +272,12 @@ public static class Net
     public static GoSlice UDPAddr_IP(object a) => ((GoNetAddr)a).Ip ?? NilBytes();
     public static long UDPAddr_Port(object a) => ((GoNetAddr)a).Port;
     public static GoString UDPAddr_Zone(object a) => GoString.FromDotNetString("");
+    // net.Dialer field setters — no-ops (the dialer is dead code on goclr's server path).
+    public static void Dialer_SetLocalAddr(object d, object? v) { }
     public static void UDPAddr_SetIP(object a, GoSlice ip) { ((GoNetAddr)a).Ip = ip; }
     public static void UDPAddr_SetPort(object a, long port) { ((GoNetAddr)a).Port = port; }
     public static GoString UDPAddr_Network(object a) => GoString.FromDotNetString("udp");
+    public static GoString TCPAddr_Network(object a) => GoString.FromDotNetString("tcp");
     public static GoString UDPAddr_String(object a)
     {
         var g = (GoNetAddr)a;
@@ -291,6 +294,12 @@ public static class Net
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
     private static GoSlice NilBytes() => new() { Data = null, Off = 0, Len = 0, Cap = 0 };
+
+    // net.DefaultResolver + net.Resolver.LookupIPAddr — DNS, dead code on goclr's server
+    // path. The resolver is an opaque handle; lookups return a "not supported" error.
+    public static object DefaultResolver() => new GoResolver();
+    public static object?[] Resolver_LookupIPAddr(object r, object? ctx, GoString host) =>
+        new object?[] { NilBytes(), new GoError(GoString.FromDotNetString("lookup " + host.ToDotNetString() + ": DNS not supported")) };
 
     // net package-level IP vars. IPv4(a,b,c,d) is the 16-byte IPv4-in-IPv6 form
     // (10 zero bytes, 0xff, 0xff, then the 4 octets) — matching Go's net.IPv4.
@@ -530,6 +539,9 @@ public static class Net
 
 /// <summary>An opaque net address (net.IPNet / net.TCPAddr / net.UDPAddr / …).</summary>
 public sealed class GoNetAddr { public string Str = ""; public long Port; public GoSlice? Ip; }
+
+/// <summary>An opaque net.Resolver handle (DNS is unsupported under goclr's server path).</summary>
+public sealed class GoResolver { }
 
 /// <summary>A net.OpError (an operation/network/address-tagged error).</summary>
 public sealed class GoNetOpError { public string Op = ""; public string Net = ""; public object? Err; }

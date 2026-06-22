@@ -24,6 +24,17 @@ public static class Readers
         if (gr.Pos > 0) gr.Pos--;
         return null;
     }
+    // (*bytes.Reader)/(*strings.Reader).Read(p) (int, error): copy the next bytes into p.
+    public static object?[] Reader_Read(object r, GoSlice p)
+    {
+        var gr = (GoReader)r;
+        if (p.Len == 0) return new object?[] { 0L, null };
+        if (gr.Pos >= gr.Data.Length) return new object?[] { 0L, Io.EOFSentinel };
+        int n = System.Math.Min(p.Len, gr.Data.Length - gr.Pos);
+        for (int i = 0; i < n; i++) p.Data![p.Off + i] = (int)gr.Data[gr.Pos + i];
+        gr.Pos += n;
+        return new object?[] { (long)n, null };
+    }
     public static long Reader_Len(object r) { var gr = (GoReader)r; return gr.Data.Length - gr.Pos; }
     public static long Reader_Size(object r) => ((GoReader)r).Data.Length;
     public static object?[] Reader_ReadRune(object r)

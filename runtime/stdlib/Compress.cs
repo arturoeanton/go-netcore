@@ -10,6 +10,18 @@ public sealed class GoCompWriter { public object? W; public MemoryStream Mem = n
 /// <summary>Shim for compress/gzip, compress/zlib, compress/flate (.NET streams).</summary>
 public static class Compress
 {
+    // compress/gzip + compress/zlib sentinel errors.
+    public static readonly GoError GzipErrChecksumSentinel = new(GoString.FromDotNetString("gzip: invalid checksum"));
+    public static object GzipErrChecksum() => GzipErrChecksumSentinel;
+    public static readonly GoError GzipErrHeaderSentinel = new(GoString.FromDotNetString("gzip: invalid header"));
+    public static object GzipErrHeader() => GzipErrHeaderSentinel;
+    public static readonly GoError ZlibErrChecksumSentinel = new(GoString.FromDotNetString("zlib: invalid checksum"));
+    public static object ZlibErrChecksum() => ZlibErrChecksumSentinel;
+    public static readonly GoError ZlibErrHeaderSentinel = new(GoString.FromDotNetString("zlib: invalid header"));
+    public static object ZlibErrHeader() => ZlibErrHeaderSentinel;
+    public static readonly GoError ZlibErrDictionarySentinel = new(GoString.FromDotNetString("zlib: invalid dictionary"));
+    public static object ZlibErrDictionary() => ZlibErrDictionarySentinel;
+
     private static Stream Wrap(MemoryStream mem, int kind) => kind switch
     {
         1 => new ZLibStream(mem, CompressionMode.Compress, true),

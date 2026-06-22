@@ -316,6 +316,16 @@ public static class Os
     public static object?[] UserHomeDir() => new object?[] { GoString.FromDotNetString(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile)), null };
 
     // os.Rename(old, new) error — atomic-ish replace (autocert's cache write).
+    // os.Chmod(name, mode FileMode) error: best-effort — apply the low 9 permission bits
+    // via the .NET Unix file-mode API; a no-op error-free result on platforms/paths where
+    // it does not apply (goclr does not rely on file permissions).
+    public static object? Chmod(GoString name, uint mode)
+    {
+        try { System.IO.File.SetUnixFileMode(name.ToDotNetString(), (System.IO.UnixFileMode)(mode & 0x1FF)); }
+        catch { /* best-effort */ }
+        return null;
+    }
+
     // os.Chtimes(name, atime, mtime time.Time) error: set a file's access/modification
     // times. atime/mtime are GoTime handles (nanoseconds since the Unix epoch in .N).
     public static object? Chtimes(GoString name, object? atime, object? mtime)

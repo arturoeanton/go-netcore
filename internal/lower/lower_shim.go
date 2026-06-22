@@ -111,6 +111,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/hmac":   {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
 	"crypto/subtle": {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}},
 	"mime":          {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
+	"mime/multipart": {"NewReader": {"Multipart", "NewReader"}, "NewWriter": {"Multipart", "NewWriter"}},
 	"net/mail":      {"ParseAddress": {"Mail", "ParseAddress"}},
 	"os/signal": {
 		"Notify": {"Ossignal", "Notify"}, "Stop": {"Ossignal", "Stop"},
@@ -235,7 +236,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"context": {
 		"Background": {"Context", "Background"}, "TODO": {"Context", "TODO"},
 		"WithValue": {"Context", "WithValue"}, "WithCancel": {"Context", "WithCancel"},
-		"WithTimeout": {"Context", "WithTimeout"}, "WithCancelCause": {"Context", "WithCancelCause"},
+		"WithTimeout": {"Context", "WithTimeout"}, "WithDeadline": {"Context", "WithDeadline"}, "WithCancelCause": {"Context", "WithCancelCause"},
 		"Cause": {"Context", "Cause"},
 	},
 	"sort": {
@@ -272,7 +273,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Getuid": {"Os", "Getuid"}, "Getgid": {"Os", "Getgid"}, "Getppid": {"Os", "Getppid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
 		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "Rename": {"Os", "Rename"}, "UserCacheDir": {"Os", "UserCacheDir"}, "UserConfigDir": {"Os", "UserConfigDir"}, "UserHomeDir": {"Os", "UserHomeDir"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "MkdirTemp": {"Os", "MkdirTemp"}, "TempDir": {"Os", "TempDir"},
-		"Stat": {"Os", "Stat"}, "Lstat": {"Os", "Lstat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"}, "Mkdir": {"Os", "Mkdir"}, "Chtimes": {"Os", "Chtimes"},
+		"Stat": {"Os", "Stat"}, "Lstat": {"Os", "Lstat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"}, "Mkdir": {"Os", "Mkdir"}, "Chtimes": {"Os", "Chtimes"}, "Chmod": {"Os", "Chmod"},
 	},
 	"bytes": {
 		"Equal": {"Bytes", "Equal"}, "EqualFold": {"Bytes", "EqualFold"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
@@ -384,6 +385,8 @@ var opaqueShimTypes = map[string]bool{
 	"text/template.Template":         true,
 	"net.TCPAddr":                    true,
 	"net.UDPAddr":                    true,
+	"net.Dialer":                     true,
+	"net.Resolver":                   true,
 	"net.IPAddr":                     true,
 	"net.UnixAddr":                   true,
 	"net.PacketConn":                 true,
@@ -449,6 +452,8 @@ var opaqueShimTypes = map[string]bool{
 	"bufio.ReadWriter":                   true,
 	"mime/multipart.FileHeader":          true,
 	"mime/multipart.File":                true,
+	"mime/multipart.Reader":              true,
+	"mime/multipart.Writer":              true,
 	"net/http.Cookie":                    true,
 	"net/http.Client":                    true,
 	"net/http/cookiejar.Jar":             true,
@@ -507,6 +512,12 @@ var shimVarRegistry = map[string]shimFunc{
 	"hash/crc32.IEEETable":           {"Hashes", "Crc32IEEETable"},
 	"bufio.ErrBufferFull":            {"Bufio", "ErrBufferFull"},
 	"bufio.ErrNegativeCount":         {"Bufio", "ErrNegativeCount"},
+	"net.DefaultResolver":            {"Net", "DefaultResolver"},
+	"compress/gzip.ErrChecksum":      {"Compress", "GzipErrChecksum"},
+	"compress/gzip.ErrHeader":        {"Compress", "GzipErrHeader"},
+	"compress/zlib.ErrChecksum":      {"Compress", "ZlibErrChecksum"},
+	"compress/zlib.ErrHeader":        {"Compress", "ZlibErrHeader"},
+	"compress/zlib.ErrDictionary":    {"Compress", "ZlibErrDictionary"},
 	"net.IPv4zero":                   {"Net", "IPv4zero"},
 	"net.IPv4bcast":                  {"Net", "IPv4bcast"},
 	"net.IPv4allsys":                 {"Net", "IPv4allsys"},
@@ -636,6 +647,12 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"net.UDPAddr": {
 		"IP": {"Net", "UDPAddr_IP"}, "Port": {"Net", "UDPAddr_Port"}, "Zone": {"Net", "UDPAddr_Zone"},
+	},
+	"net.TCPAddr": { // GoNetAddr is shared with net.UDPAddr; reuse its field getters.
+		"IP": {"Net", "UDPAddr_IP"}, "Port": {"Net", "UDPAddr_Port"}, "Zone": {"Net", "UDPAddr_Zone"},
+	},
+	"net.IPAddr": {
+		"IP": {"Net", "UDPAddr_IP"}, "Zone": {"Net", "UDPAddr_Zone"},
 	},
 	"net/http/httptest.Server": {
 		"URL": {"Httptest", "Server_URL"},
@@ -795,6 +812,7 @@ var opaqueShimClone = map[string]shimFunc{
 var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"sync.Cond": {"L": {"Sync", "Cond_SetL"}},
 	"sync.Pool": {"New": {"Sync", "Pool_SetNew"}},
+	"net.Dialer": {"LocalAddr": {"Net", "Dialer_SetLocalAddr"}},
 	"encoding/xml.Name": {
 		"Space": {"Xml", "Name_SetSpace"}, "Local": {"Xml", "Name_SetLocal"},
 	},
@@ -1011,8 +1029,22 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"mime/multipart.Form": {
 		"RemoveAll": {"Multipart", "Form_RemoveAll"},
 	},
+	"mime/multipart.Reader": {
+		"ReadForm": {"Multipart", "Reader_ReadForm"},
+	},
+	"mime/multipart.Writer": {
+		"SetBoundary": {"Multipart", "Writer_SetBoundary"}, "WriteField": {"Multipart", "Writer_WriteField"},
+		"CreatePart": {"Multipart", "Writer_CreatePart"}, "Close": {"Multipart", "Writer_Close"},
+		"Boundary": {"Multipart", "Writer_Boundary"}, "FormDataContentType": {"Multipart", "Writer_FormDataContentType"},
+	},
 	"crypto/tls.Config": {
-		"Clone": {"HttpTypes", "Config_Clone"},
+		"Clone": {"HttpTypes", "Config_Clone"}, "BuildNameToCertificate": {"HttpTypes", "Config_BuildNameToCertificate"},
+	},
+	"net.Dialer": { // client dialer — dead code on goclr's server path; dial returns an error.
+		"DialContext": {"HttpTypes", "Dialer_DialContext"}, "Dial": {"HttpTypes", "Dialer_Dial"},
+	},
+	"net.Resolver": { // DNS — dead code on goclr's server path; lookups return an error.
+		"LookupIPAddr": {"Net", "Resolver_LookupIPAddr"},
 	},
 	"crypto/tls.Dialer": {
 		"DialContext": {"HttpTypes", "Dialer_DialContext"}, "Dial": {"HttpTypes", "Dialer_Dial"},
@@ -1074,11 +1106,11 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Del": {"Url", "Values_Del"}, "Has": {"Url", "Values_Has"}, "Encode": {"Url", "Values_Encode"},
 	},
 	"strings.Reader": {
-		"ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
+		"Read": {"Readers", "Reader_Read"}, "ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
 		"ReadRune": {"Readers", "Reader_ReadRune"}, "Len": {"Readers", "Reader_Len"}, "Size": {"Readers", "Reader_Size"},
 	},
 	"bytes.Reader": {
-		"ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
+		"Read": {"Readers", "Reader_Read"}, "ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
 		"ReadRune": {"Readers", "Reader_ReadRune"}, "Len": {"Readers", "Reader_Len"}, "Size": {"Readers", "Reader_Size"},
 	},
 	"reflect.Type": {
@@ -1202,6 +1234,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net.UDPAddr": {
 		"String": {"Net", "UDPAddr_String"}, "Network": {"Net", "UDPAddr_Network"},
+	},
+	"net.TCPAddr": { // shares GoNetAddr with net.UDPAddr; reuse its String/Network.
+		"String": {"Net", "UDPAddr_String"}, "Network": {"Net", "TCPAddr_Network"},
 	},
 	"os/exec.Cmd": {
 		"Output": {"Exec", "Cmd_Output"}, "CombinedOutput": {"Exec", "Cmd_CombinedOutput"}, "Run": {"Exec", "Cmd_Run"},
@@ -1394,7 +1429,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"sync.Map": {
 		"Store": {"Sync", "Map_Store"}, "Load": {"Sync", "Map_Load"}, "Delete": {"Sync", "Map_Delete"},
-		"LoadOrStore": {"Sync", "Map_LoadOrStore"}, "LoadAndDelete": {"Sync", "Map_LoadAndDelete"},
+		"LoadOrStore": {"Sync", "Map_LoadOrStore"}, "LoadAndDelete": {"Sync", "Map_LoadAndDelete"}, "Range": {"Sync", "Map_Range"},
 	},
 	"sync.Pool": {
 		"Get": {"Sync", "Pool_Get"}, "Put": {"Sync", "Pool_Put"},

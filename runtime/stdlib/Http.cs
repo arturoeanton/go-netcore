@@ -879,6 +879,7 @@ public static class HttpTypes
     public static bool Config_PreferServerCipherSuites(object c) => CF(c).GetB("PreferServerCipherSuites");
     public static void Config_SetPreferServerCipherSuites(object c, bool v) => CF(c).Set("PreferServerCipherSuites", v);
     public static object Config_Clone(object c) => new GoTlsConfig(); // dead path: a fresh config
+    public static void Config_BuildNameToCertificate(object c) { } // deprecated no-op
     public static GoString Config_ServerName(object c) => CF(c).Get("ServerName") is GoString g ? g : GoString.FromDotNetString("");
     public static void Config_SetServerName(object c, GoString v) => CF(c).Set("ServerName", v);
     public static void Config_SetMinVersion(object c, uint v) => CF(c).Set("MinVersion", v);

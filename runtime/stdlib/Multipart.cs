@@ -20,9 +20,78 @@ public sealed class GoFileHeader
     public byte[] Content = System.Array.Empty<byte>();
 }
 
+/// <summary>A mime/multipart.Reader: an underlying reader + the boundary, parsed lazily.</summary>
+public sealed class GoMultipartReader { public object? R; public string Boundary = ""; }
+
+/// <summary>A mime/multipart.Writer: marshals form fields/parts to an underlying writer.</summary>
+public sealed class GoMultipartWriter { public object? W; public string Boundary = "goclrFormBoundary7MA4YWxkTrZu0gW"; }
+
 /// <summary>Shim for a subset of mime/multipart (Form parsing + FileHeader/File).</summary>
 public static class Multipart
 {
+    // multipart.NewReader(r io.Reader, boundary string) *Reader.
+    public static object NewReader(object? r, GoString boundary) =>
+        new GoMultipartReader { R = r, Boundary = boundary.ToDotNetString() };
+
+    // (*multipart.Reader).ReadForm(maxMemory int64) (*Form, error): drain the underlying
+    // reader and parse the whole multipart body. goclr buffers form bodies in memory, so
+    // maxMemory (the spill-to-disk threshold) is not used.
+    public static object?[] Reader_ReadForm(object mr, long maxMemory)
+    {
+        var r = (GoMultipartReader)mr;
+        var raw = Readers.Drain(r.R);
+        return new object?[] { ParseForm(raw, r.Boundary), null };
+    }
+
+    // ---- mime/multipart.Writer ----
+    public static object NewWriter(object? w) => new GoMultipartWriter { W = w };
+    public static GoString Writer_Boundary(object mw) => GoString.FromDotNetString(((GoMultipartWriter)mw).Boundary);
+    public static GoString Writer_FormDataContentType(object mw) =>
+        GoString.FromDotNetString("multipart/form-data; boundary=" + ((GoMultipartWriter)mw).Boundary);
+    public static object? Writer_SetBoundary(object mw, GoString b)
+    {
+        string s = b.ToDotNetString();
+        if (s.Length == 0 || s.Length > 70) return new GoError(GoString.FromDotNetString("mime: invalid boundary length"));
+        ((GoMultipartWriter)mw).Boundary = s;
+        return null;
+    }
+    public static object?[] Writer_WriteField(object mw, GoString name, GoString val)
+    {
+        var w = (GoMultipartWriter)mw;
+        string s = "--" + w.Boundary + "\r\nContent-Disposition: form-data; name=\"" + name.ToDotNetString() + "\"\r\n\r\n"
+                   + val.ToDotNetString() + "\r\n";
+        Compress.WriteRaw(w.W, Encoding.UTF8.GetBytes(s));
+        return new object?[] { null };
+    }
+    // CreatePart(header textproto.MIMEHeader) (io.Writer, error): write the part headers,
+    // then return the underlying writer so the caller streams the part body into it.
+    public static object?[] Writer_CreatePart(object mw, object? header)
+    {
+        var w = (GoMultipartWriter)mw;
+        var sb = new StringBuilder("--").Append(w.Boundary).Append("\r\n");
+        if (header is GoMap hm && hm.Data != null)
+            foreach (var kv in hm.Data)
+            {
+                string hk = kv.Key is GoString gk ? gk.ToDotNetString() : kv.Key?.ToString() ?? "";
+                if (kv.Value is GoSlice vs)
+                    for (int i = 0; i < vs.Len; i++)
+                    {
+                        var v = vs.Data![vs.Off + i];
+                        string hv = v is GoString gv ? gv.ToDotNetString() : v?.ToString() ?? "";
+                        sb.Append(hk).Append(": ").Append(hv).Append("\r\n");
+                    }
+            }
+        sb.Append("\r\n");
+        Compress.WriteRaw(w.W, Encoding.UTF8.GetBytes(sb.ToString()));
+        return new object?[] { w.W, null };
+    }
+    public static object? Writer_Close(object mw)
+    {
+        var w = (GoMultipartWriter)mw;
+        Compress.WriteRaw(w.W, Encoding.ASCII.GetBytes("--" + w.Boundary + "--\r\n"));
+        return null;
+    }
+
     public static object? Form_RemoveAll(object f) => null; // no temp files to clean
     public static GoMap Form_Value(object f) => (GoMap)(((GoMultipartForm)f).Value ?? GoMaps.Make());
     public static GoMap Form_File(object f) => (GoMap)(((GoMultipartForm)f).File ?? GoMaps.Make());
