@@ -197,3 +197,10 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   Próximo muro: **`io.MultiWriter`** (gzip `WriteTo`) — requiere dispatch `io.Writer` heterogéneo
   desde un shim (digest `GoHash32` + writer de usuario en una llamada); fix limpio = bajar
   `io.MultiWriter` desde fuente Go real. Diferido como tarea propia. Detalle en GAPS.md.
+- 🟢 **Muro unsafe de fasthttp MEDIDO — NO existe.** Medición directa vs `fasthttp@v1.51.0` + todo
+  el árbol: fasthttp core = 4 sitios unsafe (todos idioms seguros bytes↔string que goclr baja en
+  go1.20+; la forma dura `reflect.SliceHeader`-write está tras `!go1.20`), brotli = 0, klauspost = 0
+  activos (los 6 `unsafe.Pointer` son código muerto comentado), asm = solo `matchlen` con fallback
+  puro-Go auto-seleccionado + `cpuid` que no se importa, syscall = trivial (`ECONNRESET`), reflect = 0.
+  `goclr analyze` → todo el árbol compatible. **Veredicto: fiber es un target tratable** (long-tail
+  de stdlib como gin/echo, empezando por io.MultiWriter), NO un callejón sin salida. Detalle en GAPS.md.
