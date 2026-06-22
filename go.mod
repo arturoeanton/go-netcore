@@ -6,6 +6,7 @@ require (
 	github.com/arturoeanton/go-r2-sqlite v0.0.0-20260611070501-18ec93e30de1
 	github.com/dop251/goja v0.0.0-20260618133527-c9b2ea77db59
 	github.com/gin-gonic/gin v1.10.1
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/stretchr/testify v1.11.1

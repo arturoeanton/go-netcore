@@ -27,6 +27,10 @@ public static class Base64
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
 
+    // (enc Encoding).Strict() Encoding: strict decoding rejects trailing non-zero bits;
+    // goclr decodes leniently, so this returns the same encoding handle.
+    public static object Strict(object enc) => enc;
+
     public static GoString EncodeToString(object enc, GoSlice src)
     {
         var e = (GoBase64)enc;

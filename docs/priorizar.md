@@ -6,7 +6,9 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 ## Orden 2 (nuevo foco, serializado — uno a la vez)
 
 1. ✅ Testify mínimo — tag `0.0.64.testify` (`goclr test` + testify/assert corren en el CLR)
-2. ⬜ JWT library
+2. 🟡 JWT library — tag `0.0.65.jwt-signs`: golang-jwt/v5 COMPILA y **firma HS256** (cerró ~12
+   gaps + un bug general: box del receiver value-type en method values shim). Parse falla en el
+   header JSON ("alg unspecified") — pendiente de debug.
 3. ⬜ text/template
 4. ⬜ per-function stdlib coverage matrix
 5. ⬜ GORM mini target con una sola entidad
@@ -168,3 +170,12 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   `encoding/hex.Dump`, `reflect.Value.CanConvert`, `reflect.StructField.IsExported`,
   `(*regexp.Regexp).Match`, `os.Lstat`, `runtime.Goexit` (abort coarse). `examples/demo_testify`
   (PASS + el path de FALLO con exit 1 verificado). Conformance + echo verdes.
+- 🟡 **#2/#30 JWT (firma HS256)** — tag `0.0.65.jwt-signs`. `golang-jwt/v5` compila y **firma
+  HS256** byte-equivalente. **Bug general arreglado**: `shimMethodValue` no boxeaba un receiver
+  value-type (ej. `crypto.Hash`=uint) al capturarlo en el `object[]` del closure → NRE; ahora
+  `emitBox(recvType)`. Gaps cerrados (útiles standalone): `math.Modf`, `json.Number`
+  (Float64/Int64/String), `encoding/hex.Dump`, `big.Int.FillBytes`, `base64.Encoding.Strict`,
+  `math/big`... + stubs **fail-closed** de crypto asimétrico (ecdsa/rsa/ed25519 Sign/Verify,
+  x509.Parse*PublicKey/DecryptPEMBlock) para que jwt compile (ES*/RS*/PS*/EdDSA rechazan, nunca
+  aceptan mal). **Pendiente**: `jwt.Parse` falla leyendo el header ("alg unspecified") — debug
+  del round-trip json del header. `examples/demo_jwt`.

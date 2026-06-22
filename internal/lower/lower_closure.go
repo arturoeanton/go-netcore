@@ -411,7 +411,8 @@ func (l *funcLowerer) shimMethodValue(sel *ast.SelectorExpr, ext *goir.Extern) g
 	l.emit(goir.Op{Code: goir.OpNewObjArray})
 	l.emit(goir.Op{Code: goir.OpDup})
 	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
-	l.expr(sel.X) // the receiver (already the shim handle)
+	l.expr(sel.X)       // the receiver
+	l.emitBox(recvType) // box a value-type receiver (e.g. crypto.Hash = uint) for the object[] env
 	l.emit(goir.Op{Code: goir.OpStelemRef})
 	l.emit(goir.Op{Code: goir.OpClosNew})
 	return goir.TFunc

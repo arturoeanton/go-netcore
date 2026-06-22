@@ -476,6 +476,19 @@ public static class Json
     public static GoString SyntaxErr_Error(object e) => GoString.FromDotNetString("json: syntax error");
     public static long SyntaxErr_Offset(object e) => 0;
 
+    // json.Number (a named string carrying numeric text): Float64()/Int64()/String().
+    private static string NumStr(object? n) =>
+        (n is GoNamed gn ? gn.Value : n) is GoString s ? s.ToDotNetString() : "";
+    public static object?[] Number_Float64(object n) =>
+        double.TryParse(NumStr(n), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)
+            ? new object?[] { d, null }
+            : new object?[] { 0.0, new GoError(GoString.FromDotNetString("strconv.ParseFloat: invalid syntax")) };
+    public static object?[] Number_Int64(object n) =>
+        long.TryParse(NumStr(n), out var v)
+            ? new object?[] { v, null }
+            : new object?[] { 0L, new GoError(GoString.FromDotNetString("strconv.ParseInt: invalid syntax")) };
+    public static GoString Number_String(object n) => GoString.FromDotNetString(NumStr(n));
+
     public static object? Decoder_Decode(object dec, object? target)
     {
         try { SetPtr(target, ((GoJsonDecoder)dec).DecodeValue()); return null; }

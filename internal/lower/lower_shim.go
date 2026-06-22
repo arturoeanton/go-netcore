@@ -25,7 +25,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Atan": {"Math", "Atan"}, "Atan2": {"Math", "Atan2"}, "Cbrt": {"Math", "Cbrt"},
 		"Ceil": {"Math", "Ceil"}, "Copysign": {"Math", "Copysign"}, "Cos": {"Math", "Cos"},
 		"Cosh": {"Math", "Cosh"}, "Exp": {"Math", "Exp"}, "Exp2": {"Math", "Exp2"},
-		"Floor": {"Math", "Floor"}, "Hypot": {"Math", "Hypot"}, "Log": {"Math", "Log"},
+		"Floor": {"Math", "Floor"}, "Modf": {"Math", "Modf"}, "Hypot": {"Math", "Hypot"}, "Log": {"Math", "Log"},
 		"Log10": {"Math", "Log10"}, "Log2": {"Math", "Log2"}, "Max": {"Math", "Max"},
 		"Min": {"Math", "Min"}, "Mod": {"Math", "Mod"}, "Pow": {"Math", "Pow"},
 		"Remainder": {"Math", "Remainder"}, "Round": {"Math", "Round"}, "Signbit": {"Math", "Signbit"},
@@ -84,16 +84,20 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/sha256":   {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}, "Sum256": {"Crypto", "Sha256Sum256"}, "Sum224": {"Crypto", "Sha256Sum224"}},
 	"crypto/sha1":     {"New": {"Crypto", "Sha1New"}, "Sum": {"Crypto", "Sha1Sum"}},
 	"crypto/elliptic": {"P224": {"Crypto509", "P224"}, "P256": {"Crypto509", "P256"}, "P384": {"Crypto509", "P384"}, "P521": {"Crypto509", "P521"}},
-	"crypto/ecdsa":    {"GenerateKey": {"Crypto509", "EcdsaGenerateKey"}},
+	"crypto/ecdsa":    {"GenerateKey": {"Crypto509", "EcdsaGenerateKey"}, "Verify": {"CryptoSign", "EcdsaVerify"}, "Sign": {"CryptoSign", "EcdsaSign"}},
+	"crypto/ed25519":  {"Verify": {"CryptoSign", "Ed25519Verify"}},
 	"encoding/asn1":   {"Marshal": {"Asn1", "Marshal"}, "Unmarshal": {"Asn1", "Unmarshal"}},
 	"encoding/pem":    {"Decode": {"Pem", "Decode"}, "EncodeToMemory": {"Pem", "EncodeToMemory"}, "Encode": {"Pem", "Encode"}},
-	"crypto/rsa":      {"GenerateKey": {"Crypto509", "RsaGenerateKey"}},
+	"crypto/rsa": {"GenerateKey": {"Crypto509", "RsaGenerateKey"},
+		"VerifyPKCS1v15": {"CryptoSign", "VerifyPKCS1v15"}, "SignPKCS1v15": {"CryptoSign", "SignPKCS1v15"},
+		"VerifyPSS": {"CryptoSign", "VerifyPSS"}, "SignPSS": {"CryptoSign", "SignPSS"}},
 	"crypto/tls":      {"Server": {"HttpTypes", "TlsServer"}, "Client": {"HttpTypes", "TlsClient"}, "X509KeyPair": {"HttpTypes", "X509KeyPair"}, "LoadX509KeyPair": {"HttpTypes", "LoadX509KeyPair"}, "NewListener": {"HttpTypes", "NewListener"}},
 	"crypto/x509": {
 		"CreateCertificate": {"Crypto509", "CreateCertificate"}, "ParseCertificate": {"Crypto509", "ParseCertificate"}, "ParseCertificates": {"Crypto509", "ParseCertificates"},
 		"MarshalECPrivateKey": {"Crypto509", "MarshalECPrivateKey"}, "ParseECPrivateKey": {"Crypto509", "ParseECPrivateKey"},
 		"MarshalPKCS1PrivateKey": {"Crypto509", "MarshalPKCS1PrivateKey"}, "ParsePKCS1PrivateKey": {"Crypto509", "ParsePKCS1PrivateKey"},
 		"ParsePKCS8PrivateKey": {"Crypto509", "ParsePKCS8PrivateKey"}, "CreateCertificateRequest": {"Crypto509", "CreateCertificateRequest"},
+		"ParsePKIXPublicKey": {"CryptoSign", "ParsePKIXPublicKey"}, "ParsePKCS1PublicKey": {"CryptoSign", "ParsePKCS1PublicKey"}, "DecryptPEMBlock": {"CryptoSign", "DecryptPEMBlock"},
 	},
 	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}, "Sum512": {"Crypto", "Sha512Sum512"}, "Sum384": {"Crypto", "Sha512Sum384"}},
 	"crypto/md5":    {"New": {"Crypto", "Md5New"}, "Sum": {"Crypto", "Md5Sum"}},
@@ -968,6 +972,9 @@ var binaryMethods = map[string]shimFunc{
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
 	"runtime.Frames": {"Next": {"Goruntime", "Frames_Next"}},
+	"encoding/json.Number": {
+		"Float64": {"Json", "Number_Float64"}, "Int64": {"Json", "Number_Int64"}, "String": {"Json", "Number_String"},
+	},
 	"encoding/json.UnmarshalTypeError": {
 		"Error": {"Json", "UTE_Error"},
 	},
@@ -1220,6 +1227,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"encoding/base64.Encoding": {
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
 		"EncodedLen": {"Base64", "EncodedLen"}, "DecodedLen": {"Base64", "DecodedLen"}, "Encode": {"Base64", "Encode"}, "Decode": {"Base64", "Decode"},
+		"Strict": {"Base64", "Strict"},
 	},
 	"encoding/binary.littleEndian": binaryMethods,
 	"encoding/binary.bigEndian":    binaryMethods,
@@ -1252,7 +1260,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Add": {"Big", "Int_Add"}, "Sub": {"Big", "Int_Sub"}, "Mul": {"Big", "Int_Mul"},
 		"Div": {"Big", "Int_Div"}, "Mod": {"Big", "Int_Mod"}, "Neg": {"Big", "Int_Neg"},
 		"Quo": {"Big", "Int_Quo"}, "Rem": {"Big", "Int_Rem"}, "GCD": {"Big", "Int_GCD"},
-		"Abs": {"Big", "Int_Abs"}, "Exp": {"Big", "Int_Exp"}, "Set": {"Big", "Int_Set"},
+		"Abs": {"Big", "Int_Abs"}, "Exp": {"Big", "Int_Exp"}, "Set": {"Big", "Int_Set"}, "FillBytes": {"Big", "Int_FillBytes"},
 		"Cmp": {"Big", "Int_Cmp"}, "Sign": {"Big", "Int_Sign"}, "Int64": {"Big", "Int_Int64"},
 		"String": {"Big", "Int_String"}, "SetString": {"Big", "Int_SetString"},
 		"SetInt64": {"Big", "Int_SetInt64"}, "SetUint64": {"Big", "Int_SetUint64"},

@@ -23,6 +23,8 @@ public static class Math
     public static double Expm1(double x) => SM.Exp(x) - 1.0;
     public static double Log1p(double x) => SM.Log(1.0 + x);
     public static double Floor(double x) => SM.Floor(x);
+    // math.Modf(f) (int, frac): integer and fractional parts, both carrying f's sign.
+    public static object?[] Modf(double f) { double i = SM.Truncate(f); return new object?[] { i, f - i }; }
     public static double Hypot(double p, double q) => SM.Sqrt(p * p + q * q);
     public static double Log(double x) => SM.Log(x);
     public static double Log10(double x) => SM.Log10(x);

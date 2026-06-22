@@ -58,6 +58,15 @@ public static class Big
     public static object Int_Mod(object z, object x, object y) { var r = V(x) % V(y); if (r.Sign < 0) r += BigInteger.Abs(V(y)); ((GoBigInt)z).V = r; return z; }
     public static object Int_Neg(object z, object x) { ((GoBigInt)z).V = -V(x); return z; }
     public static object Int_Abs(object z, object x) { ((GoBigInt)z).V = BigInteger.Abs(V(x)); return z; }
+    // (z *Int).FillBytes(buf): write |z| big-endian into buf, right-aligned/zero-padded.
+    public static GoSlice Int_FillBytes(object z, GoSlice buf)
+    {
+        for (int i = 0; i < buf.Len; i++) buf.Data![buf.Off + i] = 0;
+        var be = BigInteger.Abs(((GoBigInt)z).V).ToByteArray(isUnsigned: true, isBigEndian: true);
+        int start = buf.Len - be.Length;
+        for (int i = 0; i < be.Length && start + i >= 0; i++) buf.Data![buf.Off + start + i] = (int)be[i];
+        return buf;
+    }
     public static object Int_Exp(object z, object x, object y, object m)
     {
         BigInteger r = m == null ? BigInteger.Pow(V(x), (int)V(y)) : BigInteger.ModPow(V(x), V(y), V(m));
