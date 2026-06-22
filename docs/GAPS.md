@@ -380,6 +380,22 @@ they are verified independent of the (still-incomplete) fiber build:
 Next blocker on the chain: **`io.MultiWriter`** (gzip `WriteTo`). It needs heterogeneous
 `io.Writer` dispatch from a shim — writing the same bytes to a shim digest (`GoHash32`) *and* a
 user writer through one call — which is the itable/bridge dispatch the compiler does for a real
-`w.Write(p)` interface call but a C# shim cannot yet replicate. Cleanest fix is likely lowering
+`w.Write(p)` interface call but a C# shim cannot yet replicate. Cleanest fix is lowering
 `io.MultiWriter` from real Go source so the per-writer `Write` calls go through normal interface
 dispatch; deferred as its own task. fasthttp's own unsafe (step 3) is still untouched.
+
+**From-source spike (deferred, not landed).** Adding `"io"` to `compileFromSource` was tried and
+is *viable*: `io` is pure Go (imports only `errors`+`sync`), its full source lowers, and because
+`shimExtern` is consulted before `byFunc` in `namedFuncCall`, the existing `io.Copy`/`ReadAll`/
+`WriteString` shims keep winning while only the un-shimmed funcs (`MultiWriter`/`MultiReader`/
+`TeeReader`/`Pipe`) come from source. With it, `io.MultiWriter` compiles and `multiWriter.Write`
+is correctly dispatched **through the callback bridge** (`Bridge.CallMethod → __adapter → io_multiWriter_Write`)
+— the heterogeneous-dispatch problem solves itself. What remains is a runtime nil-deref inside the
+generated `multiWriter.Write` at the inner `w.Write(p)` over a shim writer (`bytes.Buffer`): the
+shim writer type is not yet enumerated as a bridge `io.Writer` implementer, so the nested
+interface call returns null. Two things must land together before this is shippable: (1) fix the
+nested-call nil-deref (enumerate shim writer types as bridge implementers, or have the from-source
+`w.Write` fall through to the shim writer path), and (2) a full regression pass — putting `io` in
+`compileFromSource` is high-blast-radius (every program links it), so the entire conformance suite
++ goja/gin/echo validation targets must stay green. Left as a focused session, not an unattended
+checkpoint.
