@@ -215,6 +215,10 @@ public static class Os
     public static object ErrExist() => ErrExistSentinel;
     public static readonly GoError ErrClosedSentinel = new(GoString.FromDotNetString("file already closed"));
     public static object ErrClosed() => ErrClosedSentinel;
+    public static readonly GoError ErrPermissionSentinel = new(GoString.FromDotNetString("permission denied"));
+    public static object ErrPermission() => ErrPermissionSentinel;
+    public static readonly GoError ErrInvalidSentinel = new(GoString.FromDotNetString("invalid argument"));
+    public static object ErrInvalid() => ErrInvalidSentinel;
 
     // os.Stat(name) (FileInfo, error).
     // os.Lstat is os.Stat without following symlinks; goclr does not model symlinks, so it
@@ -312,6 +316,20 @@ public static class Os
     public static object?[] UserHomeDir() => new object?[] { GoString.FromDotNetString(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile)), null };
 
     // os.Rename(old, new) error — atomic-ish replace (autocert's cache write).
+    // os.Chtimes(name, atime, mtime time.Time) error: set a file's access/modification
+    // times. atime/mtime are GoTime handles (nanoseconds since the Unix epoch in .N).
+    public static object? Chtimes(GoString name, object? atime, object? mtime)
+    {
+        try
+        {
+            string p = name.ToDotNetString();
+            var epoch = new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc);
+            if (atime is GoTime at) System.IO.File.SetLastAccessTimeUtc(p, epoch.AddTicks(at.N / 100));
+            if (mtime is GoTime mt) System.IO.File.SetLastWriteTimeUtc(p, epoch.AddTicks(mt.N / 100));
+            return null;
+        }
+        catch (System.Exception e) { return new GoError(GoString.FromDotNetString("chtimes " + name.ToDotNetString() + ": " + e.Message)); }
+    }
     public static object? Rename(GoString o, GoString n)
     {
         try { System.IO.File.Move(o.ToDotNetString(), n.ToDotNetString(), overwrite: true); return null; }

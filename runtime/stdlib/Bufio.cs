@@ -12,7 +12,12 @@ public sealed class GoScanner
 }
 
 /// <summary>A bufio.Reader over an underlying runtime reader.</summary>
-public sealed class GoBufReader { public object? R; public int Pending = -1; public int Last = -1; }
+public sealed class GoBufReader
+{
+    public object? R;                                          // underlying reader
+    public System.Collections.Generic.List<byte> Buf = new();  // bytes read from R, not yet consumed
+    public int Pos;                                            // read cursor into Buf
+}
 
 /// <summary>A bufio.ReadWriter pairing a Reader and a Writer.</summary>
 public sealed class GoBufReadWriter { public object R = new GoBufReader(); public object W = new GoBufWriter(); }
@@ -29,34 +34,91 @@ public sealed class GoBufWriter
 /// Writer over a runtime writer).</summary>
 public static class Bufio
 {
+    // bufio sentinel errors.
+    public static readonly GoError ErrBufferFullSentinel = new(GoString.FromDotNetString("bufio: buffer full"));
+    public static object ErrBufferFull() => ErrBufferFullSentinel;
+    public static readonly GoError ErrNegativeCountSentinel = new(GoString.FromDotNetString("bufio: negative count"));
+    public static object ErrNegativeCount() => ErrNegativeCountSentinel;
+
     public static object NewScanner(object? r) => new GoScanner { Data = Readers.Drain(r) };
 
     // bufio.NewReader / NewReaderSize: buffered reader over an underlying reader.
     public static object NewReader(object? r) => new GoBufReader { R = r };
     public static object NewReaderSize(object? r, long size) => new GoBufReader { R = r };
-    public static object?[] Reader_Read(object br, GoSlice p) => Io.ReadFull(((GoBufReader)br).R, p);
+
+    private const int FillBlock = 4096; // bufio's default buffer size; fill generously like Go
+    private static int Avail(GoBufReader b) => b.Buf.Count - b.Pos;
+    // Ensure at least `need` bytes are buffered ahead of Pos (best effort). Reads in
+    // buffer-sized blocks (matching Go's bufio, which fills its buffer per Read) so
+    // Buffered()/Read() see the same data Go does. goclr's underlying readers are
+    // in-memory and EOF-terminating, so over-reading does not block. Returns the read
+    // error if it occurred before reaching `need`, else null.
+    private static object? Fill(GoBufReader b, int need)
+    {
+        while (Avail(b) < need)
+        {
+            int want = System.Math.Max(need - Avail(b), FillBlock);
+            var tmp = new GoSlice { Data = new object?[want], Off = 0, Len = want, Cap = want };
+            var r = Io.ReadFull(b.R, tmp);
+            int n = (int)System.Convert.ToInt64(r[0] ?? 0L);
+            for (int i = 0; i < n; i++) b.Buf.Add((byte)(System.Convert.ToInt64(tmp.Data![i]) & 0xff));
+            object? err = r.Length > 1 ? r[1] : null;
+            if (Avail(b) >= need) return null;       // got enough despite a short read
+            if (n == 0 || err != null) return err ?? Io.EOFSentinel;
+        }
+        return null;
+    }
+
+    public static object?[] Reader_Read(object br, GoSlice p)
+    {
+        var b = (GoBufReader)br;
+        if (p.Len == 0) return new object?[] { 0L, null };
+        // Serve from the buffer if anything is left; otherwise read one chunk into it.
+        if (Avail(b) == 0) { var e = Fill(b, 1); if (Avail(b) == 0) return new object?[] { 0L, e }; }
+        int n = System.Math.Min(p.Len, Avail(b));
+        for (int i = 0; i < n; i++) p.Data![p.Off + i] = (int)b.Buf[b.Pos + i];
+        b.Pos += n;
+        return new object?[] { (long)n, null };
+    }
     public static object?[] Reader_ReadByte(object br)
     {
         var b = (GoBufReader)br;
-        if (b.Pending >= 0) { int v = b.Pending; b.Pending = -1; b.Last = v; return new object?[] { v, null }; }
-        var one = new GoSlice { Data = new object?[1], Off = 0, Len = 1, Cap = 1 };
-        var r = Io.ReadFull(b.R, one);
-        if (r[1] != null) return new object?[] { 0, r[1] };
-        b.Last = (int)System.Convert.ToInt64(one.Data![0]);
-        return new object?[] { one.Data![0], null };
+        var e = Fill(b, 1);
+        if (Avail(b) == 0) return new object?[] { 0, e ?? Io.EOFSentinel };
+        return new object?[] { (int)b.Buf[b.Pos++], null };
     }
-    // bufio.Reader.UnreadByte: unread the last byte returned by ReadByte so the next
-    // ReadByte returns it again. Errors if the last op was not a successful ReadByte.
+    // bufio.Reader.UnreadByte: step the cursor back so the next ReadByte returns the last byte.
     public static object? Reader_UnreadByte(object br)
     {
         var b = (GoBufReader)br;
-        if (b.Last < 0) return new GoError(GoString.FromDotNetString("bufio: invalid use of UnreadByte"));
-        b.Pending = b.Last;
-        b.Last = -1;
+        if (b.Pos == 0) return new GoError(GoString.FromDotNetString("bufio: invalid use of UnreadByte"));
+        b.Pos--;
         return null;
     }
-    public static void Reader_Reset(object br, object? r) => ((GoBufReader)br).R = r;
-    public static long Reader_Buffered(object br) => 0;
+    // bufio.Reader.Peek(n) ([]byte, error): return the next n bytes without consuming them.
+    public static object?[] Reader_Peek(object br, long n)
+    {
+        var b = (GoBufReader)br;
+        int want = (int)n;
+        var e = Fill(b, want);
+        int got = System.Math.Min(want, Avail(b));
+        var data = new object?[got];
+        for (int i = 0; i < got; i++) data[i] = (int)b.Buf[b.Pos + i];
+        var slice = new GoSlice { Data = data, Off = 0, Len = got, Cap = got };
+        return new object?[] { slice, got < want ? (e ?? Io.EOFSentinel) : null };
+    }
+    // bufio.Reader.Discard(n) (int, error): skip the next n bytes.
+    public static object?[] Reader_Discard(object br, long n)
+    {
+        var b = (GoBufReader)br;
+        int want = (int)n;
+        var e = Fill(b, want);
+        int got = System.Math.Min(want, Avail(b));
+        b.Pos += got;
+        return new object?[] { (long)got, got < want ? (e ?? Io.EOFSentinel) : null };
+    }
+    public static void Reader_Reset(object br, object? r) { var b = (GoBufReader)br; b.R = r; b.Buf.Clear(); b.Pos = 0; }
+    public static long Reader_Buffered(object br) => Avail((GoBufReader)br);
 
     // bufio.ReadWriter (a Reader+Writer pair; h2c prior-knowledge path, dead under goclr).
     public static object RW_Reader(object rw) => ((GoBufReadWriter)rw).R;

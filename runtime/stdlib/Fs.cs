@@ -2,10 +2,68 @@ namespace GoCLR.Stdlib;
 
 using GoCLR.Runtime;
 
+/// <summary>A goclr-produced fs.DirEntry (one directory listing entry). Carries the entry
+/// name + whether it is a directory + the rooted real path so Info() can stat it. The
+/// [GoShim] annotations let it match fs.DirEntry interface dispatch (like GoFileInfo).</summary>
+[GoShim("io/fs.DirEntry")]
+public sealed class GoDirEntry
+{
+    public GoString EntryName;
+    public bool Dir;
+    public string FullPath = "";
+}
+
 /// <summary>Shim for io/fs.FileMode methods (the type is a uint32; constants resolve
 /// from source). Only the mask/predicate methods are modeled.</summary>
 public static class Fs
 {
+    // fs.DirEntry method set (mirrors os.FileInfo's, routed through interface dispatch).
+    public static GoString DirEntry_Name(object de) => ((GoDirEntry)de).EntryName;
+    public static bool DirEntry_IsDir(object de) => ((GoDirEntry)de).Dir;
+    public static uint DirEntry_Type(object de) => ((GoDirEntry)de).Dir ? (1u << 31) : 0u;
+    public static object?[] DirEntry_Info(object de)
+    {
+        var d = (GoDirEntry)de;
+        return Os.Stat(GoString.FromDotNetString(d.FullPath));
+    }
+
+    // fs.ReadDir(fsys, name) ([]fs.DirEntry, error): list a directory. os.DirFS reads the
+    // real directory; a ReadDirFS fs.FS uses its own ReadDir through the bridge.
+    public static object?[] ReadDir(object? fsys, GoString name)
+    {
+        if (fsys is GoDirFS dfs)
+        {
+            string dir = System.IO.Path.Combine(dfs.Root, name.ToDotNetString());
+            if (!System.IO.Directory.Exists(dir))
+                return new object?[] { NilSlice(), Os.ErrNotExistSentinel };
+            var entries = new System.Collections.Generic.List<object?>();
+            // Go's fs.ReadDir returns entries sorted by name.
+            var names = new System.Collections.Generic.List<string>();
+            foreach (var p in System.IO.Directory.GetFileSystemEntries(dir)) names.Add(p);
+            names.Sort(System.StringComparer.Ordinal);
+            foreach (var full in names)
+                entries.Add(new GoDirEntry
+                {
+                    EntryName = GoString.FromDotNetString(System.IO.Path.GetFileName(full)),
+                    Dir = System.IO.Directory.Exists(full),
+                    FullPath = full,
+                });
+            return new object?[] { Slice(entries), null };
+        }
+        // ReadDirFS fast path: the fs.FS has its own ReadDir.
+        if (Bridge.HasMethod(fsys, "ReadDir") &&
+            Bridge.CallMethod(fsys, "ReadDir", name) is object?[] rd)
+            return rd;
+        return new object?[] { NilSlice(), Os.ErrNotExistSentinel };
+    }
+
+    private static GoSlice NilSlice() => new() { Data = null, Off = 0, Len = 0, Cap = 0 };
+    private static GoSlice Slice(System.Collections.Generic.List<object?> items)
+    {
+        var d = items.ToArray();
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
+
     // The bits that ModeType selects (dir, symlink, device, pipe, socket, ...).
     private const uint ModeType = 0x8000_0000u | 0x4000_0000u | 0x2000_0000u | 0x1000_0000u
         | 0x0800_0000u | 0x0400_0000u | 0x0200_0000u | 0x0100_0000u | 0x0080_0000u;

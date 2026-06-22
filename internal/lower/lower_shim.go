@@ -191,7 +191,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"NewReader": {"Bufio", "NewReader"}, "NewReaderSize": {"Bufio", "NewReaderSize"},
 	},
 	"io/fs": {
-		"Stat": {"Fs", "Stat"}, "Sub": {"Fs", "Sub"}, "ValidPath": {"Fs", "ValidPath"},
+		"Stat": {"Fs", "Stat"}, "Sub": {"Fs", "Sub"}, "ValidPath": {"Fs", "ValidPath"}, "ReadDir": {"Fs", "ReadDir"},
 	},
 	"net": {
 		"Listen": {"Net", "Listen"}, "Dial": {"Net", "Dial"}, "FileListener": {"Net", "FileListener"},
@@ -272,7 +272,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Getuid": {"Os", "Getuid"}, "Getgid": {"Os", "Getgid"}, "Getppid": {"Os", "Getppid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
 		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "Rename": {"Os", "Rename"}, "UserCacheDir": {"Os", "UserCacheDir"}, "UserConfigDir": {"Os", "UserConfigDir"}, "UserHomeDir": {"Os", "UserHomeDir"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "MkdirTemp": {"Os", "MkdirTemp"}, "TempDir": {"Os", "TempDir"},
-		"Stat": {"Os", "Stat"}, "Lstat": {"Os", "Lstat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"}, "Mkdir": {"Os", "Mkdir"},
+		"Stat": {"Os", "Stat"}, "Lstat": {"Os", "Lstat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"}, "Mkdir": {"Os", "Mkdir"}, "Chtimes": {"Os", "Chtimes"},
 	},
 	"bytes": {
 		"Equal": {"Bytes", "Equal"}, "EqualFold": {"Bytes", "EqualFold"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
@@ -353,6 +353,7 @@ var opaqueShimTypes = map[string]bool{
 	"crypto/sha3.SHAKE":              true,
 	"crypto/sha3.SHA3":               true,
 	"io/fs.FileInfo":                 true,
+	"io/fs.DirEntry":                 true,
 	"runtime.Frame":                  true,
 	"runtime.Frames":                 true,
 	"time.Time":                      true,
@@ -504,6 +505,8 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/binary.LittleEndian":   {"Binary", "LittleEndian"},
 	"encoding/binary.BigEndian":      {"Binary", "BigEndian"},
 	"hash/crc32.IEEETable":           {"Hashes", "Crc32IEEETable"},
+	"bufio.ErrBufferFull":            {"Bufio", "ErrBufferFull"},
+	"bufio.ErrNegativeCount":         {"Bufio", "ErrNegativeCount"},
 	"net.IPv4zero":                   {"Net", "IPv4zero"},
 	"net.IPv4bcast":                  {"Net", "IPv4bcast"},
 	"net.IPv4allsys":                 {"Net", "IPv4allsys"},
@@ -531,10 +534,14 @@ var shimVarRegistry = map[string]shimFunc{
 	"os.ErrNotExist":                 {"Os", "ErrNotExist"},
 	"os.ErrExist":                    {"Os", "ErrExist"},
 	"os.ErrClosed":                   {"Os", "ErrClosed"},
+	"os.ErrPermission":               {"Os", "ErrPermission"},
+	"os.ErrInvalid":                  {"Os", "ErrInvalid"},
 	"encoding/xml.Header":            {"Xml", "Header"},
 	"io/fs.ErrClosed":                {"Os", "ErrClosed"},
 	"io/fs.ErrNotExist":              {"Os", "ErrNotExist"},
 	"io/fs.ErrExist":                 {"Os", "ErrExist"},
+	"io/fs.ErrPermission":            {"Os", "ErrPermission"},
+	"io/fs.ErrInvalid":               {"Os", "ErrInvalid"},
 	"io.ErrShortWrite":               {"Io", "ErrShortWrite"},
 	"io.ErrShortBuffer":              {"Io", "ErrShortBuffer"},
 	"io.ErrClosedPipe":               {"Io", "ErrClosedPipe"},
@@ -1102,7 +1109,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"}, "Err": {"Bufio", "Scanner_Err"},
 	},
 	"bufio.Reader": {
-		"Read": {"Bufio", "Reader_Read"}, "ReadByte": {"Bufio", "Reader_ReadByte"}, "UnreadByte": {"Bufio", "Reader_UnreadByte"}, "Reset": {"Bufio", "Reader_Reset"}, "Buffered": {"Bufio", "Reader_Buffered"},
+		"Read": {"Bufio", "Reader_Read"}, "ReadByte": {"Bufio", "Reader_ReadByte"}, "UnreadByte": {"Bufio", "Reader_UnreadByte"}, "Peek": {"Bufio", "Reader_Peek"}, "Discard": {"Bufio", "Reader_Discard"}, "Reset": {"Bufio", "Reader_Reset"}, "Buffered": {"Bufio", "Reader_Buffered"},
 	},
 	"bufio.ReadWriter": {
 		"Flush": {"Bufio", "RW_Flush"}, "Write": {"Bufio", "Writer_Write"}, "Read": {"Bufio", "RW_Read"},
@@ -1332,6 +1339,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"io/fs.FileInfo": {
 		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"}, "Mode": {"Os", "FileInfo_Mode"},
+	},
+	"io/fs.DirEntry": {
+		"Name": {"Fs", "DirEntry_Name"}, "IsDir": {"Fs", "DirEntry_IsDir"}, "Type": {"Fs", "DirEntry_Type"}, "Info": {"Fs", "DirEntry_Info"},
 	},
 	"io/fs.FileMode": {
 		"Type": {"Fs", "Mode_Type"}, "IsDir": {"Fs", "Mode_IsDir"}, "IsRegular": {"Fs", "Mode_IsRegular"}, "Perm": {"Fs", "Mode_Perm"},
