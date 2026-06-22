@@ -6,7 +6,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 ## Orden recomendado (foco actual, serializado — uno a la vez)
 
 1. ✅ `goclr test` compatible con `go test` — tag `0.0.52.goclr-test`
-2. ⬜ Compatibility report estable HTML/JSON
+2. ✅ Compatibility report estable HTML/JSON — tag `0.0.53.compat-report`
 3. ⬜ typed-nil en interfaces (`var p *T; any(p) == nil` ⇒ `false`)
 4. ⬜ `reflect.StructField.Name` / `.Tag` directo
 5. ⬜ function values de funciones shimmed
@@ -19,7 +19,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 ## Lista priorizada completa (50)
 
 1. ✅ `goclr test` compatible con `go test` — facilidad media, impacto altísimo · tag `0.0.52.goclr-test`
-2. ⬜ Compatibility report estable HTML/JSON — alta, altísimo
+2. ✅ Compatibility report estable HTML/JSON — alta, altísimo · tag `0.0.53.compat-report`
 3. ⬜ Matriz de cobertura por función stdlib/externa — alta/media, alto
 4. ⬜ Errores accionables `GCLR05xx/GCLR07xx` (símbolo, por qué, workaround, build tag, overlay) — alta, alto
 5. ⬜ typed-nil en interfaces — media, altísimo
@@ -78,3 +78,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   tests a .NET y los corre (TestXxx, subtests, Fatal/Skip), exit 0/1. Validado en
   `tests/gotest`. Fix de fondo: `frontend.Load` ahora dedupea la recursión por package ID
   (no import path), así el test-variant `pkg [pkg.test]` no se pierde frente al `pkg` plano.
+- ✅ **#2 Compatibility report HTML/JSON** — tag `0.0.53.compat-report`. `goclr analyze`
+  gana `--html` (reporte autocontenido, inline CSS, badges por estado) + `-o <file>`; el
+  JSON gana un `summary` estable (counts OK/WARN/FAIL + cobertura stdlib full/partial/pending).
+  `internal/analysis/html.go` + tests. Package-by-package, accionable y publicable como artefacto.

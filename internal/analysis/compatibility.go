@@ -34,10 +34,21 @@ type PackageVerdict struct {
 // Report is the full compatibility analysis result.
 type Report struct {
 	Profile     Profile                   `json:"profile"`
+	Summary     ReportSummary             `json:"summary"`
 	Packages    []PackageVerdict          `json:"packages"`
 	Diagnostics []*diagnostics.Diagnostic `json:"diagnostics"`
 	Compatible  bool                      `json:"compatible"`
 	bag         *diagnostics.Bag
+}
+
+// ReportSummary is the stable, machine-readable headline of a report: per-status package
+// counts and the stdlib overlay coverage. Consumers can track these over time.
+type ReportSummary struct {
+	Packages int            `json:"packages"`
+	OK       int            `json:"ok"`
+	Warn     int            `json:"warn"`
+	Fail     int            `json:"fail"`
+	Stdlib   StdlibCoverage `json:"stdlib"`
 }
 
 // Analyze runs the full compatibility analysis over a loaded result.
@@ -64,7 +75,24 @@ func Analyze(res *frontend.Result, profile Profile) *Report {
 
 	rep.Diagnostics = bag.Sorted()
 	rep.Compatible = !bag.HasErrors()
+	rep.Summary = rep.computeSummary()
 	return rep
+}
+
+// computeSummary tallies per-status package counts and stdlib coverage.
+func (r *Report) computeSummary() ReportSummary {
+	s := ReportSummary{Packages: len(r.Packages), Stdlib: r.StdlibSummary()}
+	for _, p := range r.Packages {
+		switch p.Status {
+		case "OK":
+			s.OK++
+		case "WARN":
+			s.Warn++
+		case "FAIL":
+			s.Fail++
+		}
+	}
+	return s
 }
 
 func analyzePackage(pkg *frontend.Package, isRoot bool, bag *diagnostics.Bag) PackageVerdict {

@@ -140,7 +140,8 @@ overlay cannot apply, and fails with `GCLR0201: unsupported unsafe operation`.
 ```bash
 goclr doctor                       # verify Go + .NET environment
 goclr analyze ./cmd/server         # compatibility report (echo-goja profile)
-goclr analyze ./... --json         # machine-readable report
+goclr analyze ./... --json         # machine-readable report (stable summary + per-package)
+goclr analyze ./... --html -o report.html   # self-contained HTML report
 goclr build ./cmd/server -o bin/server.dll
 goclr run ./cmd/server
 goclr clean

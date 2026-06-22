@@ -79,7 +79,7 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | M5 | **Echo v4 runs** — router, path params, JSON, status codes on the CLR; `crypto/x509`+`acme`/`autocert` closure lowers (TLS path a no-op shim) | ✅ |
 | M3 | `goclr test` (real `testing.T` on the CLR — TestXxx, subtests, Fatal/Skip) | ✅ |
 | M3 | CI conformance matrix (per-fixture pass/skip/fail in the job summary) | ✅ |
-| M3 | stable compatibility report (HTML/JSON) | 🚧 |
+| M3 | stable compatibility report — `goclr analyze --html` / `--json` (package-by-package, summary counts + stdlib coverage) | ✅ |
 
 **199 conformance fixtures pass byte-for-byte vs `go run`** (200 total, one skipped).
 Recent tags: `0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`,
