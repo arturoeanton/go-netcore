@@ -56,34 +56,48 @@ public static class Hashes
     public static long H64_Size(object ho) => 8;
     public static void H64_Reset(object ho) => ((GoHash64)ho).H = 14695981039346656037ul;
 
-    // ---- CRC32 (IEEE) ----
-    private static readonly uint[] CrcTable = BuildCrc();
-    private static uint[] BuildCrc()
+    // ---- CRC32 ----
+    // Build a 256-entry CRC table for a reversed polynomial (Go's crc32.simpleMakeTable).
+    private static uint[] BuildCrc(uint poly)
     {
         var t = new uint[256];
         for (uint i = 0; i < 256; i++)
         {
             uint c = i;
-            for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? poly ^ (c >> 1) : c >> 1;
             t[i] = c;
         }
         return t;
     }
+    private const uint IEEEPoly = 0xEDB88320u;
+    private static readonly uint[] CrcTable = BuildCrc(IEEEPoly);
+
+    // A *crc32.Table handle carries its 256-entry table in the GoPtr cell so Update/Checksum
+    // honour the polynomial (fiber builds a custom table via crc32.MakeTable for ETags).
+    private static uint[] TableOf(GoCLR.Runtime.GoPtr? tab) => tab?.Value as uint[] ?? CrcTable;
+    public static object Crc32IEEETable() => new GoCLR.Runtime.GoPtr { Value = CrcTable };
+    public static object Crc32MakeTable(uint poly) => new GoCLR.Runtime.GoPtr { Value = BuildCrc(poly) };
+
     public static uint Crc32ChecksumIEEE(GoSlice data)
     {
         uint c = 0xFFFFFFFFu;
         foreach (byte b in B(data)) c = CrcTable[(c ^ b) & 0xFF] ^ (c >> 8);
         return c ^ 0xFFFFFFFFu;
     }
-    // Opaque *crc32.Table handle (a non-generic GoPtr cell, matching how goclr
-    // marshals *crc32.Table). Only the IEEE table is materialised, so Crc32Update
-    // ignores it and always uses the IEEE polynomial.
-    public static object Crc32IEEETable() => new GoCLR.Runtime.GoPtr { Value = "crc32.IEEE" };
-    // crc32.Update(crc, tab, p): fold p into the running IEEE CRC of crc.
+    // crc32.Checksum(data, tab): CRC of data using tab's polynomial.
+    public static uint Crc32Checksum(GoSlice data, GoCLR.Runtime.GoPtr tab)
+    {
+        var t = TableOf(tab);
+        uint c = 0xFFFFFFFFu;
+        foreach (byte b in B(data)) c = t[(c ^ b) & 0xFF] ^ (c >> 8);
+        return c ^ 0xFFFFFFFFu;
+    }
+    // crc32.Update(crc, tab, p): fold p into the running CRC of crc using tab's polynomial.
     public static uint Crc32Update(uint crc, GoCLR.Runtime.GoPtr tab, GoSlice p)
     {
+        var t = TableOf(tab);
         crc = ~crc;
-        foreach (byte b in B(p)) crc = CrcTable[(crc ^ b) & 0xFF] ^ (crc >> 8);
+        foreach (byte b in B(p)) crc = t[(crc ^ b) & 0xFF] ^ (crc >> 8);
         return ~crc;
     }
 

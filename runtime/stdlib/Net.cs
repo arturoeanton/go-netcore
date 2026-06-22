@@ -298,6 +298,13 @@ public static class Net
     // net.DefaultResolver + net.Resolver.LookupIPAddr — DNS, dead code on goclr's server
     // path. The resolver is an opaque handle; lookups return a "not supported" error.
     public static object DefaultResolver() => new GoResolver();
+    // net.InterfaceByName(name) (*Interface, error): network-interface lookup is unsupported
+    // (dead code on goclr's serving path) — report not-found.
+    public static object?[] InterfaceByName(GoString name) =>
+        new object?[] { null, new GoError(GoString.FromDotNetString("net: interface " + name.ToDotNetString() + " not found")) };
+    public static long Interface_Index(object i) => ((GoNetInterface)i).Index;
+    public static GoString Interface_Name(object i) => GoString.FromDotNetString("");
+    public static GoSlice Interface_HardwareAddr(object i) => NilBytes();
     public static object?[] Resolver_LookupIPAddr(object r, object? ctx, GoString host) =>
         new object?[] { NilBytes(), new GoError(GoString.FromDotNetString("lookup " + host.ToDotNetString() + ": DNS not supported")) };
 
@@ -542,6 +549,9 @@ public sealed class GoNetAddr { public string Str = ""; public long Port; public
 
 /// <summary>An opaque net.Resolver handle (DNS is unsupported under goclr's server path).</summary>
 public sealed class GoResolver { }
+
+/// <summary>An opaque net.Interface (only Index is read, on the dead raw-socket path).</summary>
+public sealed class GoNetInterface { public long Index; }
 
 /// <summary>A net.OpError (an operation/network/address-tagged error).</summary>
 public sealed class GoNetOpError { public string Op = ""; public string Net = ""; public object? Err; }

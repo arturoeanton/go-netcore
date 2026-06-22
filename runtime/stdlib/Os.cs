@@ -219,6 +219,8 @@ public static class Os
     public static object ErrPermission() => ErrPermissionSentinel;
     public static readonly GoError ErrInvalidSentinel = new(GoString.FromDotNetString("invalid argument"));
     public static object ErrInvalid() => ErrInvalidSentinel;
+    public static readonly GoError ErrProcessDoneSentinel = new(GoString.FromDotNetString("os: process already finished"));
+    public static object ErrProcessDone() => ErrProcessDoneSentinel;
 
     // os.Stat(name) (FileInfo, error).
     // os.Lstat is os.Stat without following symlinks; goclr does not model symlinks, so it
@@ -397,6 +399,19 @@ public static class Os
 
     public static GoString Getenv(GoString key) =>
         GoString.FromDotNetString(System.Environment.GetEnvironmentVariable(key.ToDotNetString()) ?? "");
+
+    // os.FindProcess(pid) (*Process, error): single-process under goclr — return an inert handle.
+    public static object?[] FindProcess(long pid) => new object?[] { new GoProcess(), null };
+
+    // os.Environ() []string: "KEY=VALUE" for each environment variable.
+    public static GoSlice Environ()
+    {
+        var items = new System.Collections.Generic.List<object?>();
+        foreach (System.Collections.DictionaryEntry e in System.Environment.GetEnvironmentVariables())
+            items.Add(GoString.FromDotNetString(e.Key + "=" + e.Value));
+        var d = items.ToArray();
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
 
     // os.DirFS(dir) fs.FS: a filesystem rooted at dir. Returned as an opaque handle; the
     // fs.FS helpers (fs.Stat/fs.Sub) don't traverse it under goclr's serving paths.

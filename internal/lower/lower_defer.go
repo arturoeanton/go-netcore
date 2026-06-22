@@ -378,7 +378,10 @@ func (l *funcLowerer) deferMethod(call *ast.CallExpr, sel *ast.SelectorExpr, sel
 		case recvIsPtr && baseIsPtr:
 			l.expr(sel.X)
 		case recvIsPtr && !baseIsPtr:
-			if !l.emitAddr(sel.X) {
+			// emitAddressable (not emitAddr) so a struct field reached through a pointer
+			// (defer c.fasthttp.Request.SetRequestURI(...)) or a slice element can be the
+			// receiver, matching the direct-call path — not just an address-taken local.
+			if !l.emitAddressable(sel.X) {
 				l.fail(call.Pos(), "defer of pointer-receiver method on a non-addressable value")
 			}
 		case !recvIsPtr && baseIsPtr:

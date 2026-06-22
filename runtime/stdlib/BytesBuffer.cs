@@ -97,6 +97,17 @@ public static class BytesBuffer
         if (g.Pos >= g.B.Count) return new object?[] { 0, new GoError(GoString.FromDotNetString("EOF")) };
         return new object?[] { (int)g.B[g.Pos++], null };
     }
+    // (*bytes.Buffer).Read(p) (int, error): copy the next bytes into p, advancing Pos.
+    public static object?[] Read(object b, GoSlice p)
+    {
+        var g = G(b);
+        if (p.Len == 0) return new object?[] { 0L, null };
+        if (g.Pos >= g.B.Count) return new object?[] { 0L, new GoError(GoString.FromDotNetString("EOF")) };
+        int n = System.Math.Min(p.Len, g.B.Count - g.Pos);
+        for (int i = 0; i < n; i++) p.Data![p.Off + i] = (int)g.B[g.Pos + i];
+        g.Pos += n;
+        return new object?[] { (long)n, null };
+    }
     public static object?[] ReadRune(object b)
     {
         var g = G(b);

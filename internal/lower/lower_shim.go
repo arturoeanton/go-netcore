@@ -51,6 +51,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"syscall": {
 		"FcntlFlock": {"Syscall", "FcntlFlock"}, "Fsync": {"Syscall", "Fsync"},
+		"Socket": {"Syscall", "Socket"}, "SetsockoptInt": {"Syscall", "SetsockoptInt"}, "SetNonblock": {"Syscall", "SetNonblock"},
+		"CloseOnExec": {"Syscall", "CloseOnExec"}, "Close": {"Syscall", "Close"}, "Bind": {"Syscall", "Bind"}, "Listen": {"Syscall", "Listen"},
 	},
 	"encoding/xml": {
 		"Marshal": {"Xml", "Marshal"}, "MarshalIndent": {"Xml", "MarshalIndent"}, "NewEncoder": {"Xml", "NewEncoder"},
@@ -91,8 +93,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/rsa": {"GenerateKey": {"Crypto509", "RsaGenerateKey"},
 		"VerifyPKCS1v15": {"CryptoSign", "VerifyPKCS1v15"}, "SignPKCS1v15": {"CryptoSign", "SignPKCS1v15"},
 		"VerifyPSS": {"CryptoSign", "VerifyPSS"}, "SignPSS": {"CryptoSign", "SignPSS"}},
-	"crypto/tls": {"Server": {"HttpTypes", "TlsServer"}, "Client": {"HttpTypes", "TlsClient"}, "X509KeyPair": {"HttpTypes", "X509KeyPair"}, "LoadX509KeyPair": {"HttpTypes", "LoadX509KeyPair"}, "NewListener": {"HttpTypes", "NewListener"}},
+	"crypto/tls": {"Server": {"HttpTypes", "TlsServer"}, "Client": {"HttpTypes", "TlsClient"}, "X509KeyPair": {"HttpTypes", "X509KeyPair"}, "LoadX509KeyPair": {"HttpTypes", "LoadX509KeyPair"}, "NewListener": {"HttpTypes", "NewListener"}, "Listen": {"HttpTypes", "TlsListen"}},
 	"crypto/x509": {
+		"NewCertPool": {"Crypto509", "NewCertPool"},
 		"CreateCertificate": {"Crypto509", "CreateCertificate"}, "ParseCertificate": {"Crypto509", "ParseCertificate"}, "ParseCertificates": {"Crypto509", "ParseCertificates"},
 		"MarshalECPrivateKey": {"Crypto509", "MarshalECPrivateKey"}, "ParseECPrivateKey": {"Crypto509", "ParseECPrivateKey"},
 		"MarshalPKCS1PrivateKey": {"Crypto509", "MarshalPKCS1PrivateKey"}, "ParsePKCS1PrivateKey": {"Crypto509", "ParsePKCS1PrivateKey"},
@@ -145,7 +148,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/aes":      {"NewCipher": {"Aes", "NewCipher"}},
 	"crypto/cipher":   {"NewGCM": {"Aes", "NewGCM"}},
 	"hash/fnv":        {"New32": {"Hashes", "Fnv32"}, "New32a": {"Hashes", "Fnv32a"}, "New64": {"Hashes", "Fnv64"}, "New64a": {"Hashes", "Fnv64a"}},
-	"hash/crc32":      {"ChecksumIEEE": {"Hashes", "Crc32ChecksumIEEE"}, "Update": {"Hashes", "Crc32Update"}, "NewIEEE": {"Hashes", "Crc32NewIEEE"}},
+	"hash/crc32":      {"ChecksumIEEE": {"Hashes", "Crc32ChecksumIEEE"}, "Update": {"Hashes", "Crc32Update"}, "NewIEEE": {"Hashes", "Crc32NewIEEE"}, "MakeTable": {"Hashes", "Crc32MakeTable"}, "Checksum": {"Hashes", "Crc32Checksum"}},
 	"hash/adler32":    {"Checksum": {"Hashes", "Adler32Checksum"}, "New": {"Hashes", "Adler32New"}},
 	"compress/gzip":   {"NewWriter": {"Compress", "GzipNewWriter"}, "NewReader": {"Compress", "GzipNewReader"}},
 	"compress/zlib":   {"NewWriter": {"Compress", "ZlibNewWriter"}, "NewReader": {"Compress", "ZlibNewReader"}},
@@ -196,6 +199,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"net": {
 		"Listen": {"Net", "Listen"}, "Dial": {"Net", "Dial"}, "FileListener": {"Net", "FileListener"},
+		"InterfaceByName": {"Net", "InterfaceByName"},
 		"ParseIP": {"Net", "ParseIP"}, "ParseMAC": {"Net", "ParseMAC"}, "ParseCIDR": {"Net", "ParseCIDR"},
 		"SplitHostPort": {"Net", "SplitHostPort"}, "JoinHostPort": {"Net", "JoinHostPort"},
 		"ResolveTCPAddr": {"Net", "ResolveTCPAddr"}, "ResolveUDPAddr": {"Net", "ResolveUDPAddr"},
@@ -204,7 +208,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Interfaces": {"Net", "Interfaces"},
 	},
 	"net/http": {
-		"Get": {"Http", "Get"}, "Post": {"Http", "Post"},
+		"Get": {"Http", "Get"}, "Post": {"Http", "Post"}, "ReadResponse": {"Http", "ReadResponse"},
 		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"}, "NewServeMux": {"HttpTypes", "NewServeMux"},
 		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"}, "Error": {"Http", "Error"},
 		"NewResponseController": {"Http", "NewResponseController"}, "SetCookie": {"Http", "SetCookie"},
@@ -268,7 +272,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Reverse16": {"MathBits", "Reverse16"}, "Reverse8": {"MathBits", "Reverse8"},
 	},
 	"os": {
-		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"}, "Getwd": {"Os", "Getwd"}, "DirFS": {"Os", "DirFS"},
+		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"}, "Getwd": {"Os", "Getwd"}, "Environ": {"Os", "Environ"}, "FindProcess": {"Os", "FindProcess"}, "DirFS": {"Os", "DirFS"},
 		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
 		"Getuid": {"Os", "Getuid"}, "Getgid": {"Os", "Getgid"}, "Getppid": {"Os", "Getppid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
@@ -380,6 +384,8 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/xml.Attr":              true,
 	"os.SyscallError":                true,
 	"syscall.Flock_t":                true,
+	"syscall.SockaddrInet4":          true,
+	"syscall.SockaddrInet6":          true,
 	"net/mail.Address":               true,
 	"html/template.Template":         true,
 	"text/template.Template":         true,
@@ -387,6 +393,7 @@ var opaqueShimTypes = map[string]bool{
 	"net.UDPAddr":                    true,
 	"net.Dialer":                     true,
 	"net.Resolver":                   true,
+	"net.Interface":                  true,
 	"net.IPAddr":                     true,
 	"net.UnixAddr":                   true,
 	"net.PacketConn":                 true,
@@ -409,6 +416,7 @@ var opaqueShimTypes = map[string]bool{
 	"crypto/rsa.PublicKey":           true,
 	"crypto/x509.Certificate":        true,
 	"crypto/x509.CertificateRequest": true,
+	"crypto/x509.CertPool":           true,
 	"encoding/pem.Block":             true,
 	// These json/xml error types are opaque shims so their methods/fields (.Error(), .Type,
 	// .Offset, …) resolve to Json.cs shims — echo's binder calls them. The json/xml decode
@@ -429,6 +437,7 @@ var opaqueShimTypes = map[string]bool{
 	"crypto/tls.Dialer":                  true,
 	"net/http.ResponseController":        true,
 	"os/exec.Cmd":                        true,
+	"os.Process":                     true,
 	"container/list.List":                true,
 	"container/list.Element":             true,
 	"encoding/csv.Reader":                true,
@@ -513,6 +522,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"bufio.ErrBufferFull":            {"Bufio", "ErrBufferFull"},
 	"bufio.ErrNegativeCount":         {"Bufio", "ErrNegativeCount"},
 	"net.DefaultResolver":            {"Net", "DefaultResolver"},
+	"syscall.ForkLock":               {"Syscall", "ForkLock"},
 	"compress/gzip.ErrChecksum":      {"Compress", "GzipErrChecksum"},
 	"compress/gzip.ErrHeader":        {"Compress", "GzipErrHeader"},
 	"compress/zlib.ErrChecksum":      {"Compress", "ZlibErrChecksum"},
@@ -547,6 +557,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"os.ErrClosed":                   {"Os", "ErrClosed"},
 	"os.ErrPermission":               {"Os", "ErrPermission"},
 	"os.ErrInvalid":                  {"Os", "ErrInvalid"},
+	"os.ErrProcessDone":              {"Os", "ErrProcessDone"},
 	"encoding/xml.Header":            {"Xml", "Header"},
 	"io/fs.ErrClosed":                {"Os", "ErrClosed"},
 	"io/fs.ErrNotExist":              {"Os", "ErrNotExist"},
@@ -654,6 +665,11 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"net.IPAddr": {
 		"IP": {"Net", "UDPAddr_IP"}, "Zone": {"Net", "UDPAddr_Zone"},
 	},
+	"net.Interface": {"Index": {"Net", "Interface_Index"}, "Name": {"Net", "Interface_Name"}, "HardwareAddr": {"Net", "Interface_HardwareAddr"}},
+	"os/exec.Cmd":  {"Process": {"Exec", "Cmd_Process"}},
+	"os.Process":   {"Pid": {"Exec", "Process_Pid"}},
+	"syscall.SockaddrInet4": {"Addr": {"Syscall", "Sockaddr_Addr"}},
+	"syscall.SockaddrInet6": {"Addr": {"Syscall", "Sockaddr_Addr"}},
 	"net/http/httptest.Server": {
 		"URL": {"Httptest", "Server_URL"},
 	},
@@ -813,6 +829,9 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"sync.Cond": {"L": {"Sync", "Cond_SetL"}},
 	"sync.Pool": {"New": {"Sync", "Pool_SetNew"}},
 	"net.Dialer": {"LocalAddr": {"Net", "Dialer_SetLocalAddr"}},
+	"os/exec.Cmd": {"Stdout": {"Exec", "Cmd_SetStdout"}, "Stderr": {"Exec", "Cmd_SetStderr"}, "Env": {"Exec", "Cmd_SetEnv"}},
+	"syscall.SockaddrInet4": {"Port": {"Syscall", "Sockaddr_SetPort"}},
+	"syscall.SockaddrInet6": {"Port": {"Syscall", "Sockaddr_SetPort"}, "ZoneId": {"Syscall", "Sockaddr_SetZoneId"}},
 	"encoding/xml.Name": {
 		"Space": {"Xml", "Name_SetSpace"}, "Local": {"Xml", "Name_SetLocal"},
 	},
@@ -936,6 +955,8 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"sync.Cond":                      {"Sync", "NewCondZero"},
 	"runtime.Frame":                  {"Goruntime", "FrameZero"},
 	"sync/atomic.Value":              {"Atomic", "NewValue"},
+	"syscall.SockaddrInet4":          {"Syscall", "NewSockaddrInet4"},
+	"syscall.SockaddrInet6":          {"Syscall", "NewSockaddrInet6"},
 	"net/http.Server":                {"HttpTypes", "NewServer"},
 	"net/http.Cookie":                {"Http", "NewCookie"},
 	"net/http.Client":                {"Http", "NewClient"},
@@ -1184,6 +1205,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"crypto/x509.Certificate": {
 		"VerifyHostname": {"Crypto509", "Cert_VerifyHostname"}, "CheckSignatureFrom": {"Crypto509", "Cert_CheckSignatureFrom"},
 	},
+	"crypto/x509.CertPool": {
+		"AppendCertsFromPEM": {"Crypto509", "CertPool_AppendCertsFromPEM"},
+	},
 	"crypto/ecdsa.PrivateKey": {"Public": {"Crypto509", "EcdsaPublic"}},
 	"crypto/rsa.PrivateKey":   {"Public": {"Crypto509", "RsaPublic"}},
 	"net/http/httptest.Server": {
@@ -1240,6 +1264,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"os/exec.Cmd": {
 		"Output": {"Exec", "Cmd_Output"}, "CombinedOutput": {"Exec", "Cmd_CombinedOutput"}, "Run": {"Exec", "Cmd_Run"},
+		"Start": {"Exec", "Cmd_Start"}, "Wait": {"Exec", "Cmd_Wait"},
+	},
+	"os.Process": {
+		"Kill": {"Exec", "Process_Kill"}, "Wait": {"Exec", "Process_Wait"},
 	},
 	"container/list.List": {
 		"Len": {"List", "List_Len"}, "Front": {"List", "List_Front"}, "Back": {"List", "List_Back"},
@@ -1346,7 +1374,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"bytes.Buffer": {
 		"WriteString": {"BytesBuffer", "WriteString"}, "WriteByte": {"BytesBuffer", "WriteByte"}, "ReadString": {"BytesBuffer", "ReadString"},
 		"WriteRune": {"BytesBuffer", "WriteRune"},
-		"Write":     {"BytesBuffer", "Write"}, "String": {"BytesBuffer", "String"},
+		"Write":     {"BytesBuffer", "Write"}, "Read": {"BytesBuffer", "Read"}, "String": {"BytesBuffer", "String"},
 		"Bytes": {"BytesBuffer", "Bytes"}, "Len": {"BytesBuffer", "Len"}, "Reset": {"BytesBuffer", "Reset"},
 		"Truncate": {"BytesBuffer", "Truncate"}, "Grow": {"BytesBuffer", "Grow"},
 		"ReadByte": {"BytesBuffer", "ReadByte"}, "ReadRune": {"BytesBuffer", "ReadRune"}, "Next": {"BytesBuffer", "Next"},

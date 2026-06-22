@@ -4,7 +4,11 @@ using System.Diagnostics;
 using GoCLR.Runtime;
 
 /// <summary>An *exec.Cmd handle.</summary>
-public sealed class GoCmd { public string Name = ""; public System.Collections.Generic.List<string> Args = new(); }
+public sealed class GoCmd { public string Name = ""; public System.Collections.Generic.List<string> Args = new(); public GoProcess Process = new(); }
+
+/// <summary>An opaque *os.Process handle. fiber's prefork spawns child workers; goclr runs
+/// single-process (Prefork is dead code), so Start/Wait/Kill are inert.</summary>
+public sealed class GoProcess { }
 
 /// <summary>Shim for a subset of Go's <c>os/exec</c> (subprocess execution).</summary>
 public static class Exec
@@ -38,6 +42,17 @@ public static class Exec
         }
         catch (System.Exception ex) { return ("", ex.Message, -1); }
     }
+
+    // Prefork worker control — inert under goclr's single-process model.
+    public static object? Cmd_Start(object cmd) => new GoError(GoString.FromDotNetString("exec: prefork not supported under goclr"));
+    public static object? Cmd_Wait(object cmd) => null;
+    public static object Cmd_Process(object cmd) => ((GoCmd)cmd).Process;
+    public static void Cmd_SetStdout(object cmd, object? v) { }
+    public static void Cmd_SetStderr(object cmd, object? v) { }
+    public static void Cmd_SetEnv(object cmd, GoSlice v) { }
+    public static object? Process_Kill(object p) => null;
+    public static long Process_Pid(object p) => 0;
+    public static object?[] Process_Wait(object p) => new object?[] { null, null };
 
     public static object?[] Cmd_Output(object cmd)
     {

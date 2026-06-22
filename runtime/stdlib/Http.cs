@@ -62,6 +62,12 @@ public static class Http
         };
     }
 
+    // http.ReadResponse(r *bufio.Reader, req *Request) (*Response, error): parse a raw HTTP
+    // response off a reader. Used by fiber's in-memory Test() helper (dead code when serving);
+    // goclr does not parse raw wire responses, so report an error.
+    public static object?[] ReadResponse(object? r, object? req) =>
+        new object?[] { null, new GoError(GoString.FromDotNetString("http: ReadResponse not supported")) };
+
     public static object?[] Get(GoString url)
     {
         try { return new object?[] { Make(Client.GetAsync(url.ToDotNetString()).GetAwaiter().GetResult()), null }; }
@@ -957,6 +963,9 @@ public static class HttpTypes
     // tls.NewListener(inner, config): wrap a net.Listener for TLS. Under goclr's plain
     // serving the TLS handshake is never performed, so the inner listener passes through.
     public static object? NewListener(object? inner, object? config) => inner;
+    // crypto/tls.Listen(network, addr, config): bind a plain listener (TLS is terminated by
+    // goclr's HttpListener backend, so the config is ignored) so app.ListenTLS still binds.
+    public static object?[] TlsListen(GoString network, GoString addr, object? config) => Net.Listen(network, addr);
     // tls.X509KeyPair / tls.LoadX509KeyPair: parse a PEM cert+key into a tls.Certificate.
     // Plain HTTP serving never exercises this; the handle is an opaque placeholder.
     public static object?[] X509KeyPair(GoSlice certPEM, GoSlice keyPEM) => new object?[] { new GoTlsCert(), null };

@@ -55,11 +55,18 @@ public sealed class GoCert
 [GoShim("crypto/x509.CertificateRequest")]
 public sealed class GoCertReq { public byte[] Der = System.Array.Empty<byte>(); public GoPkixName Subject = new(); public GoSlice? DNSNames; }
 
+/// <summary>An opaque x509.CertPool (TLS trust store — dead code on goclr's HTTP path).</summary>
+public sealed class GoCertPool { }
+
 /// <summary>Shim for the crypto/x509 + ecdsa/rsa/elliptic + pkix surface that
 /// acme/autocert and TLS need: EC/RSA key generation, self-signed certificate creation,
 /// certificate and private-key parse/marshal — backed by .NET's X509 stack.</summary>
 public static class Crypto509
 {
+    // --- cert pool (TLS trust store; goclr serves plain HTTP, so it's an inert handle) ---
+    public static object NewCertPool() => new GoCertPool();
+    public static bool CertPool_AppendCertsFromPEM(object pool, GoSlice pem) => true;
+
     // --- elliptic curves ---
     public static object P224() => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-224" };
     public static object P256() => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-256" };
