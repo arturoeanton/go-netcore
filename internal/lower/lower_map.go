@@ -42,7 +42,7 @@ func (l *funcLowerer) mapIndexRead(e *ast.IndexExpr, mt goir.Type) {
 func (l *funcLowerer) mapIndexWrite(e *ast.IndexExpr, mt goir.Type, rhs ast.Expr) {
 	l.expr(e.X)
 	l.emitBoxedElem(e.Index)
-	l.emitBoxedElem(rhs)
+	l.emitBoxedElemInto(rhs, *mt.Val) // typed: a nil []T value boxes its zero, not null
 	l.emit(goir.Op{Code: goir.OpMapSet})
 }
 

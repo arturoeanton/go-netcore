@@ -46,24 +46,38 @@ public static class Bufio
     public static object NewReader(object? r) => new GoBufReader { R = r };
     public static object NewReaderSize(object? r, long size) => new GoBufReader { R = r };
 
-    private const int FillBlock = 4096; // bufio's default buffer size; fill generously like Go
+    private const int FillBlock = 4096; // bufio's default buffer size
     private static int Avail(GoBufReader b) => b.Buf.Count - b.Pos;
-    // Ensure at least `need` bytes are buffered ahead of Pos (best effort). Reads in
-    // buffer-sized blocks (matching Go's bufio, which fills its buffer per Read) so
-    // Buffered()/Read() see the same data Go does. goclr's underlying readers are
-    // in-memory and EOF-terminating, so over-reading does not block. Returns the read
-    // error if it occurred before reaching `need`, else null.
+
+    // ReadOnce performs ONE Read on the underlying reader (up to buf.Len bytes), returning
+    // [n, err]. Crucially it is a single Read — NOT Io.ReadFull, which loops until the buffer
+    // is full and would block forever on a live socket that delivers a request smaller than
+    // the buffer (the fasthttp serving path). Each known reader type and a bridge reader get
+    // a single Read; the fallback drains an opaque in-memory reader.
+    private static object?[] ReadOnce(object? r, GoSlice buf) => r switch
+    {
+        GoReader => Readers.Reader_Read(r, buf),
+        GoBuffer => BytesBuffer.Read(r, buf),
+        GoConn => Net.Conn_Read(r, buf),
+        not null when Bridge.HasMethod(r, "Read") => Bridge.CallMethod(r, "Read", new object?[] { buf }) as object?[] ?? new object?[] { 0L, Io.EOFSentinel },
+        _ => Io.ReadFull(r, buf),
+    };
+
+    // Ensure at least `need` bytes are buffered ahead of Pos. Each iteration does ONE Read of
+    // up to a buffer-block (a socket Read returns whatever is available without blocking for
+    // more; an in-memory Read returns all it has). Returns the read error if it occurred
+    // before reaching `need`, else null.
     private static object? Fill(GoBufReader b, int need)
     {
         while (Avail(b) < need)
         {
             int want = System.Math.Max(need - Avail(b), FillBlock);
             var tmp = new GoSlice { Data = new object?[want], Off = 0, Len = want, Cap = want };
-            var r = Io.ReadFull(b.R, tmp);
+            var r = ReadOnce(b.R, tmp);
             int n = (int)System.Convert.ToInt64(r[0] ?? 0L);
             for (int i = 0; i < n; i++) b.Buf.Add((byte)(System.Convert.ToInt64(tmp.Data![i]) & 0xff));
             object? err = r.Length > 1 ? r[1] : null;
-            if (Avail(b) >= need) return null;       // got enough despite a short read
+            if (Avail(b) >= need) return null;       // got enough
             if (n == 0 || err != null) return err ?? Io.EOFSentinel;
         }
         return null;

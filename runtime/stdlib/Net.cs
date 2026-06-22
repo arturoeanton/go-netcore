@@ -545,6 +545,8 @@ public static class Net
 }
 
 /// <summary>An opaque net address (net.IPNet / net.TCPAddr / net.UDPAddr / …).</summary>
+[GoShim("net.TCPAddr")]
+[GoShim("net.UDPAddr")]
 public sealed class GoNetAddr { public string Str = ""; public long Port; public GoSlice? Ip; }
 
 /// <summary>An opaque net.Resolver handle (DNS is unsupported under goclr's server path).</summary>

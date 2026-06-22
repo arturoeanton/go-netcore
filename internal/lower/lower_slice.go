@@ -57,6 +57,15 @@ func (l *funcLowerer) emitBoxedElem(v ast.Expr) {
 // dynamic type for fmt/dispatch/%T. For concrete element types it is exactly
 // emitBoxedElem (no wrapping, so e.g. `[]Money` stays comparable/indexable).
 func (l *funcLowerer) emitBoxedElemInto(v ast.Expr, elemType goir.Type) {
+	// A nil stored into a VALUE-TYPE element slot (the only nil-able value type is a
+	// slice: m[k] = nil / s[i] = nil where the element is []T) must box its zero value,
+	// not a raw null — the slot is an object[]/Dictionary cell and the value is unboxed
+	// back to the GoSlice value type on read, which NREs on a null. The bare nil ident's
+	// own type is untyped, so the element type from the container is what tells us this.
+	if isNilIdent(v) && isValueType(elemType) {
+		l.emitBoxedZero(elemType)
+		return
+	}
 	l.emitBoxedElem(v)
 	if elemType.Kind == goir.KObject && !isNilIdent(v) {
 		l.maybeWrapNamed(l.pkg.TypesInfo.TypeOf(v))
