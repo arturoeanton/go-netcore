@@ -42,7 +42,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 22. ⬜ `net/smtp` — media, medio
 23. 🟡 `runtime/debug`, stack traces y metadata — media/difícil, alto
 24. ⬜ Portable PDB / posiciones / stack traces — difícil, alto
-25. ⬜ `container/ring` — alta, bajo/medio
+25. ✅ `container/ring` — alta, bajo/medio · tag `0.0.60.container-ring` (compila de source)
 26. ⬜ `text/scanner` y `text/tabwriter` — media, medio
 27. ✅ `golang.org/x/sync/errgroup` — alta/media, alto · tag `0.0.59.errgroup` (compila de source + corre; agregado `context.WithCancelCause`/`Cause`)
 28. ⬜ `google/uuid` — alta, alto
@@ -120,3 +120,6 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   `context.WithCancelCause`/`context.Cause` (+ `GoContext.CauseVal`/`CancelCause`).
   `examples/demo_errgroup` byte-exacto. Resto de #8 pendiente: text/template (stub no-op
   grande), google/uuid + testify (no vendored).
+- ✅ **#25 container/ring** — tag `0.0.60.container-ring`. Agregado a `compileFromSource`
+  (Go puro: lista circular con punteros, sin deps). Fixture 408 byte-exacto (New/Next/Prev/
+  Move/Do/Len/Link). Conformance verde.

@@ -579,6 +579,7 @@ var compileFromSource = map[string]bool{
 	"database/sql/driver": true, // driver interfaces + value types
 	"maps":                true, // generic map helpers (iterators)
 	"iter":                true, // iter.Seq[K] range-over-func
+	"container/ring":      true, // circular list — pure pointer/struct code, no deps
 	// `goclr test` only: a minimal real-Go `testing` + testdeps overlay (see
 	// internal/frontend/overlays/testing); lowered so t.Errorf/Fatal/Run/... are real
 	// method calls. Outside a test build neither package is imported.
