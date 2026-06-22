@@ -63,6 +63,24 @@ func (h *heaps) addUserString(s string) uint32 {
 	return off
 }
 
+// addUserStringLatin1 appends a string-constant's raw bytes to the #US heap with
+// each byte zero-extended to a UTF-16 code unit (Latin-1), so the byte sequence
+// survives the heap losslessly even when it is not valid UTF-8. The runtime
+// GoStrings.FromLiteralBytes rebuilds the exact bytes by taking each char's low
+// byte. (addUserString, by contrast, decodes via []rune and mangles invalid UTF-8.)
+func (h *heaps) addUserStringLatin1(s string) uint32 {
+	off := uint32(len(h.us))
+	b := []byte(s)
+	raw := make([]byte, len(b)*2+1)
+	for i, c := range b {
+		raw[i*2] = c // low byte = the original byte; high byte stays 0
+	}
+	raw[len(raw)-1] = userStringFinalByte(s)
+	h.us = appendCompressedUint(h.us, uint32(len(raw)))
+	h.us = append(h.us, raw...)
+	return off
+}
+
 // addGUID appends a 16-byte GUID and returns its 1-based index.
 func (h *heaps) addGUID(g [16]byte) uint32 {
 	h.guids = append(h.guids, g[:]...)

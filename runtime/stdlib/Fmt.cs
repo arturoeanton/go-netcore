@@ -267,6 +267,7 @@ public static class Fmt
             case 'X': return v is GoString gX ? HexStr(gX, true) : v is GoSlice sX ? HexSlice(sX, true) : IntVerb(v, sp, -16, sp.Hash);
             case 't': return v is bool bb ? (bb ? "true" : "false") : BadVerb(verb, v);
             case 'c': return IsIntegral(v) ? char.ConvertFromUtf32((int)ToLong(v)) : BadVerb(verb, v);
+            case 'U': return IsIntegral(v) ? UnicodeVerb(ToLong(v), sp.Hash) : BadVerb(verb, v);
             case 's': return StrVerb(v, sp);
             case 'q': return QuoteVerb(v);
             case 'f':
@@ -281,6 +282,28 @@ public static class Fmt
             case 'v': return sp.Hash ? FormatGoSyntax(v) : Format(v, 'v', sp.Plus, sp.Hash);
             default: return BadVerb(verb, v);
         }
+    }
+
+    // %U formats a code point as "U+XXXX" (>= 4 uppercase hex digits). With the '#'
+    // flag (%#U) Go appends the quoted character when it is printable, matching
+    // unicode.IsPrint (letters/marks/numbers/punct/symbols + ASCII space U+0020).
+    private static string UnicodeVerb(long r, bool hash)
+    {
+        string s = "U+" + r.ToString("X4", Inv);
+        if (hash && r >= 0 && r <= 0x10FFFF && !(r >= 0xD800 && r <= 0xDFFF))
+        {
+            var str = char.ConvertFromUtf32((int)r);
+            var cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(str, 0);
+            bool printable = cat != System.Globalization.UnicodeCategory.Control
+                && cat != System.Globalization.UnicodeCategory.Format
+                && cat != System.Globalization.UnicodeCategory.Surrogate
+                && cat != System.Globalization.UnicodeCategory.OtherNotAssigned
+                && !(cat == System.Globalization.UnicodeCategory.SpaceSeparator && r != 0x20)
+                && !(cat == System.Globalization.UnicodeCategory.LineSeparator)
+                && !(cat == System.Globalization.UnicodeCategory.ParagraphSeparator);
+            if (printable) s += " '" + str + "'";
+        }
+        return s;
     }
 
     private static string IntVerb(object? v, Spec sp, int baseN, bool hash)

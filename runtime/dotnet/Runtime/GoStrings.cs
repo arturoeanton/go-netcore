@@ -10,6 +10,17 @@ public static class GoStrings
     /// <summary>Materializes a GoString from an emitted UTF-16 literal.</summary>
     public static GoString FromLiteral(string s) => GoString.FromDotNetString(s);
 
+    /// <summary>Materializes a GoString from a byte-lossless literal: each char of the
+    /// emitted #US string carries one original byte in its low 8 bits (the high byte is
+    /// 0). Used for string constants that are not valid UTF-8, so the exact Go byte
+    /// sequence — len, indexing, range — is preserved rather than mangled by UTF-16.</summary>
+    public static GoString FromLiteralBytes(string s)
+    {
+        var b = new byte[s.Length];
+        for (int i = 0; i < s.Length; i++) b[i] = (byte)s[i];
+        return GoString.FromBytesOwned(b);
+    }
+
     /// <summary>len(s) — byte length.</summary>
     public static long Len(GoString s) => s.Len;
 

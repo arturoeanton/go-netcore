@@ -17,7 +17,8 @@ type tokenSet struct {
 	println    uint32 // MemberRef Builtins.Println(object[])
 	print      uint32 // MemberRef Builtins.Print(object[])
 	method     func(*goir.Method) uint32
-	us         map[string]uint32 // #US offsets for ldstr
+	us         map[string]uint32 // #US offsets for ldstr (UTF-16 text)
+	usBytes    map[string]uint32 // #US offsets for byte-lossless string constants (invalid UTF-8)
 	structType func(*goir.Struct) uint32
 	field      func(*goir.Struct, int) uint32
 	global     func(int) uint32          // static-field token for a global index
@@ -223,10 +224,19 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 			b.u8(0x28)
 			b.u32(tok.method(op.Callee))
 		case goir.OpStrConst:
-			b.u8(0x72) // ldstr (System.String)
-			b.u32(0x70000000 | uint32(tok.us[op.Str]))
-			b.u8(0x28) // call GoStrings.FromLiteral -> GoString
-			b.u32(tokStrFromLit)
+			if off, ok := tok.usBytes[op.Str]; ok {
+				// Invalid-UTF-8 literal: the #US entry holds the raw bytes zero-extended to
+				// UTF-16 (Latin-1), so FromLiteralBytes rebuilds the exact Go byte string.
+				b.u8(0x72) // ldstr
+				b.u32(0x70000000 | off)
+				b.u8(0x28) // call GoStrings.FromLiteralBytes -> GoString
+				b.u32(tokStrFromLitBytes)
+			} else {
+				b.u8(0x72) // ldstr (System.String)
+				b.u32(0x70000000 | uint32(tok.us[op.Str]))
+				b.u8(0x28) // call GoStrings.FromLiteral -> GoString
+				b.u32(tokStrFromLit)
+			}
 		case goir.OpStrLen:
 			b.u8(0x28)
 			b.u32(tokStrLen)

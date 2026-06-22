@@ -644,7 +644,11 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.idx(parentGoStrings, wMemberRefParent)
 	w.heap(h.addString("FromRunes"))
 	w.heap(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x11, goSliceCoded})) // GoString(sl)
-	for _, em := range extMembers {                                                // [65+] shim methods
+	// [65] GoStrings.FromLiteralBytes(string) -> GoString (byte-lossless string const).
+	w.idx(parentGoStrings, wMemberRefParent)
+	w.heap(h.addString("FromLiteralBytes"))
+	w.heap(h.addBlob(sigStrFromLit))                                               // GoString(string)
+	for _, em := range extMembers {                                                // [66+] shim methods
 		w.idx(em.parent, wMemberRefParent)
 		w.heap(em.name)
 		w.heap(em.sig)

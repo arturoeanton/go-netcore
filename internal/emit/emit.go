@@ -8,6 +8,7 @@ package emit
 
 import (
 	"os"
+	"unicode/utf8"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
 )
@@ -110,8 +111,11 @@ const (
 	tokStrFromRune  uint32 = 0x0A00003E
 	tokStrFromBytes uint32 = 0x0A00003F
 	tokStrFromRunes uint32 = 0x0A000040
-	methodBase      uint32 = 0x06000000
-	sigBase         uint32 = 0x11000000
+	// FromLiteralBytes (row 65): reconstructs a string constant from its byte-lossless
+	// #US form (used for literals that are not valid UTF-8).
+	tokStrFromLitBytes uint32 = 0x0A000041
+	methodBase         uint32 = 0x06000000
+	sigBase            uint32 = 0x11000000
 	typeDefBase     uint32 = 0x02000000
 	fieldTableBase  uint32 = 0x04000000
 )
@@ -127,11 +131,25 @@ func Emit(prog *goir.Program, outPath string) error {
 
 	// Intern user strings first so ldstr offsets are stable.
 	usOff := map[string]uint32{}
+	usBytesOff := map[string]uint32{}
 	for _, m := range prog.Methods {
 		for _, op := range m.Code {
-			if op.Code == goir.OpLdStr || op.Code == goir.OpStrConst {
+			switch op.Code {
+			case goir.OpLdStr:
 				if _, ok := usOff[op.Str]; !ok {
 					usOff[op.Str] = h.addUserString(op.Str)
+				}
+			case goir.OpStrConst:
+				// A string constant carries raw Go bytes. Valid UTF-8 round-trips through
+				// the UTF-16 #US heap losslessly (the fast path). An invalid-UTF-8 literal
+				// (raw bytes like "\xff") would be mangled by the []rune decode in
+				// addUserString, so store it byte-lossless and rebuild via FromLiteralBytes.
+				if utf8.ValidString(op.Str) {
+					if _, ok := usOff[op.Str]; !ok {
+						usOff[op.Str] = h.addUserString(op.Str)
+					}
+				} else if _, ok := usBytesOff[op.Str]; !ok {
+					usBytesOff[op.Str] = h.addUserStringLatin1(op.Str)
 				}
 			}
 		}
@@ -179,6 +197,7 @@ func Emit(prog *goir.Program, outPath string) error {
 		print:    tokPrint,
 		method:   func(m *goir.Method) uint32 { return methodTok[m] },
 		us:       usOff,
+		usBytes:  usBytesOff,
 		structType: func(s *goir.Struct) uint32 {
 			return typeDefBase | uint32(s.TypeDefRow)
 		},
