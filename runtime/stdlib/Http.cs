@@ -941,7 +941,7 @@ public static class HttpTypes
     public static object? Conn_Handshake(object c) => null;
     public static object? Conn_HandshakeContext(object c, object? ctx) => null;
     public static object Conn_ConnectionState(object c) => new GoTlsConnState();
-    public static object? Conn_SetDeadline(object c, long t) => null;
+    public static object? Conn_SetDeadline(object c, object? t) => null;
     public static object? Conn_SetReadDeadline(object c, object? t) => null;
     public static object? Conn_SetWriteDeadline(object c, object? t) => null;
     public static object? Conn_NetConn(object c) => null;

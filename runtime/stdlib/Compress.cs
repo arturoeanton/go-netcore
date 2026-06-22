@@ -57,6 +57,7 @@ public static class Compress
             case GoFile f when f.Wr != null: f.Wr.Write(data, 0, data.Length); break;
             case GoBuffer buf: buf.B.AddRange(data); break;
             case GoReader gr: { var n = new byte[gr.Data.Length + data.Length]; gr.Data.CopyTo(n, 0); data.CopyTo(n, gr.Data.Length); gr.Data = n; break; }
+            case GoConn gc: gc.S.Write(data, 0, data.Length); break; // a net.Conn (fasthttp response) — write to the socket, not stdout
             default: Fmt.WriteTo(w, System.Text.Encoding.UTF8.GetString(data)); break;
         }
     }

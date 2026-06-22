@@ -72,6 +72,12 @@ public static class GoRuntime
                 Console.Error.WriteLine(p.Message);
                 Environment.Exit(2);
             }
+            catch (System.Exception e)
+            {
+                // Surface a non-Go .NET exception instead of letting it become an
+                // unobserved Task exception that .NET silently swallows.
+                Console.Error.WriteLine("goroutine .NET exception: " + e);
+            }
         });
     }
 
@@ -109,6 +115,13 @@ public static class GoRuntime
             {
                 Console.Error.WriteLine(p.Message);
                 Environment.Exit(2);
+            }
+            catch (System.Exception e)
+            {
+                // A non-Go .NET exception in a goroutine would otherwise be an unobserved
+                // Task exception that .NET swallows, silently killing the goroutine. Surface
+                // it like Go surfaces an uncaught goroutine panic.
+                Console.Error.WriteLine("goroutine .NET exception: " + e);
             }
         });
     }
