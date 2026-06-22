@@ -20,7 +20,7 @@ func (l *funcLowerer) expr(e ast.Expr) {
 	// folded constant would lose.
 	if _, isSel := e.(*ast.SelectorExpr); isSel {
 		if ext, ok := l.shimVarExtern(e); ok {
-			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+			l.emitShimVar(e, ext)
 			return
 		}
 	}
@@ -37,7 +37,7 @@ func (l *funcLowerer) expr(e ast.Expr) {
 	}
 	// Shimmed stdlib package variable (os.Stdout, …) -> accessor extern.
 	if ext, ok := l.shimVarExtern(e); ok {
-		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+		l.emitShimVar(e, ext)
 		return
 	}
 	// A shimmed stdlib function used as a value (unicode.IsSpace, sha256.New) ->
@@ -512,6 +512,16 @@ func (l *funcLowerer) binaryExpr(e *ast.BinaryExpr) {
 	l.expr(e.X)
 	l.expr(e.Y)
 	l.emitArith(e.Op, opType)
+}
+
+// emitShimVar calls a shimmed-package-variable accessor (Ret is always object) and unboxes
+// the result to the variable's actual type when that type is a value type (a slice like
+// os.Args, a struct) — reference-typed vars (os.Stdout) are left as the object handle.
+func (l *funcLowerer) emitShimVar(e ast.Expr, ext *goir.Extern) {
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+	if vt := l.exprType(e); isValueType(vt) {
+		l.emitUnbox(vt)
+	}
 }
 
 func isUnsigned(t goir.Type) bool {

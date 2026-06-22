@@ -346,3 +346,18 @@ Measured, not yet engineered — the levers and their distance:
 
 The emitted assembly already links against Release-built runtime/stdlib; the
 runtimeconfig carries a `configProperties` block as the place to tune host options.
+
+## Fiber distance (2026-06)
+
+Measured by compiling a minimal `gofiber/fiber/v2` app. Fiber is built on **fasthttp** (its
+own HTTP stack, not net/http), so the distance is a fasthttp campaign, not a quick target.
+Fiber's own packages compile after closing generally-useful gaps: the `testing` overlay is
+now applied to ALL builds (fiber's `utils` imports `testing` in non-test code for a `TB`-based
+assert helper), `os.Args` is shimmed (and shimmed value-typed vars now unbox correctly — a
+general fix), and `text/tabwriter` compiles from source (fiber's assert helper formats with
+it; it is dead code when serving). The wall is fasthttp's dependency tree: `andybalholm/brotli`
+(a compression dep) hits a goclr lowering gap — **nested field assignment through a slice
+element** (`nodes[pos].u.shortcut = …`, i.e. `s[i].a.b = v`) — and fasthttp itself is
+unsafe-heavy (its own buffer/socket code). So supporting Fiber means: (1) the `s[i].a.b = v`
+lowering, (2) working through brotli/gzip compression, (3) fasthttp's unsafe (overlay or the
+safe build tag where it offers one). A staged target, like gin's x/net/http2 was.

@@ -400,6 +400,16 @@ public static class Os
     }
 
     public static void Exit(long code) => System.Environment.Exit((int)code);
+    // os.Args: the command-line arguments, args[0] being the program name. A shimVar accessor
+    // always lowers with an object return, so box the slice.
+    public static object Args()
+    {
+        var a = System.Environment.GetCommandLineArgs();
+        var data = new object?[a.Length];
+        for (int i = 0; i < a.Length; i++) data[i] = GoString.FromDotNetString(a[i]);
+        return new GoSlice { Data = data, Off = 0, Len = a.Length, Cap = a.Length };
+    }
+
     public static long Getpid() => System.Environment.ProcessId;
     // .NET has no portable getuid/getgid; report a stable non-root value (these feed rarely
     // used paths such as google/uuid's DCE UUIDs). On Unix the real ids are read when

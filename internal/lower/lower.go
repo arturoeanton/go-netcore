@@ -580,6 +580,7 @@ var compileFromSource = map[string]bool{
 	"maps":                true, // generic map helpers (iterators)
 	"iter":                true, // iter.Seq[K] range-over-func
 	"container/ring":      true, // circular list — pure pointer/struct code, no deps
+	"text/tabwriter":      true, // compiles from source (a runtime use may still NRE — see LIMITATIONS); lets fiber's test-only assert helper lower
 	// `goclr test` only: a minimal real-Go `testing` + testdeps overlay (see
 	// internal/frontend/overlays/testing); lowered so t.Errorf/Fatal/Run/... are real
 	// method calls. Outside a test build neither package is imported.

@@ -179,3 +179,11 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   x509.Parse*PublicKey/DecryptPEMBlock) para que jwt compile (ES*/RS*/PS*/EdDSA rechazan, nunca
   aceptan mal). **Pendiente**: `jwt.Parse` falla leyendo el header ("alg unspecified") — debug
   del round-trip json del header. `examples/demo_jwt`.
+- 🟡 **Fiber (distancia medida)** — tag `0.0.66.fiber-distance`. `gofiber/fiber/v2` corre sobre
+  **fasthttp** (HTTP propio, no net/http) → campaña fasthttp, no target rápido. El código de
+  fiber compila tras cerrar gaps generales útiles: **overlay `testing` ahora siempre activo**
+  (fiber/utils importa testing en código normal), `os.Args` shimeado + **fix general: shimVars
+  value-type ahora unboxean** (os.Args daba InvalidProgram), `text/tabwriter` compila-de-source
+  (dead code al servir; runtime-crashea si se usa — documentado). Muro: deps de fasthttp —
+  `andybalholm/brotli` pega un gap de lowering (`s[i].a.b = v`, asignación a campo anidado de
+  elemento de slice) + fasthttp es unsafe-heavy. Documentado en GAPS.md.

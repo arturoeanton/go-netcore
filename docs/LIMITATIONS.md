@@ -298,6 +298,14 @@ Not yet supported (documented, not silent): benchmarks (`Benchmark*`), fuzzing
 Log lines carry no `file:line:` prefix (goclr lacks per-call caller metadata), and
 durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
 
+## `text/tabwriter`
+
+`text/tabwriter` compiles from source so packages that import it (e.g. gofiber's assert
+helper) lower, but a real **runtime** use can still crash (a `NullReferenceException` in the
+elastic-tabstop machinery — an internal struct-field initialization not yet correct under
+goclr). It is dead code in the programs that currently pull it in; a program that actually
+formats output through a `tabwriter.Writer` should not rely on it yet.
+
 ## Misc
 
 - `strings.NewReplacer`, `strings.EqualFold` full-Unicode folding, and

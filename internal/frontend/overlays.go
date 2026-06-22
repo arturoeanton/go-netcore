@@ -77,15 +77,19 @@ var stdlibOverlayPkgs = []stdlibOverlayPkg{
 	{importPath: "maps", replaceOnly: true, files: map[string]string{
 		"maps.go": "overlays/maps/maps.go.txt",
 	}},
-}
-
-// testOverlayPkgs are applied ONLY when loading for `goclr test` (cfg.Tests): a minimal
-// real-Go `testing` + `testing/internal/testdeps` so go/test's generated _testmain.go
-// compiles and runs on the CLR. They are test-only so a normal build never sees them.
-var testOverlayPkgs = []stdlibOverlayPkg{
+	// A minimal real-Go `testing` (T + the MainStart/M runner) — ALWAYS applied, not just
+	// under `goclr test`: a normal program can import `testing` in non-test code (e.g.
+	// gofiber/utils' TB-based assert helper), and the real testing package pulls in
+	// runtime/coroutine/flag machinery goclr cannot lower. The overlay is lowerable
+	// everywhere; `goclr test` additionally drives its MainStart/M.
 	{importPath: "testing", files: map[string]string{
 		"testing.go": "overlays/testing/testing.go.txt",
 	}},
+}
+
+// testOverlayPkgs are applied ONLY when loading for `goclr test` (cfg.Tests): the generated
+// _testmain.go imports testing/internal/testdeps, which nothing else uses.
+var testOverlayPkgs = []stdlibOverlayPkg{
 	{importPath: "testing/internal/testdeps", files: map[string]string{
 		"deps.go": "overlays/testdeps/deps.go.txt",
 	}},
