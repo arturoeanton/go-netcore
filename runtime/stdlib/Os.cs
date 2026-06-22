@@ -13,7 +13,13 @@ public sealed class GoSyscallError { public string Syscall = ""; public object? 
 /// paths don't traverse it.</summary>
 public sealed class GoDirFS { public string Root = ""; }
 
-/// <summary>An os.FileInfo: the fields fs.FileInfo exposes through its methods.</summary>
+/// <summary>An os.FileInfo: the fields fs.FileInfo exposes through its methods. Tagged with
+/// the FileInfo interface names so that when a shim-produced FileInfo (os.Stat/File.Stat)
+/// flows through the os.FileInfo / io/fs.FileInfo interface, interface dispatch matches it
+/// (IsShimKindStrict) and routes its methods to the FileInfo_* shims — while a user's own
+/// FileInfo type dispatches to its own methods.</summary>
+[GoShim("io/fs.FileInfo")]
+[GoShim("os.FileInfo")]
 public sealed class GoFileInfo
 {
     public GoString FileName;

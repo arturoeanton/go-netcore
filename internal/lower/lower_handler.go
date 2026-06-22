@@ -141,8 +141,9 @@ func (c *lowerCtx) buildMethodAdapter(m *goir.Method, src recvSource) int {
 var bridgeInterfaces = []string{
 	"container/heap.Interface",
 	"io.Writer",  // so Fmt.WriteTo can drive a wrapper writer's own Write (echo.Response, …)
-	"io/fs.FS",   // so fs.Stat can call fsys.Open
-	"io/fs.File", // so fs.Stat can call the opened file's Stat/Close
+	"io/fs.FS",     // so fs.Stat can call fsys.Open
+	"io/fs.File",   // so fs.Stat can call the opened file's Stat/Close
+	"io/fs.StatFS", // so fs.Stat can take the StatFS fast path (fsys.Stat) like Go does
 }
 
 // collectBridgeMethods generates the method-callback adapters every concrete implementer

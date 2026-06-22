@@ -1417,6 +1417,18 @@ func (l *funcLowerer) shimMethodExtern(seln *types.Selection) (*goir.Extern, boo
 	if !ok {
 		return nil, false
 	}
+	// A method call on an interface-typed receiver that ALSO has a user (lowered) implementer
+	// must NOT short-circuit to the shim extern — that casts the value to the one shim handle
+	// and crashes on the user's own type (the net.Listener / GoFileInfo bug, e.g. a user
+	// fs.FileInfo). Route it through interfaceDispatch, which enumerates both the user
+	// implementers AND the shim handle (via shimIfaceImplementers + the [GoShim] class).
+	// When the only implementers are shim handles (hash.Hash, context.Context, …) the
+	// short-circuit below is correct and faster, so keep it.
+	if iface, isIface := seln.Recv().Underlying().(*types.Interface); isIface {
+		if len(l.implementers(iface)) > 0 {
+			return nil, false
+		}
+	}
 	// For a method promoted from an embedded shim field (struct{ *sha3.SHAKE }),
 	// seln.Recv() is the outer struct, so key the registry on the method's own
 	// receiver type instead. Only do this when actually promoted (index depth > 1) to

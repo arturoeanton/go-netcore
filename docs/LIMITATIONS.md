@@ -151,14 +151,17 @@ module):
   recovers a struct value's id from its CLR type (a compiler-emitted `LinkClrId` map), and
   value-receiver adapters normalize any receiver form via `Bridge.RecvValue` (fixture
   401_bridge_byvalue_writer).
-- **`io/fs.Stat`** — real over **`os.DirFS`** and any `fs.FS` whose `Open` returns an
-  `*os.File` (echo's defaultFS, `http.FS(os.DirFS(...))`): the `fsys.Open` call goes
-  through the callback bridge and an `os.File`-backed `FileInfo` is read back. A user
-  `fs.FS` whose `Open` returns the program's OWN `fs.File`/`fs.FileInfo` types is not
-  dispatched (`io/fs.FileInfo` is an interface in the shim method registry, assuming
-  `GoFileInfo`); such a call returns a clean not-found rather than crashing. (A
-  value-receiver / named-map `fs.FS` now resolves through the by-value bridge support; the
-  unresolved piece is the returned `fs.FileInfo` interface-dispatch.)
+- **`io/fs.Stat`** — works over **`os.DirFS`**, any `fs.FS` whose `Open` returns an
+  `*os.File` (echo's defaultFS, `http.FS(os.DirFS(...))`), AND a **user `fs.FS` whose `Open`
+  returns the program's own `fs.File`/`fs.FileInfo` types**: `fs.Stat` takes the `StatFS`
+  fast path or `fsys.Open` + `file.Stat` through the callback bridge, and the returned
+  `fs.FileInfo` dispatches to its own methods. `io/fs.FileInfo`/`os.FileInfo` are no longer
+  short-circuited as a single shim handle — an interface-typed receiver with a user
+  implementer routes through interface dispatch (the shim's own `GoFileInfo`, tagged
+  `[GoShim("io/fs.FileInfo")]`, still matches via `IsShimKindStrict`). Fixture
+  403_fs_fileinfo_dispatch. (Note: `testing/fstest.MapFS` is standard-library code that is
+  not lowered, so its methods can't be bridged — that is a stdlib-coverage gap, not a
+  dispatch gap; a user-defined in-memory `fs.FS` works.)
 - **`x/sync/errgroup`** — shim written, but the import needs the external x/sync
   module present to type-check.
 - **`google/uuid`** — not yet shimmed.

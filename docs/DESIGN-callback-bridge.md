@@ -99,20 +99,23 @@ So the same value-receiver type dispatches whether stored as a value or as `&v`.
   `lookupNamedType` to scan from the **root** package (`c.root`), not `c.pkg` (stale after
   the lowering loop) — otherwise `io.Writer` didn't resolve in a multi-package program and
   no adapters were generated. Verified: echo `/missing` → 404, gin `/nope` → 404.
-- ✅ **DONE (partial)** — `io/fs.Stat`: `io/fs.FS` + `io/fs.File` are `bridgeInterfaces`,
-  so `fs.Stat` calls `fsys.Open(name)` through the bridge and stats the result. `os.DirFS`
-  is handled directly (real `os.Stat` on the rooted path); a struct/pointer `fs.FS` whose
-  `Open` returns an `*os.File` (echo's defaultFS, `http.FS(os.DirFS(...))`) stats via
-  `File_Stat` → `GoFileInfo`. Was a stub returning `ErrNotExist`; now a real stat (fixture
-  394_io_fs_stat, byte-exact vs `go run`). Added `os.MkdirTemp` / `os.Mkdir` shims.
-  **Limit (no regression — returns a clean not-found, never crashes):** a user `fs.FS`
-  whose `Open` returns the program's OWN `fs.File`/`fs.FileInfo` type isn't dispatched —
-  `io/fs.FileInfo` sits in `shimMethodRegistry` (an interface there, like the old
-  `net.Listener` bug) so `fi.Name()` would hit the GoFileInfo cast. Fixing it needs
-  `io/fs.FileInfo` removed from the method registry + `GoFileInfo` anchored as a concrete
-  implementer (no public concrete Go type exists, unlike `net.TCPListener`). A
-  value-receiver / named-map `fs.FS` is now resolved by the by-value bridge support above
-  (`fsys.Open` dispatches); only the returned `fs.FileInfo` interface-dispatch remains.
+- ✅ **DONE** — `io/fs.Stat`: `io/fs.FS` + `io/fs.File` + `io/fs.StatFS` are
+  `bridgeInterfaces`. `fs.Stat` handles `os.DirFS` directly, takes the `StatFS` fast path
+  (`fsys.Stat`) when present, else calls `fsys.Open(name)` + `file.Stat()` through the
+  bridge. A struct/pointer `fs.FS` whose `Open` returns an `*os.File` stats via `File_Stat`
+  → `GoFileInfo`; a **user `fs.FS` returning the program's own `fs.File`/`fs.FileInfo`
+  types now works too** — the returned `fs.FileInfo` dispatches to its own methods (fixtures
+  394_io_fs_stat, 403_fs_fileinfo_dispatch). The `net.Listener`-style anti-pattern is fixed:
+  an interface-typed receiver (`fi.Name()` on `fs.FileInfo`) **with a user implementer** no
+  longer short-circuits to the `GoFileInfo` cast — `shimMethodExtern` returns false so the
+  call routes through `interfaceDispatch`, which enumerates both the user implementers and
+  the shim handle. `GoFileInfo` stays reachable as the shim's implementer because it is
+  tagged `[GoShim("io/fs.FileInfo")]` / `[GoShim("os.FileInfo")]` and matched by the precise
+  `IsShimKindStrict` path. (When the only implementers are shim handles — `hash.Hash`,
+  `context.Context`, … — the short-circuit is kept, so no regression / no extra dispatch.)
+  Out of scope: `testing/fstest.MapFS` is unlowered stdlib, so its methods can't be bridged.
+- `(*http.Server).Serve`: optional — drive `CallMethod(l, "Accept")` in a loop and speak
+  HTTP/1.1 on the conn (removes the `Bound`-port-release bridge); larger, do last.
 - `(*http.Server).Serve`: optional — drive `CallMethod(l, "Accept")` in a loop and speak
   HTTP/1.1 on the conn (removes the `Bound`-port-release bridge); larger, do last.
 

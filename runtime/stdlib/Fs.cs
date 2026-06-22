@@ -24,6 +24,10 @@ public static class Fs
         // os.DirFS: a real directory filesystem — stat the rooted real path.
         if (fsys is GoDirFS dfs)
             return Os.Stat(GoString.FromDotNetString(System.IO.Path.Combine(dfs.Root, name.ToDotNetString())));
+        // StatFS fast path (like Go's fs.Stat): if the fs.FS has its own Stat, use it.
+        if (Bridge.HasMethod(fsys, "Stat") &&
+            Bridge.CallMethod(fsys, "Stat", name) is object?[] statRes)
+            return statRes;
         if (!Bridge.HasMethod(fsys, "Open"))
             return new object?[] { null, Os.ErrNotExistSentinel };
         if (Bridge.CallMethod(fsys, "Open", name) is not object?[] opened)
@@ -31,12 +35,16 @@ public static class Fs
         if (opened.Length > 1 && opened[1] != null)
             return new object?[] { null, opened[1] }; // open error
         var file = opened.Length > 0 ? opened[0] : null;
-        // os.File (an os.DirFS / os.Open-backed fs.FS) stats to a goclr GoFileInfo. A user
-        // fs.File returns the program's own FileInfo type, which fs.FileInfo's shim method
-        // registry can't dispatch yet (it assumes GoFileInfo) — close it and report
-        // not-found rather than crash. (Tracked: this needs fs.FileInfo to go through
-        // interface dispatch like net.Listener did.)
+        // os.File (an os.DirFS / os.Open-backed fs.FS) stats to a goclr GoFileInfo.
         if (file is GoFile gf) return Os.File_Stat(gf);
+        // A user fs.File: stat it through the bridge (its FileInfo dispatches through the
+        // fs.FileInfo interface now), then close it as Go's fs.Stat does.
+        if (Bridge.HasMethod(file, "Stat") &&
+            Bridge.CallMethod(file, "Stat") is object?[] info)
+        {
+            if (Bridge.HasMethod(file, "Close")) Bridge.CallMethod(file, "Close");
+            return info;
+        }
         if (Bridge.HasMethod(file, "Close")) Bridge.CallMethod(file, "Close");
         return new object?[] { null, Os.ErrNotExistSentinel };
     }
