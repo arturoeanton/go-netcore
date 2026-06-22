@@ -1,0 +1,16 @@
+// goclr-safe overlay of testing/internal/testdeps: the generated _testmain.go does only
+// `testdeps.TestDeps{}` (passed to testing.MainStart, which ignores it) and sets the two
+// package vars in init. The real package pulls regexp, runtime/pprof, reflect and many
+// deps for flag/coverage/profile plumbing goclr does not run, so this minimal version
+// drops all of it.
+package testdeps
+
+// TestDeps is the deps value the generated main passes to testing.MainStart (ignored by
+// the goclr testing overlay — no -flags/coverage/profiles are parsed).
+type TestDeps struct{}
+
+// ModulePath / ImportPath are set by the generated main's init; kept as plain vars.
+var (
+	ModulePath string
+	ImportPath string
+)

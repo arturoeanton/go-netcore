@@ -71,3 +71,8 @@ jobs:
           GOCLR_RUNTIME_DLL: ${{ github.workspace }}/runtime/dotnet/bin/Release/net8.0/GoCLR.Runtime.dll
           GOCLR_STDLIB_DLL: ${{ github.workspace }}/runtime/stdlib/bin/Release/net8.0/GoCLR.Stdlib.dll
         run: go test -count=1 ./tests/conformance/
+      - name: Run goclr test harness (testing.T on the CLR)
+        env:
+          GOCLR_RUNTIME_DLL: ${{ github.workspace }}/runtime/dotnet/bin/Release/net8.0/GoCLR.Runtime.dll
+          GOCLR_STDLIB_DLL: ${{ github.workspace }}/runtime/stdlib/bin/Release/net8.0/GoCLR.Stdlib.dll
+        run: go test -count=1 ./tests/gotest/

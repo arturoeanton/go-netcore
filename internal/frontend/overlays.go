@@ -20,6 +20,8 @@ import (
 //go:embed overlays/httptrace/trace.go.txt
 //go:embed overlays/iter/iter.go.txt
 //go:embed overlays/maps/maps.go.txt
+//go:embed overlays/testing/testing.go.txt
+//go:embed overlays/testdeps/deps.go.txt
 var overlayFS embed.FS
 
 // projectOverlayDir is the convention directory, relative to a project's module
@@ -77,16 +79,32 @@ var stdlibOverlayPkgs = []stdlibOverlayPkg{
 	}},
 }
 
+// testOverlayPkgs are applied ONLY when loading for `goclr test` (cfg.Tests): a minimal
+// real-Go `testing` + `testing/internal/testdeps` so go/test's generated _testmain.go
+// compiles and runs on the CLR. They are test-only so a normal build never sees them.
+var testOverlayPkgs = []stdlibOverlayPkg{
+	{importPath: "testing", files: map[string]string{
+		"testing.go": "overlays/testing/testing.go.txt",
+	}},
+	{importPath: "testing/internal/testdeps", files: map[string]string{
+		"deps.go": "overlays/testdeps/deps.go.txt",
+	}},
+}
+
 // StdlibOverlay builds the go/packages Overlay map (absolute file path -> content)
 // that virtually replaces the source of overlaid stdlib packages. It is safe to
 // pass to packages.Config.Overlay even when empty.
-func StdlibOverlay(env []string) map[string][]byte {
+func StdlibOverlay(env []string, includeTest bool) map[string][]byte {
 	goroot := goEnv("GOROOT", env)
 	if goroot == "" {
 		return nil
 	}
+	pkgs := stdlibOverlayPkgs
+	if includeTest {
+		pkgs = append(append([]stdlibOverlayPkg{}, stdlibOverlayPkgs...), testOverlayPkgs...)
+	}
 	out := map[string][]byte{}
-	for _, p := range stdlibOverlayPkgs {
+	for _, p := range pkgs {
 		dir := filepath.Join(goroot, "src", filepath.FromSlash(p.importPath))
 		entries, err := os.ReadDir(dir)
 		if err != nil {

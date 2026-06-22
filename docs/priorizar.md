@@ -5,7 +5,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 
 ## Orden recomendado (foco actual, serializado — uno a la vez)
 
-1. ⬜ `goclr test` compatible con `go test`
+1. ✅ `goclr test` compatible con `go test` — tag `0.0.52.goclr-test`
 2. ⬜ Compatibility report estable HTML/JSON
 3. ⬜ typed-nil en interfaces (`var p *T; any(p) == nil` ⇒ `false`)
 4. ⬜ `reflect.StructField.Name` / `.Tag` directo
@@ -18,7 +18,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 
 ## Lista priorizada completa (50)
 
-1. ⬜ `goclr test` compatible con `go test` — facilidad media, impacto altísimo
+1. ✅ `goclr test` compatible con `go test` — facilidad media, impacto altísimo · tag `0.0.52.goclr-test`
 2. ⬜ Compatibility report estable HTML/JSON — alta, altísimo
 3. ⬜ Matriz de cobertura por función stdlib/externa — alta/media, alto
 4. ⬜ Errores accionables `GCLR05xx/GCLR07xx` (símbolo, por qué, workaround, build tag, overlay) — alta, alto
@@ -71,4 +71,10 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 
 ## Bitácora de cierres
 
-_(se anota aquí cada ✅ con su tag, en orden de cierre)_
+- ✅ **#1 `goclr test`** — tag `0.0.52.goclr-test`. Overlay real-Go `testing` +
+  `testing/internal/testdeps` (`internal/frontend/overlays/testing`), lowered vía
+  `compileFromSource`; `go/test`'s generated `_testmain.go` corre tal cual
+  (`MainStart`/`M.Run`). FailNow/SkipNow vía panic/recover. `goclr test ./pkg` compila los
+  tests a .NET y los corre (TestXxx, subtests, Fatal/Skip), exit 0/1. Validado en
+  `tests/gotest`. Fix de fondo: `frontend.Load` ahora dedupea la recursión por package ID
+  (no import path), así el test-variant `pkg [pkg.test]` no se pierde frente al `pkg` plano.

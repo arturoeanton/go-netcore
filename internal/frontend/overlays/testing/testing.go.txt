@@ -1,0 +1,186 @@
+// goclr-safe overlay of the testing package: a minimal, real-Go reimplementation of
+// the surface a test binary needs (T + the MainStart/M runner). goclr lowers this
+// directly — there is no C# shim. The real testing package pulls runtime/coroutine
+// intrinsics, reflect, and flag parsing that goclr cannot lower; this overlay keeps only
+// what `goclr test` drives, so go/test's generated _testmain.go compiles and runs as-is:
+//
+//	m := testing.MainStart(testdeps.TestDeps{}, tests, benchmarks, fuzzTargets, examples)
+//	os.Exit(m.Run())
+//
+// Supported: TestXxx(t *testing.T); Error/Errorf/Fatal/Fatalf/Fail/FailNow/Log/Logf/
+// Helper/Name/Skip/Skipf/SkipNow/Failed/Skipped/Cleanup/Parallel/Run (subtests). Not
+// supported: benchmarks, fuzzing, examples, TestMain, -flags (documented in LIMITATIONS.md).
+package testing
+
+import (
+	"fmt"
+	"strings"
+)
+
+// abortSignal is panicked by FailNow/SkipNow to abort the current test function; the
+// runner recovers it (and only it) so a real panic in a test still surfaces.
+type abortKind int
+
+const (
+	abortFail abortKind = iota + 1
+	abortSkip
+)
+
+type abortSignal struct{ kind abortKind }
+
+// TB is the common surface of T and B (a subset).
+type TB interface {
+	Name() string
+	Fail()
+	FailNow()
+	Failed() bool
+	Error(args ...any)
+	Errorf(format string, args ...any)
+	Fatal(args ...any)
+	Fatalf(format string, args ...any)
+	Log(args ...any)
+	Logf(format string, args ...any)
+	Helper()
+}
+
+// T is a minimal test context.
+type T struct {
+	name     string
+	failed   bool
+	skipped  bool
+	logs     []string
+	cleanups []func()
+}
+
+func (t *T) Name() string  { return t.name }
+func (t *T) Helper()       {}
+func (t *T) Parallel()     {}
+func (t *T) Failed() bool  { return t.failed }
+func (t *T) Skipped() bool { return t.skipped }
+func (t *T) Fail()         { t.failed = true }
+
+func (t *T) FailNow() {
+	t.failed = true
+	panic(abortSignal{abortFail})
+}
+
+func (t *T) Log(args ...any)                 { t.logs = append(t.logs, fmt.Sprint(args...)) }
+func (t *T) Logf(format string, args ...any) { t.logs = append(t.logs, fmt.Sprintf(format, args...)) }
+
+func (t *T) Error(args ...any)                 { t.Log(args...); t.Fail() }
+func (t *T) Errorf(format string, args ...any) { t.Logf(format, args...); t.Fail() }
+func (t *T) Fatal(args ...any)                 { t.Log(args...); t.FailNow() }
+func (t *T) Fatalf(format string, args ...any) { t.Logf(format, args...); t.FailNow() }
+
+func (t *T) Skip(args ...any)                 { t.Log(args...); t.SkipNow() }
+func (t *T) Skipf(format string, args ...any) { t.Logf(format, args...); t.SkipNow() }
+func (t *T) SkipNow() {
+	t.skipped = true
+	panic(abortSignal{abortSkip})
+}
+
+func (t *T) Cleanup(f func()) { t.cleanups = append(t.cleanups, f) }
+
+// Run executes a subtest; a failing subtest fails its parent.
+func (t *T) Run(name string, f func(*T)) bool {
+	full := name
+	if t.name != "" {
+		full = t.name + "/" + name
+	}
+	sub := &T{name: full}
+	runOne(sub, f)
+	if sub.failed {
+		t.failed = true
+	}
+	for _, line := range sub.logs {
+		t.logs = append(t.logs, line)
+	}
+	return !sub.failed
+}
+
+// B/F exist so a package that declares benchmarks/fuzz targets still type-checks; they
+// are not executed (documented limitation).
+type B struct{ T }
+type F struct{ T }
+
+// runOne runs f(t), recovering FailNow/SkipNow and any real panic, then cleanups.
+func runOne(t *T, f func(*T)) {
+	defer func() {
+		for i := len(t.cleanups) - 1; i >= 0; i-- {
+			t.cleanups[i]()
+		}
+	}()
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(abortSignal); ok {
+				return // FailNow/SkipNow already set the flag
+			}
+			t.failed = true
+			t.logs = append(t.logs, fmt.Sprintf("panic: %v", r))
+		}
+	}()
+	f(t)
+}
+
+// Internal* mirror the testing structs the generated _testmain.go lists.
+type InternalTest struct {
+	Name string
+	F    func(*T)
+}
+type InternalBenchmark struct {
+	Name string
+	F    func(*B)
+}
+type InternalFuzzTarget struct {
+	Name string
+	Fn   func(*F)
+}
+type InternalExample struct {
+	Name      string
+	F         func()
+	Output    string
+	Unordered bool
+}
+
+// Short/Verbose: goclr test runs without flag parsing, so both are false.
+func Short() bool   { return false }
+func Verbose() bool { return false }
+
+// M is the test runner the generated main drives via MainStart + Run.
+type M struct {
+	tests []InternalTest
+}
+
+// MainStart accepts go/test's deps (ignored — goclr does not parse -flags) and the test
+// lists, returning an M that runs the top-level tests.
+func MainStart(deps any, tests []InternalTest, benchmarks []InternalBenchmark, fuzzTargets []InternalFuzzTarget, examples []InternalExample) *M {
+	return &M{tests: tests}
+}
+
+// Run executes every test and prints a go-test-like report; returns 0 (all pass) or 1.
+func (m *M) Run() int {
+	anyFail := false
+	for _, tc := range m.tests {
+		t := &T{name: tc.Name}
+		fmt.Println("=== RUN   " + tc.Name)
+		runOne(t, tc.F)
+		switch {
+		case t.skipped:
+			fmt.Println("--- SKIP: " + tc.Name + " (0.00s)")
+		case t.failed:
+			anyFail = true
+			fmt.Println("--- FAIL: " + tc.Name + " (0.00s)")
+		default:
+			fmt.Println("--- PASS: " + tc.Name + " (0.00s)")
+		}
+		for _, line := range t.logs {
+			fmt.Println("    " + strings.ReplaceAll(line, "\n", "\n    "))
+		}
+	}
+	if anyFail {
+		fmt.Println("FAIL")
+		return 1
+	}
+	fmt.Println("PASS")
+	return 0
+}

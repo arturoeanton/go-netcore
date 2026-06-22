@@ -86,7 +86,7 @@ func Load(cfg LoadConfig) (*Result, error) {
 		Tests:      cfg.Tests,
 		BuildFlags: []string{"-tags=" + joinTags(tags)},
 		Env:        env,
-		Overlay:    StdlibOverlay(env),
+		Overlay:    StdlibOverlay(env, cfg.Tests),
 	}
 
 	loaded, err := packages.Load(pcfg, cfg.Patterns...)
@@ -97,9 +97,14 @@ func Load(cfg LoadConfig) (*Result, error) {
 	res := &Result{All: map[string]*Package{}}
 	var fset *token.FileSet
 
+	// Guard recursion by package ID, not import path: with Tests:true a package and its
+	// test variant share one import path ("foo" and "foo [foo.test]") but are distinct
+	// packages, and the generated test main imports the test variant — deduping by path
+	// would resolve it to the plain package and lose the TestXxx functions.
+	seenByID := map[string]*Package{}
 	var convert func(lp *packages.Package) *Package
 	convert = func(lp *packages.Package) *Package {
-		if existing, ok := res.All[lp.PkgPath]; ok {
+		if existing, ok := seenByID[lp.ID]; ok {
 			return existing
 		}
 		p := &Package{
@@ -115,6 +120,7 @@ func Load(cfg LoadConfig) (*Result, error) {
 			Errors:     lp.Errors,
 			IsStdlib:   isStdlibPkg(lp),
 		}
+		seenByID[lp.ID] = p
 		res.All[lp.PkgPath] = p
 		if lp.Fset != nil && fset == nil {
 			fset = lp.Fset

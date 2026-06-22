@@ -86,8 +86,8 @@ func (l *funcLowerer) jsonDecoderDecode(e *ast.CallExpr, sel *ast.SelectorExpr) 
 		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Json", Method: "Decoder_DecodeTyped",
 		Params: []goir.Type{goir.TObject, goir.TObject, goir.TString}, Ret: goir.TObject,
 	}
-	l.expr(sel.X)         // the *json.Decoder receiver
-	l.expr(e.Args[0])     // the GoPtr target
+	l.expr(sel.X)     // the *json.Decoder receiver
+	l.expr(e.Args[0]) // the GoPtr target
 	l.emit(goir.Op{Code: goir.OpStrConst, Str: desc})
 	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
 	return goir.TObject // error

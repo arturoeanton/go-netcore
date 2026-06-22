@@ -532,4 +532,3 @@ func lastLines(s string, n int) string {
 	}
 	return strings.Join(lines, "\n")
 }
-

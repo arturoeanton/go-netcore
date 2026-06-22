@@ -272,6 +272,21 @@ arithmetic, or a header *write* that reconstructs a slice from a foreign header 
 pre-1.20 `s2b`, fasttemplate/validator) — is **rejected** with `GCLR0301`/`GCLR0201`,
 not silently miscompiled. Those stay overlay territory (`goclr.overlays/`).
 
+## `goclr test`
+
+`goclr test ./pkg` compiles the package's tests (driven by a minimal real-Go `testing`
+overlay, `internal/frontend/overlays/testing`) to a .NET assembly and runs them, printing
+a go-test-like report and exiting non-zero if any test fails. Supported: `TestXxx(t
+*testing.T)`, subtests (`t.Run`), and the common `T` surface (`Error`/`Errorf`/`Fatal`/
+`Fatalf`/`Fail`/`FailNow`/`Log`/`Logf`/`Skip`/`Skipf`/`SkipNow`/`Helper`/`Name`/`Cleanup`/
+`Parallel`/`Failed`/`Skipped`). Validated in `tests/gotest`.
+
+Not yet supported (documented, not silent): benchmarks (`Benchmark*`), fuzzing
+(`Fuzz*`), examples (`Example*` with `// Output:`), `TestMain(m *testing.M)`, and test
+`-flags` (`-run`/`-v`/`-count`/…) — `goclr test` runs all tests with verbose-style output.
+Log lines carry no `file:line:` prefix (goclr lacks per-call caller metadata), and
+durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
+
 ## Misc
 
 - `strings.NewReplacer`, `strings.EqualFold` full-Unicode folding, and

@@ -77,7 +77,9 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | M3 | interface method-callback bridge (`container/heap` incl. named-slice impl, `io.Writer`, `io/fs.Stat`) | ✅ |
 | M3 | `unsafe.Pointer` safe idioms — `string↔[]byte` reinterprets + read-only `reflect.*Header` offset views (go-toml `SubsliceOffset`); pointer-arith / header writes rejected | ✅ |
 | M5 | **Echo v4 runs** — router, path params, JSON, status codes on the CLR; `crypto/x509`+`acme`/`autocert` closure lowers (TLS path a no-op shim) | ✅ |
-| M3 | `goclr test` (real `testing.T`); CI conformance matrix; stable compatibility report | 🚧 |
+| M3 | `goclr test` (real `testing.T` on the CLR — TestXxx, subtests, Fatal/Skip) | ✅ |
+| M3 | CI conformance matrix (per-fixture pass/skip/fail in the job summary) | ✅ |
+| M3 | stable compatibility report (HTML/JSON) | 🚧 |
 
 **199 conformance fixtures pass byte-for-byte vs `go run`** (200 total, one skipped).
 Recent tags: `0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`,
@@ -139,7 +141,10 @@ Tracks what is implemented vs outstanding. Done items are verified byte-exact vs
   shim, plain HTTP fully exercised) — see `examples/demo_echo`
 
 ### Tooling & milestones
-- [ ] `goclr test` ≡ `go test` — run real package test suites under both and diff
+- [x] `goclr test` — compiles a package's tests (via the real-Go `testing` overlay) to a
+  .NET assembly and runs them: `TestXxx(t *testing.T)`, subtests, `Error`/`Errorf`/`Fatal`/
+  `Fatalf`/`Fail`/`FailNow`/`Log`/`Logf`/`Skip`/`Cleanup`, go-test-like report + exit code
+  (`tests/gotest`). Benchmarks/fuzzing/examples/`TestMain`/`-flags` not run (see LIMITATIONS)
 - [ ] CI conformance matrix published (visible per-fixture status)
 - [ ] Stable compatibility report (HTML/JSON) from `analyze`
 - [ ] Per-function coverage matrix (covered / stub / blocked), checked in CI

@@ -85,22 +85,39 @@ func cmdBuild(args []string) int {
 // docs/ROADMAP.md. Until it lands, build performs a real compatibility gate and then
 // reports clearly that emission is pending, rather than producing a broken DLL.
 func buildToAssembly(patterns []string, bf *buildFlags, out string) (int, string) {
+	return buildToAssemblyMode(patterns, bf, out, false)
+}
+
+// buildToAssemblyMode builds patterns to an assembly. When tests is set, test files are
+// loaded and the synthesized `*.test` main package (go/test's generated runner, driven by
+// the goclr `testing` overlay) is the build root.
+func buildToAssemblyMode(patterns []string, bf *buildFlags, out string, tests bool) (int, string) {
 	patterns = normalizePatterns(patterns)
-	res, err := frontend.Load(frontend.LoadConfig{Dir: ".", Patterns: patterns})
+	res, err := frontend.Load(frontend.LoadConfig{Dir: ".", Patterns: patterns, Tests: tests})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "goclr build: %v\n", err)
 		return 1, out
 	}
 
-	// Locate the buildable main package among the roots.
+	// Locate the build root among the loaded roots. In test mode it is the synthesized
+	// `*.test` runner package; otherwise it is the user's `main` package.
 	var mainPkg *frontend.Package
 	for _, r := range res.Roots {
-		if r.Name == "main" {
+		if tests {
+			if strings.HasSuffix(r.PkgPath, ".test") {
+				mainPkg = r
+				break
+			}
+		} else if r.Name == "main" {
 			mainPkg = r
 			break
 		}
 	}
 	if mainPkg == nil {
+		if tests {
+			fmt.Fprintf(os.Stderr, "error GCLR0104: no tests found in %s\n", strings.Join(patterns, " "))
+			return 1, out
+		}
 		fmt.Fprintf(os.Stderr, "error GCLR0104: no main package found in %s\n", strings.Join(patterns, " "))
 		return 1, out
 	}

@@ -58,12 +58,12 @@ type lowerCtx struct {
 	handlers  []handlerReg
 	// bridges holds generated method-callback adapters (container/heap, …) to register
 	// with the runtime at startup; namedByName memoizes the import-closure type lookup.
-	bridges     []bridgeReg
+	bridges []bridgeReg
 	// bridgeClrLinks maps a CLR struct type name -> its dispatch id, for bridge implementers
 	// reached BY VALUE (a value-receiver struct boxed as its CLR struct carries no GoPtr id).
 	bridgeClrLinks map[string]int64
 	namedByName    map[string]*types.Named
-	root        *types.Package // main package; its import closure spans the whole program
+	root           *types.Package // main package; its import closure spans the whole program
 	// typeIdSeq is ONE counter shared by struct ids and typed-box named ids, so every
 	// runtime-dispatched type (a struct reached as *T, or a named non-struct reached as a
 	// typed box) has a globally-unique id. This lets the callback bridge key one table by
@@ -527,15 +527,20 @@ func funcDecls(p *frontend.Package) []*ast.FuncDecl {
 // native surface. They must import nothing outside this set and contain only code
 // goclr can lower (structs, slices, maps, package-level table initializers).
 var compileFromSource = map[string]bool{
-	"unicode":            true,
-	"sort":               true, // via a goclr source overlay (drops internal/reflectlite)
-	"cmp":                true, // tiny generic package (Less/Compare/Or over the Ordered set)
-	"slices":             true, // generic slice helpers (depends only on cmp)
-	"net/http/httptrace": true, // via a goclr overlay (drops crypto/tls + internal/nettrace)
+	"unicode":             true,
+	"sort":                true, // via a goclr source overlay (drops internal/reflectlite)
+	"cmp":                 true, // tiny generic package (Less/Compare/Or over the Ordered set)
+	"slices":              true, // generic slice helpers (depends only on cmp)
+	"net/http/httptrace":  true, // via a goclr overlay (drops crypto/tls + internal/nettrace)
 	"database/sql":        true, // pure Go; pairs with a compiled-from-source driver
 	"database/sql/driver": true, // driver interfaces + value types
-	"maps":               true, // generic map helpers (iterators)
-	"iter":               true, // iter.Seq[K] range-over-func
+	"maps":                true, // generic map helpers (iterators)
+	"iter":                true, // iter.Seq[K] range-over-func
+	// `goclr test` only: a minimal real-Go `testing` + testdeps overlay (see
+	// internal/frontend/overlays/testing); lowered so t.Errorf/Fatal/Run/... are real
+	// method calls. Outside a test build neither package is imported.
+	"testing":                   true,
+	"testing/internal/testdeps": true,
 }
 
 // collectPackages returns root plus its transitive non-stdlib dependencies that
