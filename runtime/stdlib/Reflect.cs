@@ -383,6 +383,33 @@ public static class Reflect
         };
     }
 
+    // reflect.Type.FieldByName(name) (StructField, bool): find a field by name.
+    public static object?[] Type_FieldByName(object t, GoString name)
+    {
+        string want = name.ToDotNetString();
+        var d = TDesc(t);
+        if (d != null)
+        {
+            for (int i = 0; i < d.Fields.Count; i++)
+            {
+                if (d.Fields[i].Name == want)
+                    return new object?[] { Type_Field(t, i), true };
+            }
+            return new object?[] { new GoStructField { Name = "", Tag = "", FieldTypeId = -1 }, false };
+        }
+        var obj = ((GoReflectType)t).Sample;
+        var fs = Fields(obj);
+        if (fs != null)
+        {
+            for (int i = 0; i < fs.Length; i++)
+            {
+                if (fs[i].Name == want)
+                    return new object?[] { Type_Field(t, i), true };
+            }
+        }
+        return new object?[] { new GoStructField { Name = "", Tag = "", FieldTypeId = -1 }, false };
+    }
+
     // --- reflect.StructField field reads (opaque GoStructField handle) ------
     public static GoString StructField_Name(object f) => GoString.FromDotNetString(((GoStructField)f).Name);
     public static GoString StructField_Tag(object f) => GoString.FromDotNetString(((GoStructField)f).Tag);

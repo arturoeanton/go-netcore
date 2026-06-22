@@ -182,6 +182,11 @@ func (c *lowerCtx) descId(t types.Type) int {
 	id := len(c.typeDescs)
 	c.typeDescIds[key] = id
 	entry := typeDescEntry{id: id, kind: reflectKind(t), str: typeDescStr(t), elemId: -1, keyId: -1}
+	// A predeclared basic type has a name in Go reflect (reflect.TypeOf("").Name() ==
+	// "string"); set it so a struct field of basic type reports its type name.
+	if b, ok := t.(*types.Basic); ok && b.Info()&types.IsUntyped == 0 {
+		entry.name = b.Name()
+	}
 	if named, ok := t.(*types.Named); ok {
 		entry.name = named.Obj().Name()
 		if named.Obj().Pkg() != nil {

@@ -8,7 +8,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 1. ✅ `goclr test` compatible con `go test` — tag `0.0.52.goclr-test`
 2. ✅ Compatibility report estable HTML/JSON — tag `0.0.53.compat-report`
 3. ✅ typed-nil en interfaces (`var p *T; any(p) == nil` ⇒ `false`) — tag `0.0.54.typed-nil-iface`
-4. ⬜ `reflect.StructField.Name` / `.Tag` directo
+4. ✅ `reflect.StructField.Name` / `.Tag` directo — tag `0.0.55.reflect-structfield`
 5. ⬜ function values de funciones shimmed
 6. ⬜ formato de panic no recuperado igual a Go
 7. ⬜ deep `reflect` mínimo (más goja/libs)
@@ -24,7 +24,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 4. ⬜ Errores accionables `GCLR05xx/GCLR07xx` (símbolo, por qué, workaround, build tag, overlay) — alta, alto
 5. ✅ typed-nil en interfaces — media, altísimo · tag `0.0.54.typed-nil-iface` (residual documentado: `== nil` del puntero recuperado)
 6. ⬜ panic no recuperado con formato Go (`panic:` + goroutine stack) — media, alto
-7. ⬜ `reflect.StructField.Name` / `.Tag` directo — alta/media, alto
+7. ✅ `reflect.StructField.Name` / `.Tag` directo — alta/media, alto · tag `0.0.55.reflect-structfield`
 8. ⬜ function values de funciones shimmed (`strings.TrimFunc(s, unicode.IsSpace)`) — media, alto
 9. ⬜ `%T` / `%#v` / nil maps más exactos — media, medio/alto
 10. ⬜ tipo exacto para composites reflejados dinámicamente — media/difícil, alto
@@ -88,3 +88,9 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
   assert/dispatch resuelven el tipo dinámico. Un solo punto de contacto (bajo riesgo),
   conformance 205 verde + echo compila. Fixture 404. Residual documentado en LIMITATIONS:
   el `== nil` del puntero recuperado de la interfaz (compara identidad, no payload).
+- ✅ **#4 `reflect.StructField.Name`/`.Tag`** — tag `0.0.55.reflect-structfield`. Estaba
+  marcado pendiente pero ya andaba casi todo; cerrados dos gaps reales: (a) `f.Type.Name()`
+  de un campo de tipo básico daba `""` (faltaba setear `entry.name` para `*types.Basic` en
+  el builder de descriptors → ahora "string"/"int"), y (b) `Type.FieldByName` panicaba
+  (faltaba el shim → agregado `Reflect.Type_FieldByName` devolviendo `(StructField, bool)`).
+  Fixture 405 byte-exacto (tags json/xml/validate, anónimos, PkgPath, Lookup, FieldByName).

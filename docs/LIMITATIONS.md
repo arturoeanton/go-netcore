@@ -100,13 +100,6 @@ unicode.IsSpace)`) is unsupported — only func literals / local func values wor
 callback arguments. Wrapping a shim function reference in a native closure is a
 separate feature.
 
-## reflect.StructField direct access
-
-`reflect.Type.Field(i).Name` / `.Tag` (field access on a `reflect.StructField`
-value) is not wired — field access on a shim type needs the method-based shim
-mechanism extended. The common reflect read/write paths (Value.Field, NumField,
-Kind, Set*, …) and `encoding/json` (which reads tags internally) work.
-
 ## Unicode special-casing
 
 `strings.ToUpper`/`ToLower` use simple 1:1 case mapping; the handful of Unicode

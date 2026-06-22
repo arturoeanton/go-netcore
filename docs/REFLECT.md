@@ -48,8 +48,10 @@ constructed at runtime.
 
 Conformance fixtures `375`–`378`, plus the validator/gin closure:
 
-- **Type introspection** — `Kind`, `Name`, `String`, `NumField`, `Field` (with
-  `Field.Type`, `Field.Tag.Get`, `Field.Anonymous`), `Elem`, `Key`, `Len`.
+- **Type introspection** — `Kind`, `Name`, `String`, `NumField`, `Field` and
+  `FieldByName` (with `StructField.Name`, `.Type` — incl. `.Type.Name()`/`.Kind()` for a
+  basic field type — `.Tag.Get`/`.Tag.Lookup`, `.Anonymous`, `.PkgPath`), `Elem`, `Key`,
+  `Len` — the surface validators/ORMs/serializers read (fixture 405).
 - **Precise sized-integer kinds** — `uint8`/`int16`/`int32`/`float32`/… no longer
   collapse to `Int`/`Uint`/`Float64`. `reflect.Kind` stringifies in `fmt` (`struct`,
   not `25`); `reflect.Type` formats via `String()`.

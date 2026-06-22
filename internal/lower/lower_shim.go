@@ -1047,7 +1047,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},
 		"String": {"Reflect", "Type_String"}, "NumField": {"Reflect", "Type_NumField"},
 		"Elem": {"Reflect", "Type_Elem"}, "Key": {"Reflect", "Type_Key"}, "Len": {"Reflect", "Type_Len"},
-		"Field": {"Reflect", "Type_Field"}, "NumMethod": {"Reflect", "Type_NumMethod"},
+		"Field": {"Reflect", "Type_Field"}, "FieldByName": {"Reflect", "Type_FieldByName"}, "NumMethod": {"Reflect", "Type_NumMethod"},
 		"NumIn": {"Reflect", "Type_NumIn"}, "NumOut": {"Reflect", "Type_NumOut"},
 		"In": {"Reflect", "Type_In"}, "Out": {"Reflect", "Type_Out"},
 		"AssignableTo": {"Reflect", "Type_AssignableTo"}, "ConvertibleTo": {"Reflect", "Type_ConvertibleTo"},
