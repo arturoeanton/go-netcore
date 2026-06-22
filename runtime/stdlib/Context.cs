@@ -4,6 +4,7 @@ using GoCLR.Runtime;
 
 /// <summary>A context.Context value. WithValue links a key/value onto a parent;
 /// WithCancel/WithTimeout attach a closeable Done channel + a sticky error.</summary>
+[GoShim("context.Context")]
 public sealed class GoContext
 {
     public GoContext? Parent;
