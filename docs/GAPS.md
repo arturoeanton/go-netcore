@@ -357,10 +357,39 @@ assert helper), `os.Args` is shimmed (and shimmed value-typed vars now unbox cor
 general fix), and `text/tabwriter` compiles from source (fiber's assert helper formats with
 it; it is dead code when serving). The wall is fasthttp's dependency tree: `andybalholm/brotli`
 (a compression dep) hits a goclr lowering gap — **nested field assignment through a slice
-element** (`nodes[pos].u.shortcut = …`, i.e. `s[i].a.b = v`) — and fasthttp itself is
-unsafe-heavy (its own buffer/socket code). So supporting Fiber means: (1) the `s[i].a.b = v`
-lowering, (2) working through brotli/gzip compression, (3) fasthttp's unsafe (overlay or the
-safe build tag where it offers one). A staged target, like gin's x/net/http2 was.
+element** (`nodes[pos].u.shortcut = …`, i.e. `s[i].a.b = v`). So supporting Fiber means: (1) the
+`s[i].a.b = v` lowering, (2) working through brotli/gzip compression, (3) the fasthttp core
+itself. A staged target, like gin's x/net/http2 was.
+
+### Unsafe/asm wall measurement (2026-06) — there is NO unsafe wall
+
+An earlier note guessed "fasthttp is unsafe-heavy (its own buffer/socket code)". **That was wrong.**
+Measured directly against `fasthttp@v1.51.0` + its full dependency tree:
+
+- **fasthttp core: 4 active `unsafe` sites**, all in `b2s_*.go`/`s2b_*.go` — bytes↔string
+  conversions. On **Go 1.20+** the selected files use `unsafe.String(unsafe.SliceData(b), len(b))`
+  / `unsafe.Slice(unsafe.StringData(s), len(s))` — exactly the safe idioms goclr already lowers.
+  The hard `(*reflect.SliceHeader)(unsafe.Pointer(&b))` header-write form is behind `//go:build
+  !go1.20`, so it is never selected on a modern toolchain. `server.go` has no active unsafe.
+- **andybalholm/brotli: 0 unsafe.**
+- **klauspost/compress: 0 *active* unsafe** — the 6 `unsafe.Pointer` lines in
+  `flate/huffman_bit_writer.go` are all **commented out** dead code next to the
+  `binary.LittleEndian.PutUint64` calls that replaced them.
+- **Assembly: not a wall.** The only `.s` files are `klauspost/compress/flate/matchlen_amd64.s`
+  (pure-Go fallback `matchlen_generic.go` is auto-selected on non-amd64 / with the `noasm` tag) and
+  `klauspost/cpuid` (**not imported** by the fasthttp/compress path). No cgo.
+- **syscall: trivial** — fasthttp `tcp.go` uses only `syscall.ECONNRESET` in an `errors.Is`
+  comparison. **reflect: none** in core.
+- `goclr analyze` reports every compression dep **OK** and fasthttp itself only **WARN
+  GCLR0202 "unsafe used with approved patterns only"** → result *"compatible with profile
+  echo-goja"*.
+
+**Conclusion: fiber/fasthttp has no fundamental (unsafe/asm/cgo) blocker.** The distance is the
+ordinary stdlib lowering long-tail — the same tractable shim work that got gin and echo running
+end-to-end — starting at `io.MultiWriter` (the first and currently-only hard lowering gap on the
+path; see below). This makes fiber a *worthwhile, staged* target rather than a dead end. The first
+real lowering blocker after the compress shims (range `*[N]T`, ReadUvarint, crc32, bits.Reverse —
+all closed in `0.0.67`) is `io.MultiWriter`.
 
 ### Progress (2026-06, tag `0.0.67.fiber-compress-shims`)
 
