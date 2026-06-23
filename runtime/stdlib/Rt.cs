@@ -43,6 +43,23 @@ public static class Rt
     /// <summary>The element/value identity id of a composite type id, or 0.</summary>
     public static long CompositeElemId(long compId) => _compositeElem.TryGetValue(compId, out var e) ? e : 0;
 
+    // Map type id -> key type's identity id, for re-tagging bare map keys.
+    private static readonly System.Collections.Generic.Dictionary<long, long> _compositeKey = new();
+    /// <summary>Records a map's key identity id (called once at startup).</summary>
+    public static void RegisterCompositeKey(long compId, long keyId) => _compositeKey[compId] = keyId;
+    /// <summary>The key identity id of a map type id, or 0.</summary>
+    public static long CompositeKeyId(long compId) => _compositeKey.TryGetValue(compId, out var k) ? k : 0;
+
+    // "StructName.FieldName" -> the field type's identity id, so fmt can re-tag a bare
+    // struct field value (a Stringer enum field, a precisely-typed slice/map field).
+    private static readonly System.Collections.Generic.Dictionary<string, long> _fieldType = new();
+    /// <summary>Records a struct field's type identity id (called once at startup).</summary>
+    public static void RegisterFieldType(GoString structName, GoString field, long id)
+        => _fieldType[structName.ToDotNetString() + "." + field.ToDotNetString()] = id;
+    /// <summary>The identity id of a struct field's type (struct + field name), or 0.</summary>
+    public static long FieldTypeId(string structName, string field)
+        => _fieldType.TryGetValue(structName + "." + field, out var id) ? id : 0;
+
     /// <summary>Wraps a boxed value with its named-type identity for interface storage.</summary>
     public static object? MakeNamed(object? value, long id) => new GoNamed(id, value);
 

@@ -278,12 +278,37 @@ public static class Fmt
         if (nm.Value is GoMap m && m.Data != null)
         {
             long eid = Rt.CompositeElemId(nm.TypeId);
-            if (eid == 0) return v;
+            long kid = Rt.CompositeKeyId(nm.TypeId);
+            if (eid == 0 && kid == 0) return v;
             var nmap = new GoMap { Data = new System.Collections.Generic.Dictionary<object, object?>(m.Data.Count) };
-            foreach (var kv in m.Data) nmap.Data[kv.Key] = kv.Value is GoNamed ? kv.Value : Rt.MakeNamed(kv.Value, eid);
+            foreach (var kv in m.Data)
+            {
+                object key = kid != 0 && kv.Key is not GoNamed ? Rt.MakeNamed(kv.Key, kid)! : kv.Key;
+                object? val = eid != 0 && kv.Value is not GoNamed ? Rt.MakeNamed(kv.Value, eid) : kv.Value;
+                nmap.Data[key] = val;
+            }
             return new GoNamed(nm.TypeId, nmap);
         }
         return v;
+    }
+
+    // A struct field whose Go type carries identity (a Stringer enum, a typed slice/map) is
+    // stored as a bare value; re-tag it with the registered field type id so it dispatches
+    // String()/names its element. Idempotent (an already-tagged or untagged-type value is
+    // returned unchanged).
+    private static object? RetagField(string structName, string field, object? fv)
+    {
+        if (fv is null or GoNamed) return fv;
+        long id = Rt.FieldTypeId(structName, field);
+        return id == 0 ? fv : Rt.MakeNamed(fv, id);
+    }
+
+    // The ordering key for a map key when sorting fmt's output: a re-tagged (GoNamed) key
+    // sorts by its underlying value, so map[Suit]int still orders Hearts(0) before Spades(3).
+    private static string MapKeySortStr(object? k)
+    {
+        if (k is GoNamed n) k = n.Value;
+        return k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "";
     }
 
     private static string FormatVerb(object? v, Spec sp)
@@ -637,7 +662,7 @@ public static class Fmt
                 var t = v.GetType();
                 var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
                 var sb = new StringBuilder("main." + t.Name + "{");
-                for (int i = 0; i < fields.Length; i++) { if (i > 0) sb.Append(", "); sb.Append(fields[i].Name).Append(':').Append(FormatGoSyntax(fields[i].GetValue(v))); }
+                for (int i = 0; i < fields.Length; i++) { if (i > 0) sb.Append(", "); sb.Append(fields[i].Name).Append(':').Append(FormatGoSyntax(RetagField(t.Name, fields[i].Name, fields[i].GetValue(v)))); }
                 return sb.Append('}').ToString();
             }
         }
@@ -660,7 +685,7 @@ public static class Fmt
         var (keyName, valName) = MapKVNames(typeName);
         var sb = new StringBuilder(typeName).Append('{');
         var keys = new System.Collections.Generic.List<(string s, object? k)>();
-        if (m.Data != null) foreach (var k in m.Data.Keys) keys.Add((k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "", k));
+        if (m.Data != null) foreach (var k in m.Data.Keys) keys.Add((MapKeySortStr(k), k));
         keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
         for (int i = 0; i < keys.Count; i++) { if (i > 0) sb.Append(", "); sb.Append(GoSyntaxElem(keys[i].k, keyName)).Append(':').Append(GoSyntaxElem(m.Data![keys[i].k!], valName)); }
         return sb.Append('}').ToString();
@@ -722,7 +747,7 @@ public static class Fmt
     {
         if (m.Data == null) return "map[]";
         var keys = new System.Collections.Generic.List<(string s, object? k)>();
-        foreach (var k in m.Data.Keys) keys.Add((k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "", k));
+        foreach (var k in m.Data.Keys) keys.Add((MapKeySortStr(k), k));
         keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
         var sb = new StringBuilder("map[");
         for (int i = 0; i < keys.Count; i++)
@@ -733,7 +758,7 @@ public static class Fmt
     private static string FormatMap(GoMap m, bool plus, bool hash)
     {
         var keys = new System.Collections.Generic.List<(string s, object? k)>();
-        foreach (var k in m.Data.Keys) keys.Add((k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "", k));
+        foreach (var k in m.Data.Keys) keys.Add((MapKeySortStr(k), k));
         keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
         var sb = new StringBuilder("map[");
         for (int i = 0; i < keys.Count; i++)
@@ -754,6 +779,7 @@ public static class Fmt
             // A struct's nil map field is the CLR default (null), not a GoMap{Data:null};
             // render it as map[] (Go) rather than <nil>.
             if (fv == null && fields[i].FieldType == typeof(GoMap)) fv = NilMapValue;
+            fv = RetagField(t.Name, fields[i].Name, fv); // re-tag a Stringer/typed field value
             sb.Append(Format(fv, 'v', plus, hash));
         }
         return sb.Append('}').ToString();

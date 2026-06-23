@@ -126,6 +126,11 @@ func (c *lowerCtx) tagComposite(t types.Type) int64 {
 			c.compositeElem[id] = eid
 		}
 	}
+	if mp, ok := t.Underlying().(*types.Map); ok {
+		if kid, ok := c.typeTagFor(mp.Key()); ok {
+			c.compositeKey[id] = kid
+		}
+	}
 	return id
 }
 
@@ -141,6 +146,41 @@ func compositeElemType(t types.Type) types.Type {
 		return u.Elem()
 	}
 	return nil
+}
+
+// fieldType is a struct field whose static type carries runtime identity (a Stringer
+// enum, an error, a precisely-typed slice/map) that the bare value stored in the field
+// would otherwise erase. Registered at startup so fmt can re-tag the field value and
+// dispatch its String() / name its element type for %#v.
+type fieldType struct {
+	structName, fieldName string
+	typeID                int64
+}
+
+// identityFields scans every lowered struct for fields whose type has runtime identity,
+// recording the field's type id so fmt can re-tag the bare field value (e.g. a Suit field
+// stored as a plain int prints "Hearts", a []int field prints []int{...} under %#v).
+func (c *lowerCtx) identityFields() []fieldType {
+	var out []fieldType
+	for named, s := range c.structReg {
+		st, ok := named.Underlying().(*types.Struct)
+		if !ok {
+			continue
+		}
+		for i := 0; i < st.NumFields(); i++ {
+			f := st.Field(i)
+			if id, ok := c.typeTagFor(f.Type()); ok {
+				out = append(out, fieldType{s.Name, f.Name(), id})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].structName != out[j].structName {
+			return out[i].structName < out[j].structName
+		}
+		return out[i].fieldName < out[j].fieldName
+	})
+	return out
 }
 
 // safeField is a struct field whose static type is an html/template trusted-string
@@ -271,6 +311,15 @@ func (l *funcLowerer) emitRegisterNamedTypes() {
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: elemID})
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
 			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "RegisterCompositeElem",
+			Params: []goir.Type{goir.TInt64, goir.TInt64}, Ret: goir.TVoid,
+		}})
+	}
+	// Map-key identities, so fmt can re-tag a map[Stringer]V's bare keys.
+	for compID, keyID := range l.compositeKey {
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: compID})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: keyID})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "RegisterCompositeKey",
 			Params: []goir.Type{goir.TInt64, goir.TInt64}, Ret: goir.TVoid,
 		}})
 	}

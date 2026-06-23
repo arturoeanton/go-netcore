@@ -87,6 +87,9 @@ type lowerCtx struct {
 	// so fmt re-tags each element with this id to dispatch its String() — without it,
 	// fmt.Println([]Color{...}) prints the underlying ints, not the names.
 	compositeElem map[int64]int64
+	// compositeKey maps a map type id to the identity id of its key type (a Stringer enum
+	// key), so fmt re-tags bare map keys to dispatch their String().
+	compositeKey map[int64]int64
 	// shimNamed resolves an opaque-shim type's "pkg/path.Name" to its *types.Named
 	// (lazily, by scanning the program's import closure) so interface dispatch can ask
 	// types.Implements whether a shim type satisfies an interface — a precise,
@@ -143,6 +146,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		namedNames:         map[int64]string{},
 		compositeIds:       map[string]int64{},
 		compositeElem:      map[int64]int64{},
+		compositeKey:       map[int64]int64{},
 		typeDescIds:        map[string]int{},
 		bag:                bag,
 	}
@@ -450,7 +454,10 @@ func (c *lowerCtx) taggedStructs() []*goir.Struct {
 func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	tagged := c.taggedStructs()
 	safe := c.safeFields()
-	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.handlers) == 0 && len(c.bridges) == 0 && len(c.namedNames) == 0 && len(safe) == 0 {
+	// Collect (and tag — typeTagFor assigns ids) identity-bearing struct fields before the
+	// named-type registrations below are emitted, so any newly-assigned id is registered.
+	idFields := c.identityFields()
+	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.handlers) == 0 && len(c.bridges) == 0 && len(c.namedNames) == 0 && len(safe) == 0 && len(idFields) == 0 {
 		return nil, true
 	}
 	// The package-var initializers and tag registrations are emitted into a series
@@ -511,6 +518,18 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 		cl.emit(goir.Op{Code: goir.OpStrConst, Str: sf.fieldName})
 		cl.emit(goir.Op{Code: goir.OpStrConst, Str: sf.kind})
 		cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: safeExt})
+	}
+	// Register struct fields whose type carries runtime identity, so fmt re-tags the bare
+	// field value (a Suit field prints its name; a []int field names its element for %#v).
+	fieldTypeExt := &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "RegisterFieldType",
+		Params: []goir.Type{goir.TString, goir.TString, goir.TInt64}, Ret: goir.TVoid,
+	}
+	for _, ft := range idFields {
+		cl.emit(goir.Op{Code: goir.OpStrConst, Str: ft.structName})
+		cl.emit(goir.Op{Code: goir.OpStrConst, Str: ft.fieldName})
+		cl.emit(goir.Op{Code: goir.OpLdcI8, Int: ft.typeID})
+		cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: fieldTypeExt})
 	}
 	// Build descriptors for every named/struct type (for dynamic reflect), then
 	// register all runtime type descriptors — kind, name, type string, element/key
