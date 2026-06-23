@@ -291,7 +291,7 @@ public static class Fmt
             case 'c': return IsIntegral(v) ? char.ConvertFromUtf32((int)ToLong(v)) : BadVerb(verb, v);
             case 'U': return IsIntegral(v) ? UnicodeVerb(ToLong(v), sp.Hash) : BadVerb(verb, v);
             case 's': return StrVerb(v, sp);
-            case 'q': return QuoteVerb(v);
+            case 'q': return v is GoSlice qsl && IsByteSliceName(wname) ? GoQuote(GoString.FromBytesOwned(SliceToBytes(qsl))) : QuoteVerb(v);
             case 'f':
             case 'F': return FloatVerb(v, sp, () => GoFtoa.FormatF(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
             case 'e': return FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
@@ -357,6 +357,10 @@ public static class Fmt
         // %s applies to strings, errors, and composites; a bare number/bool/char
         // is a bad verb in Go (it has no string form).
         if (IsIntegral(v) || IsFloaty(v) || v is bool) return BadVerb('s', v);
+        // %s of a []byte is its string form (Go treats []byte as a string). The typed
+        // box carries "[]uint8", so a byte slice is distinguishable from []int.
+        if (v is GoNamed bnm && bnm.Value is GoSlice bsl && IsByteTag(Rt.NamedTypeName(bnm.TypeId)))
+            v = GoString.FromBytesOwned(SliceToBytes(bsl));
         string s = v switch
         {
             GoString g => g.ToDotNetString(),
@@ -366,6 +370,15 @@ public static class Fmt
         };
         if (sp.Prec >= 0 && s.Length > sp.Prec) s = s.Substring(0, sp.Prec);
         return s;
+    }
+
+    private static bool IsByteTag(string name) => name == "[]uint8" || name == "[]byte";
+
+    private static byte[] SliceToBytes(GoSlice s)
+    {
+        var b = new byte[s.Len];
+        for (int i = 0; i < s.Len; i++) b[i] = (byte)ToLong(s.Data![s.Off + i]);
+        return b;
     }
 
     private static string QuoteVerb(object? v)
