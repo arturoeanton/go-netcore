@@ -260,9 +260,36 @@ public static class Fmt
 
     private static bool IsBadVerb(string s) => s.Length > 2 && s[0] == '%' && s[1] == '!';
 
+    // A typed composite whose element type has runtime identity (a Stringer enum, an
+    // error, …): its elements are stored bare, so re-tag each with the element id (kept in
+    // the registry) so the per-element format dispatches String()/Error(). The GoNamed
+    // wrapper is preserved so %T and the []byte fast paths still see the composite's name.
+    private static object? MaybeRetag(object? v)
+    {
+        if (v is not GoNamed nm) return v;
+        if (nm.Value is GoSlice sl && sl.Data != null)
+        {
+            long eid = Rt.CompositeElemId(nm.TypeId);
+            if (eid == 0) return v;
+            var nd = new object?[sl.Len];
+            for (int i = 0; i < sl.Len; i++) { var e = sl.Data[sl.Off + i]; nd[i] = e is GoNamed ? e : Rt.MakeNamed(e, eid); }
+            return new GoNamed(nm.TypeId, new GoSlice { Data = nd, Off = 0, Len = sl.Len, Cap = sl.Len });
+        }
+        if (nm.Value is GoMap m && m.Data != null)
+        {
+            long eid = Rt.CompositeElemId(nm.TypeId);
+            if (eid == 0) return v;
+            var nmap = new GoMap { Data = new System.Collections.Generic.Dictionary<object, object?>(m.Data.Count) };
+            foreach (var kv in m.Data) nmap.Data[kv.Key] = kv.Value is GoNamed ? kv.Value : Rt.MakeNamed(kv.Value, eid);
+            return new GoNamed(nm.TypeId, nmap);
+        }
+        return v;
+    }
+
     private static string FormatVerb(object? v, Spec sp)
     {
         if (ReferenceEquals(v, MissingArg)) return "%!" + sp.Verb + "(MISSING)";
+        v = MaybeRetag(v); // re-tag a []Stringer's bare elements before any verb dispatch
         char verb = sp.Verb;
         // The typed-box name (if any) before unwrapping, so %x can tell a []byte ("[]uint8",
         // formatted as a hex string) from a []int ("[]int", which recurses element-wise).
@@ -519,6 +546,7 @@ public static class Fmt
 
     private static string Format(object? v, char verb, bool plus, bool hash)
     {
+        v = MaybeRetag(v); // re-tag a []Stringer's bare elements (Sprint/Println path)
         // A type's String()/Error() method governs %v and %s output (but not the
         // Go-syntax %#v, nor numeric/bool/pointer-address verbs).
         if (!hash && (verb == 'v' || verb == 's') && TryStringer(v, out var sv)) return sv;

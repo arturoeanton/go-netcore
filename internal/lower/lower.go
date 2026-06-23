@@ -81,6 +81,12 @@ type lowerCtx struct {
 	// otherwise erase (a bare GoSlice reports "[]interface {}"). Keyed by canonical type
 	// string; the id maps into namedNames like a named type. See typeTagFor.
 	compositeIds map[string]int64
+	// compositeElem maps a composite type id (a []T / [N]T / map[K]V) to the identity id
+	// of its element/value type when that element is an identity-bearing named type (e.g.
+	// a Stringer enum). The slice's elements are stored bare (a []Color holds plain ints),
+	// so fmt re-tags each element with this id to dispatch its String() — without it,
+	// fmt.Println([]Color{...}) prints the underlying ints, not the names.
+	compositeElem map[int64]int64
 	// shimNamed resolves an opaque-shim type's "pkg/path.Name" to its *types.Named
 	// (lazily, by scanning the program's import closure) so interface dispatch can ask
 	// types.Implements whether a shim type satisfies an interface — a precise,
@@ -136,6 +142,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		namedIds:           map[*types.Named]int64{},
 		namedNames:         map[int64]string{},
 		compositeIds:       map[string]int64{},
+		compositeElem:      map[int64]int64{},
 		typeDescIds:        map[string]int{},
 		bag:                bag,
 	}

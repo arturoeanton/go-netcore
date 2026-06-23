@@ -115,7 +115,32 @@ func (c *lowerCtx) tagComposite(t types.Type) int64 {
 	id := c.nextTypeId()
 	c.compositeIds[key] = id
 	c.namedNames[id] = typeDescStr(t) // Go's %T spelling: "[]int", "template.HTML"
+	// If the element/value type carries runtime identity (a Stringer enum, an error,
+	// …), record its id so fmt can re-tag the bare elements of this composite and
+	// dispatch their String()/Error() — registering the element in namedIds also makes
+	// collectStringers emit its stringer even when only the composite is ever boxed.
+	if elem := compositeElemType(t); elem != nil {
+		// typeTagFor (not just namedIdentity) so a nested composite element — a [][]Color's
+		// inner []Color — is itself tagged, building the chain fmt re-tags down at runtime.
+		if eid, ok := c.typeTagFor(elem); ok {
+			c.compositeElem[id] = eid
+		}
+	}
 	return id
+}
+
+// compositeElemType returns the element type of a slice/array, or the value type of a
+// map — the type whose values are stored as the composite's elements.
+func compositeElemType(t types.Type) types.Type {
+	switch u := t.Underlying().(type) {
+	case *types.Slice:
+		return u.Elem()
+	case *types.Array:
+		return u.Elem()
+	case *types.Map:
+		return u.Elem()
+	}
+	return nil
 }
 
 // safeField is a struct field whose static type is an html/template trusted-string
@@ -224,6 +249,15 @@ func (l *funcLowerer) emitRegisterNamedTypes() {
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
 			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "RegisterNamedType",
 			Params: []goir.Type{goir.TInt64, goir.TString}, Ret: goir.TVoid,
+		}})
+	}
+	// Composite-element identities, so fmt can re-tag a []Stringer's bare elements.
+	for compID, elemID := range l.compositeElem {
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: compID})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: elemID})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "RegisterCompositeElem",
+			Params: []goir.Type{goir.TInt64, goir.TInt64}, Ret: goir.TVoid,
 		}})
 	}
 }

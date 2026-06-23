@@ -39,6 +39,10 @@ public static class Scan
                 if (ai >= args.Len) return Fail(count, "too few operands for format");
                 var ptr = args.Data![args.Off + ai] as GoPtr;
                 ai++;
+                // An unsupported verb (e.g. the scanset %[...], which Go's fmt does not
+                // implement either) is reported exactly as Go does: bad verb '%X' for <type>.
+                if ("dsfgetxcqv".IndexOf(verb) < 0)
+                    return Fail(count, "bad verb '%" + verb + "' for " + Fmt.TypeName(SafeGet(ptr)));
                 if (verb != 'c') while (si < s.Length && char.IsWhiteSpace(s[si])) si++;
                 if (!ScanOne(verb, s, ref si, ptr)) return Fail(count, "expected " + VerbDesc(verb));
                 count++;
@@ -159,6 +163,7 @@ public static class Scan
         }
     }
 
+    static object? SafeGet(GoPtr? p) { try { return p == null ? null : GoPtrs.Get(p); } catch { return null; } }
     static bool IsHex(char c) => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     static bool Match(string s, int i, string word) => i + word.Length <= s.Length && s.Substring(i, word.Length) == word;
     static string VerbDesc(char v) => v switch { 'd' or 'x' => "integer", 'f' or 'g' or 'e' => "float", 't' => "boolean", _ => "input" };

@@ -35,6 +35,14 @@ public static class Rt
     /// <summary>Go display name ("pkg.Type") for a type id, or "" if unknown.</summary>
     public static string NamedTypeName(long id) => _namedNames.TryGetValue(id, out var n) ? n : "";
 
+    // Composite type id -> element/value type's identity id, for re-tagging the bare
+    // elements of a []Stringer / map[K]Stringer when fmt formats them.
+    private static readonly System.Collections.Generic.Dictionary<long, long> _compositeElem = new();
+    /// <summary>Records a composite's element identity id (called once at startup).</summary>
+    public static void RegisterCompositeElem(long compId, long elemId) => _compositeElem[compId] = elemId;
+    /// <summary>The element/value identity id of a composite type id, or 0.</summary>
+    public static long CompositeElemId(long compId) => _compositeElem.TryGetValue(compId, out var e) ? e : 0;
+
     /// <summary>Wraps a boxed value with its named-type identity for interface storage.</summary>
     public static object? MakeNamed(object? value, long id) => new GoNamed(id, value);
 
