@@ -76,6 +76,11 @@ type lowerCtx struct {
 	// display name ("pkg.Type") for %T / reflect, registered at startup.
 	namedIds   map[*types.Named]int64
 	namedNames map[int64]string
+	// compositeIds extends the typed box to UNNAMED (and method-less named) composite
+	// types — slices, maps, arrays — whose element/key types fmt's %T and %#v would
+	// otherwise erase (a bare GoSlice reports "[]interface {}"). Keyed by canonical type
+	// string; the id maps into namedNames like a named type. See typeTagFor.
+	compositeIds map[string]int64
 	// shimNamed resolves an opaque-shim type's "pkg/path.Name" to its *types.Named
 	// (lazily, by scanning the program's import closure) so interface dispatch can ask
 	// types.Implements whether a shim type satisfies an interface — a precise,
@@ -130,6 +135,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		globals:            map[*types.Var]int{},
 		namedIds:           map[*types.Named]int64{},
 		namedNames:         map[int64]string{},
+		compositeIds:       map[string]int64{},
 		typeDescIds:        map[string]int{},
 		bag:                bag,
 	}

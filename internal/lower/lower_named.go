@@ -74,11 +74,57 @@ func (l *funcLowerer) wrapNamedExtern() *goir.Extern {
 	}
 }
 
-// maybeWrapNamed wraps the boxed value on top of the stack with its named-type
-// identity, if the static type t is an identity-bearing named type. Called right
-// after a value is boxed into an interface slot.
+// typeTagFor extends namedIdentity to also cover composite types — slices, maps,
+// arrays — whose precise Go type (element/key types) the runtime value erases. A
+// bare GoSlice/GoMap reports "[]interface {}" / "map[string]interface {}" for %T, so
+// a value of static type []int or map[string]int is wrapped in a typed box carrying
+// an id that maps to its Go type string ("[]int"). Returns ok=false when t needs no
+// tag: a struct (its CLR class is identity), an interface (the value carries its own
+// dynamic tag), or a composite whose element/key is itself an interface (the
+// "[]interface {}" fallback is already correct, so the common []any path stays bare).
+func (c *lowerCtx) typeTagFor(t types.Type) (int64, bool) {
+	if id, ok := c.namedIdentity(t); ok {
+		return id, true
+	}
+	switch t.Underlying().(type) {
+	case *types.Slice, *types.Map, *types.Array:
+		if compositeHasInterfaceElem(t) {
+			return 0, false
+		}
+		key := types.TypeString(t, nil)
+		if id, ok := c.compositeIds[key]; ok {
+			return id, true
+		}
+		id := c.nextTypeId()
+		c.compositeIds[key] = id
+		c.namedNames[id] = typeDescStr(t) // Go's %T spelling: "[]int", "map[string]int"
+		return id, true
+	}
+	return 0, false
+}
+
+// compositeHasInterfaceElem reports whether t is a slice/array/map whose element
+// (or, for a map, key or value) type is an interface — the case whose erased
+// runtime representation already matches Go's %T, so no typed box is needed.
+func compositeHasInterfaceElem(t types.Type) bool {
+	isIface := func(e types.Type) bool { _, ok := e.Underlying().(*types.Interface); return ok }
+	switch u := t.Underlying().(type) {
+	case *types.Slice:
+		return isIface(u.Elem())
+	case *types.Array:
+		return isIface(u.Elem())
+	case *types.Map:
+		return isIface(u.Key()) || isIface(u.Elem())
+	}
+	return false
+}
+
+// maybeWrapNamed wraps the boxed value on top of the stack with its type identity,
+// if the static type t is an identity-bearing named type or a composite whose
+// element types %T would otherwise erase. Called right after a value is boxed into
+// an interface slot.
 func (l *funcLowerer) maybeWrapNamed(t types.Type) {
-	id, ok := l.namedIdentity(t)
+	id, ok := l.typeTagFor(t)
 	if !ok {
 		return
 	}

@@ -159,7 +159,12 @@ public static class Reflect
     public static long Type_Len(object t) { var d = TDesc(t); return d != null ? d.ArrayLen : 0; }
 
     // --- reflect.Value methods (null receiver = the zero reflect.Value) ---
-    private static object? RVal(object? v) => (v as GoReflectValue)?.V;
+    // The stored value, stripped of any typed-box (GoNamed) wrapper: structural accessors
+    // (Len/Index/MapKeys/Field, the GoSlice/GoMap casts) operate on the concrete
+    // representation, while type identity is carried separately by Desc. ValueOf keeps the
+    // wrapper in V only so Desc can be derived from a dynamic value at construction.
+    private static object? RVal(object? v) { var x = (v as GoReflectValue)?.V; return x is GoNamed n ? n.Value : x; }
+    private static object? RValC(object? v) => RVal(v);
     private static GoTypeDesc? VDesc(object? v) => (v as GoReflectValue)?.Desc;
     public static ulong Value_Kind(object? v) { var d = VDesc(v); return d != null ? (ulong)d.Kind : KindOf(RVal(v)); }
     public static object Value_Type(object? v) => new GoReflectType { Sample = RVal(v), Desc = VDesc(v) };
@@ -189,7 +194,7 @@ public static class Reflect
     }
     public static object Value_Index(object? v, long i)
     {
-        var s = (GoSlice)RVal(v)!;
+        var s = (GoSlice)RValC(v)!;
         int idx = s.Off + (int)i;
         var ed = VDesc(v)?.Elem();
         // Settable: writes through the slice's shared backing array.
@@ -282,7 +287,7 @@ public static class Reflect
     }
     public static GoSlice Value_MapKeys(object? v)
     {
-        var raw = GoCLR.Runtime.GoMaps.Keys((GoMap)RVal(v)!);
+        var raw = GoCLR.Runtime.GoMaps.Keys((GoMap)RValC(v)!);
         // []reflect.Value: wrap each key.
         var d = new object?[raw.Len];
         for (int i = 0; i < raw.Len; i++) d[i] = new GoReflectValue { V = raw.Data[raw.Off + i] };
@@ -290,7 +295,7 @@ public static class Reflect
     }
     public static object Value_MapIndex(object? v, object? keyVal)
     {
-        var m = (GoMap)RVal(v)!;
+        var m = (GoMap)RValC(v)!;
         var key = RVal(keyVal);
         return new GoReflectValue { V = GoCLR.Runtime.GoMaps.Get(m, key!, null) };
     }
@@ -320,6 +325,10 @@ public static class Reflect
 
     private static bool Eq(object? a, object? b)
     {
+        // Strip typed-box (GoNamed) wrappers so a wrapped []int / map[K]V compares
+        // structurally (reflect.DeepEqual receives its args as interface{}).
+        if (a is GoNamed na) a = na.Value;
+        if (b is GoNamed nb) b = nb.Value;
         if (a == null || b == null) return ReferenceEquals(a, b) || (IsNilish(a) && IsNilish(b));
         switch (a)
         {
@@ -573,7 +582,7 @@ public static class Reflect
     // --- reflect.Value: more accessors / mutators --------------------------
     public static void Value_SetMapIndex(object v, object key, object elem)
     {
-        var m = (GoMap)RVal(v)!;
+        var m = (GoMap)RValC(v)!;
         var k = RVal(key);
         // A zero (invalid) elem Value deletes the entry, as Go specifies.
         if (((GoReflectValue)elem).V == null && ((GoReflectValue)elem).Setter == null && !Value_IsValid(elem))
@@ -625,7 +634,7 @@ public static class Reflect
     }
     public static object Value_Slice(object v, long lo, long hi)
     {
-        var s = (GoSlice)RVal(v)!;
+        var s = (GoSlice)RValC(v)!;
         return new GoReflectValue { V = GoCLR.Runtime.GoSlices.Slice(s, lo, hi) };
     }
     // reflect.Value.Pointer() returns uintptr (goclr: UInt64).

@@ -93,7 +93,7 @@ public static class Sort
     // sort.Slice(slice, less func(i, j int) bool) — in-place sort with a comparator.
     public static void Slice(object slice, GoClosure less)
     {
-        var s = (GoSlice)slice;
+        var s = (GoSlice)(slice is GoNamed n ? n.Value : slice)!;
         var c = less;
         // index-based insertion-style via Array.Sort with a comparator that calls less.
         var idx = new int[s.Len];
@@ -114,7 +114,7 @@ public static class Sort
     // sort.SliceIsSorted(slice, less): is the slice already ordered by less?
     public static bool SliceIsSorted(object slice, GoClosure less)
     {
-        var s = (GoSlice)slice;
+        var s = (GoSlice)(slice is GoNamed n ? n.Value : slice)!;
         for (int i = 1; i < s.Len; i++)
             if ((bool)GoRuntime.InvokeArgs(less, (long)i, (long)(i - 1))!) return false;
         return true;
@@ -124,7 +124,7 @@ public static class Sort
     // (the comparator breaks ties by original index, making Array.Sort stable here).
     public static void SliceStable(object slice, GoClosure less)
     {
-        var s = (GoSlice)slice;
+        var s = (GoSlice)(slice is GoNamed n ? n.Value : slice)!;
         var idx = new int[s.Len];
         for (int i = 0; i < s.Len; i++) idx[i] = i;
         System.Array.Sort(idx, (a, b) =>

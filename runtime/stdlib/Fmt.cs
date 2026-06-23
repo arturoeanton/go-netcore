@@ -529,21 +529,22 @@ public static class Fmt
             case long or int or ulong or uint: return Format(v, 'v', false, false);
             case double d: return FormatFloatV(d);
             case GoPtr p: return "&" + FormatGoSyntax(p.Value);
-            case GoSlice sl:
+            // A typed box carries the precise composite type, so %#v can spell its real
+            // element types ("[]int{...}", "main.IntHeap{...}") instead of the erased
+            // "[]interface {}". A named scalar (Celsius) just renders its value.
+            case GoNamed nm:
             {
-                var sb = new StringBuilder("[]interface {}{");
-                for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(", "); sb.Append(FormatGoSyntax(sl.Data[sl.Off + i])); }
-                return sb.Append('}').ToString();
+                string nmName = Rt.NamedTypeName(nm.TypeId);
+                if (nmName.Length == 0) return FormatGoSyntax(nm.Value);
+                return nm.Value switch
+                {
+                    GoSlice sl => SliceSyntax(sl, nmName),
+                    GoMap m => MapSyntax(m, nmName),
+                    _ => FormatGoSyntax(nm.Value),
+                };
             }
-            case GoMap m:
-            {
-                var sb = new StringBuilder("map[string]interface {}{");
-                var keys = new System.Collections.Generic.List<(string s, object? k)>();
-                if (m.Data != null) foreach (var k in m.Data.Keys) keys.Add((k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "", k));
-                keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
-                for (int i = 0; i < keys.Count; i++) { if (i > 0) sb.Append(", "); sb.Append('"').Append(keys[i].s).Append("\":").Append(FormatGoSyntax(m.Data![keys[i].k!])); }
-                return sb.Append('}').ToString();
-            }
+            case GoSlice sl: return SliceSyntax(sl, "[]interface {}");
+            case GoMap m: return MapSyntax(m, "map[string]interface {}");
             default:
             {
                 var t = v.GetType();
@@ -553,6 +554,24 @@ public static class Fmt
                 return sb.Append('}').ToString();
             }
         }
+    }
+
+    // %#v body for a slice/map with a given Go type-name prefix ("[]int", "main.IntHeap").
+    private static string SliceSyntax(GoSlice sl, string typeName)
+    {
+        var sb = new StringBuilder(typeName).Append('{');
+        for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(", "); sb.Append(FormatGoSyntax(sl.Data![sl.Off + i])); }
+        return sb.Append('}').ToString();
+    }
+
+    private static string MapSyntax(GoMap m, string typeName)
+    {
+        var sb = new StringBuilder(typeName).Append('{');
+        var keys = new System.Collections.Generic.List<(string s, object? k)>();
+        if (m.Data != null) foreach (var k in m.Data.Keys) keys.Add((k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "", k));
+        keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
+        for (int i = 0; i < keys.Count; i++) { if (i > 0) sb.Append(", "); sb.Append('"').Append(keys[i].s).Append("\":").Append(FormatGoSyntax(m.Data![keys[i].k!])); }
+        return sb.Append('}').ToString();
     }
 
     private static string FormatFloatV(double d) => GoFtoa.Shortest(d);

@@ -516,9 +516,9 @@ func (l *funcLowerer) typeAssert(e *ast.TypeAssertExpr) {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		return
 	}
-	// x.(NamedType) where NamedType is a typed box (named non-struct): match the
-	// GoNamed wrapper's id, then unwrap before unboxing the representation.
-	if id, ok := l.namedIdentity(l.pkg.TypesInfo.TypeOf(e.Type)); ok {
+	// x.(T) where T is a typed box (named non-struct, or a composite whose element
+	// types are tagged): match the GoNamed wrapper's id, then unwrap before unboxing.
+	if id, ok := l.typeTagFor(l.pkg.TypesInfo.TypeOf(e.Type)); ok {
 		tmp := l.addLocal(nil, goir.TObject)
 		l.expr(e.X)
 		l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
@@ -764,9 +764,9 @@ func (l *funcLowerer) typeAssertOK(s *ast.AssignStmt) {
 		return
 	}
 
-	// v, ok := x.(NamedType) where NamedType is a typed box: ok is whether the
-	// GoNamed wrapper's id matches; the bound value is the unwrapped representation.
-	if id, ok := l.namedIdentity(l.pkg.TypesInfo.TypeOf(ta.Type)); ok {
+	// v, ok := x.(T) where T is a typed box (named non-struct or tagged composite):
+	// ok is whether the GoNamed wrapper's id matches; the bound value is unwrapped.
+	if id, ok := l.typeTagFor(l.pkg.TypesInfo.TypeOf(ta.Type)); ok {
 		valTmp := l.addLocal(nil, goir.TObject)
 		l.expr(ta.X)
 		l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
@@ -934,10 +934,10 @@ func (l *funcLowerer) emitTypeMatch(valLocal int, gt types.Type, t goir.Type, ma
 		l.mark(skip)
 		return
 	}
-	// A named non-struct type (the typed box) carries identity in a GoNamed wrapper,
-	// so its representation alone (KInt32, KSlice, …) can't be distinguished from a
-	// plain value of the underlying type. Match by the wrapper's type id instead.
-	if id, ok := l.namedIdentity(gt); ok {
+	// A typed box (named non-struct, or a tagged composite like []int) carries identity
+	// in a GoNamed wrapper, so its representation alone (KInt32, KSlice, …) can't be
+	// distinguished from a plain value of the underlying type. Match by the id instead.
+	if id, ok := l.typeTagFor(gt); ok {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valLocal})
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.namedIdExtern()})
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
@@ -1063,9 +1063,9 @@ func (l *funcLowerer) typeSwitch(s *ast.TypeSwitchStmt) {
 				l.initLocal(vLocal, func() {
 					l.emit(goir.Op{Code: goir.OpLdLoc, Local: xTmp})
 					if len(cc.List) == 1 && !isNilIdent(cc.List[0]) && vt.Kind != goir.KObject {
-						// A typed-box value (named non-struct) is stored as a GoNamed
-						// wrapper; strip it before unboxing to the representation.
-						if _, ok := l.namedIdentity(l.pkg.TypesInfo.TypeOf(cc.List[0])); ok {
+						// A typed-box value (named non-struct or tagged composite) is stored
+						// as a GoNamed wrapper; strip it before unboxing to the representation.
+						if _, ok := l.typeTagFor(l.pkg.TypesInfo.TypeOf(cc.List[0])); ok {
 							l.emitUnwrapNamed()
 						}
 						l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: vt})

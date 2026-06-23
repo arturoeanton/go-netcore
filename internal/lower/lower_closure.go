@@ -216,13 +216,34 @@ func (l *funcLowerer) funcValueCall(e *ast.CallExpr) goir.Type {
 		retType = goir.TObjectArray
 	}
 
+	// Per-argument parameter type, so a value passed to an interface{} parameter is
+	// tagged with its type identity (like the direct-call path's exprCoerced) — without
+	// it, f([]int{...}) through a func value would lose its %T / type-switch identity.
+	params := sig.Params()
+	nFixed := params.Len()
+	if sig.Variadic() {
+		nFixed--
+	}
+	paramElem := func(i int) (goir.Type, bool) {
+		// Only fixed parameters: the variadic tail (and an `args...` spread) keeps the
+		// existing flat boxing, which __invoke unpacks.
+		if i < nFixed && !e.Ellipsis.IsValid() {
+			return l.goType(params.At(i).Type())
+		}
+		return goir.Type{}, false
+	}
+
 	l.expr(e.Fun) // GoClosure
 	l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(e.Args))})
 	l.emit(goir.Op{Code: goir.OpNewObjArray})
 	for i, a := range e.Args {
 		l.emit(goir.Op{Code: goir.OpDup})
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
-		l.emitBoxedElem(a)
+		if pt, ok := paramElem(i); ok {
+			l.emitBoxedElemInto(a, pt)
+		} else {
+			l.emitBoxedElem(a)
+		}
 		l.emit(goir.Op{Code: goir.OpStelemRef})
 	}
 	l.emit(goir.Op{Code: goir.OpCallMethod, Callee: l.invokeMethod()})
