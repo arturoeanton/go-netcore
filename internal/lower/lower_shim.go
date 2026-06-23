@@ -375,6 +375,7 @@ var opaqueShimTypes = map[string]bool{
 	"net.Listener":                   true,
 	"net.Conn":                       true,
 	"context.Context":                true,
+	"io.ReadCloser":                  true,
 	"net.IPNet":                      true,
 	"net.OpError":                    true,
 	"encoding/xml.Encoder":           true,

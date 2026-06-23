@@ -2,7 +2,11 @@ namespace GoCLR.Stdlib;
 
 using GoCLR.Runtime;
 
-/// <summary>An in-memory reader (strings.Reader / bytes.Reader) over a byte array.</summary>
+/// <summary>An in-memory reader (strings.Reader / bytes.Reader / an http response
+/// body) over a byte array. Tagged so a response body flowing as an io.ReadCloser
+/// resolves its Close() through interface dispatch when a user type also implements
+/// io.ReadCloser (which suppresses the shim short-circuit).</summary>
+[GoShim("io.ReadCloser")]
 public sealed class GoReader { public byte[] Data = System.Array.Empty<byte>(); public int Pos; }
 
 /// <summary>strings.NewReader / bytes.NewReader and the shared byte-extraction the
