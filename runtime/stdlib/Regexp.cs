@@ -6,7 +6,7 @@ using GoCLR.Runtime;
 /// <summary>A *regexp.Regexp handle wrapping a .NET Regex. (.NET uses a
 /// backtracking engine vs Go's RE2; common patterns match, some edges differ.)</summary>
 [GoShim("regexp.Regexp")]
-public sealed class GoRegexp { public Regex Re = null!; }
+public sealed class GoRegexp { public Regex Re = null!; public string Orig = ""; }
 
 /// <summary>Shim for a subset of Go's <c>regexp</c> package.</summary>
 public static class Regexp
@@ -19,15 +19,20 @@ public static class Regexp
         return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
     }
 
+    // Go's regexp/syntax (RE2) differs from .NET's engine in a few spellings; translate the
+    // common ones so the .NET Regex accepts a Go pattern. The original is kept for String().
+    private static string Translate(string p) => p.Replace("(?P<", "(?<").Replace("(?P=", "\\k<");
+
     public static object?[] Compile(GoString pattern)
     {
-        try { return new object?[] { new GoRegexp { Re = new Regex(pattern.ToDotNetString()) }, null }; }
+        string p = pattern.ToDotNetString();
+        try { return new object?[] { new GoRegexp { Re = new Regex(Translate(p)), Orig = p }, null }; }
         catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("error parsing regexp: " + e.Message)) }; }
     }
-    public static object MustCompile(GoString pattern) => new GoRegexp { Re = new Regex(pattern.ToDotNetString()) };
+    public static object MustCompile(GoString pattern) { string p = pattern.ToDotNetString(); return new GoRegexp { Re = new Regex(Translate(p)), Orig = p }; }
     public static object?[] MatchString(GoString pattern, GoString s)
     {
-        try { return new object?[] { Regex.IsMatch(s.ToDotNetString(), pattern.ToDotNetString()), null }; }
+        try { return new object?[] { Regex.IsMatch(s.ToDotNetString(), Translate(pattern.ToDotNetString())), null }; }
         catch (System.Exception e) { return new object?[] { false, new GoError(GoString.FromDotNetString(e.Message)) }; }
     }
     public static GoString QuoteMeta(GoString s) => GoString.FromDotNetString(Regex.Escape(s.ToDotNetString()));
@@ -41,7 +46,7 @@ public static class Regexp
         return ((GoRegexp)r).Re.IsMatch(GoString.FromBytes(bytes).ToDotNetString());
     }
     public static GoString Re_FindString(object r, GoString s) { var m = ((GoRegexp)r).Re.Match(s.ToDotNetString()); return GoString.FromDotNetString(m.Success ? m.Value : ""); }
-    public static GoString Re_String(object r) => GoString.FromDotNetString(((GoRegexp)r).Re.ToString());
+    public static GoString Re_String(object r) => GoString.FromDotNetString(((GoRegexp)r).Orig);
     public static GoSlice Re_FindAllStringSubmatchIndex(object r, GoString gs, long n)
     {
         var str = gs.ToDotNetString();
@@ -184,6 +189,19 @@ public static class Regexp
     {
         // Go uses $1 / ${name}; .NET uses the same — translate Go's $name to ${name} loosely.
         return GoString.FromDotNetString(((GoRegexp)r).Re.Replace(s.ToDotNetString(), repl.ToDotNetString()));
+    }
+    // ReplaceAllStringFunc(s, repl): replace each match with the result of calling repl on
+    // the matched text (repl is a func(string) string -> a GoClosure).
+    public static GoString Re_ReplaceAllStringFunc(object r, GoString s, GoClosure repl)
+    {
+        return GoString.FromDotNetString(((GoRegexp)r).Re.Replace(s.ToDotNetString(),
+            (Match m) => ((GoString)GoRuntime.InvokeArgs(repl, GoString.FromDotNetString(m.Value))!).ToDotNetString()));
+    }
+    // ReplaceAllLiteralString(s, repl): the replacement is used verbatim — no $-expansion.
+    public static GoString Re_ReplaceAllLiteralString(object r, GoString s, GoString repl)
+    {
+        string lit = repl.ToDotNetString();
+        return GoString.FromDotNetString(((GoRegexp)r).Re.Replace(s.ToDotNetString(), (Match m) => lit));
     }
     public static GoSlice Re_Split(object r, GoString s, long n)
     {

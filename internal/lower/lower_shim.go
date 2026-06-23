@@ -1338,6 +1338,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"FindStringSubmatch": {"Regexp", "Re_FindStringSubmatch"}, "FindAllString": {"Regexp", "Re_FindAllString"},
 		"FindAllStringSubmatch": {"Regexp", "Re_FindAllStringSubmatch"},
 		"ReplaceAllString":      {"Regexp", "Re_ReplaceAllString"}, "Split": {"Regexp", "Re_Split"},
+		"ReplaceAllStringFunc":     {"Regexp", "Re_ReplaceAllStringFunc"},
+		"ReplaceAllLiteralString":  {"Regexp", "Re_ReplaceAllLiteralString"},
 		"String": {"Regexp", "Re_String"}, "FindStringIndex": {"Regexp", "Re_FindStringIndex"}, "FindAllStringSubmatchIndex": {"Regexp", "Re_FindAllStringSubmatchIndex"},
 		"SubexpNames": {"Regexp", "Re_SubexpNames"}, "NumSubexp": {"Regexp", "Re_NumSubexp"},
 		"FindStringSubmatchIndex": {"Regexp", "Re_FindStringSubmatchIndex"},
