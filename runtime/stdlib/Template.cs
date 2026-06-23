@@ -83,6 +83,7 @@ public static class Template
             var items = Lex(text.ToDotNetString());
             int pos = 0;
             var nodes = ParseList(g, items, ref pos);
+            if (pos < items.Count) throw new System.Exception("unexpected " + (items[pos].IsAction ? "{{" + items[pos].Text + "}}" : "text") + " in command");
             g.Root ??= nodes; // the first Parse sets the template's own body
             if (!g.Set.ContainsKey(g.Name)) g.Set[g.Name] = g;
             return new object?[] { t, null };
@@ -532,9 +533,9 @@ public static class Template
         for (int i = 1; i < a.Count; i++)
         {
             v = Deref(v);
-            long k = ToL(a[i]);
-            if (v is GoSlice s) v = (k >= 0 && k < s.Len) ? s.Data![s.Off + (int)k] : null;
-            else if (v is GoMap m) v = GoMaps.Get(m, a[i], null);
+            if (v is GoSlice s) { long k = ToL(a[i]); v = (k >= 0 && k < s.Len) ? s.Data![s.Off + (int)k] : null; }
+            else if (v is GoMap m) v = GoMaps.Get(m, a[i], null); // map key used as-is (not numeric)
+            else if (v is GoString g) { long k = ToL(a[i]); var b = g.Bytes; v = (k >= 0 && k < b.Length) ? (long)b[(int)k] : null; }
             else return null;
         }
         return v;
@@ -788,9 +789,23 @@ public static class Template
         };
     }
 
+    // Go's basic-kind classes for eq/lt/...: a comparison across different kinds (e.g.
+    // int vs float, or string vs number) is an error, matching text/template.
+    static int BasicKind(object? v) => v switch
+    {
+        bool => 1,
+        long or int or short or sbyte => 2,
+        ulong or uint or ushort or byte => 3,
+        double or float => 4,
+        GoString => 5,
+        _ => 0,
+    };
+
     static bool Eq(object? a, object? b)
     {
         a = Deref(a); b = Deref(b);
+        int ka = BasicKind(a), kb = BasicKind(b);
+        if (ka != 0 && kb != 0 && ka != kb) throw new System.Exception("incompatible types for comparison");
         if (a is GoString x && b is GoString y) return GoStrings.Equal(x, y);
         if (IsNum(a) && IsNum(b)) return ToD(a) == ToD(b);
         if (a is bool ba && b is bool bb) return ba == bb;
@@ -800,6 +815,8 @@ public static class Template
     static int Cmp(object? a, object? b)
     {
         a = Deref(a); b = Deref(b);
+        int ka = BasicKind(a), kb = BasicKind(b);
+        if (ka != 0 && kb != 0 && ka != kb) throw new System.Exception("incompatible types for comparison");
         if (a is GoString x && b is GoString y) return string.CompareOrdinal(x.ToDotNetString(), y.ToDotNetString());
         return ToD(a).CompareTo(ToD(b));
     }
