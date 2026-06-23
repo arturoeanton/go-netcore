@@ -101,7 +101,7 @@ public static class Template
         var sb = new StringBuilder();
         try
         {
-            var st = new ExecState { Tmpl = g, Out = sb };
+            var st = new ExecState { Tmpl = g, Out = sb, Ctx = g.Html ? new HtmlState() : null };
             ExecList(st, g.Root ?? new List<Node>(), data);
             Fmt.WriteTo(w, sb.ToString());
             return null;
@@ -323,7 +323,7 @@ public static class Template
     }
 
     // ---- executor ----------------------------------------------------------
-    sealed class ExecState { public GoTemplate Tmpl = null!; public StringBuilder Out = null!; public readonly Dictionary<string, object?> Vars = new(); }
+    sealed class ExecState { public GoTemplate Tmpl = null!; public StringBuilder Out = null!; public readonly Dictionary<string, object?> Vars = new(); public HtmlState? Ctx; }
 
     static void ExecList(ExecState st, List<Node> nodes, object? dot) { foreach (var n in nodes) ExecNode(st, n, dot); }
 
@@ -331,12 +331,14 @@ public static class Template
     {
         switch (n)
         {
-            case TextNode t: st.Out.Append(t.Text); break;
+            case TextNode t: st.Out.Append(t.Text); st.Ctx?.Feed(t.Text); break;
             case ActionNode a:
                 {
                     var v = EvalPipe(st, a.Pipe, dot);
-                    if (a.AssignVar.Length > 0) st.Vars[a.AssignVar] = v;
-                    else st.Out.Append(Render(v, st.Tmpl.Html));
+                    if (a.AssignVar.Length > 0) { st.Vars[a.AssignVar] = v; break; }
+                    string outp = st.Ctx == null ? Render(v, false) : EscapeFor(st.Ctx, v);
+                    st.Out.Append(outp);
+                    st.Ctx?.Feed(outp);
                     break;
                 }
             case IfNode iff:
@@ -356,7 +358,7 @@ public static class Template
                     var arg = tn.Pipe != null ? EvalPipe(st, tn.Pipe, dot) : dot;
                     if (st.Tmpl.Set.TryGetValue(tn.Name, out var sub))
                     {
-                        var sub2 = new ExecState { Tmpl = MergeSet(st.Tmpl, sub), Out = st.Out };
+                        var sub2 = new ExecState { Tmpl = MergeSet(st.Tmpl, sub), Out = st.Out, Ctx = st.Ctx };
                         ExecList(sub2, sub.Root ?? new List<Node>(), arg);
                     }
                     break;
@@ -531,6 +533,198 @@ public static class Template
         var sb = new StringBuilder();
         foreach (char c in s)
             sb.Append(c switch { '<' => "&lt;", '>' => "&gt;", '&' => "&amp;", '\'' => "&#39;", '"' => "&#34;", _ => c.ToString() });
+        return sb.ToString();
+    }
+
+    // ---- html/template contextual auto-escaping ----------------------------
+    enum Ctx { Text, TagName, BeforeAttr, AttrName, AfterAttrName, BeforeValue, ValueDQ, ValueSQ, ValueUQ, Js, JsStrDQ, JsStrSQ, Css, Comment }
+
+    // A lightweight HTML tokenizer that tracks the context of the output produced so far,
+    // so each interpolated value gets the escaper its position requires (text/attr/URL/
+    // JS/CSS) — html/template's contextual auto-escaping, computed at execution time.
+    sealed class HtmlState
+    {
+        public Ctx C = Ctx.Text;
+        public string Tag = "", Attr = "";
+        readonly StringBuilder tag = new(), attr = new();
+        readonly StringBuilder tail = new(); // rolling lowercased suffix, for </script> etc.
+
+        public void Feed(string s) { foreach (char c in s) Step(c); }
+
+        void Step(char c)
+        {
+            tail.Append(char.ToLowerInvariant(c));
+            if (tail.Length > 10) tail.Remove(0, tail.Length - 10);
+            switch (C)
+            {
+                case Ctx.Text:
+                    if (c == '<') { tag.Clear(); C = Ctx.TagName; }
+                    break;
+                case Ctx.TagName:
+                    if (c == '!' && tag.Length == 0) { C = Ctx.Comment; }
+                    else if (char.IsWhiteSpace(c)) { Tag = tag.ToString().ToLowerInvariant(); C = Ctx.BeforeAttr; }
+                    else if (c == '>') { Tag = tag.ToString().ToLowerInvariant(); EnterContent(); }
+                    else if (c == '/') { /* closing or self-close */ }
+                    else tag.Append(c);
+                    break;
+                case Ctx.BeforeAttr:
+                    if (c == '>') EnterContent();
+                    else if (c == '/' || char.IsWhiteSpace(c)) { }
+                    else { attr.Clear(); attr.Append(c); C = Ctx.AttrName; }
+                    break;
+                case Ctx.AttrName:
+                    if (c == '=') { Attr = attr.ToString().ToLowerInvariant(); C = Ctx.BeforeValue; }
+                    else if (char.IsWhiteSpace(c)) { Attr = attr.ToString().ToLowerInvariant(); C = Ctx.AfterAttrName; }
+                    else if (c == '>') { EnterContent(); }
+                    else attr.Append(c);
+                    break;
+                case Ctx.AfterAttrName:
+                    if (c == '=') C = Ctx.BeforeValue;
+                    else if (char.IsWhiteSpace(c)) { }
+                    else if (c == '>') EnterContent();
+                    else { attr.Clear(); attr.Append(c); C = Ctx.AttrName; }
+                    break;
+                case Ctx.BeforeValue:
+                    if (char.IsWhiteSpace(c)) { }
+                    else if (c == '"') C = Ctx.ValueDQ;
+                    else if (c == '\'') C = Ctx.ValueSQ;
+                    else if (c == '>') EnterContent();
+                    else C = Ctx.ValueUQ;
+                    break;
+                case Ctx.ValueDQ: if (c == '"') C = Ctx.BeforeAttr; break;
+                case Ctx.ValueSQ: if (c == '\'') C = Ctx.BeforeAttr; break;
+                case Ctx.ValueUQ: if (char.IsWhiteSpace(c)) C = Ctx.BeforeAttr; else if (c == '>') EnterContent(); break;
+                case Ctx.Js: if (c == '"') C = Ctx.JsStrDQ; else if (c == '\'') C = Ctx.JsStrSQ; else if (c == '<') { /* maybe </script> */ } break;
+                case Ctx.JsStrDQ: if (c == '"') C = Ctx.Js; break;
+                case Ctx.JsStrSQ: if (c == '\'') C = Ctx.Js; break;
+                case Ctx.Css: break;
+                case Ctx.Comment: break;
+            }
+            // crude end-of-special-element detection for </script> / </style> / -->
+            if (C == Ctx.Js && EndsWith("</script")) C = Ctx.Text;
+            else if (C == Ctx.Css && EndsWith("</style")) C = Ctx.Text;
+            else if (C == Ctx.Comment && EndsWith("-->")) C = Ctx.Text;
+        }
+
+        bool EndsWith(string s)
+        {
+            if (tail.Length < s.Length) return false;
+            for (int i = 0; i < s.Length; i++) if (tail[tail.Length - s.Length + i] != s[i]) return false;
+            return true;
+        }
+
+        void EnterContent()
+        {
+            C = Tag switch { "script" => Ctx.Js, "style" => Ctx.Css, _ => Ctx.Text };
+            Attr = "";
+        }
+    }
+
+    static readonly HashSet<string> UrlAttrs = new() { "href", "src", "action", "formaction", "cite", "background", "poster", "longdesc", "usemap", "data" };
+
+    static string EscapeFor(HtmlState s, object? v)
+    {
+        switch (s.C)
+        {
+            case Ctx.Js:
+            case Ctx.JsStrDQ:
+            case Ctx.JsStrSQ: return JsValue(v, s.C);
+            case Ctx.Css: return CssEscape(Render(v, false));
+            case Ctx.BeforeValue: // an action right after `=` is the (unquoted) value
+            case Ctx.ValueUQ:
+                // An unquoted attribute value must also escape whitespace and the few
+                // characters that could end the attribute or start a new one.
+                {
+                    string raw = UrlAttrs.Contains(s.Attr) ? UrlNormalize(Render(v, false)) : Render(v, false);
+                    return UqAttrEscape(raw);
+                }
+            case Ctx.ValueDQ:
+            case Ctx.ValueSQ:
+                if (UrlAttrs.Contains(s.Attr)) return HtmlEscape(UrlNormalize(Render(v, false)));
+                return HtmlEscape(Render(v, false));
+            default: return HtmlEscape(Render(v, false));
+        }
+    }
+
+    // A value interpolated into JS: a string becomes a quoted, escaped JS string literal
+    // (or, inside an existing JS string, just the escaped body); numbers/bools their
+    // literal; anything else its JSON-ish form.
+    static string JsValue(object? v, Ctx c)
+    {
+        v = Rt.Unwrap(v);
+        bool inStr = c == Ctx.JsStrDQ || c == Ctx.JsStrSQ;
+        // Inside an existing JS string literal: just the escaped body.
+        if (inStr) return JsStrEscape(v is GoString gg ? gg.ToDotNetString() : Render(v, false));
+        // A bare JS expression: a string becomes a quoted JS string; a number/bool/null
+        // is space-padded (Go pads scalar values so they can't merge with adjacent tokens).
+        if (v is GoString g) return "\"" + JsStrEscape(g.ToDotNetString()) + "\"";
+        if (v == null) return " null ";
+        if (v is bool b) return b ? " true " : " false ";
+        if (IsNum(v)) return " " + Render(v, false) + " ";
+        return "\"" + JsStrEscape(Render(v, false)) + "\"";
+    }
+
+    static string JsStrEscape(string s)
+    {
+        var sb = new StringBuilder();
+        foreach (char c in s)
+            sb.Append(c switch
+            {
+                '\\' => "\\\\", '"' => "\\\"", '\'' => "\\'", '/' => "\\/", '\n' => "\\n", '\r' => "\\r", '\t' => "\\t",
+                '<' => "\\u003c", '>' => "\\u003e", '&' => "\\u0026", '=' => "\\u003d",
+                _ => c.ToString(),
+            });
+        return sb.ToString();
+    }
+
+    static string UqAttrEscape(string s)
+    {
+        var sb = new StringBuilder();
+        foreach (char c in s)
+            sb.Append(c switch
+            {
+                '<' => "&lt;", '>' => "&gt;", '&' => "&amp;", '"' => "&#34;", '\'' => "&#39;",
+                ' ' => "&#32;", '\t' => "&#9;", '\n' => "&#10;", '\r' => "&#13;", '\f' => "&#12;",
+                '=' => "&#61;", '`' => "&#96;",
+                _ => c.ToString(),
+            });
+        return sb.ToString();
+    }
+
+    static string CssEscape(string s)
+    {
+        var sb = new StringBuilder();
+        foreach (char c in s)
+        {
+            if (c == '<' || c == '>' || c == '"' || c == '\'' || c == '\\' || c == '&' || c == '(' || c == ')' || c == '/' || c == ':' || c == ';' || c == '{' || c == '}')
+                sb.Append('\\').Append(((int)c).ToString("x", System.Globalization.CultureInfo.InvariantCulture)).Append(' ');
+            else sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
+    // A full URL: block dangerous schemes (javascript:, vbscript:, data:) with Go's
+    // #ZgotmplZ marker, otherwise %-encode the few characters that must be escaped.
+    static string UrlNormalize(string s)
+    {
+        string trimmed = s.TrimStart();
+        int colon = trimmed.IndexOf(':');
+        if (colon > 0)
+        {
+            string scheme = trimmed.Substring(0, colon).ToLowerInvariant();
+            if (System.Array.IndexOf(new[] { "javascript", "vbscript", "data" }, scheme) >= 0 && !scheme.Contains('/'))
+                return "#ZgotmplZ";
+        }
+        var sb = new StringBuilder();
+        foreach (char c in s)
+        {
+            if (c == ' ') sb.Append("%20");
+            else if (c == '"') sb.Append("%22");
+            else if (c == '<') sb.Append("%3c");
+            else if (c == '>') sb.Append("%3e");
+            else if (c == '`') sb.Append("%60");
+            else sb.Append(c);
+        }
         return sb.ToString();
     }
 
