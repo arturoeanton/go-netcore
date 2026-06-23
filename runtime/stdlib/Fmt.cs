@@ -271,7 +271,10 @@ public static class Fmt
         // %T (handled downstream); every other verb formats the underlying value —
         // unwrap here so the numeric/char/quote paths never see the wrapper (and so
         // a Stringer that itself uses %d can't recurse infinitely).
-        if (v is GoNamed gn && verb != 'v' && verb != 's' && verb != 'T') v = gn.Value;
+        // %q also dispatches a Stringer/error (so `type Color int` with String() quotes
+        // the name, not a rune) — keep the wrapper in that one case.
+        if (v is GoNamed gn && verb != 'v' && verb != 's' && verb != 'T'
+            && !(verb == 'q' && TryStringer(gn, out _))) v = gn.Value;
         // A scalar verb applied to a slice/array or map recurses element-wise, as Go does
         // (%d of []int{1,2} -> "[1 2]", %d of map[int]int -> "map[1:2]"). %v/%s/%T/%p and
         // the []byte-special x/X/q paths are handled by their own cases below.
@@ -383,6 +386,10 @@ public static class Fmt
 
     private static string QuoteVerb(object? v)
     {
+        // A value implementing Stringer/error: %q quotes its String()/Error() result (Go
+        // invokes the method first — even for a named integer like `type Color int`, %q
+        // yields the quoted String(), not a rune literal).
+        if (TryStringer(v, out var sv)) return GoQuote(GoString.FromDotNetString(sv));
         if (v is GoString gq) return GoQuote(gq);
         if (IsIntegral(v)) return "'" + char.ConvertFromUtf32((int)ToLong(v)) + "'";
         // %q over a slice quotes each element.
