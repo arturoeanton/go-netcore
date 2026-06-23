@@ -134,7 +134,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"NewRecorder":        {"Httptest", "NewRecorder"}, "NewRequest": {"Httptest", "NewRequest"},
 	},
 	"net/textproto":  {"CanonicalMIMEHeaderKey": {"Textproto", "CanonicalMIMEHeaderKey"}, "TrimString": {"Textproto", "TrimString"}, "TrimBytes": {"Textproto", "TrimBytes"}},
-	"html/template":  {"New": {"Template", "New"}, "Must": {"Template", "Must"}, "JSEscapeString": {"Template", "JSEscapeString"}},
+	"html/template":  {"New": {"Template", "NewHtml"}, "Must": {"Template", "Must"}, "JSEscapeString": {"Template", "JSEscapeString"}},
 	"html":           {"EscapeString": {"Html", "EscapeString"}, "UnescapeString": {"Html", "UnescapeString"}},
 	"text/template":  {"New": {"Template", "New"}, "Must": {"Template", "Must"}},
 	"os/exec":        {"Command": {"Exec", "Command"}},
