@@ -79,6 +79,22 @@ func Stable(data Interface) {
 	insertionSort(data, 0, data.Len())
 }
 
+// reverse embeds an Interface, inheriting Len/Swap and flipping Less so the
+// embedded data sorts in descending order.
+type reverse struct {
+	Interface
+}
+
+// Less returns the opposite of the embedded implementation's Less.
+func (r reverse) Less(i, j int) bool {
+	return r.Interface.Less(j, i)
+}
+
+// Reverse returns the reverse order for data.
+func Reverse(data Interface) Interface {
+	return reverse{data}
+}
+
 // IsSorted reports whether data is sorted.
 func IsSorted(data Interface) bool {
 	n := data.Len()
