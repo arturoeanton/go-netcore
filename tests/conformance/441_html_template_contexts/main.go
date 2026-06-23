@@ -33,4 +33,9 @@ func main() {
 	run(`<style>p{color:{{.}}}</style>`, "rgb(1,2,3)")
 	run(`<style>p{margin:{{.}}}</style>`, "1px solid red")
 	run(`<style>p{color:{{.}}}</style>`, "#abc")
+
+	// the style="" attribute is also a CSS context (filtered, then attribute-escaped).
+	run(`<p style="color:{{.}}">x</p>`, "red")
+	run(`<p style="color:{{.}}">x</p>`, "red;}")
+	run(`<p style='width:{{.}}'>x</p>`, "100%")
 }

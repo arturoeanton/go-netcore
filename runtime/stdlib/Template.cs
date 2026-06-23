@@ -653,6 +653,7 @@ public static class Template
         string raw = Render(v, false); // the underlying string (Render unwraps GoNamed)
         bool url = UrlAttrs.Contains(s.Attr);
         bool ev = IsEventAttr(s.Attr); // onclick=, onload=, ... — the value is a JS context
+        bool css = s.Attr == "style"; // style="..." — the value is a CSS context
         switch (s.C)
         {
             case Ctx.Js:
@@ -667,12 +668,14 @@ public static class Template
             case Ctx.ValueUQ:
                 if (url) return UqAttrEscape(UrlForPart(raw, s.UrlQuery, safe == "template.URL"));
                 if (ev) return UqAttrEscape(safe == "template.JS" ? raw : JsValue(v, Ctx.Js));
+                if (css) return UqAttrEscape(safe == "template.CSS" ? raw : CssValueFilter(raw));
                 if (safe == "template.HTMLAttr") return raw;
                 return UqAttrEscape(raw);
             case Ctx.ValueDQ:
             case Ctx.ValueSQ:
                 if (url) return HtmlEscape(UrlForPart(raw, s.UrlQuery, safe == "template.URL"));
                 if (ev) return HtmlEscape(safe == "template.JS" ? raw : JsValue(v, Ctx.Js));
+                if (css) return HtmlEscape(safe == "template.CSS" ? raw : CssValueFilter(raw));
                 if (safe == "template.HTMLAttr") return raw;
                 return HtmlEscape(raw);
             default:
