@@ -559,8 +559,21 @@ func (l *funcLowerer) compare(op token.Token, operandType goir.Type) {
 		l.compareString(op)
 		return
 	}
-	if operandType.Kind == goir.KPtr || operandType.Kind == goir.KMap || operandType.Kind == goir.KObject {
-		// Reference equality (pointers, maps-vs-nil, interface-vs-nil).
+	if operandType.Kind == goir.KMap {
+		// A map is only comparable to nil. Both the bare-null and GoMap{Data:null}
+		// representations of a nil map must compare equal to nil, so route through a
+		// helper rather than a reference compare.
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "MapNilEq",
+			Params: []goir.Type{goir.TObject, goir.TObject}, Ret: goir.TBool,
+		}})
+		if op == token.NEQ {
+			l.emit(goir.Op{Code: goir.OpNot})
+		}
+		return
+	}
+	if operandType.Kind == goir.KPtr || operandType.Kind == goir.KObject {
+		// Reference equality (pointers, interface-vs-nil).
 		l.emit(goir.Op{Code: goir.OpCeq})
 		if op == token.NEQ {
 			l.emit(goir.Op{Code: goir.OpNot})

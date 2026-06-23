@@ -253,18 +253,29 @@ public static class Fmt
     {
         if (ReferenceEquals(v, MissingArg)) return "%!" + sp.Verb + "(MISSING)";
         char verb = sp.Verb;
+        // The typed-box name (if any) before unwrapping, so %x can tell a []byte ("[]uint8",
+        // formatted as a hex string) from a []int ("[]int", which recurses element-wise).
+        string? wname = v is GoNamed g0 ? Rt.NamedTypeName(g0.TypeId) : null;
         // A typed-box value dispatches its Stringer for %v/%s and names itself for
         // %T (handled downstream); every other verb formats the underlying value —
         // unwrap here so the numeric/char/quote paths never see the wrapper (and so
         // a Stringer that itself uses %d can't recurse infinitely).
         if (v is GoNamed gn && verb != 'v' && verb != 's' && verb != 'T') v = gn.Value;
+        // A scalar verb applied to a slice/array or map recurses element-wise, as Go does
+        // (%d of []int{1,2} -> "[1 2]", %d of map[int]int -> "map[1:2]"). %v/%s/%T/%p and
+        // the []byte-special x/X/q paths are handled by their own cases below.
+        if (verb is 'd' or 'b' or 'o' or 'c' or 'U' or 'f' or 'F' or 'e' or 'E' or 'g' or 'G' or 't')
+        {
+            if (v is GoSlice rsl) return RecurseSlice(rsl, sp);
+            if (v is GoMap rmp) return RecurseMap(rmp, sp);
+        }
         switch (verb)
         {
             case 'd': return IntVerb(v, sp, 10, false);
             case 'b': return IntVerb(v, sp, 2, false);
             case 'o': return IntVerb(v, sp, 8, sp.Hash);
-            case 'x': return v is GoString gx ? HexStr(gx, false) : v is GoSlice sx ? HexSlice(sx, false) : IntVerb(v, sp, 16, sp.Hash);
-            case 'X': return v is GoString gX ? HexStr(gX, true) : v is GoSlice sX ? HexSlice(sX, true) : IntVerb(v, sp, -16, sp.Hash);
+            case 'x': return v is GoString gx ? HexStr(gx, false) : v is GoSlice sx ? (IsByteSliceName(wname) ? HexSlice(sx, false) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IntVerb(v, sp, 16, sp.Hash);
+            case 'X': return v is GoString gX ? HexStr(gX, true) : v is GoSlice sX ? (IsByteSliceName(wname) ? HexSlice(sX, true) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IntVerb(v, sp, -16, sp.Hash);
             case 't': return v is bool bb ? (bb ? "true" : "false") : BadVerb(verb, v);
             case 'c': return IsIntegral(v) ? char.ConvertFromUtf32((int)ToLong(v)) : BadVerb(verb, v);
             case 'U': return IsIntegral(v) ? UnicodeVerb(ToLong(v), sp.Hash) : BadVerb(verb, v);
@@ -557,21 +568,54 @@ public static class Fmt
     }
 
     // %#v body for a slice/map with a given Go type-name prefix ("[]int", "main.IntHeap").
+    // The element/key/value type names are derived from typeName and propagated, so a
+    // nested composite ([][]int, map[int][]string) prints its real inner types rather
+    // than the erased "[]interface {}".
     private static string SliceSyntax(GoSlice sl, string typeName)
     {
+        string elemName = SliceElemName(typeName);
         var sb = new StringBuilder(typeName).Append('{');
-        for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(", "); sb.Append(FormatGoSyntax(sl.Data![sl.Off + i])); }
+        for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(", "); sb.Append(GoSyntaxElem(sl.Data![sl.Off + i], elemName)); }
         return sb.Append('}').ToString();
     }
 
     private static string MapSyntax(GoMap m, string typeName)
     {
+        var (keyName, valName) = MapKVNames(typeName);
         var sb = new StringBuilder(typeName).Append('{');
         var keys = new System.Collections.Generic.List<(string s, object? k)>();
         if (m.Data != null) foreach (var k in m.Data.Keys) keys.Add((k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "", k));
         keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
-        for (int i = 0; i < keys.Count; i++) { if (i > 0) sb.Append(", "); sb.Append('"').Append(keys[i].s).Append("\":").Append(FormatGoSyntax(m.Data![keys[i].k!])); }
+        for (int i = 0; i < keys.Count; i++) { if (i > 0) sb.Append(", "); sb.Append(GoSyntaxElem(keys[i].k, keyName)).Append(':').Append(GoSyntaxElem(m.Data![keys[i].k!], valName)); }
         return sb.Append('}').ToString();
+    }
+
+    // Formats a composite element with its derived type name (so it carries its own
+    // prefix); a scalar/string/struct element falls to the normal %#v.
+    private static string GoSyntaxElem(object? v, string typeName)
+    {
+        if (v is GoSlice sl && typeName.Length > 0 && typeName[0] == '[') return SliceSyntax(sl, typeName);
+        if (v is GoMap m && typeName.StartsWith("map[", System.StringComparison.Ordinal)) return MapSyntax(m, typeName);
+        return FormatGoSyntax(v);
+    }
+
+    // SliceElemName extracts the element type of a slice/array type name: "[]int" -> "int",
+    // "[][]int" -> "[]int", "[3]int" -> "int". "" when not a slice/array spelling.
+    private static string SliceElemName(string t)
+    {
+        if (t.StartsWith("[]", System.StringComparison.Ordinal)) return t.Substring(2);
+        if (t.Length > 0 && t[0] == '[') { int j = t.IndexOf(']'); if (j > 0) return t.Substring(j + 1); }
+        return "";
+    }
+
+    // MapKVNames splits "map[K]V" into (K, V), matching the bracket that closes the key
+    // even when K is itself a composite (map[[2]int]string).
+    private static (string, string) MapKVNames(string t)
+    {
+        if (!t.StartsWith("map[", System.StringComparison.Ordinal)) return ("", "");
+        int depth = 0, i = 3;
+        for (; i < t.Length; i++) { if (t[i] == '[') depth++; else if (t[i] == ']' && --depth == 0) break; }
+        return i < t.Length ? (t.Substring(4, i - 4), t.Substring(i + 1)) : ("", "");
     }
 
     private static string FormatFloatV(double d) => GoFtoa.Shortest(d);
@@ -580,6 +624,33 @@ public static class Fmt
     {
         var sb = new StringBuilder("[");
         for (int i = 0; i < s.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(Format(s.Data[s.Off + i], 'v', plus, hash)); }
+        return sb.Append(']').ToString();
+    }
+
+    // A null name (a bare slice, type erased) defaults to byte semantics — the common
+    // %x case is hex-encoding a []byte; a []uint8/[]byte tag formats as a hex string,
+    // any other slice type recurses element-wise.
+    private static bool IsByteSliceName(string? name) => name == null || name == "[]uint8" || name == "[]byte";
+
+    // Element-wise verb recursion: each element is formatted with the same verb/flags,
+    // the way Go applies a scalar verb across a slice/array ("[1 2]") or map ("map[k:v]").
+    private static string RecurseSlice(GoSlice s, Spec sp)
+    {
+        if (s.Data == null) return "[]";
+        var sb = new StringBuilder("[");
+        for (int i = 0; i < s.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(FormatVerb(s.Data[s.Off + i], sp)); }
+        return sb.Append(']').ToString();
+    }
+
+    private static string RecurseMap(GoMap m, Spec sp)
+    {
+        if (m.Data == null) return "map[]";
+        var keys = new System.Collections.Generic.List<(string s, object? k)>();
+        foreach (var k in m.Data.Keys) keys.Add((k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "", k));
+        keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
+        var sb = new StringBuilder("map[");
+        for (int i = 0; i < keys.Count; i++)
+        { if (i > 0) sb.Append(' '); sb.Append(FormatVerb(keys[i].k, sp)).Append(':').Append(FormatVerb(m.Data[keys[i].k!], sp)); }
         return sb.Append(']').ToString();
     }
 
@@ -603,9 +674,15 @@ public static class Fmt
         {
             if (i > 0) sb.Append(' ');
             if (plus) sb.Append(fields[i].Name).Append(':');
-            sb.Append(Format(fields[i].GetValue(v), 'v', plus, hash));
+            object? fv = fields[i].GetValue(v);
+            // A struct's nil map field is the CLR default (null), not a GoMap{Data:null};
+            // render it as map[] (Go) rather than <nil>.
+            if (fv == null && fields[i].FieldType == typeof(GoMap)) fv = NilMapValue;
+            sb.Append(Format(fv, 'v', plus, hash));
         }
         return sb.Append('}').ToString();
     }
+
+    private static readonly GoMap NilMapValue = new();
 
 }

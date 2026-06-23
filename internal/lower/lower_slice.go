@@ -38,14 +38,6 @@ func (l *funcLowerer) emitBox(t goir.Type) {
 
 // emitUnbox unboxes the object on top of the stack into a value of type t.
 func (l *funcLowerer) emitUnbox(t goir.Type) {
-	if t.Kind == goir.KMap {
-		// Collapse the boxed nil-map sentinel back to null before the cast, so map
-		// operations and `m == nil` see the bare nil-map representation.
-		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "UnboxMap",
-			Params: []goir.Type{goir.TObject}, Ret: goir.TObject,
-		}})
-	}
 	l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: t})
 }
 
@@ -80,7 +72,10 @@ func (l *funcLowerer) emitBoxedElemInto(v ast.Expr, elemType goir.Type) {
 	// not a raw null — the slot is an object[]/Dictionary cell and the value is unboxed
 	// back to the GoSlice value type on read, which NREs on a null. The bare nil ident's
 	// own type is untyped, so the element type from the container is what tells us this.
-	if isNilIdent(v) && isValueType(elemType) {
+	if isNilIdent(v) && (isValueType(elemType) || elemType.Kind == goir.KMap) {
+		// A nil into a value-type slot (a nil []T) boxes its zero, and a nil into a map
+		// slot boxes the nil-map sentinel (GoMap{Data:null}), so a nil map element keeps
+		// its map identity (prints map[], not <nil>).
 		l.emitBoxedZero(elemType)
 		return
 	}
@@ -118,7 +113,15 @@ func (l *funcLowerer) emitZeroValue(t goir.Type) {
 		l.emit(goir.Op{Code: goir.OpLdcR8, Float: 0})
 		l.emit(goir.Op{Code: goir.OpLdcR8, Float: 0})
 		l.emit(goir.Op{Code: goir.OpComplexMake})
-	case goir.KMap, goir.KPtr, goir.KObject, goir.KObjectArray, goir.KChan, goir.KFunc:
+	case goir.KMap:
+		// A nil map is a GoMap with null Data, not a bare null, so it keeps its map
+		// identity in a container (a struct field / slice element prints map[], not
+		// <nil>) while still reading/ranging as an empty nil map.
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "NilMap",
+			Params: []goir.Type{}, Ret: t,
+		}})
+	case goir.KPtr, goir.KObject, goir.KObjectArray, goir.KChan, goir.KFunc:
 		// An opaque value-type shim (sync.WaitGroup, strings.Builder, …) zeroes to
 		// a fresh runtime object; other reference types zero to nil.
 		if t.Shim != "" {
