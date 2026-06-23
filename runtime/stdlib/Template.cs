@@ -134,6 +134,17 @@ public static class Template
     public static object Tmpl_Lookup(object t, GoString name) => ((GoTemplate)t).Set.TryGetValue(name.ToDotNetString(), out var s) ? s : t;
     public static object Tmpl_Option(object t, GoSlice opts) => t;
 
+    // Struct fields whose static type is an html/template trusted-string type, keyed
+    // "ClrStructName.FieldName" -> kind ("template.HTML"). Registered at startup so the
+    // engine bypasses escaping for them (the field's runtime value is a plain string).
+    static readonly Dictionary<string, string> SafeFields = new();
+    public static void RegisterSafeField(GoString clrName, GoString field, GoString kind)
+        => SafeFields[clrName.ToDotNetString() + "." + field.ToDotNetString()] = kind.ToDotNetString();
+
+    // A value carrying a trusted-string kind it could not carry by type (a struct field
+    // read by reflection); SafeKind reads it, and unwrapping yields the underlying value.
+    sealed class Tagged { public string Kind = ""; public object? V; }
+
     public static GoString JSEscapeString(GoString s)
     {
         var sb = new StringBuilder();
@@ -454,15 +465,23 @@ public static class Template
         if (v == null) return null;
         if (v is GoMap m) return GoMaps.Get(m, GoString.FromDotNetString(name), null);
         var f = v.GetType().GetField(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-        if (f != null) return f.GetValue(v);
+        if (f != null)
+        {
+            var val = f.GetValue(v);
+            // A field of an html/template trusted-string type is tagged so the escaper
+            // can recognize it (its runtime value is an indistinguishable string).
+            if (SafeFields.TryGetValue(v.GetType().Name + "." + name, out var kind)) return new Tagged { Kind = kind, V = val };
+            return val;
+        }
         if (Bridge.HasMethod(v, name)) return Bridge.CallMethod(v, name);
         throw new System.Exception("can't evaluate field " + name);
     }
 
     static object? Deref(object? v)
     {
+        if (v is Tagged tg) v = tg.V;
         v = Rt.Unwrap(v);
-        if (v is GoPtr p) v = Rt.Unwrap(GoPtrs.Get(p));
+        if (v is GoPtr p) v = Deref(GoPtrs.Get(p));
         return v;
     }
 
@@ -523,6 +542,7 @@ public static class Template
 
     static string Render(object? v, bool html)
     {
+        if (v is Tagged tg) v = tg.V;
         v = Rt.Unwrap(v);
         string s = v == null ? "<no value>" : Fmt.Sprint(SliceOf(new List<object?> { v })).ToDotNetString();
         return html ? HtmlEscape(s) : s;
@@ -622,27 +642,36 @@ public static class Template
 
     static readonly HashSet<string> UrlAttrs = new() { "href", "src", "action", "formaction", "cite", "background", "poster", "longdesc", "usemap", "data" };
 
+    // The html/template trusted-string type carried by a tagged value (or null).
+    static string? SafeKind(object? v) => v is Tagged t ? t.Kind : v is GoNamed n ? Rt.NamedTypeName(n.TypeId) : null;
+
     static string EscapeFor(HtmlState s, object? v)
     {
+        string? safe = SafeKind(v);
+        string raw = Render(v, false); // the underlying string (Render unwraps GoNamed)
+        bool url = UrlAttrs.Contains(s.Attr);
         switch (s.C)
         {
             case Ctx.Js:
             case Ctx.JsStrDQ:
-            case Ctx.JsStrSQ: return JsValue(v, s.C);
-            case Ctx.Css: return CssEscape(Render(v, false));
+            case Ctx.JsStrSQ:
+                if (safe == "template.JS") return raw;
+                if ((s.C == Ctx.JsStrDQ || s.C == Ctx.JsStrSQ) && safe == "template.JSStr") return raw;
+                return JsValue(v, s.C);
+            case Ctx.Css:
+                return safe == "template.CSS" ? raw : CssEscape(raw);
             case Ctx.BeforeValue: // an action right after `=` is the (unquoted) value
             case Ctx.ValueUQ:
-                // An unquoted attribute value must also escape whitespace and the few
-                // characters that could end the attribute or start a new one.
-                {
-                    string raw = UrlAttrs.Contains(s.Attr) ? UrlNormalize(Render(v, false)) : Render(v, false);
-                    return UqAttrEscape(raw);
-                }
+                if (url) return UqAttrEscape(UrlNormalize(raw, safe == "template.URL"));
+                if (safe == "template.HTMLAttr") return raw;
+                return UqAttrEscape(raw);
             case Ctx.ValueDQ:
             case Ctx.ValueSQ:
-                if (UrlAttrs.Contains(s.Attr)) return HtmlEscape(UrlNormalize(Render(v, false)));
-                return HtmlEscape(Render(v, false));
-            default: return HtmlEscape(Render(v, false));
+                if (url) return HtmlEscape(UrlNormalize(raw, safe == "template.URL"));
+                if (safe == "template.HTMLAttr") return raw;
+                return HtmlEscape(raw);
+            default:
+                return safe == "template.HTML" ? raw : HtmlEscape(raw);
         }
     }
 
@@ -705,31 +734,41 @@ public static class Template
 
     // A full URL: block dangerous schemes (javascript:, vbscript:, data:) with Go's
     // #ZgotmplZ marker, otherwise %-encode the few characters that must be escaped.
-    static string UrlNormalize(string s)
+    static string UrlNormalize(string s, bool trusted = false)
     {
-        string trimmed = s.TrimStart();
-        int colon = trimmed.IndexOf(':');
-        if (colon > 0)
+        if (!trusted)
         {
-            string scheme = trimmed.Substring(0, colon).ToLowerInvariant();
-            if (System.Array.IndexOf(new[] { "javascript", "vbscript", "data" }, scheme) >= 0 && !scheme.Contains('/'))
-                return "#ZgotmplZ";
+            string trimmed = s.TrimStart();
+            int colon = trimmed.IndexOf(':');
+            if (colon > 0)
+            {
+                string scheme = trimmed.Substring(0, colon).ToLowerInvariant();
+                if (System.Array.IndexOf(new[] { "javascript", "vbscript", "data" }, scheme) >= 0 && !scheme.Contains('/'))
+                    return "#ZgotmplZ";
+            }
         }
         var sb = new StringBuilder();
         foreach (char c in s)
         {
-            if (c == ' ') sb.Append("%20");
-            else if (c == '"') sb.Append("%22");
-            else if (c == '<') sb.Append("%3c");
-            else if (c == '>') sb.Append("%3e");
-            else if (c == '`') sb.Append("%60");
-            else sb.Append(c);
+            switch (c)
+            {
+                case ' ': sb.Append("%20"); break;
+                case '"': sb.Append("%22"); break;
+                case '\'': sb.Append("%27"); break;
+                case '(': sb.Append("%28"); break;
+                case ')': sb.Append("%29"); break;
+                case '<': sb.Append("%3c"); break;
+                case '>': sb.Append("%3e"); break;
+                case '`': sb.Append("%60"); break;
+                default: sb.Append(c); break;
+            }
         }
         return sb.ToString();
     }
 
     static bool IsTrue(object? v)
     {
+        if (v is Tagged tg) v = tg.V;
         v = Rt.Unwrap(v);
         return v switch
         {

@@ -2,6 +2,7 @@ package lower
 
 import (
 	"go/types"
+	"sort"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
 )
@@ -91,16 +92,72 @@ func (c *lowerCtx) typeTagFor(t types.Type) (int64, bool) {
 		if compositeHasInterfaceElem(t) {
 			return 0, false
 		}
-		key := types.TypeString(t, nil)
-		if id, ok := c.compositeIds[key]; ok {
-			return id, true
+		return c.tagComposite(t), true
+	case *types.Basic:
+		// The html/template safe-string types (template.HTML/URL/JS/CSS/...) bypass the
+		// contextual auto-escaper, so they must carry their identity through an interface
+		// (Execute's data, a map[string]any field) — they are method-less named strings
+		// that would otherwise be indistinguishable from untrusted input.
+		if isHTMLSafeType(t) {
+			return c.tagComposite(t), true
 		}
-		id := c.nextTypeId()
-		c.compositeIds[key] = id
-		c.namedNames[id] = typeDescStr(t) // Go's %T spelling: "[]int", "map[string]int"
-		return id, true
 	}
 	return 0, false
+}
+
+// tagComposite assigns (and registers the %T name of) a stable id for a non-struct,
+// non-interface type whose runtime value erases its precise Go type.
+func (c *lowerCtx) tagComposite(t types.Type) int64 {
+	key := types.TypeString(t, nil)
+	if id, ok := c.compositeIds[key]; ok {
+		return id
+	}
+	id := c.nextTypeId()
+	c.compositeIds[key] = id
+	c.namedNames[id] = typeDescStr(t) // Go's %T spelling: "[]int", "template.HTML"
+	return id
+}
+
+// safeField is a struct field whose static type is an html/template trusted-string
+// type — registered at startup so the template engine can bypass escaping for it even
+// when read by reflection (the field's runtime value is an indistinguishable string).
+type safeField struct{ structName, fieldName, kind string }
+
+// safeFields scans every lowered struct for fields of an html/template safe type.
+func (c *lowerCtx) safeFields() []safeField {
+	var out []safeField
+	for named, s := range c.structReg {
+		st, ok := named.Underlying().(*types.Struct)
+		if !ok {
+			continue
+		}
+		for i := 0; i < st.NumFields(); i++ {
+			f := st.Field(i)
+			if f.Exported() && isHTMLSafeType(f.Type()) {
+				out = append(out, safeField{s.Name, f.Name(), typeDescStr(f.Type())})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].structName != out[j].structName {
+			return out[i].structName < out[j].structName
+		}
+		return out[i].fieldName < out[j].fieldName
+	})
+	return out
+}
+
+// isHTMLSafeType reports whether t is one of html/template's trusted string types.
+func isHTMLSafeType(t types.Type) bool {
+	named, ok := t.(*types.Named)
+	if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "html/template" {
+		return false
+	}
+	switch named.Obj().Name() {
+	case "HTML", "HTMLAttr", "JS", "JSStr", "CSS", "URL", "Srcset":
+		return true
+	}
+	return false
 }
 
 // compositeHasInterfaceElem reports whether t is a slice/array/map whose element

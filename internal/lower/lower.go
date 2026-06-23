@@ -442,7 +442,8 @@ func (c *lowerCtx) taggedStructs() []*goir.Struct {
 // then each init() function. Returns nil if there is nothing to do.
 func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	tagged := c.taggedStructs()
-	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.handlers) == 0 && len(c.bridges) == 0 && len(c.namedNames) == 0 {
+	safe := c.safeFields()
+	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.handlers) == 0 && len(c.bridges) == 0 && len(c.namedNames) == 0 && len(safe) == 0 {
 		return nil, true
 	}
 	// The package-var initializers and tag registrations are emitted into a series
@@ -491,6 +492,18 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 			cl.emit(goir.Op{Code: goir.OpStrConst, Str: f.Tag})
 			cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: regExt})
 		}
+	}
+	// Register struct fields whose type is an html/template trusted-string type, so the
+	// template engine bypasses contextual escaping for them when read by reflection.
+	safeExt := &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Template", Method: "RegisterSafeField",
+		Params: []goir.Type{goir.TString, goir.TString, goir.TString}, Ret: goir.TVoid,
+	}
+	for _, sf := range safe {
+		cl.emit(goir.Op{Code: goir.OpStrConst, Str: sf.structName})
+		cl.emit(goir.Op{Code: goir.OpStrConst, Str: sf.fieldName})
+		cl.emit(goir.Op{Code: goir.OpStrConst, Str: sf.kind})
+		cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: safeExt})
 	}
 	// Build descriptors for every named/struct type (for dynamic reflect), then
 	// register all runtime type descriptors — kind, name, type string, element/key
