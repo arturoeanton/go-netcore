@@ -195,14 +195,19 @@ public static class Bufio
     }
     public static void Writer_Reset(object bw, object? w) { var b = (GoBufWriter)bw; b.W = w; b.Buf.Clear(); }
 
-    public static void Scanner_Split(object s, object split)
+    // Scanner.Split(bufio.ScanLines|ScanWords|ScanRunes|ScanBytes): the SplitFunc value
+    // lowers to a closure returning its mode marker (a long); invoke it to set the mode.
+    public static void Scanner_Split(object s, GoClosure split)
     {
-        // split is bufio.ScanLines/ScanWords/ScanRunes (a shim var marker).
-        ((GoScanner)s).Mode = split is long m ? (int)m : 0;
+        ((GoScanner)s).Mode = (int)System.Convert.ToInt64(GoRuntime.Invoke(split) ?? 0L);
     }
+    // Scanner.Buffer(buf, max): the scanner reads a fully-drained in-memory buffer, so
+    // there is nothing to size — a no-op that keeps the call site working.
+    public static void Scanner_Buffer(object s, GoSlice buf, long max) { }
     public static long ScanLinesMarker() => 0;
     public static long ScanWordsMarker() => 1;
     public static long ScanRunesMarker() => 2;
+    public static long ScanBytesMarker() => 3;
 
     public static bool Scanner_Scan(object so)
     {
@@ -214,6 +219,23 @@ public static class Bufio
             int start = s.Pos;
             while (s.Pos < s.Data.Length && !IsSpace(s.Data[s.Pos])) s.Pos++;
             s.Cur = Sub(s.Data, start, s.Pos);
+            return true;
+        }
+        if (s.Mode == 3) // bytes: one byte per token
+        {
+            if (s.Pos >= s.Data.Length) return false;
+            s.Cur = Sub(s.Data, s.Pos, s.Pos + 1);
+            s.Pos++;
+            return true;
+        }
+        if (s.Mode == 2) // runes: one UTF-8 rune per token
+        {
+            if (s.Pos >= s.Data.Length) return false;
+            int rs = s.Pos;
+            byte b0 = s.Data[s.Pos];
+            int n = b0 < 0x80 ? 1 : b0 >= 0xF0 ? 4 : b0 >= 0xE0 ? 3 : b0 >= 0xC0 ? 2 : 1;
+            s.Pos = System.Math.Min(s.Data.Length, s.Pos + n);
+            s.Cur = Sub(s.Data, rs, s.Pos);
             return true;
         }
         // lines

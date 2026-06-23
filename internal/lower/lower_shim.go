@@ -193,6 +193,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"bufio": {
 		"NewScanner": {"Bufio", "NewScanner"}, "NewWriter": {"Bufio", "NewWriter"}, "NewWriterSize": {"Bufio", "NewWriterSize"},
 		"NewReader": {"Bufio", "NewReader"}, "NewReaderSize": {"Bufio", "NewReaderSize"},
+		// SplitFunc values: used as a value passed to Scanner.Split, each lowers to a
+		// closure returning the split mode marker (see Scanner_Split).
+		"ScanLines": {"Bufio", "ScanLinesMarker"}, "ScanWords": {"Bufio", "ScanWordsMarker"}, "ScanRunes": {"Bufio", "ScanRunesMarker"}, "ScanBytes": {"Bufio", "ScanBytesMarker"},
 	},
 	"io/fs": {
 		"Stat": {"Fs", "Stat"}, "Sub": {"Fs", "Sub"}, "ValidPath": {"Fs", "ValidPath"}, "ReadDir": {"Fs", "ReadDir"},
@@ -1162,6 +1165,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"bufio.Scanner": {
 		"Scan": {"Bufio", "Scanner_Scan"}, "Text": {"Bufio", "Scanner_Text"}, "Bytes": {"Bufio", "Scanner_Bytes"}, "Err": {"Bufio", "Scanner_Err"},
+		"Split": {"Bufio", "Scanner_Split"}, "Buffer": {"Bufio", "Scanner_Buffer"},
 	},
 	"bufio.Reader": {
 		"Read": {"Bufio", "Reader_Read"}, "ReadByte": {"Bufio", "Reader_ReadByte"}, "UnreadByte": {"Bufio", "Reader_UnreadByte"}, "Peek": {"Bufio", "Reader_Peek"}, "Discard": {"Bufio", "Reader_Discard"}, "Reset": {"Bufio", "Reader_Reset"}, "Buffered": {"Bufio", "Reader_Buffered"},
