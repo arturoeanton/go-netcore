@@ -62,7 +62,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"DumpRequest": {"Httputil", "DumpRequest"},
 	},
 	"errors": {
-		"New": {"Errors", "New"}, "Unwrap": {"Errors", "Unwrap"}, "Is": {"Errors", "Is"},
+		"New": {"Errors", "New"}, "Unwrap": {"Errors", "Unwrap"}, "Is": {"Errors", "Is"}, "Join": {"Errors", "Join"},
 	},
 	// NOTE: "unicode" is compiled from real Go source (see compileFromSource in
 	// lower.go), not shimmed — it provides RangeTable/Is/In and the full tables.
