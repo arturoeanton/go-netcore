@@ -536,11 +536,25 @@ func (l *funcLowerer) deferShimCall(call *ast.CallExpr, ext *goir.Extern, variad
 func (l *funcLowerer) buildFuncValueThunk(call *ast.CallExpr) {
 	captures := make([]thunkCapture, 0, len(call.Args)+1)
 	captures = append(captures, thunkCapture{emit: func() { l.expr(call.Fun) }, typ: goir.TFunc})
-	for _, a := range call.Args {
-		arg := a
-		captures = append(captures, thunkCapture{emit: func() { l.emitBoxedElem(arg) }, typ: goir.TObject})
+	sig, _ := l.pkg.TypesInfo.TypeOf(call.Fun).Underlying().(*types.Signature)
+	if sig != nil && sig.Variadic() && !call.Ellipsis.IsValid() {
+		// go f(a, b, c...) — pack the trailing args into the variadic slice at capture
+		// time (the lowered body takes one []T parameter; __invoke does not repack).
+		nFixed := sig.Params().Len() - 1
+		for i := 0; i < nFixed; i++ {
+			arg := call.Args[i]
+			captures = append(captures, thunkCapture{emit: func() { l.emitBoxedElem(arg) }, typ: goir.TObject})
+		}
+		vt, _ := l.goType(sig.Params().At(nFixed).Type())
+		tail := call.Args[nFixed:]
+		captures = append(captures, thunkCapture{emit: func() { l.packVariadic(tail, *vt.Elem); l.emitBox(vt) }, typ: goir.TObject})
+	} else {
+		for _, a := range call.Args {
+			arg := a
+			captures = append(captures, thunkCapture{emit: func() { l.emitBoxedElem(arg) }, typ: goir.TObject})
+		}
 	}
-	nArgs := len(call.Args)
+	nArgs := len(captures) - 1
 	l.buildThunk(captures, func(cl *funcLowerer) {
 		cl.emitEnvArg(0, goir.TFunc) // the GoClosure
 		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(nArgs)})

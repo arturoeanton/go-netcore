@@ -225,8 +225,6 @@ func (l *funcLowerer) funcValueCall(e *ast.CallExpr) goir.Type {
 		nFixed--
 	}
 	paramElem := func(i int) (goir.Type, bool) {
-		// Only fixed parameters: the variadic tail (and an `args...` spread) keeps the
-		// existing flat boxing, which __invoke unpacks.
 		if i < nFixed && !e.Ellipsis.IsValid() {
 			return l.goType(params.At(i).Type())
 		}
@@ -234,17 +232,38 @@ func (l *funcLowerer) funcValueCall(e *ast.CallExpr) goir.Type {
 	}
 
 	l.expr(e.Fun) // GoClosure
-	l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(e.Args))})
-	l.emit(goir.Op{Code: goir.OpNewObjArray})
-	for i, a := range e.Args {
-		l.emit(goir.Op{Code: goir.OpDup})
-		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
-		if pt, ok := paramElem(i); ok {
-			l.emitBoxedElemInto(a, pt)
-		} else {
-			l.emitBoxedElem(a)
+	if sig.Variadic() && !e.Ellipsis.IsValid() {
+		// f(a, b, c...) through a func value: the trailing args must be PACKED into the
+		// variadic slice (the lowered body takes one []T parameter). __invoke does not
+		// repack, so the call site does it, exactly like a direct call's emitCallArgs.
+		vt, _ := l.goType(params.At(nFixed).Type()) // the []Elem variadic parameter
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(nFixed + 1)})
+		l.emit(goir.Op{Code: goir.OpNewObjArray})
+		for i := 0; i < nFixed; i++ {
+			l.emit(goir.Op{Code: goir.OpDup})
+			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+			pt, _ := l.goType(params.At(i).Type())
+			l.emitBoxedElemInto(e.Args[i], pt)
+			l.emit(goir.Op{Code: goir.OpStelemRef})
 		}
+		l.emit(goir.Op{Code: goir.OpDup})
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(nFixed)})
+		l.packVariadic(e.Args[nFixed:], *vt.Elem)
+		l.emitBox(vt)
 		l.emit(goir.Op{Code: goir.OpStelemRef})
+	} else {
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(e.Args))})
+		l.emit(goir.Op{Code: goir.OpNewObjArray})
+		for i, a := range e.Args {
+			l.emit(goir.Op{Code: goir.OpDup})
+			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+			if pt, ok := paramElem(i); ok {
+				l.emitBoxedElemInto(a, pt)
+			} else {
+				l.emitBoxedElem(a)
+			}
+			l.emit(goir.Op{Code: goir.OpStelemRef})
+		}
 	}
 	l.emit(goir.Op{Code: goir.OpCallMethod, Callee: l.invokeMethod()})
 	if retType == goir.TVoid {

@@ -291,17 +291,19 @@ func (l *funcLowerer) goStmt(s *ast.GoStmt) {
 		l.fail(s.Pos(), "go call to "+fun.Name)
 		return
 	}
-	if len(call.Args) != len(callee.Params) {
-		l.fail(s.Pos(), "go call with a variadic function")
+	sig, _ := l.funcObj(fun).Type().(*types.Signature)
+	variadic := sig != nil && sig.Variadic() && !call.Ellipsis.IsValid()
+	if !variadic && len(call.Args) != len(callee.Params) {
+		l.fail(s.Pos(), "go call argument count")
 		return
 	}
-	l.buildGoThunk(call, callee)
+	l.buildGoThunk(call, callee, variadic)
 }
 
 // buildGoThunk generates a zero-argument thunk method for `go f(args)`: the
 // evaluated argument values are captured in the closure env, and the thunk
 // unboxes them and calls f.
-func (l *funcLowerer) buildGoThunk(call *ast.CallExpr, callee *goir.Method) {
+func (l *funcLowerer) buildGoThunk(call *ast.CallExpr, callee *goir.Method, variadic bool) {
 	id := len(l.closures)
 	method := &goir.Method{
 		Name:    "__goroutine_" + itoa(id),
@@ -315,14 +317,30 @@ func (l *funcLowerer) buildGoThunk(call *ast.CallExpr, callee *goir.Method) {
 	l.prog.Methods = append(l.prog.Methods, method)
 
 	// Call site: env = object[]{boxed args}; GoClosures.New(id, env); GoRuntime.Go.
+	// For a variadic callee, the trailing args are packed into the one []T parameter.
+	nFixed := len(callee.Params)
+	if variadic {
+		nFixed--
+	}
+	nSlots := len(call.Args)
+	if variadic {
+		nSlots = nFixed + 1
+	}
 	l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(id)})
-	l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(call.Args))})
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(nSlots)})
 	l.emit(goir.Op{Code: goir.OpNewObjArray})
-	for i, a := range call.Args {
+	for i := 0; i < nFixed; i++ {
 		l.emit(goir.Op{Code: goir.OpDup})
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
-		l.exprCoerced(a, callee.Params[i])
+		l.exprCoerced(call.Args[i], callee.Params[i])
 		l.emitBox(callee.Params[i])
+		l.emit(goir.Op{Code: goir.OpStelemRef})
+	}
+	if variadic {
+		l.emit(goir.Op{Code: goir.OpDup})
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(nFixed)})
+		l.packVariadic(call.Args[nFixed:], *callee.Params[nFixed].Elem)
+		l.emitBox(callee.Params[nFixed])
 		l.emit(goir.Op{Code: goir.OpStelemRef})
 	}
 	l.emit(goir.Op{Code: goir.OpClosNew})
