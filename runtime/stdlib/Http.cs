@@ -10,6 +10,7 @@ public sealed class GoResponse { public int StatusCode; public string Status = "
 /// <summary>An http.ResponseWriter backed by an HttpListenerResponse. The body is
 /// buffered until the handler returns so headers (which a framework may set after the
 /// first write, e.g. gin's Content-Type) are committed before the body is flushed.</summary>
+[GoShim("net/http.ResponseWriter")]
 public sealed class GoRespWriter
 {
     public HttpListenerResponse Resp = null!;

@@ -365,9 +365,15 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 			continue
 		}
 		// Embedded-interface implementer: unwrap to the embedded interface value and
-		// re-dispatch (the method is promoted from that field).
+		// re-dispatch (the method is promoted from that field). A pointer implementer
+		// (gin's *responseWriter embedding http.ResponseWriter) holds a GoPtr, so deref
+		// to the struct before reading the embedded field.
 		if embedField[i] >= 0 {
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+			if impl.viaPtr {
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])})
+				l.emit(goir.Op{Code: goir.OpPtrGet})
+			}
 			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
 			l.emit(goir.Op{Code: goir.OpLdFld, Struct: ctypes[i].Struct, Field: embedField[i]})
 			l.emit(goir.Op{Code: goir.OpStLoc, Local: iTmp})
