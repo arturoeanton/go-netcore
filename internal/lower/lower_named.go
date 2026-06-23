@@ -134,6 +134,19 @@ func (c *lowerCtx) tagComposite(t types.Type) int64 {
 	return id
 }
 
+// tagPointerType registers (and returns the id of) a pointer type's %T name ("*int",
+// "*main.Color", "*[]int"), so a nil pointer wrapped as GoNamed{id, null} names itself.
+func (c *lowerCtx) tagPointerType(t types.Type) int64 {
+	key := types.TypeString(t, nil)
+	if id, ok := c.compositeIds[key]; ok {
+		return id
+	}
+	id := c.nextTypeId()
+	c.compositeIds[key] = id
+	c.namedNames[id] = typeDescStr(t)
+	return id
+}
+
 // compositeElemType returns the element type of a slice/array, or the value type of a
 // map — the type whose values are stored as the composite's elements.
 func compositeElemType(t types.Type) types.Type {
@@ -246,18 +259,27 @@ func compositeHasInterfaceElem(t types.Type) bool {
 // element types %T would otherwise erase. Called right after a value is boxed into
 // an interface slot.
 func (l *funcLowerer) maybeWrapNamed(t types.Type) {
-	// A pointer to an identity-bearing pointee (*Color, *[]int): stamp the boxed GoPtr with
-	// the pointee's id so %T reports *main.Color / *[]int instead of erasing to the bare
-	// pointee value's type. The pointer stays a GoPtr (no GoNamed wrapper, which would break
-	// deref/dispatch), so this uses TagPtr, not the wrap extern.
+	// A pointer boxed into an interface: a NON-nil GoPtr is stamped with its pointee's id so
+	// %T reports *main.Color / *[]int (the pointer stays a GoPtr — a GoNamed wrapper would
+	// break deref/dispatch); a NIL pointer (a bare null with no cell to stamp) is wrapped in
+	// GoNamed{ptrTypeId, null}, a non-nil carrier %T names "*int" and %v renders "<nil>".
 	if pt, ok := t.Underlying().(*types.Pointer); ok {
-		if id, ok := l.typeTagFor(pt.Elem()); ok {
-			l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
-			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "TagPtr",
-				Params: []goir.Type{goir.TObject, goir.TInt64}, Ret: goir.TObject,
-			}})
+		// Only a pointer backed by a real GoPtr cell may be tagged. An opaque-shim pointer
+		// (*list.Element, *bytes.Buffer) lowers to a bare shim object, NOT a GoPtr, and its
+		// nil must stay a plain null so `e != nil` works — wrapping it would break the check.
+		if gt, ok := l.goType(t); !ok || gt.Kind != goir.KPtr {
+			return
 		}
+		pointeeID := int64(0)
+		if id, ok := l.typeTagFor(pt.Elem()); ok {
+			pointeeID = id
+		}
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: pointeeID})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: l.tagPointerType(t)})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "TagPtrOrNil",
+			Params: []goir.Type{goir.TObject, goir.TInt64, goir.TInt64}, Ret: goir.TObject,
+		}})
 		return
 	}
 	id, ok := l.typeTagFor(t)

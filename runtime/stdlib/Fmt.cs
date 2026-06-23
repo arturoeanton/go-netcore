@@ -556,7 +556,7 @@ public static class Fmt
         GoComplex => "complex128",
         GoSlice => "[]interface {}",
         GoMap => "map[string]interface {}",
-        GoPtr p => "*" + PtrPointeeName(p),
+        GoPtr p => PtrTypeName(p),
         GoNamed nm => NamedTypeNameOr(nm),
         _ => "main." + v.GetType().Name,
     };
@@ -572,6 +572,18 @@ public static class Fmt
             if (n.Length > 0) return n;
         }
         return GoTypeName(p.Value);
+    }
+
+    // The full %T name of a pointer: its stamped "*T" display name if boxing recorded one
+    // (precise even for a method-less pointee), else "*" + the pointee name.
+    private static string PtrTypeName(GoPtr p)
+    {
+        if (p.PtrName != 0)
+        {
+            var n = Rt.NamedTypeName(p.PtrName);
+            if (n.Length > 0) return n;
+        }
+        return "*" + PtrPointeeName(p);
     }
 
     // %T of a typed-box value: its registered Go display name (e.g. "main.Money",
@@ -612,6 +624,10 @@ public static class Fmt
             // hex address for a pointer to a scalar.
             case GoPtr p when p.Value is GoSlice || p.Value is GoMap || IsStructVal(p.Value):
                 return "&" + Format(p.Value, verb, plus, hash);
+            // A pointer whose cell holds null (a nil pointer boxed into an interface, or a
+            // pointer to a nil interface) prints <nil> like Go — these are the only Value==null
+            // GoPtrs, and Go would otherwise print a non-deterministic address (never byte-exact).
+            case GoPtr p when p.Value is null && p.Arr is null && p.FGet is null: return "<nil>";
             case GoPtr p: return "0x" + (System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(p) & 0xffffff).ToString("x", Inv);
             case GoSlice sl when sl.Data == null: return "[]";
             case GoMap m when m.Data == null: return "map[]";

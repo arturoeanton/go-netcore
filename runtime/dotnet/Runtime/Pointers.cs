@@ -17,6 +17,14 @@ public sealed class GoPtr
     public long TypeId;
 
     /// <summary>
+    /// Id of this pointer's own type display name ("*main.Color", "*[]int") for %T,
+    /// stamped when the pointer is boxed into an interface. 0 = unstamped (fmt falls
+    /// back to "*" + the pointee value's type). Distinct from <see cref="TypeId"/>,
+    /// which dispatch uses and which a method-less pointee leaves 0.
+    /// </summary>
+    public long PtrName;
+
+    /// <summary>
     /// When non-null, this pointer aliases element <see cref="Idx"/> of a slice's
     /// backing array (from &amp;s[i]); Get/Set read/write through it so the slice
     /// and the pointer observe the same storage. Value/TypeId are unused then.
