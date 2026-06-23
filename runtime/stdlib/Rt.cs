@@ -46,6 +46,15 @@ public static class Rt
     /// <summary>Wraps a boxed value with its named-type identity for interface storage.</summary>
     public static object? MakeNamed(object? value, long id) => new GoNamed(id, value);
 
+    /// <summary>Stamps a non-nil pointer with its pointee's identity id (only when the cell
+    /// carries none), so %T can name *Color / *[]int precisely instead of from the erased
+    /// pointee value. A nil pointer (null) is returned untouched — it carries no cell to tag.</summary>
+    public static object? TagPtr(object? p, long pointeeId)
+    {
+        if (p is GoPtr gp && gp.TypeId == 0) gp.TypeId = pointeeId;
+        return p;
+    }
+
     /// <summary>Unwraps a GoNamed to its underlying boxed value; pass-through otherwise.</summary>
     public static object? Unwrap(object? v) => v is GoNamed n ? n.Value : v;
 

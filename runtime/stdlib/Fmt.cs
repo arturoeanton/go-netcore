@@ -531,10 +531,23 @@ public static class Fmt
         GoComplex => "complex128",
         GoSlice => "[]interface {}",
         GoMap => "map[string]interface {}",
-        GoPtr p => "*" + GoTypeName(p.Value),
+        GoPtr p => "*" + PtrPointeeName(p),
         GoNamed nm => NamedTypeNameOr(nm),
         _ => "main." + v.GetType().Name,
     };
+
+    // The pointee type name of a GoPtr for %T: prefer the pointee's registered named/struct
+    // identity (so *Color reports main.Color, not the underlying int), falling back to the
+    // boxed pointee value's type when the pointer carries no id (a nil pointer, *int, …).
+    private static string PtrPointeeName(GoPtr p)
+    {
+        if (p.TypeId != 0)
+        {
+            var n = Rt.NamedTypeName(p.TypeId);
+            if (n.Length > 0) return n;
+        }
+        return GoTypeName(p.Value);
+    }
 
     // %T of a typed-box value: its registered Go display name (e.g. "main.Money",
     // "sort.StringSlice"), falling back to the underlying value's name.

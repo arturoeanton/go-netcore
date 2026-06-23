@@ -206,6 +206,20 @@ func compositeHasInterfaceElem(t types.Type) bool {
 // element types %T would otherwise erase. Called right after a value is boxed into
 // an interface slot.
 func (l *funcLowerer) maybeWrapNamed(t types.Type) {
+	// A pointer to an identity-bearing pointee (*Color, *[]int): stamp the boxed GoPtr with
+	// the pointee's id so %T reports *main.Color / *[]int instead of erasing to the bare
+	// pointee value's type. The pointer stays a GoPtr (no GoNamed wrapper, which would break
+	// deref/dispatch), so this uses TagPtr, not the wrap extern.
+	if pt, ok := t.Underlying().(*types.Pointer); ok {
+		if id, ok := l.typeTagFor(pt.Elem()); ok {
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "TagPtr",
+				Params: []goir.Type{goir.TObject, goir.TInt64}, Ret: goir.TObject,
+			}})
+		}
+		return
+	}
 	id, ok := l.typeTagFor(t)
 	if !ok {
 		return
