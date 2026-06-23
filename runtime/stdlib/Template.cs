@@ -567,6 +567,7 @@ public static class Template
     {
         public Ctx C = Ctx.Text;
         public string Tag = "", Attr = "";
+        public bool UrlQuery; // within a URL attribute value, true once past the '?' (query/fragment part)
         readonly StringBuilder tag = new(), attr = new();
         readonly StringBuilder tail = new(); // rolling lowercased suffix, for </script> etc.
 
@@ -594,13 +595,13 @@ public static class Template
                     else { attr.Clear(); attr.Append(c); C = Ctx.AttrName; }
                     break;
                 case Ctx.AttrName:
-                    if (c == '=') { Attr = attr.ToString().ToLowerInvariant(); C = Ctx.BeforeValue; }
+                    if (c == '=') { Attr = attr.ToString().ToLowerInvariant(); C = Ctx.BeforeValue; UrlQuery = false; }
                     else if (char.IsWhiteSpace(c)) { Attr = attr.ToString().ToLowerInvariant(); C = Ctx.AfterAttrName; }
                     else if (c == '>') { EnterContent(); }
                     else attr.Append(c);
                     break;
                 case Ctx.AfterAttrName:
-                    if (c == '=') C = Ctx.BeforeValue;
+                    if (c == '=') { C = Ctx.BeforeValue; UrlQuery = false; }
                     else if (char.IsWhiteSpace(c)) { }
                     else if (c == '>') EnterContent();
                     else { attr.Clear(); attr.Append(c); C = Ctx.AttrName; }
@@ -612,9 +613,9 @@ public static class Template
                     else if (c == '>') EnterContent();
                     else C = Ctx.ValueUQ;
                     break;
-                case Ctx.ValueDQ: if (c == '"') C = Ctx.BeforeAttr; break;
-                case Ctx.ValueSQ: if (c == '\'') C = Ctx.BeforeAttr; break;
-                case Ctx.ValueUQ: if (char.IsWhiteSpace(c)) C = Ctx.BeforeAttr; else if (c == '>') EnterContent(); break;
+                case Ctx.ValueDQ: if (c == '?') UrlQuery = true; if (c == '"') C = Ctx.BeforeAttr; break;
+                case Ctx.ValueSQ: if (c == '?') UrlQuery = true; if (c == '\'') C = Ctx.BeforeAttr; break;
+                case Ctx.ValueUQ: if (c == '?') UrlQuery = true; if (char.IsWhiteSpace(c)) C = Ctx.BeforeAttr; else if (c == '>') EnterContent(); break;
                 case Ctx.Js: if (c == '"') C = Ctx.JsStrDQ; else if (c == '\'') C = Ctx.JsStrSQ; else if (c == '<') { /* maybe </script> */ } break;
                 case Ctx.JsStrDQ: if (c == '"') C = Ctx.Js; break;
                 case Ctx.JsStrSQ: if (c == '\'') C = Ctx.Js; break;
@@ -651,6 +652,7 @@ public static class Template
         string? safe = SafeKind(v);
         string raw = Render(v, false); // the underlying string (Render unwraps GoNamed)
         bool url = UrlAttrs.Contains(s.Attr);
+        bool ev = IsEventAttr(s.Attr); // onclick=, onload=, ... — the value is a JS context
         switch (s.C)
         {
             case Ctx.Js:
@@ -660,20 +662,35 @@ public static class Template
                 if ((s.C == Ctx.JsStrDQ || s.C == Ctx.JsStrSQ) && safe == "template.JSStr") return raw;
                 return JsValue(v, s.C);
             case Ctx.Css:
-                return safe == "template.CSS" ? raw : CssEscape(raw);
+                return safe == "template.CSS" ? raw : CssValueFilter(raw);
             case Ctx.BeforeValue: // an action right after `=` is the (unquoted) value
             case Ctx.ValueUQ:
-                if (url) return UqAttrEscape(UrlNormalize(raw, safe == "template.URL"));
+                if (url) return UqAttrEscape(UrlForPart(raw, s.UrlQuery, safe == "template.URL"));
+                if (ev) return UqAttrEscape(safe == "template.JS" ? raw : JsValue(v, Ctx.Js));
                 if (safe == "template.HTMLAttr") return raw;
                 return UqAttrEscape(raw);
             case Ctx.ValueDQ:
             case Ctx.ValueSQ:
-                if (url) return HtmlEscape(UrlNormalize(raw, safe == "template.URL"));
+                if (url) return HtmlEscape(UrlForPart(raw, s.UrlQuery, safe == "template.URL"));
+                if (ev) return HtmlEscape(safe == "template.JS" ? raw : JsValue(v, Ctx.Js));
                 if (safe == "template.HTMLAttr") return raw;
                 return HtmlEscape(raw);
             default:
                 return safe == "template.HTML" ? raw : HtmlEscape(raw);
         }
+    }
+
+    // An event-handler attribute (onclick, onload, onmouseover, ...) carries JavaScript.
+    static bool IsEventAttr(string a) => a.Length > 2 && a[0] == 'o' && a[1] == 'n';
+
+    // Picks the URL escaper for the part the value lands in: a trusted template.URL is only
+    // normalized; an untrusted value in the query/fragment is fully percent-escaped (so '&'
+    // can't inject a parameter), while one in the scheme/path is normalized (reserved chars
+    // such as '&' kept, then HTML-escaped by the caller).
+    static string UrlForPart(string raw, bool inQuery, bool trusted)
+    {
+        if (trusted) return UrlNormalize(raw, true);
+        return inQuery ? UrlEscapeQuery(raw) : UrlNormalize(raw, false);
     }
 
     // A value interpolated into JS: a string becomes a quoted, escaped JS string literal
@@ -685,26 +702,83 @@ public static class Template
         bool inStr = c == Ctx.JsStrDQ || c == Ctx.JsStrSQ;
         // Inside an existing JS string literal: just the escaped body.
         if (inStr) return JsStrEscape(v is GoString gg ? gg.ToDotNetString() : Render(v, false));
-        // A bare JS expression: a string becomes a quoted JS string; a number/bool/null
-        // is space-padded (Go pads scalar values so they can't merge with adjacent tokens).
-        if (v is GoString g) return "\"" + JsStrEscape(g.ToDotNetString()) + "\"";
+        // A bare JS expression: a string becomes a quoted JSON string literal (Go marshals
+        // it — note '/' is NOT escaped there, unlike inside an existing JS string); a
+        // number/bool/null is space-padded so it can't merge with adjacent tokens.
+        if (v is GoString g) return JsValEscape(g.ToDotNetString());
         if (v == null) return " null ";
         if (v is bool b) return b ? " true " : " false ";
         if (IsNum(v)) return " " + Render(v, false) + " ";
-        return "\"" + JsStrEscape(Render(v, false)) + "\"";
+        return JsValEscape(Render(v, false));
     }
 
+    // The body of a JS string literal: Go's jsStrEscaper, which uses \uXXXX for quotes and
+    // HTML-significant runes and escapes '/' as '\/' (so a value inside "..." cannot close a
+    // surrounding </script>).
     static string JsStrEscape(string s)
     {
         var sb = new StringBuilder();
         foreach (char c in s)
             sb.Append(c switch
             {
-                '\\' => "\\\\", '"' => "\\\"", '\'' => "\\'", '/' => "\\/", '\n' => "\\n", '\r' => "\\r", '\t' => "\\t",
-                '<' => "\\u003c", '>' => "\\u003e", '&' => "\\u0026", '=' => "\\u003d",
+                '\\' => "\\\\", '"' => "\\u0022", '\'' => "\\u0027", '/' => "\\/", '\n' => "\\n", '\r' => "\\r", '\t' => "\\t",
+                '<' => "\\u003c", '>' => "\\u003e", '&' => "\\u0026", '=' => "\\u003d", '`' => "\\u0060", '+' => "\\u002b",
                 _ => c.ToString(),
             });
         return sb.ToString();
+    }
+
+    // A bare JS value: Go marshals it to JSON, then replaces HTML-significant runes with their
+    // \uXXXX form. Standard JSON escapes apply ('"' -> \", '\\' -> \\\\, control chars), and
+    // crucially '/' is left as-is. The result is wrapped in double quotes.
+    static string JsValEscape(string s)
+    {
+        var sb = new StringBuilder();
+        sb.Append('"');
+        foreach (char c in s)
+            sb.Append(c switch
+            {
+                '\\' => "\\\\", '"' => "\\\"", '\n' => "\\n", '\r' => "\\r", '\t' => "\\t",
+                '<' => "\\u003c", '>' => "\\u003e", '&' => "\\u0026",
+                '\u2028' => "\\u2028", '\u2029' => "\\u2029",
+                _ => c < 0x20 ? "\\u" + ((int)c).ToString("x4", System.Globalization.CultureInfo.InvariantCulture) : c.ToString(),
+            });
+        sb.Append('"');
+        return sb.ToString();
+    }
+
+    // The query/fragment part of a URL (Go's urlEscaper): everything except the RFC 3986
+    // unreserved set is percent-encoded as UTF-8 bytes, so '&', ' ', '=', '?' all escape.
+    static string UrlEscapeQuery(string s)
+    {
+        var sb = new StringBuilder();
+        foreach (char c in s)
+        {
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                c == '-' || c == '.' || c == '_' || c == '~')
+                sb.Append(c);
+            else
+                foreach (byte b in System.Text.Encoding.UTF8.GetBytes(c.ToString()))
+                    sb.Append('%').Append(((int)b).ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return sb.ToString();
+    }
+
+    // Go's cssValueFilter: an interpolated CSS value is passed through only if it can't break
+    // out of its declaration; any structural/quote/comment rune (or "--") yields the failsafe
+    // "ZgotmplZ". Quantities (10px, 25%), keywords, hex colors, and space/':'/',' pass.
+    static string CssValueFilter(string s)
+    {
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '\0' || c == '"' || c == '\'' || c == '(' || c == ')' || c == '/' ||
+                c == ';' || c == '@' || c == '[' || c == '\\' || c == ']' || c == '`' ||
+                c == '{' || c == '}')
+                return "ZgotmplZ";
+            if (c == '-' && i != 0 && s[i - 1] == '-') return "ZgotmplZ";
+        }
+        return s;
     }
 
     static string UqAttrEscape(string s)
