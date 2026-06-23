@@ -272,6 +272,47 @@ public sealed class GoRand
         }
         return new GoSlice { Data = m, Off = 0, Len = (int)n, Cap = (int)n };
     }
+
+    private uint Uint32() => (uint)((ulong)src.Int63() >> 31);
+
+    // int31n is Go's Lemire-style bounded sampler used ONLY by Shuffle (distinct from the
+    // rejection-based Int31n the Intn/Int31n methods use); reproduced exactly for parity.
+    private int Int31nLemire(int n)
+    {
+        uint un = (uint)n;
+        uint v = Uint32();
+        ulong prod = (ulong)v * un;
+        uint low = (uint)prod;
+        if (low < un)
+        {
+            uint thresh = (uint)(-(int)un) % un; // (-n) mod n in uint32 space
+            while (low < thresh)
+            {
+                v = Uint32();
+                prod = (ulong)v * un;
+                low = (uint)prod;
+            }
+        }
+        return (int)(prod >> 32);
+    }
+
+    // Shuffle pseudo-randomizes [0,n) by calling swap, matching Go's two-phase loop (Int63n
+    // above the int32 boundary, the Lemire int31n below it).
+    public void Shuffle(long n, GoClosure swap)
+    {
+        if (n < 0) throw new GoPanicException(GoString.FromDotNetString("invalid argument to Shuffle"));
+        long i = n - 1;
+        for (; i > (1L << 31) - 1 - 1; i--)
+        {
+            long j = Int63n(i + 1);
+            GoRuntime.InvokeArgs(swap, i, j);
+        }
+        for (; i > 0; i--)
+        {
+            long j = Int31nLemire((int)(i + 1));
+            GoRuntime.InvokeArgs(swap, i, j);
+        }
+    }
 }
 
 public static class Rand
@@ -288,6 +329,7 @@ public static class Rand
     public static long Int63n(long n) => Global.Int63n(n);
     public static long Intn(long n) => Global.Intn(n);
     public static GoSlice Perm(long n) => Global.Perm(n);
+    public static void Shuffle(long n, GoClosure swap) => Global.Shuffle(n, swap);
     public static void Seed(long seed) { }
     public static ulong Uint64() => ((ulong)Global.Int63() << 1) | ((ulong)Global.Int63() & 1);
     public static uint Uint32() => (uint)Global.Int63();
@@ -306,4 +348,5 @@ public static class Rand
     public static long Rand_Intn(object r, long n) => ((GoRand)r).Intn(n);
     public static double Rand_Float64(object r) => ((GoRand)r).Float64();
     public static GoSlice Rand_Perm(object r, long n) => ((GoRand)r).Perm(n);
+    public static void Rand_Shuffle(object r, long n, GoClosure swap) => ((GoRand)r).Shuffle(n, swap);
 }

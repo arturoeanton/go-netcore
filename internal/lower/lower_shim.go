@@ -228,6 +228,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Float64": {"Rand", "Float64"}, "Int63": {"Rand", "Int63"}, "Int": {"Rand", "Int"},
 		"Int63n": {"Rand", "Int63n"}, "Intn": {"Rand", "Intn"}, "Perm": {"Rand", "Perm"}, "Seed": {"Rand", "Seed"},
 		"Uint64": {"Rand", "Uint64"}, "Uint32": {"Rand", "Uint32"}, "Int31": {"Rand", "Int31"}, "Read": {"Rand", "Read"},
+		"Shuffle": {"Rand", "Shuffle"},
 	},
 	"sync": {"NewCond": {"Sync", "NewCond"}},
 	"sync/atomic": {
@@ -1476,6 +1477,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"math/rand.Rand": {
 		"Int63": {"Rand", "Rand_Int63"}, "Int": {"Rand", "Rand_Int"}, "Int63n": {"Rand", "Rand_Int63n"},
 		"Intn": {"Rand", "Rand_Intn"}, "Float64": {"Rand", "Rand_Float64"}, "Perm": {"Rand", "Rand_Perm"},
+		"Shuffle": {"Rand", "Rand_Shuffle"},
 	},
 	"context.Context": {
 		"Value": {"Context", "Context_Value"}, "Err": {"Context", "Context_Err"},
