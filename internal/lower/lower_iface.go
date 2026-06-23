@@ -528,9 +528,15 @@ func (l *funcLowerer) typeAssert(e *ast.TypeAssertExpr) {
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
 		l.emit(goir.Op{Code: goir.OpCeq})
 		l.emit(goir.Op{Code: goir.OpBrTrue, Label: good})
-		l.emit(goir.Op{Code: goir.OpStrConst, Str: "interface conversion: interface does not implement the requested interface"})
-		l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
-		l.emit(goir.Op{Code: goir.OpCallPanic})
+		// Mismatch: panic like Go ("interface conversion: <iface> is <actual>, not <T>"),
+		// the same message as the concrete path, not a generic "does not implement".
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: typeDescStr(l.pkg.TypesInfo.TypeOf(e.X))})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: typeDescStr(l.pkg.TypesInfo.TypeOf(e.Type))})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "AssertFail",
+			Params: []goir.Type{goir.TObject, goir.TString, goir.TString}, Ret: goir.TVoid,
+		}})
 		l.mark(good)
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		l.emitUnwrapNamed()
