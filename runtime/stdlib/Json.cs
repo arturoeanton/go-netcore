@@ -296,6 +296,25 @@ public static class Json
     private static void SetPtr(object? target, object? value)
     {
         if (target == null) throw new System.Exception("json: Unmarshal(nil)");
+        // The non-generic GoPtr cell may alias a struct field (FSet) or slice element (Arr),
+        // not just hold its own Value — write through GoPtrs.Set so the aliased storage is
+        // updated. (Setting the unused Value field left e.g. &token.Header empty.)
+        if (target is GoPtr gp)
+        {
+            object? cur = null;
+            try { cur = GoPtrs.Get(gp); } catch { /* nil cell: coerce against object */ }
+            // Go reuses a non-nil map target, merging the decoded entries in rather than
+            // replacing the map — required when the map is shared by reference (jwt aliases
+            // one MapClaims through token.Claims and a local copy: replacing would leave the
+            // interface-held map empty).
+            if (cur is GoMap curMap && curMap.Data != null && value is GoMap newMap && newMap.Data != null)
+            {
+                foreach (var kv in newMap.Data) curMap.Data[kv.Key] = kv.Value;
+                return;
+            }
+            GoPtrs.Set(gp, Coerce(value, cur?.GetType() ?? typeof(object)));
+            return;
+        }
         var vf = target.GetType().GetField("Value");
         if (vf == null) throw new System.Exception("json: Unmarshal(non-pointer)");
         vf.SetValue(target, Coerce(value, vf.FieldType));
@@ -476,18 +495,20 @@ public static class Json
     public static GoString SyntaxErr_Error(object e) => GoString.FromDotNetString("json: syntax error");
     public static long SyntaxErr_Offset(object e) => 0;
 
-    // json.Number (a named string carrying numeric text): Float64()/Int64()/String().
+    // json.Number (a named string carrying numeric text): Float64()/Int64()/String(). The
+    // value-receiver methods are dispatched with the underlying string representation, so the
+    // shim takes a GoString.
     private static string NumStr(object? n) =>
         (n is GoNamed gn ? gn.Value : n) is GoString s ? s.ToDotNetString() : "";
-    public static object?[] Number_Float64(object n) =>
+    public static object?[] Number_Float64(GoString n) =>
         double.TryParse(NumStr(n), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)
             ? new object?[] { d, null }
             : new object?[] { 0.0, new GoError(GoString.FromDotNetString("strconv.ParseFloat: invalid syntax")) };
-    public static object?[] Number_Int64(object n) =>
+    public static object?[] Number_Int64(GoString n) =>
         long.TryParse(NumStr(n), out var v)
             ? new object?[] { v, null }
             : new object?[] { 0L, new GoError(GoString.FromDotNetString("strconv.ParseInt: invalid syntax")) };
-    public static GoString Number_String(object n) => GoString.FromDotNetString(NumStr(n));
+    public static GoString Number_String(GoString n) => GoString.FromDotNetString(NumStr(n));
 
     public static object? Decoder_Decode(object dec, object? target)
     {

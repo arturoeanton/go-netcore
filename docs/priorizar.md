@@ -6,10 +6,13 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 ## Orden 2 (nuevo foco, serializado — uno a la vez)
 
 1. ✅ Testify mínimo — tag `0.0.64.testify` (`goclr test` + testify/assert corren en el CLR)
-2. 🟡 JWT library — tag `0.0.65.jwt-signs`: golang-jwt/v5 COMPILA y **firma HS256** (cerró ~12
-   gaps + un bug general: box del receiver value-type en method values shim). Parse falla en el
-   header JSON ("alg unspecified") — pendiente de debug.
-3. ⬜ text/template
+2. ✅ JWT library — tag `0.0.109.jwt-parse`: golang-jwt/v5 firma **y verifica** HS256 end-to-end
+   byte-exacto (sign + Parse + claims + rechazo de key incorrecta). Cerró: json.Unmarshal a un
+   map de campo de struct (`&token.Header` escribía el Value sin usar FSet → mapa vacío),
+   reuso/merge de un map target no-nil (jwt aliasa un MapClaims por `token.Claims` + copia local),
+   y firma de `json.Number.Float64/Int64/String` (receiver string → param GoString). Fixture 453.
+3. ✅ text/template + html/template — tags `0.0.91`–`0.0.97` (motor real: parse+exec, escaping
+   contextual, safe types, contextos URL/JS/CSS/event/style). Fixtures 436–441.
 4. ⬜ per-function stdlib coverage matrix
 5. ⬜ GORM mini target con una sola entidad
 6. ⬜ bench/startup report
@@ -44,7 +47,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 6. ✅ panic no recuperado con formato Go (`panic:` + goroutine stack) — media, alto · tag `0.0.57.panic-format`
 7. ✅ `reflect.StructField.Name` / `.Tag` directo — alta/media, alto · tag `0.0.55.reflect-structfield`
 8. ✅ function values de funciones shimmed (`strings.TrimFunc(s, unicode.IsSpace)`) — media, alto · tag `0.0.56.shim-func-value`
-9. ⬜ `%T` / `%#v` / nil maps más exactos — media, medio/alto
+9. ✅ `%T` / `%#v` / nil maps más exactos — media, medio/alto · tags `0.0.105`–`0.0.108` (identidad Stringer en elementos de slice/array/map, campos de struct y claves de map; `%T` de puntero nil+no-nil para todo pointee; `%#v` de campo slice con tipo de elemento exacto)
 10. ⬜ tipo exacto para composites reflejados dinámicamente — media/difícil, alto
 11. ⬜ per-value runtime type tags / itable — difícil, altísimo
 12. ✅ deep `reflect` mínimo: `MakeFunc`, `Value.Call`, `Method.Call` — difícil, altísimo · tag `0.0.58.reflect-deep` (reflejar métodos de deps grandes queda fuera de scope)
@@ -53,7 +56,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 15. 🟡 `regexp` más Go/RE2 exacto — media/difícil, alto
 16. 🟡 `time` con zonas locales reales (hoy UTC-only) — media, medio
 17. 🟡 Unicode special-casing completo — media, medio
-18. ⬜ `text/template` y `html/template` — media/difícil, alto
+18. ✅ `text/template` y `html/template` — media/difícil, alto · tags `0.0.91`–`0.0.97`
 19. ⬜ `encoding/gob` — difícil, medio/alto
 20. ⬜ `archive/zip` / `archive/tar` — media, medio/alto
 21. 🟡 `crypto/rsa·ecdsa·x509·tls` full (hoy x509/acme bajado, TLS no-op) — difícil, altísimo
@@ -65,7 +68,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 27. ✅ `golang.org/x/sync/errgroup` — alta/media, alto · tag `0.0.59.errgroup` (compila de source + corre; agregado `context.WithCancelCause`/`Cause`)
 28. ✅ `google/uuid` — alta, alto · tag `0.0.61.uuid` (compila de source + corre; cerró os.Getuid, net.Interfaces, bytes.EqualFold, hex.Encode/Decode, bridge io.Reader)
 29. ✅ Testify — media, alto · tag `0.0.64.testify` (assert.* corre bajo `goclr test`; cerró safe tag, hex.Dump, Value.CanConvert, StructField.IsExported, regexp.Match, os.Lstat, runtime.Goexit)
-30. ⬜ JWT libraries — media, alto
+30. ✅ JWT libraries — media, alto · tag `0.0.109.jwt-parse` (golang-jwt/v5 sign+verify HS256 end-to-end)
 31. ⬜ Redis client pure-Go — media/difícil, alto
 32. ⬜ WebSocket — media/difícil, alto
 33. ⬜ GORM — difícil, altísimo
