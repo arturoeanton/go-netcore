@@ -33,6 +33,17 @@ public static class Fmt
         if (v is GoSignal sg) { s = sg.Name; return true; }
         if (v is GoNamed kn && Rt.NamedTypeName(kn.TypeId) == "reflect.Kind")
         { s = GoKind.Name((int)System.Convert.ToInt64(kn.Value ?? 0L)); return true; }
+        // Shim named scalar types whose String() is a runtime shim (not a lowered Go
+        // method, so no stringer closure is registered): dispatch by the typed-box name.
+        if (v is GoNamed tnm)
+        {
+            switch (Rt.NamedTypeName(tnm.TypeId))
+            {
+                case "time.Duration": s = Time.Duration_String(System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
+                case "time.Month": s = Time.Month_String(System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
+                case "time.Weekday": s = Time.Weekday_String(System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
+            }
+        }
         GoClosure? fn = null;
         if (v is GoNamed nm)
             _namedStringers.TryGetValue(nm.TypeId, out fn);
@@ -451,6 +462,10 @@ public static class Fmt
         for (int k = 1; k < n; k++) if ((b[i + k] & 0xC0) != 0x80) return 1;
         return n;
     }
+
+    /// <summary>The Go type name of a boxed value (as %T renders it), for runtime
+    /// messages such as a failed type assertion. Public so Rt can name the dynamic type.</summary>
+    public static string TypeName(object? v) => GoTypeName(v);
 
     // Go type name for a boxed value (for %T and bad-verb messages). Slice/map
     // element types are erased at runtime, so those are approximate.

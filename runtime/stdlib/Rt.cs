@@ -252,10 +252,28 @@ public static class Rt
     public static GoString StrSlice(GoString s, long low, long high)
     {
         byte[] b = s.Bytes;
-        if (low < 0 || high < low || high > b.Length)
-            throw new GoPanicException(GoString.FromDotNetString("runtime error: slice bounds out of range"));
+        // Go reports a string's slice bound past its length as "[:hi] with length len".
+        if (high > b.Length) throw StrBounds($"[:{high}] with length {b.Length}");
+        if (low < 0) throw StrBounds($"[{low}:]");
+        if (high < low) throw StrBounds($"[{low}:{high}]");
         var r = new byte[high - low];
         System.Array.Copy(b, (int)low, r, 0, (int)(high - low));
         return GoString.FromBytes(r);
+    }
+
+    private static GoPanicException StrBounds(string detail) =>
+        new(GoString.FromDotNetString("runtime error: slice bounds out of range " + detail));
+
+    /// <summary>A failed single-value type assertion x.(T): panics like Go with
+    /// "interface conversion: &lt;iface&gt; is &lt;actual&gt;, not &lt;asserted&gt;" instead of
+    /// letting the CLR throw a raw InvalidCastException.</summary>
+    public static void AssertFail(object? v, GoString ifaceName, GoString asserted)
+    {
+        // go/types spells the empty interface "interface{}"; Go's runtime/reflect use
+        // "interface {}" (with a space), so normalize to match the panic text exactly.
+        static string Sp(string s) => s.Replace("interface{}", "interface {}");
+        string actual = v == null ? "nil" : Sp(Fmt.TypeName(v));
+        throw new GoPanicException(GoString.FromDotNetString(
+            $"interface conversion: {Sp(ifaceName.ToDotNetString())} is {actual}, not {Sp(asserted.ToDotNetString())}"));
     }
 }

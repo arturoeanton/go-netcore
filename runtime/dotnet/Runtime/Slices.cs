@@ -95,10 +95,15 @@ public static class GoSlices
     /// <summary>s[lo:hi].</summary>
     public static GoSlice Slice(GoSlice s, long lo, long hi)
     {
-        if (lo < 0 || hi < lo || hi > s.Cap)
-            throw new GoPanicException(GoString.FromDotNetString("runtime error: slice bounds out of range"));
+        // Go reports the offending bound: a high past cap as "[:hi] with capacity cap".
+        if (hi > s.Cap) throw Bounds($"[:{hi}] with capacity {s.Cap}");
+        if (lo < 0) throw Bounds($"[{lo}:]");
+        if (hi < lo) throw Bounds($"[{lo}:{hi}]");
         return new GoSlice { Data = s.Data, Off = s.Off + (int)lo, Len = (int)(hi - lo), Cap = s.Cap - (int)lo };
     }
+
+    private static GoPanicException Bounds(string detail) =>
+        new(GoString.FromDotNetString("runtime error: slice bounds out of range " + detail));
 
     private static GoPanicException IndexPanic(long i, int len) =>
         new(GoString.FromDotNetString($"runtime error: index out of range [{i}] with length {len}"));
