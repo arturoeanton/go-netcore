@@ -246,6 +246,55 @@ func (c *lowerCtx) registerReflectMethods(named *types.Named, typeID int) bool {
 	return registered
 }
 
+// collectErrorChainMethods registers the optional error-chain methods (Unwrap/Is/As) of
+// every type that implements the error interface, so the errors.Is/As/Unwrap shims can
+// walk a user error's own Unwrap()/Is() chain through the callback bridge — not only the
+// GoError (fmt.Errorf %w) chain.
+func (c *lowerCtx) collectErrorChainMethods() {
+	errIface, ok := types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+	if !ok {
+		return
+	}
+	chain := map[string]bool{"Unwrap": true, "Is": true, "As": true}
+	register := func(named *types.Named, typeID int) {
+		seen := map[string]bool{}
+		for _, recv := range []types.Type{named, types.NewPointer(named)} {
+			if !types.Implements(recv, errIface) {
+				continue
+			}
+			ms := types.NewMethodSet(recv)
+			for i := 0; i < ms.Len(); i++ {
+				fn, ok := ms.At(i).Obj().(*types.Func)
+				if !ok || !chain[fn.Name()] || seen[fn.Name()] {
+					continue
+				}
+				m := c.byFunc[fn]
+				if m == nil {
+					continue
+				}
+				seen[fn.Name()] = true
+				c.needsInvoker = true
+				c.invokeMethod()
+				src := valBridge
+				if isPointerType(fn.Type().(*types.Signature).Recv().Type()) {
+					src = ptrDirect
+				}
+				c.bridges = append(c.bridges, bridgeReg{
+					id:        int64(typeID),
+					method:    fn.Name(),
+					closureID: c.buildMethodAdapter(m, src),
+				})
+			}
+		}
+	}
+	for named, st := range c.structReg {
+		register(named, st.Id)
+	}
+	for named, id := range c.namedIds {
+		register(named, int(id))
+	}
+}
+
 // lookupNamedType resolves a "importpath.TypeName" to its *types.Named anywhere in the
 // program's import closure (any named type, not only opaque shims), scanning once.
 func (c *lowerCtx) lookupNamedType(name string) *types.Named {

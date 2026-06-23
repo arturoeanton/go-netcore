@@ -245,6 +245,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	c.collectHandlers()
 	c.collectBridgeMethods()
 	c.collectReflectMethods()
+	c.collectErrorChainMethods()
 
 	// Startup: run package-var initializers and init() functions before main.
 	var initMethod *goir.Method

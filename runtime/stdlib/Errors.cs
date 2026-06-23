@@ -8,23 +8,33 @@ public static class Errors
 {
     public static object New(GoString text) => new GoError(text);
 
-    public static object? Unwrap(object? err) => err is GoError g ? g.Wrapped : null;
+    /// <summary>errors.Unwrap: the GoError (%w) wrapped error, or a user error's own
+    /// Unwrap() method via the callback bridge.</summary>
+    public static object? Unwrap(object? err)
+    {
+        if (err is GoError g) return g.Wrapped;
+        if (err != null && Bridge.HasMethod(err, "Unwrap")) return Bridge.CallMethod(err, "Unwrap");
+        return null;
+    }
 
-    /// <summary>errors.Is: walks the Unwrap chain comparing identity.</summary>
+    /// <summary>errors.Is: walks the Unwrap chain comparing identity, and consults each
+    /// error's own Is(target) bool method, matching Go.</summary>
     public static bool Is(object? err, object? target)
     {
         if (target == null) return err == null;
         while (err != null)
         {
             if (ReferenceEquals(err, target)) return true;
-            err = err is GoError g ? g.Wrapped : null;
+            if (Bridge.HasMethod(err, "Is") && Bridge.CallMethod(err, "Is", target) is bool b && b) return true;
+            err = Unwrap(err);
         }
         return false;
     }
 
     /// <summary>errors.As: walks the Unwrap chain for the first error whose concrete
     /// type matches the target's element type (by CLR type name passed from the
-    /// compiler), assigning it to *target and returning true.</summary>
+    /// compiler), assigning it to *target and returning true. Follows both the GoError
+    /// (%w) chain and a user error's own Unwrap().</summary>
     public static bool As(object? err, object? target, GoString typeName)
     {
         if (target is not GoPtr tp) return false;
@@ -38,7 +48,7 @@ public static class Errors
                 tp.Value = err;
                 return true;
             }
-            err = err is GoError g ? g.Wrapped : null;
+            err = Unwrap(err);
         }
         return false;
     }
