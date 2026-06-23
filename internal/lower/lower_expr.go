@@ -18,11 +18,13 @@ func (l *funcLowerer) expr(e ast.Expr) {
 	// accessor extern even when it is a typed constant the type checker would otherwise
 	// fold to a bare integer — the shim value (e.g. a GoSignal) carries identity the
 	// folded constant would lose.
-	if _, isSel := e.(*ast.SelectorExpr); isSel {
-		if ext, ok := l.shimVarExtern(e); ok {
-			l.emitShimVar(e, ext)
-			return
-		}
+	// A shimmed package variable/const must resolve to its accessor before the
+	// globalRef path below, so that a compiled-from-source package (io) referencing its
+	// own shim var (EOF, a bare Ident) shares the single shim sentinel rather than its
+	// compiled global — otherwise err == io.EOF fails inside io (multiReader, etc.).
+	if ext, ok := l.shimVarExtern(e); ok {
+		l.emitShimVar(e, ext)
+		return
 	}
 	// Constant folding handles literals, named constants, iota, and constant
 	// sub-expressions uniformly.

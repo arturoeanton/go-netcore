@@ -3,10 +3,14 @@ namespace GoCLR.Stdlib;
 using GoCLR.Runtime;
 
 /// <summary>An in-memory reader (strings.Reader / bytes.Reader / an http response
-/// body) over a byte array. Tagged so a response body flowing as an io.ReadCloser
-/// resolves its Close() through interface dispatch when a user type also implements
-/// io.ReadCloser (which suppresses the shim short-circuit).</summary>
+/// body) over a byte array. Tagged with every Go type it backs so that compiled Go
+/// calling an interface method on it (e.g. io.MultiReader's multiReader.Read invoking
+/// readers[i].Read, or any user func taking an io.Reader) dispatches to the shim — the
+/// strict interface-routing check keys on the static Go type name (strings.Reader,
+/// bytes.Reader), not just io.ReadCloser.</summary>
 [GoShim("io.ReadCloser")]
+[GoShim("strings.Reader")]
+[GoShim("bytes.Reader")]
 public sealed class GoReader { public byte[] Data = System.Array.Empty<byte>(); public int Pos; }
 
 /// <summary>strings.NewReader / bytes.NewReader and the shared byte-extraction the
@@ -79,8 +83,27 @@ public static class Readers
             case GoBuffer gb: { int n = gb.B.Count - gb.Pos; var rem = new byte[n]; for (int i = 0; i < n; i++) rem[i] = gb.B[gb.Pos + i]; gb.Pos = gb.B.Count; return rem; }
             case GoStringBuilder sb: return System.Text.Encoding.UTF8.GetBytes(sb.SB.ToString());
             case GoFile f when f.IsStdin: { string? all = System.Console.In.ReadToEnd(); return System.Text.Encoding.UTF8.GetBytes(all ?? ""); }
+            // Any other io.Reader (a compiled multiReader/LimitReader, or a user type): drive
+            // its own Read through the callback bridge until EOF.
+            case not null when Bridge.HasMethod(r, "Read"): return DrainViaRead(r);
             default: return System.Array.Empty<byte>();
         }
+    }
+
+    private static byte[] DrainViaRead(object r)
+    {
+        var outBytes = new System.Collections.Generic.List<byte>();
+        var data = new object?[4096];
+        var buf = new GoSlice { Data = data, Off = 0, Len = data.Length, Cap = data.Length };
+        while (true)
+        {
+            var res = Bridge.CallMethod(r, "Read", new object?[] { buf }) as object?[];
+            int n = res != null && res.Length > 0 && res[0] != null ? (int)System.Convert.ToInt64(res[0]) : 0;
+            object? rerr = res != null && res.Length > 1 ? res[1] : null;
+            for (int i = 0; i < n; i++) outBytes.Add((byte)System.Convert.ToInt64(data[i] ?? 0L));
+            if (rerr != null || n == 0) break;
+        }
+        return outBytes.ToArray();
     }
 
     private static GoSlice ByteSlice(byte[] b)

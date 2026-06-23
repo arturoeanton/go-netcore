@@ -927,13 +927,22 @@ func shimFieldSetExtern(shim, field string, valT goir.Type) (*goir.Extern, bool)
 // shimVarExtern returns the accessor extern for a shimmed stdlib package variable
 // reference (e.g. os.Stdout), if e is one.
 func (l *funcLowerer) shimVarExtern(e ast.Expr) (*goir.Extern, bool) {
-	sel, ok := e.(*ast.SelectorExpr)
-	if !ok {
+	// A shim var is named either qualified from another package (io.EOF -> SelectorExpr)
+	// or bare from within its own compiled-from-source package (io's multiReader.Read
+	// referencing EOF -> Ident); both must resolve to the shim accessor, not the package's
+	// compiled global, so the single sentinel is shared (err == io.EOF holds everywhere).
+	var idn *ast.Ident
+	switch x := e.(type) {
+	case *ast.SelectorExpr:
+		idn = x.Sel
+	case *ast.Ident:
+		idn = x
+	default:
 		return nil, false
 	}
 	// Accept a package var OR a typed const (e.g. syscall.SIGINT): both name a shim
 	// value the accessor must produce rather than fold to a constant.
-	obj := l.pkg.TypesInfo.Uses[sel.Sel]
+	obj := l.pkg.TypesInfo.Uses[idn]
 	if obj == nil || obj.Pkg() == nil {
 		return nil, false
 	}
