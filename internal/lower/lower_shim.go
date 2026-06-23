@@ -1165,6 +1165,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"bufio.Reader": {
 		"Read": {"Bufio", "Reader_Read"}, "ReadByte": {"Bufio", "Reader_ReadByte"}, "UnreadByte": {"Bufio", "Reader_UnreadByte"}, "Peek": {"Bufio", "Reader_Peek"}, "Discard": {"Bufio", "Reader_Discard"}, "Reset": {"Bufio", "Reader_Reset"}, "Buffered": {"Bufio", "Reader_Buffered"},
+		"ReadString": {"Bufio", "Reader_ReadString"}, "ReadBytes": {"Bufio", "Reader_ReadBytes"},
 	},
 	"bufio.ReadWriter": {
 		"Flush": {"Bufio", "RW_Flush"}, "Write": {"Bufio", "Writer_Write"}, "Read": {"Bufio", "RW_Read"},

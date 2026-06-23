@@ -134,6 +134,33 @@ public static class Bufio
     public static void Reader_Reset(object br, object? r) { var b = (GoBufReader)br; b.R = r; b.Buf.Clear(); b.Pos = 0; }
     public static long Reader_Buffered(object br) => Avail((GoBufReader)br);
 
+    // bufio.Reader.ReadString(delim) (string, error) / ReadBytes(delim) ([]byte, error):
+    // read up to and including the first delim. On EOF before delim, returns the data
+    // read so far with io.EOF (matching Go).
+    public static object?[] Reader_ReadString(object br, int delim)
+    {
+        var (bytes, err) = ReadUntil((GoBufReader)br, (byte)delim);
+        return new object?[] { GoString.FromBytesOwned(bytes), err };
+    }
+    public static object?[] Reader_ReadBytes(object br, int delim)
+    {
+        var (bytes, err) = ReadUntil((GoBufReader)br, (byte)delim);
+        var data = new object?[bytes.Length];
+        for (int i = 0; i < bytes.Length; i++) data[i] = (int)bytes[i];
+        return new object?[] { new GoSlice { Data = data, Off = 0, Len = bytes.Length, Cap = bytes.Length }, err };
+    }
+    private static (byte[], object?) ReadUntil(GoBufReader b, byte delim)
+    {
+        var acc = new System.Collections.Generic.List<byte>();
+        while (true)
+        {
+            if (Avail(b) == 0) { var e = Fill(b, 1); if (Avail(b) == 0) return (acc.ToArray(), e ?? Io.EOFSentinel); }
+            byte c = (byte)b.Buf[b.Pos++];
+            acc.Add(c);
+            if (c == delim) return (acc.ToArray(), null);
+        }
+    }
+
     // bufio.ReadWriter (a Reader+Writer pair; h2c prior-knowledge path, dead under goclr).
     public static object RW_Reader(object rw) => ((GoBufReadWriter)rw).R;
     public static object RW_Writer(object rw) => ((GoBufReadWriter)rw).W;
