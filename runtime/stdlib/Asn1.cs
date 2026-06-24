@@ -10,6 +10,10 @@ public sealed class GoAsn1StructuralError { public string Msg = ""; }
 [GoShim("encoding/asn1.SyntaxError")]
 public sealed class GoAsn1SyntaxError { public string Msg = ""; }
 
+/// <summary>asn1.BitString as a shim type (Bytes []byte + BitLength int).</summary>
+[GoShim("encoding/asn1.BitString")]
+public sealed class GoAsn1BitString { public GoSlice Bytes; public long BitLength; }
+
 /// <summary>Shim for the slice of encoding/asn1 that crypto/x509 and acme use: DER
 /// marshal of the byte-slice / integer / OID forms they emit, over System.Formats.Asn1.</summary>
 public static class Asn1
@@ -63,6 +67,44 @@ public static class Asn1
     public static GoString SyntaxError_Error(object e) => GoString.FromDotNetString("asn1: syntax error: " + ((GoAsn1SyntaxError)e).Msg);
     public static GoString SyntaxError_Msg(object e) => GoString.FromDotNetString(((GoAsn1SyntaxError)e).Msg);
     public static void SyntaxError_SetMsg(object e, GoString v) => ((GoAsn1SyntaxError)e).Msg = v.ToDotNetString();
+
+    // asn1.BitString (shim type): At(i) returns the i-th bit (MSB first), 0 if out of range;
+    // RightAlign returns the bits right-aligned into a fresh byte slice.
+    public static object NewBitString() => new GoAsn1BitString();
+    public static GoSlice BitString_GetBytes(object b) => ((GoAsn1BitString)b).Bytes;
+    public static long BitString_GetBitLength(object b) => ((GoAsn1BitString)b).BitLength;
+    public static void BitString_SetBytes(object b, GoSlice v) => ((GoAsn1BitString)b).Bytes = v;
+    public static void BitString_SetBitLength(object b, long v) => ((GoAsn1BitString)b).BitLength = v;
+    private static byte[] RawBytes(GoSlice s)
+    {
+        if (s.Data == null) return System.Array.Empty<byte>();
+        var r = new byte[s.Len];
+        for (int i = 0; i < s.Len; i++) r[i] = (byte)System.Convert.ToInt64(s.Data[s.Off + i]);
+        return r;
+    }
+    public static long BitString_At(object bo, long i)
+    {
+        var b = (GoAsn1BitString)bo;
+        if (i < 0 || i >= b.BitLength) return 0;
+        var raw = RawBytes(b.Bytes);
+        int x = (int)(i / 8), y = (int)(7 - i % 8);
+        return (raw[x] >> y) & 1;
+    }
+    public static GoSlice BitString_RightAlign(object bo)
+    {
+        var b = (GoAsn1BitString)bo;
+        var raw = RawBytes(b.Bytes);
+        int shift = (int)((8 - b.BitLength % 8) % 8);
+        if (shift == 0 || raw.Length == 0) return b.Bytes;
+        var a = new byte[raw.Length];
+        a[0] = (byte)(raw[0] >> shift);
+        for (int i = 1; i < raw.Length; i++)
+        {
+            a[i] = (byte)(raw[i - 1] << (8 - shift));
+            a[i] |= (byte)(raw[i] >> shift);
+        }
+        return Bytes(a);
+    }
 
     // asn1.NullBytes = []byte{tagNull, 0} = {5, 0}.
     public static object NullBytes() => new GoSlice { Data = new object?[] { 5, 0 }, Off = 0, Len = 2, Cap = 2 };

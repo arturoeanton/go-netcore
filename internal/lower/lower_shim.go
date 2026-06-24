@@ -464,6 +464,7 @@ var opaqueShimTypes = map[string]bool{
 	"net/mail.Address":               true,
 	"encoding/asn1.StructuralError":  true,
 	"encoding/asn1.SyntaxError":      true,
+	"encoding/asn1.BitString":       true,
 	"html/template.Template":         true,
 	"text/template.Template":         true,
 	"net.TCPAddr":                    true,
@@ -822,6 +823,7 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/asn1.StructuralError": {"Msg": {"Asn1", "StructuralError_Msg"}},
 	"encoding/asn1.SyntaxError":     {"Msg": {"Asn1", "SyntaxError_Msg"}},
+	"encoding/asn1.BitString":       {"Bytes": {"Asn1", "BitString_GetBytes"}, "BitLength": {"Asn1", "BitString_GetBitLength"}},
 	"net/http.Server": {
 		"TLSConfig": {"HttpTypes", "Server_TLSConfig"}, "TLSNextProto": {"HttpTypes", "Server_TLSNextProto"}, "Handler": {"HttpTypes", "Server_Handler"},
 		"ErrorLog": {"HttpTypes", "Server_ErrorLog"}, "BaseContext": {"HttpTypes", "Server_BaseContext"}, "ConnState": {"HttpTypes", "Server_ConnState"},
@@ -980,6 +982,7 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/asn1.StructuralError": {"Msg": {"Asn1", "StructuralError_SetMsg"}},
 	"encoding/asn1.SyntaxError":     {"Msg": {"Asn1", "SyntaxError_SetMsg"}},
+	"encoding/asn1.BitString":       {"Bytes": {"Asn1", "BitString_SetBytes"}, "BitLength": {"Asn1", "BitString_SetBitLength"}},
 	"net/http.Request": {
 		"ContentLength": {"Http", "Req_SetContentLength"}, "Trailer": {"Http", "Req_SetTrailer"}, "TLS": {"Http", "Req_SetTLS"}, "Body": {"Http", "Req_SetBody"},
 	},
@@ -1076,6 +1079,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"net/mail.Address":               {"Mail", "NewAddress"},
 	"encoding/asn1.StructuralError":  {"Asn1", "NewStructuralError"},
 	"encoding/asn1.SyntaxError":      {"Asn1", "NewSyntaxError"},
+	"encoding/asn1.BitString":       {"Asn1", "NewBitString"},
 	"net/http.Client":                {"Http", "NewClient"},
 	"log.Logger":                     {"Log", "NewLoggerZero"},
 	"net/http.Transport":             {"HttpTypes", "NewTransport"},
@@ -1594,6 +1598,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/asn1.SyntaxError": {
 		"Error": {"Asn1", "SyntaxError_Error"},
+	},
+	"encoding/asn1.BitString": {
+		"At": {"Asn1", "BitString_At"}, "RightAlign": {"Asn1", "BitString_RightAlign"},
 	},
 	"net/mail.AddressParser": {
 		"Parse": {"Mail", "AddressParser_Parse"}, "ParseList": {"Mail", "AddressParser_ParseList"},
