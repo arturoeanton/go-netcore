@@ -89,6 +89,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"MapOf": {"Reflect", "MapOf"}, "SliceOf": {"Reflect", "SliceOf"}, "ArrayOf": {"Reflect", "ArrayOf"},
 		"MakeFunc": {"Reflect", "MakeFunc"}, "Copy": {"Reflect", "Copy"}, "Indirect": {"Reflect", "Indirect"},
 		"Append": {"Reflect", "Append"}, "Swapper": {"Reflect", "Swapper"},
+		"AppendSlice": {"Reflect", "AppendSlice"}, "MakeMapWithSize": {"Reflect", "MakeMapWithSize"},
 	},
 	"encoding/json": {
 		"Marshal": {"Json", "Marshal"}, "MarshalIndent": {"Json", "MarshalIndent"},

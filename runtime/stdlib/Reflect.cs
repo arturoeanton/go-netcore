@@ -116,6 +116,18 @@ public static class Reflect
     }
     public static object MakeMap(object typ) =>
         new GoReflectValue { V = GoCLR.Runtime.GoMaps.Make(), Desc = TDesc(typ) };
+    // reflect.MakeMapWithSize(typ, n): the size hint does not affect a GoMap, so it is MakeMap.
+    public static object MakeMapWithSize(object typ, long n) => MakeMap(typ);
+
+    // reflect.AppendSlice(s, t) Value: append all of slice-Value t's elements to slice-Value s.
+    public static object AppendSlice(object v, object t)
+    {
+        GoSlice s = RVal(v) is GoSlice gs ? gs : default;
+        GoSlice add = RVal(t) is GoSlice ts ? ts : default;
+        for (int i = 0; i < add.Len; i++)
+            s = GoCLR.Runtime.GoSlices.AppendOne(s, add.Data![add.Off + i]);
+        return new GoReflectValue { V = s };
+    }
 
     // The boxed zero value for a type descriptor's kind.
     private static object? ZeroForDesc(GoTypeDesc? d)
