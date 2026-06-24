@@ -243,6 +243,50 @@ public static class Big
         try { ((GoBigInt)z).V = BigInteger.Parse(s); return null; }
         catch { return new GoError(GoString.FromDotNetString("math/big: cannot unmarshal \"" + s + "\" into a *big.Int")); }
     }
+    // Gob format: [version<<1 | sign] followed by the big-endian magnitude (empty for 0).
+    public static object?[] Int_GobEncode(object x)
+    {
+        var v = V(x);
+        int header = (1 << 1) | (v.Sign < 0 ? 1 : 0);
+        var mag = Int_Bytes(x);
+        var d = new object?[1 + mag.Len];
+        d[0] = header;
+        for (int i = 0; i < mag.Len; i++) d[1 + i] = mag.Data![mag.Off + i];
+        return new object?[] { new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length }, null };
+    }
+    public static object? Int_GobDecode(object z, GoSlice buf)
+    {
+        if (buf.Len == 0) { ((GoBigInt)z).V = 0; return null; }
+        int header = (int)System.Convert.ToInt64(buf.Data![buf.Off]);
+        bool neg = (header & 1) != 0;
+        BigInteger mag = 0;
+        for (int i = 1; i < buf.Len; i++) mag = (mag << 8) | (byte)System.Convert.ToInt64(buf.Data![buf.Off + i]);
+        ((GoBigInt)z).V = neg ? -mag : mag;
+        return null;
+    }
+    public static object?[] Int_AppendText(object x, GoSlice b) => new object?[] { Int_Append(x, b, 10), null };
+
+    // big.Jacobi(x, y) int — the Jacobi symbol (x/y); y must be odd and > 0.
+    public static long Jacobi(object xo, object yo)
+    {
+        BigInteger a = V(xo), n = V(yo);
+        a %= n; if (a.Sign < 0) a += n;
+        int result = 1;
+        while (!a.IsZero)
+        {
+            while (a.IsEven)
+            {
+                a >>= 1;
+                int r8 = (int)(n % 8);
+                if (r8 == 3 || r8 == 5) result = -result;
+            }
+            (a, n) = (n, a);
+            if ((int)(a % 4) == 3 && (int)(n % 4) == 3) result = -result;
+            a %= n;
+        }
+        return n == BigInteger.One ? result : 0;
+    }
+
     public static GoSlice Int_Append(object x, GoSlice buf, long base_)
     {
         var extra = System.Text.Encoding.ASCII.GetBytes(Int_Text(x, base_).ToDotNetString());

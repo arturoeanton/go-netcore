@@ -190,7 +190,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Default": {"Log", "Default"}, "Output": {"Log", "Output"}, "SetOutput": {"Log", "SetOutput"}, "Writer": {"Log", "Writer"},
 	},
 	"math/big": {
-		"NewInt": {"Big", "NewInt"}, "NewFloat": {"Big", "NewFloat"},
+		"NewInt": {"Big", "NewInt"}, "NewFloat": {"Big", "NewFloat"}, "Jacobi": {"Big", "Jacobi"},
 	},
 	"path": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
@@ -1521,7 +1521,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Bit": {"Big", "Int_Bit"}, "SetBit": {"Big", "Int_SetBit"}, "TrailingZeroBits": {"Big", "Int_TrailingZeroBits"}, "AndNot": {"Big", "Int_AndNot"},
 		"MulRange": {"Big", "Int_MulRange"}, "Binomial": {"Big", "Int_Binomial"}, "Float64": {"Big", "Int_Float64"}, "ModInverse": {"Big", "Int_ModInverse"},
 		"MarshalText": {"Big", "Int_MarshalText"}, "UnmarshalText": {"Big", "Int_UnmarshalText"}, "MarshalJSON": {"Big", "Int_MarshalJSON"}, "UnmarshalJSON": {"Big", "Int_UnmarshalJSON"},
-		"Append": {"Big", "Int_Append"},
+		"Append": {"Big", "Int_Append"}, "AppendText": {"Big", "Int_AppendText"}, "GobEncode": {"Big", "Int_GobEncode"}, "GobDecode": {"Big", "Int_GobDecode"},
 	},
 	"math/big.Float": {
 		"SetInt": {"Big", "Float_SetInt"}, "Sub": {"Big", "Float_Sub"}, "Cmp": {"Big", "Float_Cmp"},
