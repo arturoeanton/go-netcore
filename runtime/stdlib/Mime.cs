@@ -5,6 +5,90 @@ using GoCLR.Runtime;
 /// <summary>Shim for a subset of Go's <c>mime</c> (extension -> content type).</summary>
 public static class Mime
 {
+    // ---- RFC 2047 encoded-word (mime.WordEncoder.Encode), ported from encodedword.go ----
+    private const int MaxContentLen = 75 - 10 - 2;        // maxEncodedWordLen - len("=?UTF-8?q?") - len("?=")
+    private const int MaxBase64Len = MaxContentLen / 4 * 3; // base64.DecodedLen(maxContentLen)
+
+    public static GoString WordEncoder_Encode(int e, GoString charsetG, GoString sG)
+    {
+        // Operate on the raw bytes (Go's mime works on s[i] bytes, including non-UTF-8 input
+        // like Latin-1, which a UTF-8 round-trip would corrupt).
+        byte[] b = sG.Bytes;
+        string charset = charsetG.ToDotNetString();
+        if (!NeedsEncodingBytes(b)) return sG;
+        var buf = new System.Text.StringBuilder();
+        OpenWord(buf, charset, e);
+        if (e == 'b') BEncode(buf, charset, b, e); else QEncode(buf, charset, b, e);
+        buf.Append("?=");
+        return GoString.FromDotNetString(buf.ToString());
+    }
+    private static bool NeedsEncodingBytes(byte[] b)
+    {
+        foreach (byte c in b) if ((c > '~' || c < ' ') && c != '\t') return true;
+        return false;
+    }
+
+    private static bool IsUtf8(string charset) => string.Equals(charset, "UTF-8", System.StringComparison.OrdinalIgnoreCase);
+    private static void OpenWord(System.Text.StringBuilder buf, string charset, int e)
+    {
+        buf.Append("=?"); buf.Append(charset); buf.Append('?'); buf.Append((char)e); buf.Append('?');
+    }
+    private static void SplitWord(System.Text.StringBuilder buf, string charset, int e) { buf.Append("?= "); OpenWord(buf, charset, e); }
+    // utf8.DecodeRune length: 1 for ASCII and for any invalid sequence (so a lone high byte
+    // advances by one, matching Go), 2-4 for a well-formed multi-byte rune.
+    private static int RuneLen(byte[] s, int i)
+    {
+        byte b = s[i];
+        if (b < 0x80) return 1;
+        int n = b < 0xC0 ? 1 : b < 0xE0 ? 2 : b < 0xF0 ? 3 : b < 0xF8 ? 4 : 1;
+        if (n == 1 || i + n > s.Length) return 1;
+        for (int k = 1; k < n; k++) if ((s[i + k] & 0xC0) != 0x80) return 1;
+        return n;
+    }
+
+    private static void WriteQString(System.Text.StringBuilder buf, byte[] s, int off, int len)
+    {
+        for (int i = off; i < off + len; i++)
+        {
+            byte b = s[i];
+            if (b == ' ') buf.Append('_');
+            else if (b >= '!' && b <= '~' && b != '=' && b != '?' && b != '_') buf.Append((char)b);
+            else { buf.Append('='); buf.Append(UpperHex[b >> 4]); buf.Append(UpperHex[b & 0x0f]); }
+        }
+    }
+    private static void QEncode(System.Text.StringBuilder buf, string charset, byte[] s, int e)
+    {
+        if (!IsUtf8(charset)) { WriteQString(buf, s, 0, s.Length); return; }
+        int currentLen = 0, runeLen;
+        for (int i = 0; i < s.Length; i += runeLen)
+        {
+            byte b = s[i];
+            int encLen;
+            if (b >= ' ' && b <= '~' && b != '=' && b != '?' && b != '_') { runeLen = 1; encLen = 1; }
+            else { runeLen = RuneLen(s, i); encLen = 3 * runeLen; }
+            if (currentLen + encLen > MaxContentLen) { SplitWord(buf, charset, e); currentLen = 0; }
+            WriteQString(buf, s, i, runeLen);
+            currentLen += encLen;
+        }
+    }
+    private static void BEncode(System.Text.StringBuilder buf, string charset, byte[] s, int e)
+    {
+        if (!IsUtf8(charset) || (s.Length + 2) / 3 * 4 <= MaxContentLen) { buf.Append(System.Convert.ToBase64String(s)); return; }
+        int currentLen = 0, last = 0, runeLen;
+        for (int i = 0; i < s.Length; i += runeLen)
+        {
+            runeLen = RuneLen(s, i);
+            if (currentLen + runeLen <= MaxBase64Len) currentLen += runeLen;
+            else
+            {
+                buf.Append(System.Convert.ToBase64String(s, last, i - last));
+                SplitWord(buf, charset, e);
+                last = i; currentLen = runeLen;
+            }
+        }
+        buf.Append(System.Convert.ToBase64String(s, last, s.Length - last));
+    }
+
     private static readonly System.Collections.Generic.Dictionary<string, string> Types = new()
     {
         [".html"] = "text/html; charset=utf-8", [".htm"] = "text/html; charset=utf-8",

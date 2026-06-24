@@ -1192,6 +1192,7 @@ var binaryMethods = map[string]shimFunc{
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
 	"runtime.Frames": {"Next": {"Goruntime", "Frames_Next"}},
+	"mime.WordEncoder": {"Encode": {"Mime", "WordEncoder_Encode"}},
 	"strconv.NumError": {
 		"Error": {"Strconv", "NumError_Error"}, "Unwrap": {"Strconv", "NumError_Unwrap"},
 	},
