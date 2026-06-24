@@ -132,7 +132,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ParsePKCS8PrivateKey": {"Crypto509", "ParsePKCS8PrivateKey"}, "CreateCertificateRequest": {"Crypto509", "CreateCertificateRequest"},
 		"ParsePKIXPublicKey": {"CryptoSign", "ParsePKIXPublicKey"}, "ParsePKCS1PublicKey": {"CryptoSign", "ParsePKCS1PublicKey"}, "DecryptPEMBlock": {"CryptoSign", "DecryptPEMBlock"},
 	},
-	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}, "Sum512": {"Crypto", "Sha512Sum512"}, "Sum384": {"Crypto", "Sha512Sum384"}},
+	"crypto/sha512": {"New": {"Crypto", "Sha512New"}, "New384": {"Crypto", "Sha384New"}, "Sum512": {"Crypto", "Sha512Sum512"}, "Sum384": {"Crypto", "Sha512Sum384"},
+		"New512_224": {"Crypto", "Sha512_224New"}, "New512_256": {"Crypto", "Sha512_256New"}, "Sum512_224": {"Crypto", "Sha512Sum512_224"}, "Sum512_256": {"Crypto", "Sha512Sum512_256"}},
 	"crypto/md5":    {"New": {"Crypto", "Md5New"}, "Sum": {"Crypto", "Md5Sum"}},
 	"crypto/sha3": {
 		"New224": {"Crypto", "Sha3_224New"}, "New256": {"Crypto", "Sha3_256New"}, "New384": {"Crypto", "Sha3_384New"}, "New512": {"Crypto", "Sha3_512New"},

@@ -743,7 +743,24 @@ public static class Fmt
     // A null name (a bare slice, type erased) defaults to byte semantics — the common
     // %x case is hex-encoding a []byte; a []uint8/[]byte tag formats as a hex string,
     // any other slice type recurses element-wise.
-    private static bool IsByteSliceName(string? name) => name == null || name == "[]uint8" || name == "[]byte";
+    // Whether a slice/array static type is a byte sequence — so %x/%X/%q format it as
+    // contiguous (zero-padded) hex / a quoted string. Matches []byte and a fixed-size
+    // [N]byte array (sha512.Sum512 returns [64]byte, etc.).
+    private static bool IsByteSliceName(string? name)
+    {
+        if (name == null || name == "[]uint8" || name == "[]byte") return true;
+        if (name.Length > 3 && name[0] == '[')
+        {
+            int i = 1;
+            while (i < name.Length && name[i] >= '0' && name[i] <= '9') i++;
+            if (i > 1 && i < name.Length && name[i] == ']')
+            {
+                string elem = name.Substring(i + 1);
+                return elem == "uint8" || elem == "byte";
+            }
+        }
+        return false;
+    }
 
     // Element-wise verb recursion: each element is formatted with the same verb/flags,
     // the way Go applies a scalar verb across a slice/array ("[1 2]") or map ("map[k:v]").

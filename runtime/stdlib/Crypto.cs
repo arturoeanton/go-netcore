@@ -52,7 +52,7 @@ public sealed class GoShake
 }
 
 /// <summary>Shims for crypto/sha256, sha1, sha512, md5, hmac, and crypto/rand.</summary>
-public static class Crypto
+public static partial class Crypto
 {
     // crypto.Hash is a named uint (its constants fold to their enum values: MD5=2,
     // SHA1=3, SHA256=5, SHA384=6, SHA512=7); its methods operate on that value.
@@ -84,6 +84,12 @@ public static class Crypto
     public static GoSlice Sha256Sum224(GoSlice d) => Slice(SHA256.HashData(Bytes(d))[..28], default); // SHA-224 over SHA-256 core not exposed; truncate
     public static GoSlice Sha512Sum512(GoSlice d) => Slice(SHA512.HashData(Bytes(d)), default);
     public static GoSlice Sha512Sum384(GoSlice d) => Slice(SHA384.HashData(Bytes(d)), default);
+    // SHA-512/224 and SHA-512/256: the SHA-512 core with FIPS 180-4 alternate IVs (no .NET
+    // primitive); ported below in CryptoSha512.cs.
+    public static object Sha512_224New() => H("SHA512/224", 28, 128);
+    public static object Sha512_256New() => H("SHA512/256", 32, 128);
+    public static GoSlice Sha512Sum512_224(GoSlice d) => Slice(Sha512Core(Bytes(d), Iv512_224, 28), default);
+    public static GoSlice Sha512Sum512_256(GoSlice d) => Slice(Sha512Core(Bytes(d), Iv512_256, 32), default);
     public static GoSlice Sha1Sum(GoSlice d) => Slice(SHA1.HashData(Bytes(d)), default);
     public static GoSlice Md5Sum(GoSlice d) => Slice(MD5.HashData(Bytes(d)), default);
 
@@ -196,6 +202,8 @@ public static class Crypto
         }
         if (h.Algo == "fnv128") return Fnv128(data, false);
         if (h.Algo == "fnv128a") return Fnv128(data, true);
+        if (h.Algo == "SHA512/224") return Sha512Core(data, Iv512_224, 28);
+        if (h.Algo == "SHA512/256") return Sha512Core(data, Iv512_256, 32);
         if (h.Algo.StartsWith("SHA3-", System.StringComparison.Ordinal)) return Sha3Digest(h.Algo, data);
         using HashAlgorithm ha = h.Algo switch
         {
