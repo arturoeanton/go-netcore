@@ -174,6 +174,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/aes":      {"NewCipher": {"Aes", "NewCipher"}},
 	"crypto/cipher":   {"NewGCM": {"Aes", "NewGCM"}},
 	"hash/fnv":        {"New32": {"Hashes", "Fnv32"}, "New32a": {"Hashes", "Fnv32a"}, "New64": {"Hashes", "Fnv64"}, "New64a": {"Hashes", "Fnv64a"}, "New128": {"Hashes", "Fnv128"}, "New128a": {"Hashes", "Fnv128a"}},
+	"hash/crc64":      {"MakeTable": {"Hashes", "Crc64MakeTable"}, "New": {"Hashes", "Crc64New"}, "Checksum": {"Hashes", "Crc64Checksum"}, "Update": {"Hashes", "Crc64Update"}},
 	"hash/crc32":      {"ChecksumIEEE": {"Hashes", "Crc32ChecksumIEEE"}, "Update": {"Hashes", "Crc32Update"}, "NewIEEE": {"Hashes", "Crc32NewIEEE"}, "MakeTable": {"Hashes", "Crc32MakeTable"}, "Checksum": {"Hashes", "Crc32Checksum"}, "New": {"Hashes", "Crc32New"}},
 	"hash/adler32":    {"Checksum": {"Hashes", "Adler32Checksum"}, "New": {"Hashes", "Adler32New"}},
 	"compress/gzip":   {"NewWriter": {"Compress", "GzipNewWriter"}, "NewWriterLevel": {"Compress", "GzipNewWriterLevel"}, "NewReader": {"Compress", "GzipNewReader"}},

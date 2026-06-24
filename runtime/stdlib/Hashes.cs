@@ -4,7 +4,7 @@ using GoCLR.Runtime;
 
 /// <summary>A hash.Hash32/Hash64 handle (FNV / CRC32 / CRC64 / Adler32).</summary>
 public sealed class GoHash32 { public uint H; public string Algo = ""; public GoPtr? Tab; }
-public sealed class GoHash64 { public ulong H; public string Algo = ""; }
+public sealed class GoHash64 { public ulong H; public string Algo = ""; public GoCLR.Runtime.GoPtr? Tab; }
 
 /// <summary>Shims for hash/fnv, hash/crc32, hash/crc64, hash/adler32.</summary>
 public static class Hashes
@@ -51,6 +51,7 @@ public static class Hashes
     public static object?[] H64_Write(object ho, GoSlice p)
     {
         var h = (GoHash64)ho;
+        if (h.Algo == "crc64") { h.H = Crc64Update(h.H, h.Tab!, p); return new object?[] { (long)p.Len, null }; }
         foreach (byte b in B(p))
         {
             if (h.Algo == "fnv64a") { h.H ^= b; h.H *= 1099511628211ul; }
@@ -60,7 +61,32 @@ public static class Hashes
     }
     public static ulong H64_Sum64(object ho) => ((GoHash64)ho).H;
     public static long H64_Size(object ho) => 8;
-    public static void H64_Reset(object ho) => ((GoHash64)ho).H = 14695981039346656037ul;
+    public static void H64_Reset(object ho) => ((GoHash64)ho).H = ((GoHash64)ho).Algo == "crc64" ? 0ul : 14695981039346656037ul;
+
+    // ---- CRC64 (hash/crc64) — mirrors CRC32 with 64-bit reversed polynomials ----
+    private static ulong[] BuildCrc64(ulong poly)
+    {
+        var t = new ulong[256];
+        for (uint i = 0; i < 256; i++)
+        {
+            ulong c = i;
+            for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? poly ^ (c >> 1) : c >> 1;
+            t[i] = c;
+        }
+        return t;
+    }
+    private static ulong[] Table64Of(GoCLR.Runtime.GoPtr? tab) => tab?.Value as ulong[] ?? BuildCrc64(0xC96C5795D7870F42ul);
+    // crc64.MakeTable(poly *Table): the poly constants are ISO=0xD800000000000000, ECMA=0xC96C5795D7870F42.
+    public static GoPtr Crc64MakeTable(ulong poly) => new() { Value = BuildCrc64(poly) };
+    public static object Crc64New(GoPtr tab) => new GoHash64 { H = 0, Algo = "crc64", Tab = tab };
+    public static ulong Crc64Checksum(GoSlice data, GoCLR.Runtime.GoPtr tab) => Crc64Update(0, tab, data);
+    public static ulong Crc64Update(ulong crc, GoCLR.Runtime.GoPtr tab, GoSlice p)
+    {
+        var t = Table64Of(tab);
+        crc = ~crc;
+        foreach (byte b in B(p)) crc = t[(byte)(crc ^ b)] ^ (crc >> 8);
+        return ~crc;
+    }
 
     // ---- CRC32 ----
     // Build a 256-entry CRC table for a reversed polynomial (Go's crc32.simpleMakeTable).
