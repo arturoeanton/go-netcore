@@ -63,4 +63,18 @@ public static class Goruntime
     public static void Goexit() => throw new GoExitException();
     // runtime.Version(): a Go version string (gin parses it to check Go >= 1.18).
     public static GoString Version() => GoString.FromDotNetString("go1.22.0");
+
+    // --- no-op / trivial runtime functions (no cgo, no profiler under goclr) ---
+    public static long NumCgoCall() => 0;
+    public static void KeepAlive(object? x) { }
+    public static void Breakpoint() { }                 // no-op (Go would trap into a debugger)
+    public static void LockOSThread() { }
+    public static void UnlockOSThread() { }
+    public static void SetFinalizer(object? obj, object? finalizer) { }   // goclr GC differs; no-op
+    public static void SetBlockProfileRate(long rate) { }
+    public static void SetCPUProfileRate(long hz) { }
+    public static GoString GOROOT() => GoString.FromDotNetString(System.Environment.GetEnvironmentVariable("GOROOT") ?? "");
+
+    private static long _mutexProfileFraction;
+    public static long SetMutexProfileFraction(long rate) { long old = _mutexProfileFraction; if (rate >= 0) _mutexProfileFraction = rate; return old; }
 }

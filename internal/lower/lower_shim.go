@@ -52,6 +52,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Callers": {"Goruntime", "Callers"}, "CallersFrames": {"Goruntime", "CallersFrames"}, "Goexit": {"Goruntime", "Goexit"},
 		"NumCPU": {"Goruntime", "NumCPU"}, "NumGoroutine": {"Goruntime", "NumGoroutine"},
 		"GC": {"Goruntime", "GC"}, "Gosched": {"Goruntime", "Gosched"}, "Version": {"Goruntime", "Version"},
+		"NumCgoCall": {"Goruntime", "NumCgoCall"}, "KeepAlive": {"Goruntime", "KeepAlive"}, "Breakpoint": {"Goruntime", "Breakpoint"},
+		"LockOSThread": {"Goruntime", "LockOSThread"}, "UnlockOSThread": {"Goruntime", "UnlockOSThread"}, "SetFinalizer": {"Goruntime", "SetFinalizer"},
+		"SetBlockProfileRate": {"Goruntime", "SetBlockProfileRate"}, "SetCPUProfileRate": {"Goruntime", "SetCPUProfileRate"},
+		"SetMutexProfileFraction": {"Goruntime", "SetMutexProfileFraction"}, "GOROOT": {"Goruntime", "GOROOT"},
 	},
 	"flag": {
 		"Lookup": {"Flag", "Lookup"},
