@@ -59,4 +59,36 @@ public static class Textproto
         }
         return GoString.FromDotNetString(new string(b));
     }
+
+    // ---- MIMEHeader (map[string][]string) methods: canonical-key map operations ----
+    private static GoSlice SliceOf1(GoString v) =>
+        new() { Data = new object?[] { v }, Off = 0, Len = 1, Cap = 1 };
+    private static GoSlice Append1(GoSlice old, GoString v)
+    {
+        int n = old.Data == null ? 0 : old.Len;
+        var d = new object?[n + 1];
+        for (int i = 0; i < n; i++) d[i] = old.Data![old.Off + i];
+        d[n] = v;
+        return new GoSlice { Data = d, Off = 0, Len = n + 1, Cap = n + 1 };
+    }
+
+    public static GoString MIMEHeader_Get(GoMap? h, GoString key)
+    {
+        var v = GoMaps.Get(h, CanonicalMIMEHeaderKey(key), null);
+        if (v is GoSlice s && s.Len > 0 && s.Data != null) return (GoString)s.Data[s.Off]!;
+        return GoString.FromDotNetString("");
+    }
+    public static GoSlice MIMEHeader_Values(GoMap? h, GoString key) =>
+        GoMaps.Get(h, CanonicalMIMEHeaderKey(key), null) is GoSlice s ? s
+            : new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 };
+    public static void MIMEHeader_Set(GoMap? h, GoString key, GoString value) =>
+        GoMaps.Set(h, CanonicalMIMEHeaderKey(key), SliceOf1(value));
+    public static void MIMEHeader_Add(GoMap? h, GoString key, GoString value)
+    {
+        var ck = CanonicalMIMEHeaderKey(key);
+        var old = GoMaps.Get(h, ck, null) is GoSlice es ? es : new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 };
+        GoMaps.Set(h, ck, Append1(old, value));
+    }
+    public static void MIMEHeader_Del(GoMap? h, GoString key) =>
+        GoMaps.Delete(h, CanonicalMIMEHeaderKey(key));
 }

@@ -1557,6 +1557,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net.IPMask": {
 		"Size": {"Net", "IPMask_Size"}, "String": {"Net", "IPMask_String"},
 	},
+	"net/textproto.MIMEHeader": {
+		"Get": {"Textproto", "MIMEHeader_Get"}, "Set": {"Textproto", "MIMEHeader_Set"}, "Add": {"Textproto", "MIMEHeader_Add"},
+		"Del": {"Textproto", "MIMEHeader_Del"}, "Values": {"Textproto", "MIMEHeader_Values"},
+	},
 	"crypto/x509.PublicKeyAlgorithm": {
 		"String": {"Crypto509", "PublicKeyAlgorithm_String"},
 	},
