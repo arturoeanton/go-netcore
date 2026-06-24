@@ -4,7 +4,8 @@ using System.Collections.Generic;
 using GoCLR.Runtime;
 
 /// <summary>A single flag.Flag: its name, usage, kind and the pointer cell holding the value.</summary>
-public sealed class GoFlag { public string Name = "", Usage = "", DefValue = ""; public GoPtr Ptr = new(); public int Kind; }
+[GoShim("flag.Flag")]
+public sealed class GoFlag { public string Name = "", Usage = "", DefValue = ""; public GoPtr Ptr = new(); public int Kind; public object? Callback; }
 
 /// <summary>A flag.FlagSet. Kind: 0=bool 1=int 2=int64 3=uint 4=uint64 5=float64 6=string 7=duration.</summary>
 [GoShim("flag.FlagSet")]
@@ -16,6 +17,7 @@ public sealed class GoFlagSet
     public readonly Dictionary<string, GoFlag> Actual = new();
     public List<string> Args = new();
     public bool Parsed;
+    public object? Out;                       // SetOutput target (nil → os.Stderr)
 }
 
 /// <summary>Shim for flag: define typed flags, parse argv. Parsing is ported from
@@ -29,11 +31,56 @@ public static class Flag
     public static object ErrHelpVar() => ErrHelpSentinel;
     private static readonly GoError ErrHelpSentinel = new(GoString.FromDotNetString("flag: help requested"));
 
-    // flag.Lookup(name) *flag.Flag: nil — *flag.Flag field access is not yet modelled, so
-    // Lookup is reported as absent (kept for libraries that only probe for testing flags).
-    public static GoPtr? Lookup(GoString name) => null;
-
     private static GoFlagSet FS(object o) => (GoFlagSet)o;
+
+    // ---- flag.Flag accessors (the *Flag handed to a Visit/VisitAll callback) -------------
+    public static GoString Flag_Name(object f) => GoString.FromDotNetString(((GoFlag)f).Name);
+    public static GoString Flag_Usage(object f) => GoString.FromDotNetString(((GoFlag)f).Usage);
+    public static GoString Flag_DefValue(object f) => GoString.FromDotNetString(((GoFlag)f).DefValue);
+    public static object? Flag_Value(object f) => ((GoFlag)f).Ptr; // the flag.Value (a *cell)
+
+    // flag.Lookup / (*FlagSet).Lookup(name) *flag.Flag, or nil.
+    public static object? FS_Lookup(object fs, GoString name) => FS(fs).Formal.TryGetValue(name.ToDotNetString(), out var fl) ? fl : null;
+    public static object? Lookup(GoString name) => FS_Lookup(_cmd, name);
+
+    // Visit / VisitAll: call fn(*Flag) for each flag in lexicographic name order. VisitAll
+    // walks every defined flag; Visit only those that have been set.
+    private static void VisitFlags(Dictionary<string, GoFlag> m, GoClosure fn)
+    {
+        var names = new List<string>(m.Keys);
+        names.Sort(System.StringComparer.Ordinal);
+        foreach (var n in names) GoRuntime.InvokeArgs(fn, m[n]);
+    }
+    public static void FS_VisitAll(object fs, GoClosure fn) => VisitFlags(FS(fs).Formal, fn);
+    public static void FS_Visit(object fs, GoClosure fn) => VisitFlags(FS(fs).Actual, fn);
+    public static void VisitAll(GoClosure fn) => FS_VisitAll(_cmd, fn);
+    public static void Visit(GoClosure fn) => FS_Visit(_cmd, fn);
+
+    // (*FlagSet).Init(name, errorHandling): reset name + error-handling (clears state).
+    public static void FS_Init(object fs, GoString name, long errorHandling)
+    {
+        var f = FS(fs); f.Name = name.ToDotNetString(); f.ErrorHandling = (int)errorHandling;
+        f.Formal.Clear(); f.Actual.Clear(); f.Args = new(); f.Parsed = false;
+    }
+    // (*FlagSet).Output()/SetOutput(w): the destination for usage/errors (Stderr if unset).
+    public static object? FS_Output(object fs) => FS(fs).Out ?? Os.Stderr();
+    public static void FS_SetOutput(object fs, object? w) => FS(fs).Out = w;
+    public static void SetOutput(object? w) => _cmd.Out = w;
+
+    // Func/BoolFunc(name, usage, fn): a flag whose Set calls fn(value). DefValue is "".
+    public static void FS_Func(object fs, GoString name, GoString usage, GoClosure fn) =>
+        FS(fs).Formal[name.ToDotNetString()] = new GoFlag { Name = name.ToDotNetString(), Usage = usage.ToDotNetString(), Kind = 8, Callback = fn, DefValue = "" };
+    public static void FS_BoolFunc(object fs, GoString name, GoString usage, GoClosure fn) => FS_Func(fs, name, usage, fn);
+    public static void Func(GoString name, GoString usage, GoClosure fn) => FS_Func(_cmd, name, usage, fn);
+    public static void BoolFunc(GoString name, GoString usage, GoClosure fn) => FS_Func(_cmd, name, usage, fn);
+
+    // Var(value, name, usage): a flag backed by a custom flag.Value (Set/String via bridge).
+    public static void FS_Var(object fs, object? value, GoString name, GoString usage)
+    {
+        string def = value != null && Bridge.HasMethod(value, "String") && Bridge.CallMethod(value, "String") is GoString gs ? gs.ToDotNetString() : "";
+        FS(fs).Formal[name.ToDotNetString()] = new GoFlag { Name = name.ToDotNetString(), Usage = usage.ToDotNetString(), Kind = 9, Callback = value, DefValue = def };
+    }
+    public static void Var(object? value, GoString name, GoString usage) => FS_Var(_cmd, value, name, usage);
 
     public static object NewFlagSet(GoString name, long errorHandling) =>
         new GoFlagSet { Name = name.ToDotNetString(), ErrorHandling = (int)errorHandling };
@@ -70,6 +117,17 @@ public static class Flag
             case 5: { var r = Strconv.ParseFloat(GoString.FromDotNetString(s), 64); if (r[1] != null) return NumErr("ParseFloat", s, r[1]); fl.Ptr.Value = (double)r[0]!; return null; }
             case 6: fl.Ptr.Value = GoString.FromDotNetString(s); return null;
             case 7: { var r = Time.ParseDuration(GoString.FromDotNetString(s)); if (r[1] != null) return "parse error"; fl.Ptr.Value = (long)r[0]!; return null; }
+            case 8: // Func/BoolFunc: invoke the callback closure (it returns an error or nil).
+            {
+                var res = GoRuntime.InvokeArgs((GoClosure)fl.Callback!, GoString.FromDotNetString(s));
+                return res is GoError g ? g.Error().ToDotNetString() : null;
+            }
+            case 9: // Var: drive the custom flag.Value's Set method via the bridge.
+            {
+                var res = fl.Callback != null && Bridge.HasMethod(fl.Callback, "Set")
+                    ? Bridge.CallMethod(fl.Callback, "Set", GoString.FromDotNetString(s)) : null;
+                return res is GoError g ? g.Error().ToDotNetString() : null;
+            }
         }
         return null;
     }
