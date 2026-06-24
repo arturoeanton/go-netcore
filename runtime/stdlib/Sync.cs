@@ -83,6 +83,36 @@ public static class Sync
         lock (once.Gate) { if (once.Done == 0) { once.Done = 1; GoRuntime.Invoke(f); } }
     }
 
+    // sync.OnceFunc/OnceValue/OnceValues: return a closure that runs f at most once,
+    // caching its result for OnceValue(s).
+    public static GoClosure OnceFunc(GoClosure f)
+    {
+        var done = new bool[1];
+        var gate = new object();
+        return NativeClosures.Make(_ => { lock (gate) { if (!done[0]) { done[0] = true; GoRuntime.Invoke(f); } } return null; });
+    }
+    public static GoClosure OnceValue(GoClosure f)
+    {
+        var done = new bool[1];
+        var cache = new object?[1];
+        var gate = new object();
+        return NativeClosures.Make(_ => { lock (gate) { if (!done[0]) { done[0] = true; cache[0] = GoRuntime.Invoke(f); } } return cache[0]; });
+    }
+    public static GoClosure OnceValues(GoClosure f)
+    {
+        var done = new bool[1];
+        var cache = new object?[1];
+        var gate = new object();
+        return NativeClosures.Make(_ => { lock (gate) { if (!done[0]) { done[0] = true; cache[0] = GoRuntime.Invoke(f); } } return cache[0]; });
+    }
+
+    // sync.WaitGroup.Go(f) (Go 1.25): Add(1), run f in a goroutine, Done on return.
+    public static void WaitGroup_Go(object w, GoClosure f)
+    {
+        WaitGroup_Add(w, 1);
+        GoRuntime.Go(() => { try { GoRuntime.Invoke(f); } finally { WaitGroup_Done(w); } });
+    }
+
     public static void Map_Store(object m, object key, object? val) => ((GoSyncMap)m).D[key] = val;
     public static object?[] Map_Load(object m, object key) =>
         ((GoSyncMap)m).D.TryGetValue(key, out var v) ? new object?[] { v, true } : new object?[] { null, false };
@@ -106,6 +136,22 @@ public static class Sync
     }
     public static object?[] Map_LoadAndDelete(object m, object key) =>
         ((GoSyncMap)m).D.TryRemove(key, out var v) ? new object?[] { v, true } : new object?[] { null, false };
+    // sync.Map.Swap(key, value) (previous any, loaded bool).
+    public static object?[] Map_Swap(object m, object key, object? val)
+    {
+        var d = ((GoSyncMap)m).D;
+        bool loaded = d.TryGetValue(key, out var prev);
+        d[key] = val;
+        return new object?[] { loaded ? prev : null, loaded };
+    }
+    // sync.Map.CompareAndSwap(key, old, new) bool — value equality via the default comparer.
+    public static bool Map_CompareAndSwap(object m, object key, object? old, object? nw) =>
+        ((GoSyncMap)m).D.TryUpdate(key, nw, old);
+    // sync.Map.CompareAndDelete(key, old) bool.
+    public static bool Map_CompareAndDelete(object m, object key, object? old) =>
+        ((System.Collections.Generic.ICollection<System.Collections.Generic.KeyValuePair<object, object?>>)((GoSyncMap)m).D)
+            .Remove(new System.Collections.Generic.KeyValuePair<object, object?>(key, old));
+    public static void Map_Clear(object m) => ((GoSyncMap)m).D.Clear();
 
     // sync.Cond: condition variable. L is the associated Locker. goclr's Wait/Signal
     // use a .NET monitor; the associated lock is not released across Wait (that would

@@ -257,7 +257,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Uint64": {"Rand", "Uint64"}, "Uint32": {"Rand", "Uint32"}, "Int31": {"Rand", "Int31"}, "Read": {"Rand", "Read"},
 		"Shuffle": {"Rand", "Shuffle"}, "Int31n": {"Rand", "Int31n"}, "Float32": {"Rand", "Float32"},
 	},
-	"sync": {"NewCond": {"Sync", "NewCond"}},
+	"sync": {"NewCond": {"Sync", "NewCond"}, "OnceFunc": {"Sync", "OnceFunc"}, "OnceValue": {"Sync", "OnceValue"}, "OnceValues": {"Sync", "OnceValues"}},
 	"sync/atomic": {
 		"AddInt64": {"Atomic", "AddInt64"}, "AddInt32": {"Atomic", "AddInt32"}, "AddUint64": {"Atomic", "AddUint64"},
 		"LoadInt64": {"Atomic", "LoadInt64"}, "LoadInt32": {"Atomic", "LoadInt32"}, "LoadUint64": {"Atomic", "LoadUint64"},
@@ -1670,7 +1670,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"TryLock": {"Sync", "RWMutex_TryLock"}, "TryRLock": {"Sync", "RWMutex_TryRLock"}, "RLocker": {"Sync", "RWMutex_RLocker"},
 	},
 	"sync.WaitGroup": {
-		"Add": {"Sync", "WaitGroup_Add"}, "Done": {"Sync", "WaitGroup_Done"}, "Wait": {"Sync", "WaitGroup_Wait"},
+		"Add": {"Sync", "WaitGroup_Add"}, "Done": {"Sync", "WaitGroup_Done"}, "Wait": {"Sync", "WaitGroup_Wait"}, "Go": {"Sync", "WaitGroup_Go"},
 	},
 	"sync.Once": {
 		"Do": {"Sync", "Once_Do"},
@@ -1678,6 +1678,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"sync.Map": {
 		"Store": {"Sync", "Map_Store"}, "Load": {"Sync", "Map_Load"}, "Delete": {"Sync", "Map_Delete"},
 		"LoadOrStore": {"Sync", "Map_LoadOrStore"}, "LoadAndDelete": {"Sync", "Map_LoadAndDelete"}, "Range": {"Sync", "Map_Range"},
+		"Swap": {"Sync", "Map_Swap"}, "CompareAndSwap": {"Sync", "Map_CompareAndSwap"}, "CompareAndDelete": {"Sync", "Map_CompareAndDelete"}, "Clear": {"Sync", "Map_Clear"},
 	},
 	"sync.Pool": {
 		"Get": {"Sync", "Pool_Get"}, "Put": {"Sync", "Pool_Put"},
