@@ -494,6 +494,7 @@ var opaqueShimTypes = map[string]bool{
 	"syscall.SockaddrInet4":          true,
 	"syscall.SockaddrInet6":          true,
 	"net/mail.Address":               true,
+	"go/token.Position":               true,
 	"encoding/asn1.StructuralError":  true,
 	"encoding/asn1.SyntaxError":      true,
 	"encoding/asn1.BitString":       true,
@@ -865,6 +866,7 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"net/mail.Address": {
 		"Name": {"Mail", "Address_Name"}, "Address": {"Mail", "Address_Address"},
 	},
+	"go/token.Position": {"Filename": {"GoToken", "Position_Filename"}, "Offset": {"GoToken", "Position_Offset"}, "Line": {"GoToken", "Position_Line"}, "Column": {"GoToken", "Position_Column"}},
 	"encoding/asn1.StructuralError": {"Msg": {"Asn1", "StructuralError_Msg"}},
 	"encoding/asn1.SyntaxError":     {"Msg": {"Asn1", "SyntaxError_Msg"}},
 	"encoding/asn1.BitString":       {"Bytes": {"Asn1", "BitString_GetBytes"}, "BitLength": {"Asn1", "BitString_GetBitLength"}},
@@ -1024,6 +1026,7 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"net/mail.Address": {
 		"Name": {"Mail", "Address_SetName"}, "Address": {"Mail", "Address_SetAddress"},
 	},
+	"go/token.Position": {"Filename": {"GoToken", "Position_SetFilename"}, "Offset": {"GoToken", "Position_SetOffset"}, "Line": {"GoToken", "Position_SetLine"}, "Column": {"GoToken", "Position_SetColumn"}},
 	"encoding/asn1.StructuralError": {"Msg": {"Asn1", "StructuralError_SetMsg"}},
 	"encoding/asn1.SyntaxError":     {"Msg": {"Asn1", "SyntaxError_SetMsg"}},
 	"encoding/asn1.BitString":       {"Bytes": {"Asn1", "BitString_SetBytes"}, "BitLength": {"Asn1", "BitString_SetBitLength"}},
@@ -1121,6 +1124,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"net/http.Server":                {"HttpTypes", "NewServer"},
 	"net/http.Cookie":                {"Http", "NewCookie"},
 	"net/mail.Address":               {"Mail", "NewAddress"},
+	"go/token.Position":               {"GoToken", "PositionZero"},
 	"encoding/asn1.StructuralError":  {"Asn1", "NewStructuralError"},
 	"encoding/asn1.SyntaxError":      {"Asn1", "NewSyntaxError"},
 	"encoding/asn1.BitString":       {"Asn1", "NewBitString"},
@@ -1207,6 +1211,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"mime/quotedprintable.Writer": {"Write": {"QuotedPrintable", "QPWriter_Write"}, "Close": {"QuotedPrintable", "QPWriter_Close"}},
 	"mime/quotedprintable.Reader": {"Read": {"QuotedPrintable", "QPReader_Read"}},
 	"go/token.Token": {"String": {"GoToken", "Token_String"}, "IsLiteral": {"GoToken", "Token_IsLiteral"}, "IsOperator": {"GoToken", "Token_IsOperator"}, "IsKeyword": {"GoToken", "Token_IsKeyword"}, "Precedence": {"GoToken", "Token_Precedence"}},
+	"go/token.Position": {"String": {"GoToken", "Position_String"}, "IsValid": {"GoToken", "Position_IsValid"}},
+	"go/token.Pos": {"IsValid": {"GoToken", "Pos_IsValid"}},
 	"strconv.NumError": {
 		"Error": {"Strconv", "NumError_Error"}, "Unwrap": {"Strconv", "NumError_Unwrap"},
 	},
