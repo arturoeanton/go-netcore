@@ -172,6 +172,136 @@ public static class Math
 
     public static object?[] Sincos(double x) => new object?[] { SM.Sin(x), SM.Cos(x) };
 
+    // --- math.Erf / math.Erfc (faithful port of Go's src/math/erf.go; Sun fdlibm constants) ---
+    private const double erf_erx = 8.45062911510467529297e-01;
+    private const double erf_efx = 1.28379167095512586316e-01, erf_efx8 = 1.02703333676410069053e+00;
+    private const double erf_pp0 = 1.28379167095512558561e-01, erf_pp1 = -3.25042107247001499370e-01,
+        erf_pp2 = -2.84817495755985104766e-02, erf_pp3 = -5.77027029648944159157e-03, erf_pp4 = -2.37630166566501626084e-05;
+    private const double erf_qq1 = 3.97917223959155352819e-01, erf_qq2 = 6.50222499887672944485e-02,
+        erf_qq3 = 5.08130628187576562776e-03, erf_qq4 = 1.32494738004321644526e-04, erf_qq5 = -3.96022827877536812320e-06;
+    private const double erf_pa0 = -2.36211856075265944077e-03, erf_pa1 = 4.14856118683748331666e-01,
+        erf_pa2 = -3.72207876035701323847e-01, erf_pa3 = 3.18346619901161753674e-01, erf_pa4 = -1.10894694282396677476e-01,
+        erf_pa5 = 3.54783043256182359371e-02, erf_pa6 = -2.16637559486879084300e-03;
+    private const double erf_qa1 = 1.06420880400844228286e-01, erf_qa2 = 5.40397917702171048937e-01,
+        erf_qa3 = 7.18286544141962662868e-02, erf_qa4 = 1.26171219808761642112e-01, erf_qa5 = 1.36370839120290507362e-02,
+        erf_qa6 = 1.19844998467991074170e-02;
+    private const double erf_ra0 = -9.86494403484714822705e-03, erf_ra1 = -6.93858572707181764372e-01,
+        erf_ra2 = -1.05586262253232909814e+01, erf_ra3 = -6.23753324503260060396e+01, erf_ra4 = -1.62396669462573470355e+02,
+        erf_ra5 = -1.84605092906711035994e+02, erf_ra6 = -8.12874355063065934246e+01, erf_ra7 = -9.81432934416914548592e+00;
+    private const double erf_sa1 = 1.96512716674392571292e+01, erf_sa2 = 1.37657754143519042600e+02,
+        erf_sa3 = 4.34565877475229228821e+02, erf_sa4 = 6.45387271733267880336e+02, erf_sa5 = 4.29008140027567833386e+02,
+        erf_sa6 = 1.08635005541779435134e+02, erf_sa7 = 6.57024977031928170135e+00, erf_sa8 = -6.04244152148580987438e-02;
+    private const double erf_rb0 = -9.86494292470009928597e-03, erf_rb1 = -7.99283237680523006574e-01,
+        erf_rb2 = -1.77579549177547519889e+01, erf_rb3 = -1.60636384855821916062e+02, erf_rb4 = -6.37566443368389627722e+02,
+        erf_rb5 = -1.02509513161107724954e+03, erf_rb6 = -4.83519191608651397019e+02;
+    private const double erf_sb1 = 3.03380607434824582924e+01, erf_sb2 = 3.25792512996573918826e+02,
+        erf_sb3 = 1.53672958608443695994e+03, erf_sb4 = 3.19985821950859553908e+03, erf_sb5 = 2.55305040643316442583e+03,
+        erf_sb6 = 4.74528541206955367215e+02, erf_sb7 = -2.24409524465858183362e+01;
+
+    private static double Fma(double a, double b, double c) => SM.FusedMultiplyAdd(a, b, c);
+    public static double Erf(double x)
+    {
+        const double VeryTiny = 2.848094538889218e-306;
+        const double Small = 1.0 / (1 << 28);
+        if (double.IsNaN(x)) return double.NaN;
+        if (double.IsPositiveInfinity(x)) return 1;
+        if (double.IsNegativeInfinity(x)) return -1;
+        bool sign = false;
+        if (x < 0) { x = -x; sign = true; }
+        if (x < 0.84375)
+        {
+            double temp;
+            if (x < Small)
+            {
+                if (x < VeryTiny) temp = 0.125 * (8.0 * x + erf_efx8 * x);
+                else temp = x + erf_efx * x;
+            }
+            else
+            {
+                double z = x * x;
+                double r = Fma(z, Fma(z, Fma(z, Fma(z, erf_pp4, erf_pp3), erf_pp2), erf_pp1), erf_pp0);
+                double s = Fma(z, Fma(z, Fma(z, Fma(z, Fma(z, erf_qq5, erf_qq4), erf_qq3), erf_qq2), erf_qq1), 1);
+                temp = Fma(x, r / s, x);
+            }
+            return sign ? -temp : temp;
+        }
+        if (x < 1.25)
+        {
+            double s = x - 1;
+            double P = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_pa6, erf_pa5), erf_pa4), erf_pa3), erf_pa2), erf_pa1), erf_pa0);
+            double Q = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_qa6, erf_qa5), erf_qa4), erf_qa3), erf_qa2), erf_qa1), 1);
+            return sign ? -erf_erx - P / Q : erf_erx + P / Q;
+        }
+        if (x >= 6) return sign ? -1 : 1;
+        double s2 = 1 / (x * x);
+        double R, S;
+        if (x < 1 / 0.35)
+        {
+            R = Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, erf_ra7, erf_ra6), erf_ra5), erf_ra4), erf_ra3), erf_ra2), erf_ra1), erf_ra0);
+            S = Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, erf_sa8, erf_sa7), erf_sa6), erf_sa5), erf_sa4), erf_sa3), erf_sa2), erf_sa1), 1);
+        }
+        else
+        {
+            R = Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, erf_rb6, erf_rb5), erf_rb4), erf_rb3), erf_rb2), erf_rb1), erf_rb0);
+            S = Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, erf_sb7, erf_sb6), erf_sb5), erf_sb4), erf_sb3), erf_sb2), erf_sb1), 1);
+        }
+        double zz = Float64frombits(Float64bits(x) & 0xffffffff00000000UL);
+        double rr = SM.Exp(-zz * zz - 0.5625) * SM.Exp(Fma(zz - x, zz + x, R / S));
+        return sign ? rr / x - 1 : 1 - rr / x;
+    }
+
+    public static double Erfc(double x)
+    {
+        const double Tiny = 1.0 / (1L << 56);
+        if (double.IsNaN(x)) return double.NaN;
+        if (double.IsPositiveInfinity(x)) return 0;
+        if (double.IsNegativeInfinity(x)) return 2;
+        bool sign = false;
+        if (x < 0) { x = -x; sign = true; }
+        if (x < 0.84375)
+        {
+            double temp;
+            if (x < Tiny) temp = x;
+            else
+            {
+                double z = x * x;
+                double r = Fma(z, Fma(z, Fma(z, Fma(z, erf_pp4, erf_pp3), erf_pp2), erf_pp1), erf_pp0);
+                double s = Fma(z, Fma(z, Fma(z, Fma(z, Fma(z, erf_qq5, erf_qq4), erf_qq3), erf_qq2), erf_qq1), 1);
+                double y = r / s;
+                if (x < 0.25) temp = Fma(x, y, x);
+                else temp = 0.5 + Fma(x, y, x - 0.5);
+            }
+            return sign ? 1 + temp : 1 - temp;
+        }
+        if (x < 1.25)
+        {
+            double s = x - 1;
+            double P = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_pa6, erf_pa5), erf_pa4), erf_pa3), erf_pa2), erf_pa1), erf_pa0);
+            double Q = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_qa6, erf_qa5), erf_qa4), erf_qa3), erf_qa2), erf_qa1), 1);
+            return sign ? 1 + erf_erx + P / Q : 1 - erf_erx - P / Q;
+        }
+        if (x < 28)
+        {
+            double s = 1 / (x * x);
+            double R, S;
+            if (x < 1 / 0.35)
+            {
+                R = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_ra7, erf_ra6), erf_ra5), erf_ra4), erf_ra3), erf_ra2), erf_ra1), erf_ra0);
+                S = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_sa8, erf_sa7), erf_sa6), erf_sa5), erf_sa4), erf_sa3), erf_sa2), erf_sa1), 1);
+            }
+            else
+            {
+                if (sign && x > 6) return 2;
+                R = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_rb6, erf_rb5), erf_rb4), erf_rb3), erf_rb2), erf_rb1), erf_rb0);
+                S = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_sb7, erf_sb6), erf_sb5), erf_sb4), erf_sb3), erf_sb2), erf_sb1), 1);
+            }
+            double z = Float64frombits(Float64bits(x) & 0xffffffff00000000UL);
+            double r = SM.Exp(-z * z - 0.5625) * SM.Exp(Fma(z - x, z + x, R / S));
+            return sign ? 2 - r / x : r / x;
+        }
+        return sign ? 2 : 0;
+    }
+
     // --- math.Gamma (faithful port of Go's src/math/gamma.go; Sun/FreeBSD Cephes constants) ---
     private static readonly double[] _gamP =
     {
@@ -202,7 +332,7 @@ public static class Math
         const double SqrtTwoPi = 2.506628274631000502417;
         const double MaxStirling = 143.01608;
         double w = 1 / x;
-        w = 1 + w * ((((_gamS[0] * w + _gamS[1]) * w + _gamS[2]) * w + _gamS[3]) * w + _gamS[4]);
+        w = Fma(w, Fma(Fma(Fma(Fma(_gamS[0], w, _gamS[1]), w, _gamS[2]), w, _gamS[3]), w, _gamS[4]), 1);
         double y1 = SM.Exp(x);
         double y2 = 1.0;
         if (x > MaxStirling) { double v = SM.Pow(x, 0.5 * x - 0.25); y2 = v / y1; y1 = v; } // Go: y1, y2 = v, v/y1 (simultaneous)
@@ -240,11 +370,11 @@ public static class Math
         while (x < 2) { if (x < 1e-09) goto small; z = z / x; x = x + 1; }
         if (x == 2) return z;
         x = x - 2;
-        p = (((((x * _gamP[0] + _gamP[1]) * x + _gamP[2]) * x + _gamP[3]) * x + _gamP[4]) * x + _gamP[5]) * x + _gamP[6];
-        q = ((((((x * _gamQ[0] + _gamQ[1]) * x + _gamQ[2]) * x + _gamQ[3]) * x + _gamQ[4]) * x + _gamQ[5]) * x + _gamQ[6]) * x + _gamQ[7];
+        p = Fma(Fma(Fma(Fma(Fma(Fma(x, _gamP[0], _gamP[1]), x, _gamP[2]), x, _gamP[3]), x, _gamP[4]), x, _gamP[5]), x, _gamP[6]);
+        q = Fma(Fma(Fma(Fma(Fma(Fma(Fma(x, _gamQ[0], _gamQ[1]), x, _gamQ[2]), x, _gamQ[3]), x, _gamQ[4]), x, _gamQ[5]), x, _gamQ[6]), x, _gamQ[7]);
         return z * p / q;
     small:
         if (x == 0) return double.PositiveInfinity;
-        return z / ((1 + Euler * x) * x);
+        return z / (Fma(Euler, x, 1) * x);
     }
 }
