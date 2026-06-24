@@ -509,6 +509,21 @@ public static class Http
         return new GoSlice { Data = list.ToArray(), Off = 0, Len = list.Count, Cap = list.Count };
     }
 
+    // (*http.Request).AddCookie(c): append "name=value" to the Cookie header (name's
+    // newlines become '-', value sanitized), joining an existing header with "; ".
+    public static void Req_AddCookie(object r, object cookie)
+    {
+        var ck = (GoCookie)cookie;
+        string s = SanitizeCookieName(ck.Name) + "=" + SanitizeCookieValue(ck.Value);
+        var h = Req_Header(r);
+        string existing = Header_Get(h, GoString.FromDotNetString("Cookie")).ToDotNetString();
+        string val = existing.Length != 0 ? existing + "; " + s : s;
+        Header_Set(h, GoString.FromDotNetString("Cookie"), GoString.FromDotNetString(val));
+    }
+
+    // net/http.sanitizeCookieName: newlines in a cookie name become '-'.
+    private static string SanitizeCookieName(string n) => n.Replace('\n', '-').Replace('\r', '-');
+
     // http.ServeFile(w, r, name): write a file's bytes to the response with a sniffed
     // content type (used by gin's StaticFile).
     public static void ServeFile(object w, object r, GoString name)

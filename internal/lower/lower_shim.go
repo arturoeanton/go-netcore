@@ -1554,7 +1554,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http.Request": {
 		"ParseForm": {"Http", "Req_ParseForm"}, "ParseMultipartForm": {"Http", "Req_ParseMultipartForm"}, "Context": {"Http", "Req_Context"},
-		"WithContext": {"Http", "Req_WithContext"}, "Clone": {"Http", "Req_Clone"}, "UserAgent": {"Http", "Req_UserAgent"}, "Referer": {"Http", "Req_Referer"}, "Cookie": {"Http", "Req_Cookie"}, "Cookies": {"Http", "Req_Cookies"}, "FormFile": {"Http", "Req_FormFile"}, "MultipartReader": {"Http", "Req_MultipartReader"},
+		"WithContext": {"Http", "Req_WithContext"}, "Clone": {"Http", "Req_Clone"}, "UserAgent": {"Http", "Req_UserAgent"}, "Referer": {"Http", "Req_Referer"}, "Cookie": {"Http", "Req_Cookie"}, "Cookies": {"Http", "Req_Cookies"}, "AddCookie": {"Http", "Req_AddCookie"}, "FormFile": {"Http", "Req_FormFile"}, "MultipartReader": {"Http", "Req_MultipartReader"},
 		"FormValue": {"Http", "Req_FormValue"}, "PostFormValue": {"Http", "Req_PostFormValue"},
 	},
 	"net/http.ResponseWriter": {
