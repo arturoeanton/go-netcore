@@ -7,12 +7,120 @@ using GoCLR.Runtime;
 /// soft "=\r\n" breaks, trailing-whitespace escaping).</summary>
 public sealed class GoQPWriter { public object? W; public bool Binary; public int I; public byte[] Line = new byte[78]; public bool Cr; }
 
+/// <summary>A mime/quotedprintable.Reader: decodes its source eagerly on first Read.</summary>
+public sealed class GoQPReader { public object? Src; public byte[]? Decoded; public int Pos; public object? Err; }
+
 public static class QuotedPrintable
 {
     private const int LineMaxLen = 76;
     private const string UpperHex = "0123456789ABCDEF";
 
     public static object NewWriter(object? w) => new GoQPWriter { W = w };
+
+    // ---- Reader (RFC 2045 decoder, ported from reader.go) --------------------------------
+    public static object NewReader(object? r) => new GoQPReader { Src = r };
+
+    // Used by Readers.Drain so io.ReadAll(qpReader) returns the decoded bytes (the error,
+    // if any, is dropped by io.ReadAll's runtime path — read directly to observe it).
+    internal static byte[] DrainDecoded(GoQPReader r)
+    {
+        if (r.Decoded == null) { var (dec, err) = DecodeAll(Readers.Drain(r.Src)); r.Decoded = dec; r.Err = err; }
+        var rem = new byte[r.Decoded.Length - r.Pos];
+        System.Array.Copy(r.Decoded, r.Pos, rem, 0, rem.Length);
+        r.Pos = r.Decoded.Length;
+        return rem;
+    }
+
+    public static object?[] QPReader_Read(object ro, GoSlice p)
+    {
+        var r = (GoQPReader)ro;
+        if (r.Decoded == null) { var (dec, err) = DecodeAll(Readers.Drain(r.Src)); r.Decoded = dec; r.Err = err; }
+        int avail = r.Decoded.Length - r.Pos;
+        int n = System.Math.Min(p.Len, avail);
+        for (int i = 0; i < n; i++) p.Data![p.Off + i] = (int)r.Decoded[r.Pos + i];
+        r.Pos += n;
+        if (n > 0) return new object?[] { (long)n, null };
+        return new object?[] { 0L, r.Err ?? Io.EOFSentinel };
+    }
+
+    private static (byte[], object?) DecodeAll(byte[] input)
+    {
+        var outp = new System.Collections.Generic.List<byte>();
+        int pos = 0;
+        byte[] line = System.Array.Empty<byte>();
+        int lp = 0;
+        while (true)
+        {
+            if (lp >= line.Length)
+            {
+                if (pos >= input.Length) return (outp.ToArray(), Io.EOFSentinel);
+                int idx = System.Array.IndexOf(input, (byte)'\n', pos);
+                byte[] whole;
+                bool atEof;
+                if (idx >= 0) { whole = Sub(input, pos, idx + 1); pos = idx + 1; atEof = false; }
+                else { whole = Sub(input, pos, input.Length); pos = input.Length; atEof = true; }
+                var pl = ProcessLine(whole, atEof, out var perr);
+                if (perr != null) return (outp.ToArray(), perr); // invalid bytes after = (after this line's content)
+                line = pl; lp = 0;
+                continue;
+            }
+            byte b = line[lp];
+            if (b == '=')
+            {
+                var (hb, herr) = ReadHexByte(line, lp + 1);
+                if (herr != null)
+                {
+                    if (line.Length - lp >= 2 && line[lp + 1] != '\r' && line[lp + 1] != '\n') b = (byte)'=';
+                    else return (outp.ToArray(), herr);
+                }
+                else { b = hb; lp += 2; }
+            }
+            else if (b == '\t' || b == '\r' || b == '\n') { }
+            else if (b >= 0x80) { }
+            else if (b < ' ' || b > '~')
+                return (outp.ToArray(), new GoError(GoString.FromDotNetString($"quotedprintable: invalid unescaped byte 0x{b:x2} in body")));
+            outp.Add(b); lp++;
+        }
+    }
+
+    private static byte[] ProcessLine(byte[] whole, bool atEof, out object? perr)
+    {
+        perr = null;
+        bool hasLF = whole.Length >= 1 && whole[^1] == '\n';
+        bool hasCR = whole.Length >= 2 && whole[^2] == '\r' && whole[^1] == '\n';
+        int end = whole.Length;
+        while (end > 0 && (whole[end - 1] == '\n' || whole[end - 1] == '\r' || whole[end - 1] == ' ' || whole[end - 1] == '\t')) end--;
+        var line = Sub(whole, 0, end);
+        if (line.Length >= 1 && line[^1] == '=')
+        {
+            int rs = end;
+            while (rs < whole.Length && (whole[rs] == ' ' || whole[rs] == '\t')) rs++;
+            var rightStripped = Sub(whole, rs, whole.Length);
+            line = Sub(line, 0, line.Length - 1);
+            bool startsLF = rightStripped.Length >= 1 && rightStripped[0] == '\n';
+            bool startsCRLF = rightStripped.Length >= 2 && rightStripped[0] == '\r' && rightStripped[1] == '\n';
+            if (!startsLF && !startsCRLF && !(rightStripped.Length == 0 && line.Length > 0 && atEof))
+                perr = new GoError(GoString.FromDotNetString($"quotedprintable: invalid bytes after =: {Strconv.Quote(GoString.FromBytes(rightStripped)).ToDotNetString()}"));
+        }
+        else if (hasLF)
+        {
+            line = hasCR ? Concat(line, new byte[] { (byte)'\r', (byte)'\n' }) : Concat(line, new byte[] { (byte)'\n' });
+        }
+        return line;
+    }
+
+    private static (byte, object?) ReadHexByte(byte[] v, int off)
+    {
+        if (v.Length - off < 2) return (0, new GoError(GoString.FromDotNetString("unexpected EOF")));
+        int hb = FromHex(v[off]), lb = FromHex(v[off + 1]);
+        if (hb < 0) return (0, new GoError(GoString.FromDotNetString($"quotedprintable: invalid hex byte 0x{v[off]:x2}")));
+        if (lb < 0) return (0, new GoError(GoString.FromDotNetString($"quotedprintable: invalid hex byte 0x{v[off + 1]:x2}")));
+        return ((byte)((hb << 4) | lb), null);
+    }
+    private static int FromHex(byte b) =>
+        b >= '0' && b <= '9' ? b - '0' : b >= 'A' && b <= 'F' ? b - 'A' + 10 : b >= 'a' && b <= 'f' ? b - 'a' + 10 : -1;
+    private static byte[] Sub(byte[] s, int from, int to) { var r = new byte[to - from]; System.Array.Copy(s, from, r, 0, to - from); return r; }
+    private static byte[] Concat(byte[] a, byte[] b) { var r = new byte[a.Length + b.Length]; a.CopyTo(r, 0); b.CopyTo(r, a.Length); return r; }
 
     public static bool QPWriter_GetBinary(object wo) => ((GoQPWriter)wo).Binary;
     public static void QPWriter_SetBinary(object wo, bool b) => ((GoQPWriter)wo).Binary = b;
