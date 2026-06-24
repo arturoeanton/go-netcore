@@ -10,6 +10,7 @@ type Greeter struct{}
 
 func (Greeter) Hello() string { return "hi" }
 func (Greeter) Wave() int     { return 1 }
+func (Greeter) secret() int   { return 0 } // unexported: excluded by Type.Method
 
 func main() {
 	// Method.IsExported (type with only exported methods so NumMethod matches Go).

@@ -568,11 +568,25 @@ public static class Reflect
             foreach (var k in m.Data.Keys) return new GoReflectType { Sample = k };
         return new GoReflectType { Sample = null };
     }
-    public static long Type_NumMethod(object t) { var d = TDesc(t); return d != null ? d.Methods.Count : 0; }
+    // Go's Type.Method/NumMethod expose only EXPORTED methods, in lexicographic name order.
+    private static bool IsExportedName(string n)
+    {
+        if (n.Length == 0) return false;
+        foreach (var r in n.EnumerateRunes()) return System.Text.Rune.IsUpper(r);
+        return false;
+    }
+    private static System.Collections.Generic.List<string> ExportedMethods(GoTypeDesc? d)
+    {
+        var r = new System.Collections.Generic.List<string>();
+        if (d != null) foreach (var n in d.Methods) if (IsExportedName(n)) r.Add(n);
+        r.Sort(System.StringComparer.Ordinal);
+        return r;
+    }
+    public static long Type_NumMethod(object t) => ExportedMethods(TDesc(t)).Count;
     public static object Type_Method(object t, long i)
     {
-        var d = TDesc(t);
-        string name = d != null && (int)i < d.Methods.Count ? d.Methods[(int)i] : "";
+        var ms = ExportedMethods(TDesc(t));
+        string name = (int)i >= 0 && (int)i < ms.Count ? ms[(int)i] : "";
         return new GoReflectMethod { Name = name, Index = (int)i };
     }
     public static long Type_NumIn(object t) => 0;
