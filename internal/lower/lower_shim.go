@@ -632,6 +632,7 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/json.Encoder":              true,
 	"reflect.StructField":                true,
 	"reflect.Method":                     true,
+	"reflect.MapIter":                    true,
 	"runtime.Func":                       true,
 }
 
@@ -1272,6 +1273,11 @@ var binaryMethods = map[string]shimFunc{
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
+	"reflect.Method": {"IsExported": {"Reflect", "Method_IsExported"}},
+	"reflect.MapIter": {
+		"Next": {"Reflect", "MapIter_Next"}, "Key": {"Reflect", "MapIter_Key"},
+		"Value": {"Reflect", "MapIter_Value"}, "Reset": {"Reflect", "MapIter_Reset"},
+	},
 	"runtime.Frames": {"Next": {"Goruntime", "Frames_Next"}},
 	"mime.WordEncoder": {"Encode": {"Mime", "WordEncoder_Encode"}},
 	"mime.WordDecoder": {"Decode": {"Mime", "WordDecoder_Decode"}, "DecodeHeader": {"Mime", "WordDecoder_DecodeHeader"}},
@@ -2034,6 +2040,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetLen": {"Reflect", "Value_SetLen"}, "SetCap": {"Reflect", "Value_SetCap"},
 		"Slice": {"Reflect", "Value_Slice"}, "Slice3": {"Reflect", "Value_Slice3"}, "SetBytes": {"Reflect", "Value_SetBytes"}, "SetComplex": {"Reflect", "Value_SetComplex"},
 		"Clear": {"Reflect", "Value_Clear"}, "Grow": {"Reflect", "Value_Grow"}, "OverflowComplex": {"Reflect", "Value_OverflowComplex"},
+		"MapRange": {"Reflect", "Value_MapRange"}, "SetIterKey": {"Reflect", "Value_SetIterKey"}, "SetIterValue": {"Reflect", "Value_SetIterValue"},
 		"FieldByIndexErr": {"Reflect", "Value_FieldByIndexErr"}, "FieldByNameFunc": {"Reflect", "Value_FieldByNameFunc"},
 		"Pointer": {"Reflect", "Value_Pointer"},
 		"NumMethod": {"Reflect", "Value_NumMethod"}, "CanInterface": {"Reflect", "Value_CanInterface"},

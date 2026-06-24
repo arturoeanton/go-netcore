@@ -364,6 +364,23 @@ public static class Reflect
         return new GoReflectValue { V = GoCLR.Runtime.GoMaps.Get(m, key!, null) };
     }
 
+    // reflect.Value.MapRange() *MapIter + the MapIter methods. The iterator snapshots the
+    // map's keys at construction/Reset; Next advances a cursor, Key/Value wrap the entry.
+    public static object Value_MapRange(object? v) { var it = new GoReflectMapIter(); MapIterReset(it, RValC(v) as GoMap); return it; }
+    private static void MapIterReset(GoReflectMapIter it, GoMap? m)
+    {
+        it.M = m;
+        if (m != null) { var k = GoCLR.Runtime.GoMaps.Keys(m); it.Keys = new object?[k.Len]; for (int i = 0; i < k.Len; i++) it.Keys[i] = k.Data![k.Off + i]; }
+        else it.Keys = System.Array.Empty<object?>();
+        it.Idx = -1;
+    }
+    public static bool MapIter_Next(object o) { var it = (GoReflectMapIter)o; it.Idx++; return it.Idx < it.Keys.Length; }
+    public static object MapIter_Key(object o) { var it = (GoReflectMapIter)o; return new GoReflectValue { V = it.Keys[it.Idx] }; }
+    public static object MapIter_Value(object o) { var it = (GoReflectMapIter)o; return new GoReflectValue { V = it.M == null ? null : GoCLR.Runtime.GoMaps.Get(it.M, it.Keys[it.Idx]!, null) }; }
+    public static void MapIter_Reset(object o, object? v) => MapIterReset((GoReflectMapIter)o, RValC(v) as GoMap);
+    public static void Value_SetIterKey(object v, object iter) { var it = (GoReflectMapIter)iter; DoSet(v, it.Keys[it.Idx]); }
+    public static void Value_SetIterValue(object v, object iter) { var it = (GoReflectMapIter)iter; DoSet(v, it.M == null ? null : GoCLR.Runtime.GoMaps.Get(it.M, it.Keys[it.Idx]!, null)); }
+
     private static FieldInfo[]? Fields(object? v) =>
         v == null ? null : v.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
 
@@ -522,6 +539,13 @@ public static class Reflect
     public static GoString Method_Name(object m) => GoString.FromDotNetString(((GoReflectMethod)m).Name);
     public static long Method_Index(object m) => ((GoReflectMethod)m).Index;
     public static GoString Method_PkgPath(object m) => GoString.FromDotNetString("");
+    public static bool Method_IsExported(object m)
+    {
+        string n = ((GoReflectMethod)m).Name;
+        if (n.Length == 0) return false;
+        foreach (var r in n.EnumerateRunes()) return System.Text.Rune.IsUpper(r);
+        return false;
+    }
 
     private static object? ZeroOf(System.Type? t)
     {
@@ -951,3 +975,6 @@ public sealed class GoStructField { public string Name = ""; public string Tag =
 /// <summary>reflect.Method handle. The runtime does not retain method sets, so
 /// these are produced only where a method list is reconstructed by name.</summary>
 public sealed class GoReflectMethod { public string Name = ""; public int Index; }
+
+/// <summary>A reflect.MapIter: a snapshot of a map's keys plus a cursor.</summary>
+public sealed class GoReflectMapIter { public GoMap? M; public object?[] Keys = System.Array.Empty<object?>(); public int Idx = -1; }
