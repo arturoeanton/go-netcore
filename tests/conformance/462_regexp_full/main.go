@@ -1,0 +1,22 @@
+package main
+import ("fmt";"regexp")
+func main(){
+ re:=regexp.MustCompile(`(\w+)@(\w+)`)
+ fmt.Printf("%q\n",re.Find([]byte("a@b c@d")))
+ fmt.Println(re.FindIndex([]byte("x a@b")))
+ fmt.Printf("%q\n",re.FindAll([]byte("a@b c@d"),-1))
+ fmt.Println(re.FindAllIndex([]byte("a@b c@d"),-1))
+ fmt.Printf("%q\n",re.FindSubmatch([]byte("user@host")))
+ fmt.Println(re.FindSubmatchIndex([]byte("user@host")))
+ fmt.Println(re.FindAllStringIndex("a@b c@d",-1))
+ fmt.Printf("%s\n",re.ReplaceAll([]byte("a@b"),[]byte("${1}_AT_${2}")))
+ fmt.Printf("%s\n",re.ReplaceAllFunc([]byte("a@b"),func(m []byte)[]byte{return []byte("X")}))
+ d:=regexp.MustCompile(`\d+`)
+ fmt.Println(d.Match([]byte("abc123")))
+ ok,_:=regexp.Match(`\d+`,[]byte("xyz"));fmt.Println(ok)
+ named:=regexp.MustCompile(`(?P<y>\d{4})-(?P<m>\d{2})`)
+ fmt.Println(named.SubexpIndex("m"))
+ dst:=named.ExpandString(nil,"$y/$m","2026-06",named.FindStringSubmatchIndex("2026-06"))
+ fmt.Println(string(dst))
+ mt,_:=re.MarshalText();fmt.Printf("%s\n",mt)
+}

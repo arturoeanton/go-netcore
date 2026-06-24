@@ -166,6 +166,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"regexp": {
 		"Compile": {"Regexp", "Compile"}, "MustCompile": {"Regexp", "MustCompile"},
 		"MatchString": {"Regexp", "MatchString"}, "QuoteMeta": {"Regexp", "QuoteMeta"},
+		"Match": {"Regexp", "Match"}, "MatchReader": {"Regexp", "MatchReader"},
+		"CompilePOSIX": {"Regexp", "CompilePOSIX"}, "MustCompilePOSIX": {"Regexp", "MustCompilePOSIX"},
 	},
 	"log": {
 		"New": {"Log", "New"}, "Print": {"Log", "Print"}, "Println": {"Log", "Println"}, "Printf": {"Log", "Printf"},
@@ -1418,6 +1420,15 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SubexpNames": {"Regexp", "Re_SubexpNames"}, "NumSubexp": {"Regexp", "Re_NumSubexp"},
 		"FindStringSubmatchIndex": {"Regexp", "Re_FindStringSubmatchIndex"},
 		"FindReaderSubmatchIndex": {"Regexp", "Re_FindReaderSubmatchIndex"},
+		"Find": {"Regexp", "Re_Find"}, "FindIndex": {"Regexp", "Re_FindIndex"}, "FindAll": {"Regexp", "Re_FindAll"}, "FindAllIndex": {"Regexp", "Re_FindAllIndex"},
+		"FindAllStringIndex": {"Regexp", "Re_FindStringIndexAll"},
+		"FindSubmatch": {"Regexp", "Re_FindSubmatch"}, "FindSubmatchIndex": {"Regexp", "Re_FindSubmatchIndex"},
+		"FindAllSubmatch": {"Regexp", "Re_FindAllSubmatch"}, "FindAllSubmatchIndex": {"Regexp", "Re_FindAllSubmatchIndex"},
+		"ReplaceAll": {"Regexp", "Re_ReplaceAll"}, "ReplaceAllLiteral": {"Regexp", "Re_ReplaceAllLiteral"}, "ReplaceAllFunc": {"Regexp", "Re_ReplaceAllFunc"},
+		"SubexpIndex": {"Regexp", "Re_SubexpIndex"}, "LiteralPrefix": {"Regexp", "Re_LiteralPrefix"}, "Longest": {"Regexp", "Re_Longest"}, "Copy": {"Regexp", "Re_Copy"},
+		"MarshalText": {"Regexp", "Re_MarshalText"}, "AppendText": {"Regexp", "Re_AppendText"}, "UnmarshalText": {"Regexp", "Re_UnmarshalText"},
+		"Expand": {"Regexp", "Re_Expand"}, "ExpandString": {"Regexp", "Re_ExpandString"},
+		"MatchReader": {"Regexp", "Re_MatchReader"}, "FindReaderIndex": {"Regexp", "Re_FindReaderIndex"},
 	},
 	"encoding/base32.Encoding": {
 		"EncodeToString": {"Base32", "EncodeToString"}, "DecodeString": {"Base32", "DecodeString"},
