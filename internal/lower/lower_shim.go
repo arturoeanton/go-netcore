@@ -256,8 +256,15 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"LoadUint32": {"Atomic", "LoadUint32"}, "StoreUint32": {"Atomic", "StoreUint32"},
 		"AddUint32": {"Atomic", "AddUint32"}, "SwapUint64": {"Atomic", "SwapUint64"},
 		"CompareAndSwapUint64": {"Atomic", "CompareAndSwapUint64"}, "CompareAndSwapUint32": {"Atomic", "CompareAndSwapUint32"},
-		"SwapInt64": {"Atomic", "SwapInt64"}, "SwapInt32": {"Atomic", "SwapInt32"},
+		"SwapInt64": {"Atomic", "SwapInt64"}, "SwapInt32": {"Atomic", "SwapInt32"}, "SwapUint32": {"Atomic", "SwapUint32"},
 		"CompareAndSwapInt64": {"Atomic", "CompareAndSwapInt64"}, "CompareAndSwapInt32": {"Atomic", "CompareAndSwapInt32"},
+		"AndInt32": {"Atomic", "AndInt32"}, "OrInt32": {"Atomic", "OrInt32"}, "AndInt64": {"Atomic", "AndInt64"}, "OrInt64": {"Atomic", "OrInt64"},
+		"AndUint32": {"Atomic", "AndUint32"}, "OrUint32": {"Atomic", "OrUint32"}, "AndUint64": {"Atomic", "AndUint64"}, "OrUint64": {"Atomic", "OrUint64"},
+		"AddUintptr": {"Atomic", "AddUintptr"}, "LoadUintptr": {"Atomic", "LoadUintptr"}, "StoreUintptr": {"Atomic", "StoreUintptr"},
+		"SwapUintptr": {"Atomic", "SwapUintptr"}, "CompareAndSwapUintptr": {"Atomic", "CompareAndSwapUintptr"},
+		"AndUintptr": {"Atomic", "AndUintptr"}, "OrUintptr": {"Atomic", "OrUintptr"},
+		"LoadPointer": {"Atomic", "LoadPointer"}, "StorePointer": {"Atomic", "StorePointer"},
+		"SwapPointer": {"Atomic", "SwapPointer"}, "CompareAndSwapPointer": {"Atomic", "CompareAndSwapPointer"},
 	},
 	"context": {
 		"Background": {"Context", "Background"}, "TODO": {"Context", "TODO"},
@@ -1568,18 +1575,23 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"sync/atomic.Int64": {
 		"Load": {"AtomicInt", "Int_Load"}, "Store": {"AtomicInt", "Int_Store"}, "Add": {"AtomicInt", "Int_Add"}, "Swap": {"AtomicInt", "Int_Swap"}, "CompareAndSwap": {"AtomicInt", "Int_CompareAndSwap"},
+		"And": {"AtomicInt", "Int_And"}, "Or": {"AtomicInt", "Int_Or"},
 	},
 	"sync/atomic.Int32": {
-		"Load": {"AtomicInt", "Int_Load"}, "Store": {"AtomicInt", "Int_Store"}, "Add": {"AtomicInt", "Int_Add"}, "Swap": {"AtomicInt", "Int_Swap"}, "CompareAndSwap": {"AtomicInt", "Int_CompareAndSwap"},
+		"Load": {"AtomicInt", "Int32_Load"}, "Store": {"AtomicInt", "Int32_Store"}, "Add": {"AtomicInt", "Int32_Add"}, "Swap": {"AtomicInt", "Int32_Swap"}, "CompareAndSwap": {"AtomicInt", "Int32_CompareAndSwap"},
+		"And": {"AtomicInt", "Int32_And"}, "Or": {"AtomicInt", "Int32_Or"},
 	},
 	"sync/atomic.Uint64": {
 		"Load": {"AtomicInt", "Uint_Load"}, "Store": {"AtomicInt", "Uint_Store"}, "Add": {"AtomicInt", "Uint_Add"}, "Swap": {"AtomicInt", "Uint_Swap"}, "CompareAndSwap": {"AtomicInt", "Uint_CompareAndSwap"},
+		"And": {"AtomicInt", "Uint_And"}, "Or": {"AtomicInt", "Uint_Or"},
 	},
 	"sync/atomic.Uint32": {
-		"Load": {"AtomicInt", "Uint_Load"}, "Store": {"AtomicInt", "Uint_Store"}, "Add": {"AtomicInt", "Uint_Add"}, "Swap": {"AtomicInt", "Uint_Swap"}, "CompareAndSwap": {"AtomicInt", "Uint_CompareAndSwap"},
+		"Load": {"AtomicInt", "Uint32_Load"}, "Store": {"AtomicInt", "Uint32_Store"}, "Add": {"AtomicInt", "Uint32_Add"}, "Swap": {"AtomicInt", "Uint32_Swap"}, "CompareAndSwap": {"AtomicInt", "Uint32_CompareAndSwap"},
+		"And": {"AtomicInt", "Uint32_And"}, "Or": {"AtomicInt", "Uint32_Or"},
 	},
 	"sync/atomic.Uintptr": {
 		"Load": {"AtomicInt", "Uint_Load"}, "Store": {"AtomicInt", "Uint_Store"}, "Add": {"AtomicInt", "Uint_Add"}, "Swap": {"AtomicInt", "Uint_Swap"}, "CompareAndSwap": {"AtomicInt", "Uint_CompareAndSwap"},
+		"And": {"AtomicInt", "Uint_And"}, "Or": {"AtomicInt", "Uint_Or"},
 	},
 	"sync/atomic.Pointer": {
 		"Load": {"AtomicInt", "Ptr_Load"}, "Store": {"AtomicInt", "Ptr_Store"}, "Swap": {"AtomicInt", "Ptr_Swap"}, "CompareAndSwap": {"AtomicInt", "Ptr_CompareAndSwap"},

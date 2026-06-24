@@ -40,6 +40,32 @@ public static class Atomic
 
     // Uint32 variants.
     public static uint AddUint32(GoPtr p, uint d) { lock (Gate) { uint v = unchecked(U32(p) + d); GoPtrs.Set(p, v); return v; } }
+    public static uint SwapUint32(GoPtr p, uint nv) { lock (Gate) { uint old = U32(p); GoPtrs.Set(p, nv); return old; } }
+
+    // Go 1.23 And/Or package funcs: apply the bitwise op, return the OLD value.
+    public static int AndInt32(GoPtr p, int mask) { lock (Gate) { int old = I32(p); GoPtrs.Set(p, old & mask); return old; } }
+    public static int OrInt32(GoPtr p, int mask) { lock (Gate) { int old = I32(p); GoPtrs.Set(p, old | mask); return old; } }
+    public static long AndInt64(GoPtr p, long mask) { lock (Gate) { long old = I64(p); GoPtrs.Set(p, old & mask); return old; } }
+    public static long OrInt64(GoPtr p, long mask) { lock (Gate) { long old = I64(p); GoPtrs.Set(p, old | mask); return old; } }
+    public static uint AndUint32(GoPtr p, uint mask) { lock (Gate) { uint old = U32(p); GoPtrs.Set(p, old & mask); return old; } }
+    public static uint OrUint32(GoPtr p, uint mask) { lock (Gate) { uint old = U32(p); GoPtrs.Set(p, old | mask); return old; } }
+    public static ulong AndUint64(GoPtr p, ulong mask) { lock (Gate) { ulong old = U64(p); GoPtrs.Set(p, old & mask); return old; } }
+    public static ulong OrUint64(GoPtr p, ulong mask) { lock (Gate) { ulong old = U64(p); GoPtrs.Set(p, old | mask); return old; } }
+
+    // uintptr variants (uintptr lowers to ulong; stored like Uint64).
+    public static ulong AddUintptr(GoPtr p, ulong d) { lock (Gate) { ulong v = unchecked(U64(p) + d); GoPtrs.Set(p, v); return v; } }
+    public static ulong LoadUintptr(GoPtr p) { lock (Gate) return U64(p); }
+    public static void StoreUintptr(GoPtr p, ulong v) { lock (Gate) GoPtrs.Set(p, v); }
+    public static ulong SwapUintptr(GoPtr p, ulong nv) { lock (Gate) { ulong old = U64(p); GoPtrs.Set(p, nv); return old; } }
+    public static bool CompareAndSwapUintptr(GoPtr p, ulong old, ulong nv) { lock (Gate) { if (U64(p) == old) { GoPtrs.Set(p, nv); return true; } return false; } }
+    public static ulong AndUintptr(GoPtr p, ulong mask) { lock (Gate) { ulong old = U64(p); GoPtrs.Set(p, old & mask); return old; } }
+    public static ulong OrUintptr(GoPtr p, ulong mask) { lock (Gate) { ulong old = U64(p); GoPtrs.Set(p, old | mask); return old; } }
+
+    // unsafe.Pointer variants: treat the pointer as an opaque object reference.
+    public static object? LoadPointer(GoPtr p) { lock (Gate) return GoPtrs.Get(p); }
+    public static void StorePointer(GoPtr p, object? v) { lock (Gate) GoPtrs.Set(p, v); }
+    public static object? SwapPointer(GoPtr p, object? nv) { lock (Gate) { var old = GoPtrs.Get(p); GoPtrs.Set(p, nv); return old; } }
+    public static bool CompareAndSwapPointer(GoPtr p, object? old, object? nv) { lock (Gate) { if (System.Object.ReferenceEquals(GoPtrs.Get(p), old)) { GoPtrs.Set(p, nv); return true; } return false; } }
     public static uint LoadUint32(GoPtr p) { lock (Gate) return U32(p); }
     public static void StoreUint32(GoPtr p, uint v) { lock (Gate) GoPtrs.Set(p, v); }
     public static ulong SwapUint64(GoPtr p, ulong nv) { lock (Gate) { ulong old = U64(p); GoPtrs.Set(p, nv); return old; } }
@@ -87,6 +113,9 @@ public static class AtomicInt
     public static long Int_Add(object a, long d) => System.Threading.Interlocked.Add(ref ((GoAtomicInt)a).V, d);
     public static long Int_Swap(object a, long v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicInt)a).V, v);
     public static bool Int_CompareAndSwap(object a, long old, long nw) => System.Threading.Interlocked.CompareExchange(ref ((GoAtomicInt)a).V, nw, old) == old;
+    // And/Or methods (Go 1.23): return the OLD value. Interlocked.And/Or return the original.
+    public static long Int_And(object a, long mask) => System.Threading.Interlocked.And(ref ((GoAtomicInt)a).V, mask);
+    public static long Int_Or(object a, long mask) => System.Threading.Interlocked.Or(ref ((GoAtomicInt)a).V, mask);
 
     public static object NewPointer() => new GoAtomicPtr();
     // atomic.Pointer[T] stores a *T, represented by a GoPtr cell.
@@ -100,4 +129,24 @@ public static class AtomicInt
     public static ulong Uint_Add(object a, ulong d) => (ulong)System.Threading.Interlocked.Add(ref ((GoAtomicUint)a).V, (long)d);
     public static ulong Uint_Swap(object a, ulong v) => (ulong)System.Threading.Interlocked.Exchange(ref ((GoAtomicUint)a).V, (long)v);
     public static bool Uint_CompareAndSwap(object a, ulong old, ulong nw) => System.Threading.Interlocked.CompareExchange(ref ((GoAtomicUint)a).V, (long)nw, (long)old) == (long)old;
+    public static ulong Uint_And(object a, ulong mask) => (ulong)System.Threading.Interlocked.And(ref ((GoAtomicUint)a).V, (long)mask);
+    public static ulong Uint_Or(object a, ulong mask) => (ulong)System.Threading.Interlocked.Or(ref ((GoAtomicUint)a).V, (long)mask);
+
+    // atomic.Int32 / atomic.Uint32 struct methods: goclr calls these with int/uint (from the
+    // int32/uint32 Go types), so they need int/uint-typed shims distinct from the 64-bit set.
+    public static int Int32_Load(object a) => (int)System.Threading.Interlocked.Read(ref ((GoAtomicInt)a).V);
+    public static void Int32_Store(object a, int v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicInt)a).V, v);
+    public static int Int32_Add(object a, int d) => (int)System.Threading.Interlocked.Add(ref ((GoAtomicInt)a).V, d);
+    public static int Int32_Swap(object a, int v) => (int)System.Threading.Interlocked.Exchange(ref ((GoAtomicInt)a).V, v);
+    public static bool Int32_CompareAndSwap(object a, int old, int nw) => System.Threading.Interlocked.CompareExchange(ref ((GoAtomicInt)a).V, nw, old) == old;
+    public static int Int32_And(object a, int mask) => (int)System.Threading.Interlocked.And(ref ((GoAtomicInt)a).V, mask);
+    public static int Int32_Or(object a, int mask) => (int)System.Threading.Interlocked.Or(ref ((GoAtomicInt)a).V, mask);
+
+    public static uint Uint32_Load(object a) => (uint)System.Threading.Interlocked.Read(ref ((GoAtomicUint)a).V);
+    public static void Uint32_Store(object a, uint v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicUint)a).V, v);
+    public static uint Uint32_Add(object a, uint d) => (uint)System.Threading.Interlocked.Add(ref ((GoAtomicUint)a).V, d);
+    public static uint Uint32_Swap(object a, uint v) => (uint)System.Threading.Interlocked.Exchange(ref ((GoAtomicUint)a).V, v);
+    public static bool Uint32_CompareAndSwap(object a, uint old, uint nw) => System.Threading.Interlocked.CompareExchange(ref ((GoAtomicUint)a).V, nw, (long)old) == (long)old;
+    public static uint Uint32_And(object a, uint mask) => (uint)System.Threading.Interlocked.And(ref ((GoAtomicUint)a).V, mask);
+    public static uint Uint32_Or(object a, uint mask) => (uint)System.Threading.Interlocked.Or(ref ((GoAtomicUint)a).V, mask);
 }
