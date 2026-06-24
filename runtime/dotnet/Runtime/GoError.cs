@@ -10,6 +10,14 @@ public interface IGoError
     GoString Error();
 }
 
+/// <summary>A shim error type that wraps another error (implements Go's Unwrap() error).
+/// errors.Is/As/Unwrap follow GoUnwrapped() since a shim's method is not reachable via the
+/// compiled-method bridge.</summary>
+public interface IGoWrapped
+{
+    object? GoUnwrapped();
+}
+
 /// <summary>
 /// GoError is the simplest concrete error, as produced by errors.New and
 /// fmt.Errorf. nil error is represented by a null IGoError reference. Wrapped

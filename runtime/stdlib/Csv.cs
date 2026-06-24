@@ -13,6 +13,24 @@ public sealed class GoCsvReader
 }
 public sealed class GoCsvWriter { public object? W; public char Comma = ','; public System.Text.StringBuilder SB = new(); }
 
+/// <summary>A csv.ParseError: a parse failure tagged with its record/error line and column.</summary>
+[GoShim("encoding/csv.ParseError")]
+public sealed class GoCsvParseError : IGoError, IGoWrapped
+{
+    public object? GoUnwrapped() => Err;
+    public long StartLine, Line, Column;
+    public object? Err;
+    public GoString Error()
+    {
+        string e = Err is IGoError g ? g.Error().ToDotNetString() : "";
+        string s;
+        if (ReferenceEquals(Err, Csv.ErrFieldCountSentinel)) s = $"record on line {Line}: {e}";
+        else if (StartLine != Line) s = $"record on line {StartLine}; parse error on line {Line}, column {Column}: {e}";
+        else s = $"parse error on line {Line}, column {Column}: {e}";
+        return GoString.FromDotNetString(s);
+    }
+}
+
 /// <summary>Shim for a subset of Go's <c>encoding/csv</c>.</summary>
 public static class Csv
 {
@@ -35,6 +53,19 @@ public static class Csv
     public static object ErrFieldCount() => ErrFieldCountSentinel;
     public static readonly GoError ErrTrailingCommaSentinel = new(GoString.FromDotNetString("extra delimiter at end of line"));
     public static object ErrTrailingComma() => ErrTrailingCommaSentinel;
+
+    // csv.ParseError struct + methods.
+    public static object ParseErrorZero() => new GoCsvParseError();
+    public static long ParseError_StartLine(object p) => ((GoCsvParseError)p).StartLine;
+    public static long ParseError_Line(object p) => ((GoCsvParseError)p).Line;
+    public static long ParseError_Column(object p) => ((GoCsvParseError)p).Column;
+    public static object? ParseError_Err(object p) => ((GoCsvParseError)p).Err;
+    public static void ParseError_SetStartLine(object p, long v) => ((GoCsvParseError)p).StartLine = v;
+    public static void ParseError_SetLine(object p, long v) => ((GoCsvParseError)p).Line = v;
+    public static void ParseError_SetColumn(object p, long v) => ((GoCsvParseError)p).Column = v;
+    public static void ParseError_SetErr(object p, object? v) => ((GoCsvParseError)p).Err = v;
+    public static GoString ParseError_Error(object p) => ((GoCsvParseError)p).Error();
+    public static object? ParseError_Unwrap(object p) => ((GoCsvParseError)p).Err;
 
     // (*csv.Reader).Read() ([]string, error): one record at a time, enforcing the
     // first record's field count (FieldsPerRecord default), io.EOF at end.

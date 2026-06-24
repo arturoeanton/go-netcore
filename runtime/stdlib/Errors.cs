@@ -53,6 +53,7 @@ public static class Errors
     public static object? Unwrap(object? err)
     {
         if (err is GoError g) return g.Wrapped;
+        if (err is GoCLR.Runtime.IGoWrapped w) return w.GoUnwrapped();
         if (err != null && Bridge.HasMethod(err, "Unwrap")) return Bridge.CallMethod(err, "Unwrap");
         return null;
     }
