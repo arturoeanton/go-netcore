@@ -309,11 +309,28 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		l.emit(goir.Op{Code: goir.OpBr, Label: end})
 		l.mark(next)
 	}
-	// No match => nil interface method call.
-	l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: invalid memory address or nil pointer dereference"})
-	l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
-	l.emit(goir.Op{Code: goir.OpCallPanic})
-	l.emit(goir.Op{Code: goir.OpBr, Label: end})
+	// net/http.Handler.ServeHTTP on a closure-based handler (http.HandlerFunc, the values
+	// returned by NotFoundHandler/RedirectHandler) carries no registered adapter, so no
+	// branch above matched: route to the runtime helper, which invokes the wrapped closure
+	// with (w, r) — or panics like Go if the handler is genuinely nil.
+	if ifaceMethod.Name() == "ServeHTTP" && ifaceMethod.Pkg() != nil &&
+		ifaceMethod.Pkg().Path() == "net/http" && len(argTmps) == 2 {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+		for _, at := range argTmps {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: at})
+		}
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Http", Method: "ServeHTTPDyn",
+			Params: []goir.Type{goir.TObject, goir.TObject, goir.TObject}, Ret: goir.TVoid,
+		}})
+		l.emit(goir.Op{Code: goir.OpBr, Label: end})
+	} else {
+		// No match => nil interface method call.
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: invalid memory address or nil pointer dereference"})
+		l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
+		l.emit(goir.Op{Code: goir.OpCallPanic})
+		l.emit(goir.Op{Code: goir.OpBr, Label: end})
+	}
 
 	for i, impl := range impls {
 		l.mark(labels[i])

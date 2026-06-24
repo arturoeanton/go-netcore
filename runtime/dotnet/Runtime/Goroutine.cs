@@ -94,11 +94,14 @@ public static class GoRuntime
     internal static GoInvoker? Invoker => _invoker;
 
     /// <summary>Invoke a closure value synchronously (for stdlib shims like sync.Once.Do).</summary>
-    public static object? Invoke(GoClosure c) => _invoker?.Invoke(c, System.Array.Empty<object?>());
+    public static object? Invoke(GoClosure c) => InvokeArgs(c, System.Array.Empty<object?>());
 
     /// <summary>Invoke a closure with arguments (for func-taking shims like
-    /// sort.Search, strings.Map, strings.IndexFunc).</summary>
-    public static object? InvokeArgs(GoClosure c, params object?[] args) => _invoker?.Invoke(c, args);
+    /// sort.Search, strings.Map, strings.IndexFunc). A native (runtime-produced)
+    /// closure is callable even when the program defines no lowered closures — and so
+    /// never registered an _invoker — by dispatching its delegate directly.</summary>
+    public static object? InvokeArgs(GoClosure c, params object?[] args)
+        => _invoker != null ? _invoker.Invoke(c, args) : c.Native != null ? c.Native(args) : null;
 
     /// <summary>go f() where the goroutine body is a closure value.</summary>
     public static void Go(GoClosure c)

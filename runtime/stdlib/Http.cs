@@ -186,6 +186,12 @@ public static class Http
     }
     // http.NotFound(w, r): reply with a 404 "page not found" plain-text body.
     public static void NotFound(object w, object? r) => Error(w, GoString.FromDotNetString("404 page not found"), 404);
+    // http.NotFoundHandler() / RedirectHandler(url, code): the HandlerFunc that replies 404 /
+    // redirects. Returned as a native ServeHTTP closure (invoked with w, r).
+    public static object NotFoundHandler() =>
+        new GoClosure { Id = -1, Native = a => { NotFound(a![0]!, a.Length > 1 ? a[1] : null); return null; } };
+    public static object RedirectHandler(GoString url, long code) =>
+        new GoClosure { Id = -1, Native = a => { Redirect(a![0]!, a.Length > 1 ? a[1] : null, url, code); return null; } };
 
     // http.CanonicalHeaderKey(s): canonical MIME header key ("content-type" -> "Content-Type").
     public static GoString CanonicalHeaderKey(GoString s) => Textproto.CanonicalMIMEHeaderKey(s);
@@ -301,6 +307,23 @@ public static class Http
                 var h = Match(path);
                 if (h != null) GoRuntime.InvokeArgs(h, w, req);
                 return;
+        }
+    }
+
+    // Fallback for an http.Handler.ServeHTTP interface call whose receiver carries no
+    // registered ServeHTTP adapter — a closure-based handler (http.HandlerFunc, and the
+    // handlers returned by NotFoundHandler/RedirectHandler): invoke the wrapped closure
+    // directly with (w, r). A truly nil handler panics like Go.
+    public static void ServeHTTPDyn(object? handler, object? w, object? r)
+    {
+        switch (handler)
+        {
+            case GoClosure c: GoRuntime.InvokeArgs(c, w, r); return;
+            case GoNamed nf when nf.Value is GoClosure fc: GoRuntime.InvokeArgs(fc, w, r); return;
+            case GoInterface gi when gi.Type != null: gi.Call("ServeHTTP", w, r); return;
+            default:
+                throw new GoPanicException(GoString.FromDotNetString(
+                    "runtime error: invalid memory address or nil pointer dereference"));
         }
     }
 
@@ -834,9 +857,38 @@ public static class Http
     // http.Redirect(w, r, url, code): set Location and write the status code.
     public static void Redirect(object w, object? r, GoString url, long code)
     {
-        var rw = AsRW(w);
-        try { rw.Resp.Headers["Location"] = url.ToDotNetString(); } catch { }
+        // Mirror net/http.Redirect: set Location (non-ASCII bytes percent-escaped), add a
+        // text/html body for GET so the headers flow through the ResponseWriter's own header
+        // map — which makes it work for an httptest recorder (no backing HttpListenerResponse).
+        string method = (r as GoRequest)?.Method ?? "GET";
+        var h = RW_Header(w);
+        bool hadCT = Header_Get(h, GoString.FromDotNetString("Content-Type")).ToDotNetString().Length != 0;
+        Header_Set(h, GoString.FromDotNetString("Location"), HexEscapeNonASCII(url.ToDotNetString()));
+        if (!hadCT && (method == "GET" || method == "HEAD"))
+            Header_Set(h, GoString.FromDotNetString("Content-Type"), GoString.FromDotNetString("text/html; charset=utf-8"));
         RW_WriteHeader(w, code);
+        if (!hadCT && method == "GET")
+        {
+            string body = "<a href=\"" + Html.EscapeString(url).ToDotNetString() + "\">" + StatusText(code).ToDotNetString() + "</a>.\n";
+            Fmt.WriteTo(w, body + "\n"); // fmt.Fprintln adds the trailing newline
+        }
+    }
+
+    // net/http.hexEscapeNonASCII: percent-escape every byte >= 0x80 (UTF-8 continuation/
+    // lead bytes) as %XX uppercase, leaving ASCII untouched.
+    private static GoString HexEscapeNonASCII(string s)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(s);
+        bool any = false;
+        foreach (var b in bytes) if (b >= 0x80) { any = true; break; }
+        if (!any) return GoString.FromDotNetString(s);
+        var sb = new System.Text.StringBuilder();
+        foreach (var b in bytes)
+        {
+            if (b >= 0x80) sb.Append('%').Append("0123456789ABCDEF"[b >> 4]).Append("0123456789ABCDEF"[b & 0xF]);
+            else sb.Append((char)b);
+        }
+        return GoString.FromDotNetString(sb.ToString());
     }
 
     // http.ResponseWriter.Header() http.Header: a live map[string][]string; entries

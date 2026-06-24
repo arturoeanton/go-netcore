@@ -270,7 +270,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"}, "ReadResponse": {"Http", "ReadResponse"},
 		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"}, "NewServeMux": {"HttpTypes", "NewServeMux"},
-		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"}, "Error": {"Http", "Error"}, "NotFound": {"Http", "NotFound"},
+		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"}, "Error": {"Http", "Error"}, "NotFound": {"Http", "NotFound"}, "NotFoundHandler": {"Http", "NotFoundHandler"}, "RedirectHandler": {"Http", "RedirectHandler"},
 		"NewResponseController": {"Http", "NewResponseController"}, "SetCookie": {"Http", "SetCookie"},
 		"ParseHTTPVersion": {"Http", "ParseHTTPVersion"}, "ParseCookie": {"Http", "ParseCookie"}, "ParseSetCookie": {"Http", "ParseSetCookie"},
 		"ServeFile": {"Http", "ServeFile"}, "ServeContent": {"Http", "ServeContent"}, "FileServer": {"Http", "FileServer"}, "StripPrefix": {"Http", "StripPrefix"}, "Serve": {"Http", "Serve"}, "ListenAndServeTLS": {"Http", "ListenAndServeTLS"},
