@@ -130,7 +130,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"runtime/debug": {"ReadBuildInfo": {"Debug", "ReadBuildInfo"}, "Stack": {"Debug", "Stack"}, "PrintStack": {"Debug", "PrintStack"}, "SetGCPercent": {"Debug", "SetGCPercent"}, "FreeOSMemory": {"Debug", "FreeOSMemory"}},
 	"crypto/hmac":   {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
 	"crypto/subtle": {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}, "ConstantTimeCopy": {"Subtle", "ConstantTimeCopy"}, "ConstantTimeLessOrEq": {"Subtle", "ConstantTimeLessOrEq"}, "WithDataIndependentTiming": {"Subtle", "WithDataIndependentTiming"}},
-	"mime":          {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
+	"mime":          {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}, "FormatMediaType": {"Mime", "FormatMediaType"}, "AddExtensionType": {"Mime", "AddExtensionType"}},
 	"mime/multipart": {"NewReader": {"Multipart", "NewReader"}, "NewWriter": {"Multipart", "NewWriter"}},
 	"net/mail":      {"ParseAddress": {"Mail", "ParseAddress"}},
 	"os/signal": {
@@ -595,6 +595,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"path.ErrBadPattern":            {"Path", "ErrBadPattern"},
 	"path/filepath.ErrBadPattern":   {"Path", "ErrBadPattern"},
 	"encoding/hex.ErrLength":        {"Hex", "ErrLength"},
+	"mime.ErrInvalidMediaParameter": {"Mime", "ErrInvalidMediaParameter"},
 	"bufio.ErrInvalidUnreadByte":     {"Bufio", "ErrInvalidUnreadByte"},
 	"bufio.ErrInvalidUnreadRune":     {"Bufio", "ErrInvalidUnreadRune"},
 	"bufio.ErrTooLong":               {"Bufio", "ErrTooLong"},
