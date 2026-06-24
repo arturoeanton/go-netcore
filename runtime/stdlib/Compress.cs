@@ -7,9 +7,44 @@ using GoCLR.Runtime;
 /// <summary>A gzip/zlib/flate writer that buffers and emits on Close.</summary>
 public sealed class GoCompWriter { public object? W; public MemoryStream Mem = new(); public Stream Z = null!; public int Kind; }
 
+/// <summary>compress/flate.ReadError / WriteError (deprecated): a byte offset + wrapped error.</summary>
+[GoShim("compress/flate.ReadError")]
+public sealed class GoFlateReadError : IGoError
+{
+    public long Offset; public object? Err;
+    public GoString Error() => GoString.FromDotNetString("flate: read error at offset " + Offset + ": " + Compress.ErrStr(Err));
+}
+[GoShim("compress/flate.WriteError")]
+public sealed class GoFlateWriteError : IGoError
+{
+    public long Offset; public object? Err;
+    public GoString Error() => GoString.FromDotNetString("flate: write error at offset " + Offset + ": " + Compress.ErrStr(Err));
+}
+
 /// <summary>Shim for compress/gzip, compress/zlib, compress/flate (.NET streams).</summary>
 public static class Compress
 {
+    internal static string ErrStr(object? e) =>
+        e is IGoError g ? g.Error().ToDotNetString()
+        : e != null && Bridge.HasMethod(e, "Error") && Bridge.CallMethod(e, "Error") is GoString gs ? gs.ToDotNetString() : "";
+
+    // flate.CorruptInputError (int64) / InternalError (string): Error() formatting.
+    public static GoString CorruptInputError_Error(long e) => GoString.FromDotNetString("flate: corrupt input before offset " + e);
+    public static GoString InternalError_Error(GoString e) => GoString.FromDotNetString("flate: internal error: " + e.ToDotNetString());
+
+    // flate.ReadError / WriteError struct shims.
+    public static object ReadErrorZero() => new GoFlateReadError();
+    public static long ReadError_Offset(object e) => ((GoFlateReadError)e).Offset;
+    public static object? ReadError_Err(object e) => ((GoFlateReadError)e).Err;
+    public static void ReadError_SetOffset(object e, long v) => ((GoFlateReadError)e).Offset = v;
+    public static void ReadError_SetErr(object e, object? v) => ((GoFlateReadError)e).Err = v;
+    public static GoString ReadError_Error(object e) => ((GoFlateReadError)e).Error();
+    public static object WriteErrorZero() => new GoFlateWriteError();
+    public static long WriteError_Offset(object e) => ((GoFlateWriteError)e).Offset;
+    public static object? WriteError_Err(object e) => ((GoFlateWriteError)e).Err;
+    public static void WriteError_SetOffset(object e, long v) => ((GoFlateWriteError)e).Offset = v;
+    public static void WriteError_SetErr(object e, object? v) => ((GoFlateWriteError)e).Err = v;
+    public static GoString WriteError_Error(object e) => ((GoFlateWriteError)e).Error();
     // compress/gzip + compress/zlib sentinel errors.
     public static readonly GoError GzipErrChecksumSentinel = new(GoString.FromDotNetString("gzip: invalid checksum"));
     public static object GzipErrChecksum() => GzipErrChecksumSentinel;
@@ -58,7 +93,8 @@ public static class Compress
     // zlib.NewWriterLevelDict: the preset dictionary is not applied (.NET ZLibStream has no
     // dict support); the stream round-trips with NewReaderDict, which likewise ignores it.
     public static object?[] ZlibNewWriterLevelDict(object? w, long level, GoSlice dict) => ZlibNewWriterLevel(w, level);
-    public static object FlateNewWriter(object? w, long level) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 2), Kind = 2 }; }
+    // flate.NewWriter(w, level) (*Writer, error).
+    public static object?[] FlateNewWriter(object? w, long level) { var m = new MemoryStream(); return new object?[] { new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 2), Kind = 2 }, null }; }
 
     public static object?[] CompW_Write(object wo, GoSlice p)
     {
