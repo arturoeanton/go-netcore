@@ -3,6 +3,13 @@ namespace GoCLR.Stdlib;
 using System.Formats.Asn1;
 using GoCLR.Runtime;
 
+/// <summary>asn1.StructuralError / asn1.SyntaxError as shim types (single Msg field) so
+/// user struct literals create these and their Error()/field access resolve.</summary>
+[GoShim("encoding/asn1.StructuralError")]
+public sealed class GoAsn1StructuralError { public string Msg = ""; }
+[GoShim("encoding/asn1.SyntaxError")]
+public sealed class GoAsn1SyntaxError { public string Msg = ""; }
+
 /// <summary>Shim for the slice of encoding/asn1 that crypto/x509 and acme use: DER
 /// marshal of the byte-slice / integer / OID forms they emit, over System.Formats.Asn1.</summary>
 public static class Asn1
@@ -44,6 +51,18 @@ public static class Asn1
         for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
+
+    // StructuralError/SyntaxError are made SHIM types (below) so a user's struct literal
+    // creates the shim instance and the method receiver resolves — a goclr-native struct's
+    // value receiver binds to a program-generated CLR type the shim can't name.
+    public static object NewStructuralError() => new GoAsn1StructuralError();
+    public static GoString StructuralError_Error(object e) => GoString.FromDotNetString("asn1: structure error: " + ((GoAsn1StructuralError)e).Msg);
+    public static GoString StructuralError_Msg(object e) => GoString.FromDotNetString(((GoAsn1StructuralError)e).Msg);
+    public static void StructuralError_SetMsg(object e, GoString v) => ((GoAsn1StructuralError)e).Msg = v.ToDotNetString();
+    public static object NewSyntaxError() => new GoAsn1SyntaxError();
+    public static GoString SyntaxError_Error(object e) => GoString.FromDotNetString("asn1: syntax error: " + ((GoAsn1SyntaxError)e).Msg);
+    public static GoString SyntaxError_Msg(object e) => GoString.FromDotNetString(((GoAsn1SyntaxError)e).Msg);
+    public static void SyntaxError_SetMsg(object e, GoString v) => ((GoAsn1SyntaxError)e).Msg = v.ToDotNetString();
 
     // asn1.NullBytes = []byte{tagNull, 0} = {5, 0}.
     public static object NullBytes() => new GoSlice { Data = new object?[] { 5, 0 }, Off = 0, Len = 2, Cap = 2 };
