@@ -16,12 +16,22 @@ public sealed class GoNetipAddr
     public bool ValEq(GoNetipAddr o) => Hi == o.Hi && Lo == o.Lo && Z == o.Z && Zone == o.Zone;
 }
 
+/// <summary>A net/netip.AddrPort: an Addr plus a uint16 port.</summary>
+[GoShim("net/netip.AddrPort")]
+public sealed class GoNetipAddrPort { public GoNetipAddr Ip = new(); public int Port; }
+
+/// <summary>A net/netip.Prefix: an Addr plus bitsPlusOne (0 = invalid).</summary>
+[GoShim("net/netip.Prefix")]
+public sealed class GoNetipPrefix { public GoNetipAddr Ip = new(); public int BitsPlusOne; }
+
 public static class Netip
 {
     private static GoNetipAddr A(object o) => (GoNetipAddr)o;
 
     // Zero value for `var a netip.Addr` — the invalid address.
     public static object AddrZero() => new GoNetipAddr();
+    public static object AddrPortZero() => new GoNetipAddrPort();
+    public static object PrefixZero() => new GoNetipPrefix();
 
     // ---- constructors --------------------------------------------------------------------
     public static object AddrFrom4(GoSlice b)
@@ -368,6 +378,180 @@ public static class Netip
         for (int i = 0; i < 8; i++) b[8 + i] = (byte)((ip.Lo >> ((7 - i) * 8)) & 0xff);
         zb.CopyTo(b, 16);
         return b;
+    }
+
+    // ---- Addr.Prefix (needed by Prefix.Masked/Overlaps) ----------------------------------
+    public static object?[] Addr_Prefix(object ipo, long b)
+    {
+        var ip = A(ipo);
+        if (b < 0) return new object?[] { new GoNetipPrefix(), new GoError(GoString.FromDotNetString("negative Prefix bits")) };
+        long eff = b;
+        if (ip.Z == 0) return new object?[] { new GoNetipPrefix(), null };
+        if (ip.Z == 4)
+        {
+            if (b > 32) return new object?[] { new GoNetipPrefix(), new GoError(GoString.FromDotNetString("prefix length " + b + " too large for IPv4")) };
+            eff += 96;
+        }
+        else if (b > 128) return new object?[] { new GoNetipPrefix(), new GoError(GoString.FromDotNetString("prefix length " + b + " too large for IPv6")) };
+        var (mh, ml) = Mask6((int)eff);
+        var masked = ip.Clone(); masked.Hi &= mh; masked.Lo &= ml;
+        return new object?[] { PrefixFrom(masked, b), null };
+    }
+
+    // ---- AddrPort ------------------------------------------------------------------------
+    public static object AddrPortFrom(object ip, uint port) => new GoNetipAddrPort { Ip = A(ip), Port = (int)(ushort)port };
+    public static object AddrPort_Addr(object p) => ((GoNetipAddrPort)p).Ip;
+    public static uint AddrPort_Port(object p) => (uint)((GoNetipAddrPort)p).Port;
+    public static bool AddrPort_IsValid(object p) => Addr_IsValid(((GoNetipAddrPort)p).Ip);
+    public static long AddrPort_Compare(object po, object p2o)
+    {
+        var p = (GoNetipAddrPort)po; var p2 = (GoNetipAddrPort)p2o;
+        long c = Addr_Compare(p.Ip, p2.Ip); if (c != 0) return c;
+        return p.Port < p2.Port ? -1 : p.Port > p2.Port ? 1 : 0;
+    }
+    public static GoString AddrPort_String(object po)
+    {
+        var p = (GoNetipAddrPort)po; var ip = p.Ip;
+        if (ip.Z == 0) return GoString.FromDotNetString("invalid AddrPort");
+        string body = ip.Z == 4 ? Addr_String(ip).ToDotNetString() : "[" + Addr_String(ip).ToDotNetString() + "]";
+        return GoString.FromDotNetString(body + ":" + p.Port);
+    }
+    public static GoSlice AddrPort_AppendTo(object po, GoSlice b)
+    {
+        var p = (GoNetipAddrPort)po; var ip = p.Ip;
+        if (ip.Z == 0) return b;
+        return Append(b, System.Text.Encoding.ASCII.GetBytes(AddrPort_String(po).ToDotNetString()));
+    }
+    public static object MustParseAddrPort(GoString s)
+    {
+        var r = ParseAddrPort(s);
+        if (r[1] != null) throw new GoPanicException(((GoError)r[1]!).Error());
+        return r[0]!;
+    }
+    public static object?[] ParseAddrPort(GoString so)
+    {
+        string s = so.ToDotNetString();
+        // splitAddrPort
+        int i = s.LastIndexOf(':');
+        if (i == -1) return APErr("not an ip:port");
+        string ipS = s.Substring(0, i), portS = s.Substring(i + 1);
+        if (ipS.Length == 0) return APErr("no IP");
+        if (portS.Length == 0) return APErr("no port");
+        bool v6 = false;
+        if (ipS[0] == '[')
+        {
+            if (ipS.Length < 2 || ipS[ipS.Length - 1] != ']') return APErr("missing ]");
+            ipS = ipS.Substring(1, ipS.Length - 2); v6 = true;
+        }
+        var pr = Strconv.ParseUint(GoString.FromDotNetString(portS), 10, 16);
+        if (pr[1] != null) return new object?[] { new GoNetipAddrPort(), new GoError(GoString.FromDotNetString("invalid port " + Q(portS) + " parsing " + Q(s))) };
+        int port = (int)(ulong)pr[0]!;
+        var ar = ParseAddr(GoString.FromDotNetString(ipS));
+        if (ar[1] != null) return new object?[] { new GoNetipAddrPort(), ar[1] };
+        var ip = (GoNetipAddr)ar[0]!;
+        if (v6 && Addr_Is4(ip)) return new object?[] { new GoNetipAddrPort(), new GoError(GoString.FromDotNetString("invalid ip:port " + Q(s) + ", square brackets can only be used with IPv6 addresses")) };
+        if (!v6 && Addr_Is6(ip)) return new object?[] { new GoNetipAddrPort(), new GoError(GoString.FromDotNetString("invalid ip:port " + Q(s) + ", IPv6 addresses must be surrounded by square brackets")) };
+        return new object?[] { new GoNetipAddrPort { Ip = ip, Port = port }, null };
+    }
+    private static object?[] APErr(string msg) => new object?[] { new GoNetipAddrPort(), new GoError(GoString.FromDotNetString(msg)) };
+
+    // ---- Prefix --------------------------------------------------------------------------
+    public static object PrefixFrom(object ipo, long bits)
+    {
+        var ip = A(ipo);
+        int bpo = 0;
+        if (ip.Z != 0 && bits >= 0 && bits <= Addr_BitLen(ipo)) bpo = (int)bits + 1;
+        var noz = (GoNetipAddr)Addr_WithoutZone(ip);
+        return new GoNetipPrefix { Ip = noz, BitsPlusOne = bpo };
+    }
+    private static object Addr_WithoutZone(GoNetipAddr ip) { if (!Addr_Is6(ip)) return ip; var c = ip.Clone(); c.Zone = ""; return c; }
+    public static object Prefix_Addr(object p) => ((GoNetipPrefix)p).Ip;
+    public static long Prefix_Bits(object p) => ((GoNetipPrefix)p).BitsPlusOne - 1;
+    public static bool Prefix_IsValid(object p) => ((GoNetipPrefix)p).BitsPlusOne > 0;
+    public static bool Prefix_IsSingleIP(object p) => Prefix_IsValid(p) && Prefix_Bits(p) == Addr_BitLen(((GoNetipPrefix)p).Ip);
+    public static object Prefix_Masked(object po)
+    {
+        var p = (GoNetipPrefix)po;
+        var r = Addr_Prefix(p.Ip, Prefix_Bits(po));
+        return r[0]!;
+    }
+    public static long Prefix_Compare(object po, object p2o)
+    {
+        long c = Addr_Compare(Prefix_Addr(Prefix_Masked(po)), Prefix_Addr(Prefix_Masked(p2o))); if (c != 0) return c;
+        long b1 = Prefix_Bits(po), b2 = Prefix_Bits(p2o); if (b1 < b2) return -1; if (b1 > b2) return 1;
+        return Addr_Compare(Prefix_Addr(po), Prefix_Addr(p2o));
+    }
+    public static bool Prefix_Contains(object po, object ipo)
+    {
+        var p = (GoNetipPrefix)po; var ip = A(ipo);
+        if (!Prefix_IsValid(po) || Addr_HasZone(ip)) return false;
+        long f1 = Addr_BitLen(p.Ip), f2 = Addr_BitLen(ipo);
+        if (f1 == 0 || f2 == 0 || f1 != f2) return false;
+        if (Addr_Is4(ipo))
+            return (uint)((ip.Lo ^ p.Ip.Lo) >> (int)((32 - Prefix_Bits(po)) & 63)) == 0;
+        var (mh, ml) = Mask6((int)Prefix_Bits(po));
+        return ((ip.Hi ^ p.Ip.Hi) & mh) == 0 && ((ip.Lo ^ p.Ip.Lo) & ml) == 0;
+    }
+    public static bool Prefix_Overlaps(object po, object oo)
+    {
+        var p = (GoNetipPrefix)po; var o = (GoNetipPrefix)oo;
+        if (!Prefix_IsValid(po) || !Prefix_IsValid(oo)) return false;
+        if (p.Ip.ValEq(o.Ip) && p.BitsPlusOne == o.BitsPlusOne) return true;
+        if (Addr_Is4(p.Ip) != Addr_Is4(o.Ip)) return false;
+        long pb = Prefix_Bits(po), ob = Prefix_Bits(oo);
+        long minBits = pb < ob ? pb : ob;
+        if (minBits == 0) return true;
+        var pr = Addr_Prefix(p.Ip, minBits); if (pr[1] != null) return false;
+        var or = Addr_Prefix(o.Ip, minBits); if (or[1] != null) return false;
+        return ((GoNetipPrefix)pr[0]!).Ip.ValEq(((GoNetipPrefix)or[0]!).Ip);
+    }
+    public static GoString Prefix_String(object po)
+    {
+        var p = (GoNetipPrefix)po;
+        if (!Prefix_IsValid(po)) return GoString.FromDotNetString("invalid Prefix");
+        return GoString.FromDotNetString(Addr_String(p.Ip).ToDotNetString() + "/" + Prefix_Bits(po));
+    }
+    public static GoSlice Prefix_AppendTo(object po, GoSlice b)
+    {
+        var p = (GoNetipPrefix)po;
+        if (p.BitsPlusOne == 0 && p.Ip.Z == 0) return b;
+        if (!Prefix_IsValid(po)) return Append(b, System.Text.Encoding.ASCII.GetBytes("invalid Prefix"));
+        return Append(b, System.Text.Encoding.ASCII.GetBytes(Prefix_String(po).ToDotNetString()));
+    }
+    public static object MustParsePrefix(GoString s)
+    {
+        var r = ParsePrefix(s);
+        if (r[1] != null) throw new GoPanicException(((GoError)r[1]!).Error());
+        return r[0]!;
+    }
+    public static object?[] ParsePrefix(GoString so)
+    {
+        string s = so.ToDotNetString();
+        int i = s.LastIndexOf('/');
+        if (i < 0) return PfxErr(s, "no '/'");
+        var ar = ParseAddr(GoString.FromDotNetString(s.Substring(0, i)));
+        if (ar[1] != null) return PfxErr(s, ((GoError)ar[1]!).Error().ToDotNetString());
+        var ip = (GoNetipAddr)ar[0]!;
+        if (Addr_Is6(ip) && ip.Zone.Length > 0) return PfxErr(s, "IPv6 zones cannot be present in a prefix");
+        string bitsStr = s.Substring(i + 1);
+        if (bitsStr.Length > 1 && (bitsStr[0] < '1' || bitsStr[0] > '9')) return PfxErr(s, "bad bits after slash: " + Q(bitsStr));
+        var br = Strconv.Atoi(GoString.FromDotNetString(bitsStr));
+        if (br[1] != null) return PfxErr(s, "bad bits after slash: " + Q(bitsStr));
+        long bits = (long)br[0]!;
+        long maxBits = Addr_Is6(ip) ? 128 : 32;
+        if (bits < 0 || bits > maxBits) return PfxErr(s, "prefix length out of range");
+        return new object?[] { PrefixFrom(ip, bits), null };
+    }
+    private static object?[] PfxErr(string @in, string msg) =>
+        new object?[] { new GoNetipPrefix(), new GoError(GoString.FromDotNetString("netip.ParsePrefix(" + Q(@in) + "): " + msg)) };
+
+    private static bool Addr_HasZone(GoNetipAddr ip) => ip.Z != 0 && ip.Z != 4 && ip.Zone.Length > 0;
+    private static (ulong hi, ulong lo) Mask6(int n)
+    {
+        ulong hi = n >= 64 ? ulong.MaxValue : ~(ulong.MaxValue >> n);
+        int sft = 128 - n;
+        ulong lo = sft >= 64 ? 0UL : (ulong.MaxValue << sft);
+        return (hi, lo);
     }
 
     // ---- helpers -------------------------------------------------------------------------

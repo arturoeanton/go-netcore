@@ -36,6 +36,8 @@ public static class Fmt
         if (v is GoBigFloat) { s = Big.Float_String(v).ToDotNetString(); return true; }
         if (v is GoSignal sg) { s = sg.Name; return true; }
         if (v is GoNetipAddr) { s = Netip.Addr_String(v).ToDotNetString(); return true; }
+        if (v is GoNetipAddrPort) { s = Netip.AddrPort_String(v).ToDotNetString(); return true; }
+        if (v is GoNetipPrefix) { s = Netip.Prefix_String(v).ToDotNetString(); return true; }
         if (v is GoNamed kn && Rt.NamedTypeName(kn.TypeId) == "reflect.Kind")
         { s = GoKind.Name((int)System.Convert.ToInt64(kn.Value ?? 0L)); return true; }
         // Shim named scalar types whose String() is a runtime shim (not a lowered Go
