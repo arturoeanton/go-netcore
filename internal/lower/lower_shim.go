@@ -88,7 +88,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"New": {"Reflect", "New"}, "PointerTo": {"Reflect", "PointerTo"}, "PtrTo": {"Reflect", "PointerTo"},
 		"MapOf": {"Reflect", "MapOf"}, "SliceOf": {"Reflect", "SliceOf"}, "ArrayOf": {"Reflect", "ArrayOf"},
 		"MakeFunc": {"Reflect", "MakeFunc"}, "Copy": {"Reflect", "Copy"}, "Indirect": {"Reflect", "Indirect"},
-		"Append": {"Reflect", "Append"},
+		"Append": {"Reflect", "Append"}, "Swapper": {"Reflect", "Swapper"},
 	},
 	"encoding/json": {
 		"Marshal": {"Json", "Marshal"}, "MarshalIndent": {"Json", "MarshalIndent"},

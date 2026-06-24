@@ -590,6 +590,34 @@ public static class Reflect
         return new GoReflectValue { V = s };
     }
 
+    // reflect.Swapper(slice) func(i, j int): a function that swaps the slice's i-th and
+    // j-th elements in place (operating directly on the backing array).
+    public static GoClosure Swapper(object? slice)
+    {
+        object? sv = slice;
+        if (sv is GoReflectValue rv) sv = rv.V;
+        if (sv is GoNamed nm) sv = nm.Value;
+        if (sv is GoPtr p) sv = p.Value;
+        if (sv is not GoSlice s)
+            throw new GoPanicException(GoString.FromDotNetString("reflect: Swapper of non-slice"));
+        if (s.Len == 0)
+            return NativeClosures.Make(_ => throw new GoPanicException(GoString.FromDotNetString("reflect: slice index out of range")));
+        if (s.Len == 1)
+            return NativeClosures.Make(a =>
+            {
+                if (System.Convert.ToInt64(a[0]) != 0 || System.Convert.ToInt64(a[1]) != 0)
+                    throw new GoPanicException(GoString.FromDotNetString("reflect: slice index out of range"));
+                return null;
+            });
+        return NativeClosures.Make(a =>
+        {
+            int i = (int)System.Convert.ToInt64(a[0]), j = (int)System.Convert.ToInt64(a[1]);
+            var d = s.Data!;
+            (d[s.Off + i], d[s.Off + j]) = (d[s.Off + j], d[s.Off + i]);
+            return null;
+        });
+    }
+
     // --- reflect.Value: more accessors / mutators --------------------------
     public static void Value_SetMapIndex(object v, object key, object elem)
     {
