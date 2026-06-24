@@ -71,6 +71,7 @@ public static class Errors
         while (err != null)
         {
             if (ReferenceEquals(err, target)) return true;
+            if (err is IGoErrorIs eis && eis.GoIs(target)) return true; // shim error's own Is(target)
             if (Bridge.HasMethod(err, "Is") && Bridge.CallMethod(err, "Is", target) is bool b && b) return true;
             if (err is JoinError je) // Unwrap() []error: any joined error matching is a match
             {

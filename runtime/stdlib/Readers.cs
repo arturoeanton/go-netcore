@@ -7,6 +7,10 @@ using GoCLR.Runtime;
 /// bytes, e.g. hex-encode them) instead of punching straight to the underlying sink.</summary>
 public interface IGoWriter { void GoWrite(byte[] data); }
 
+/// <summary>A shim error whose Is(target) relationship can't be expressed by identity alone
+/// (e.g. net/http.ProtocolError matching errors.ErrUnsupported). errors.Is consults this.</summary>
+public interface IGoErrorIs { bool GoIs(object? target); }
+
 /// <summary>An in-memory reader (strings.Reader / bytes.Reader / an http response
 /// body) over a byte array. Tagged with every Go type it backs so that compiled Go
 /// calling an interface method on it (e.g. io.MultiReader's multiReader.Read invoking

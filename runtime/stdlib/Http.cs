@@ -5,6 +5,23 @@ using System.Net.Http;
 using GoCLR.Runtime;
 
 /// <summary>An *http.Response handle (status + body snapshot).</summary>
+/// <summary>net/http.ProtocolError: a malformed-protocol error wrapping its message string.</summary>
+[GoShim("net/http.ProtocolError")]
+public sealed class GoHttpProtocolError : IGoError, IGoErrorIs
+{
+    public string ErrorString = "";
+    public GoString Error() => GoString.FromDotNetString(ErrorString);
+    public bool GoIs(object? target) => Http.ProtocolError_Is(this, target);
+}
+
+/// <summary>net/http.MaxBytesError: returned by MaxBytesReader past its limit.</summary>
+[GoShim("net/http.MaxBytesError")]
+public sealed class GoHttpMaxBytesError : IGoError
+{
+    public long Limit;
+    public GoString Error() => GoString.FromDotNetString("http: request body too large");
+}
+
 public sealed class GoResponse { public int StatusCode; public string Status = ""; public GoReader Body = new(); public long ContentLength; public readonly GoFieldBag Extra = new(); }
 
 /// <summary>An http.ResponseWriter backed by an HttpListenerResponse. The body is
@@ -117,8 +134,24 @@ public static class Http
     public static object ErrAbortHandler() => ErrAbortHandlerSentinel;
     public static readonly GoError ErrBodyNotAllowedSentinel = new(GoString.FromDotNetString("http: request method or response status code does not allow body"));
     public static object ErrBodyNotAllowed() => ErrBodyNotAllowedSentinel;
-    public static readonly GoError ErrNotSupportedSentinel = new(GoString.FromDotNetString("feature not supported"));
+    // net/http.ErrNotSupported is a *ProtocolError; its Is matches errors.ErrUnsupported.
+    public static readonly GoHttpProtocolError ErrNotSupportedSentinel = new() { ErrorString = "feature not supported" };
     public static object ErrNotSupported() => ErrNotSupportedSentinel;
+
+    // net/http.ProtocolError {ErrorString}: Error() reports the string; Is(target) is true only
+    // for ErrNotSupported vs errors.ErrUnsupported.
+    public static object ProtocolErrorZero() => new GoHttpProtocolError();
+    public static GoString ProtocolError_ErrorString(object e) => GoString.FromDotNetString(((GoHttpProtocolError)e).ErrorString);
+    public static void ProtocolError_SetErrorString(object e, GoString v) => ((GoHttpProtocolError)e).ErrorString = v.ToDotNetString();
+    public static GoString ProtocolError_Error(object e) => GoString.FromDotNetString(((GoHttpProtocolError)e).ErrorString);
+    public static bool ProtocolError_Is(object e, object? target) =>
+        ReferenceEquals(e, ErrNotSupportedSentinel) && ReferenceEquals(target, Errors.ErrUnsupportedSentinel);
+
+    // net/http.MaxBytesError {Limit}: Error() is the fixed "request body too large" message.
+    public static object MaxBytesErrorZero() => new GoHttpMaxBytesError();
+    public static long MaxBytesError_Limit(object e) => ((GoHttpMaxBytesError)e).Limit;
+    public static void MaxBytesError_SetLimit(object e, long v) => ((GoHttpMaxBytesError)e).Limit = v;
+    public static GoString MaxBytesError_Error(object e) => GoString.FromDotNetString("http: request body too large");
     public static readonly GoError ErrSkipAltProtocolSentinel = new(GoString.FromDotNetString("net/http: skip alternate protocol"));
     public static object ErrSkipAltProtocol() => ErrSkipAltProtocolSentinel;
     public static readonly GoError ErrServerClosedSentinel = new(GoString.FromDotNetString("http: Server closed"));
