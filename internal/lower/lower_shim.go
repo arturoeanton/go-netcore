@@ -472,6 +472,7 @@ var opaqueShimTypes = map[string]bool{
 	"io/fs.PathError":                true,
 	"os.PathError":                   true,
 	"os.LinkError":                   true,
+	"text/template.ExecError":        true,
 	"runtime.Frame":                  true,
 	"runtime.Frames":                 true,
 	"time.Time":                      true,
@@ -913,6 +914,7 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"io/fs.PathError": {"Op": {"Fs", "PathError_Op"}, "Path": {"Fs", "PathError_Path"}, "Err": {"Fs", "PathError_Err"}},
 	"os.PathError": {"Op": {"Fs", "PathError_Op"}, "Path": {"Fs", "PathError_Path"}, "Err": {"Fs", "PathError_Err"}},
 	"os.LinkError": {"Op": {"Os", "LinkError_Op"}, "Old": {"Os", "LinkError_Old"}, "New": {"Os", "LinkError_New"}, "Err": {"Os", "LinkError_Err"}},
+	"text/template.ExecError": {"Name": {"Template", "ExecError_Name"}, "Err": {"Template", "ExecError_Err"}},
 	"compress/flate.ReadError": {"Offset": {"Compress", "ReadError_Offset"}, "Err": {"Compress", "ReadError_Err"}},
 	"compress/flate.WriteError": {"Offset": {"Compress", "WriteError_Offset"}, "Err": {"Compress", "WriteError_Err"}},
 	"text/scanner.Position": {"Filename": {"GoToken", "Position_Filename"}, "Offset": {"GoToken", "Position_Offset"}, "Line": {"GoToken", "Position_Line"}, "Column": {"GoToken", "Position_Column"}},
@@ -1082,6 +1084,7 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"io/fs.PathError": {"Op": {"Fs", "PathError_SetOp"}, "Path": {"Fs", "PathError_SetPath"}, "Err": {"Fs", "PathError_SetErr"}},
 	"os.PathError": {"Op": {"Fs", "PathError_SetOp"}, "Path": {"Fs", "PathError_SetPath"}, "Err": {"Fs", "PathError_SetErr"}},
 	"os.LinkError": {"Op": {"Os", "LinkError_SetOp"}, "Old": {"Os", "LinkError_SetOld"}, "New": {"Os", "LinkError_SetNew"}, "Err": {"Os", "LinkError_SetErr"}},
+	"text/template.ExecError": {"Name": {"Template", "ExecError_SetName"}, "Err": {"Template", "ExecError_SetErr"}},
 	"compress/flate.ReadError": {"Offset": {"Compress", "ReadError_SetOffset"}, "Err": {"Compress", "ReadError_SetErr"}},
 	"compress/flate.WriteError": {"Offset": {"Compress", "WriteError_SetOffset"}, "Err": {"Compress", "WriteError_SetErr"}},
 	"text/scanner.Position": {"Filename": {"GoToken", "Position_SetFilename"}, "Offset": {"GoToken", "Position_SetOffset"}, "Line": {"GoToken", "Position_SetLine"}, "Column": {"GoToken", "Position_SetColumn"}},
@@ -1189,6 +1192,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"io/fs.PathError":                  {"Fs", "PathErrorZero"},
 	"os.PathError":                     {"Fs", "PathErrorZero"},
 	"os.LinkError":                     {"Os", "LinkErrorZero"},
+	"text/template.ExecError":          {"Template", "ExecErrorZero"},
 	"compress/flate.ReadError":         {"Compress", "ReadErrorZero"},
 	"compress/flate.WriteError":        {"Compress", "WriteErrorZero"},
 	"text/scanner.Position":            {"GoToken", "PositionZero"},
@@ -1380,12 +1384,14 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Parse": {"Template", "Tmpl_Parse"}, "ParseFiles": {"Template", "Tmpl_ParseFiles"}, "ParseGlob": {"Template", "Tmpl_ParseGlob"},
 		"Execute": {"Template", "Tmpl_Execute"}, "ExecuteTemplate": {"Template", "Tmpl_ExecuteTemplate"},
 		"Templates": {"Template", "Tmpl_Templates"}, "Name": {"Template", "Tmpl_Name"}, "Lookup": {"Template", "Tmpl_Lookup"}, "Option": {"Template", "Tmpl_Option"},
+		"Clone": {"Template", "Tmpl_Clone"},
 	},
 	"text/template.Template": {
 		"New": {"Template", "Tmpl_New"}, "Delims": {"Template", "Tmpl_Delims"}, "Funcs": {"Template", "Tmpl_Funcs"},
 		"Parse": {"Template", "Tmpl_Parse"}, "ParseFiles": {"Template", "Tmpl_ParseFiles"}, "ParseGlob": {"Template", "Tmpl_ParseGlob"},
 		"Execute": {"Template", "Tmpl_Execute"}, "ExecuteTemplate": {"Template", "Tmpl_ExecuteTemplate"},
 		"Templates": {"Template", "Tmpl_Templates"}, "Name": {"Template", "Tmpl_Name"}, "Lookup": {"Template", "Tmpl_Lookup"}, "Option": {"Template", "Tmpl_Option"},
+		"Clone": {"Template", "Tmpl_Clone"},
 	},
 	"encoding/json.Decoder": {
 		"Token": {"Json", "Decoder_Token"}, "More": {"Json", "Decoder_More"},
@@ -1807,6 +1813,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"os.LinkError": {
 		"Error": {"Os", "LinkError_Error"}, "Unwrap": {"Os", "LinkError_Unwrap"},
+	},
+	"text/template.ExecError": {
+		"Error": {"Template", "ExecError_Error"}, "Unwrap": {"Template", "ExecError_Unwrap"},
 	},
 	"crypto/x509.PublicKeyAlgorithm": {
 		"String": {"Crypto509", "PublicKeyAlgorithm_String"},

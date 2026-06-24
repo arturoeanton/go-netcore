@@ -17,6 +17,20 @@ public sealed class GoTemplate
     public readonly Dictionary<string, GoClosure> Funcs = new();
 }
 
+/// <summary>text/template.ExecError: a template name + the pre-formatted execution error.
+/// Error() delegates to the wrapped error; Unwrap()/Is follow it.</summary>
+[GoShim("text/template.ExecError")]
+public sealed class GoExecError : IGoError, IGoWrapped
+{
+    public string Name = "";
+    public object? Err;
+    public GoString Error() =>
+        Err is IGoError g ? g.Error()
+        : Err != null && Bridge.HasMethod(Err, "Error") && Bridge.CallMethod(Err, "Error") is GoString gs ? gs
+        : GoString.FromDotNetString("");
+    public object? GoUnwrapped() => Err;
+}
+
 /// <summary>Shim for text/template and html/template: a pragmatic engine covering the
 /// common surface — text, {{.Field}}/{{.A.B}}/{{.}}, {{$v}}/{{$v := ...}}, pipelines
 /// with |, {{if}}/{{range}}/{{with}}/{{else}}/{{end}}, {{template}}/{{define}}, the
@@ -160,6 +174,26 @@ public static class Template
         return new() { Data = data, Off = 0, Len = data.Length, Cap = data.Length };
     }
     public static GoString Tmpl_Name(object t) => GoString.FromDotNetString(((GoTemplate)t).Name);
+
+    // (*Template).Clone() (*Template, error): a copy that can be associated/defined
+    // independently (the parsed bodies are shared — goclr templates are immutable once parsed).
+    public static object?[] Tmpl_Clone(object to)
+    {
+        var t = (GoTemplate)to;
+        var c = new GoTemplate { Name = t.Name, Root = t.Root, Html = t.Html };
+        foreach (var kv in t.Set) c.Set[kv.Key] = kv.Value;
+        foreach (var kv in t.Funcs) c.Funcs[kv.Key] = kv.Value;
+        return new object?[] { c, null };
+    }
+
+    // text/template.ExecError struct + methods (value-receiver error).
+    public static object ExecErrorZero() => new GoExecError();
+    public static GoString ExecError_Name(object e) => GoString.FromDotNetString(((GoExecError)e).Name);
+    public static object? ExecError_Err(object e) => ((GoExecError)e).Err;
+    public static void ExecError_SetName(object e, GoString v) => ((GoExecError)e).Name = v.ToDotNetString();
+    public static void ExecError_SetErr(object e, object? v) => ((GoExecError)e).Err = v;
+    public static GoString ExecError_Error(object e) => ((GoExecError)e).Error();
+    public static object? ExecError_Unwrap(object e) => ((GoExecError)e).Err;
     public static object Tmpl_Lookup(object t, GoString name) => ((GoTemplate)t).Set.TryGetValue(name.ToDotNetString(), out var s) ? s : t;
     public static object Tmpl_Option(object t, GoSlice opts) => t;
 
