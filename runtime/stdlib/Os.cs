@@ -6,9 +6,15 @@ using GoCLR.Runtime;
 [GoShim("os.File")]
 public sealed class GoFile { public bool IsStderr; public bool IsStdin; public System.IO.Stream? Wr; public string Path = ""; }
 
-/// <summary>An os.SyscallError (a syscall-tagged error).</summary>
+/// <summary>An os.SyscallError (a syscall-tagged error). Implements IGoError so fmt
+/// prints it via Error() ("syscall: inner") instead of dumping the struct fields.</summary>
 [GoShim("os.SyscallError")]
-public sealed class GoSyscallError { public string Syscall = ""; public object? Err; }
+public sealed class GoSyscallError : IGoError
+{
+    public string Syscall = "";
+    public object? Err;
+    public GoString Error() => GoString.FromDotNetString(Syscall + ": " + (Err is IGoError g ? g.Error().ToDotNetString() : ""));
+}
 
 /// <summary>An fs.FS rooted at a directory (os.DirFS). An opaque handle; goclr's serving
 /// paths don't traverse it.</summary>

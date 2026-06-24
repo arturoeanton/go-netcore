@@ -6,9 +6,9 @@ using GoCLR.Runtime;
 /// <summary>asn1.StructuralError / asn1.SyntaxError as shim types (single Msg field) so
 /// user struct literals create these and their Error()/field access resolve.</summary>
 [GoShim("encoding/asn1.StructuralError")]
-public sealed class GoAsn1StructuralError { public string Msg = ""; }
+public sealed class GoAsn1StructuralError : IGoError { public string Msg = ""; public GoString Error() => GoString.FromDotNetString("asn1: structure error: " + Msg); }
 [GoShim("encoding/asn1.SyntaxError")]
-public sealed class GoAsn1SyntaxError { public string Msg = ""; }
+public sealed class GoAsn1SyntaxError : IGoError { public string Msg = ""; public GoString Error() => GoString.FromDotNetString("asn1: syntax error: " + Msg); }
 
 /// <summary>asn1.BitString as a shim type (Bytes []byte + BitLength int).</summary>
 [GoShim("encoding/asn1.BitString")]
