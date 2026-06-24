@@ -2,6 +2,16 @@ namespace GoCLR.Stdlib;
 
 using GoCLR.Runtime;
 
+/// <summary>encoding/hex.encoder (the opaque io.Writer from hex.NewEncoder): hex-encodes
+/// each Write and forwards the encoding to the underlying writer.</summary>
+[GoShim("encoding/hex.encoder")]
+public sealed class GoHexEncoder : IGoWriter { public object? W; public void GoWrite(byte[] data) => Hex.Encoder_Write(this, Hex.ByteSlice(data)); }
+
+/// <summary>encoding/hex.dumper (the io.WriteCloser from hex.Dumper): streams a `hexdump -C`
+/// style dump of all data written, carrying the running offset/line state across Writes.</summary>
+[GoShim("encoding/hex.dumper")]
+public sealed class GoHexDumper : IGoWriter { public object? W; public byte[] RightChars = new byte[18]; public int Used; public uint N; public bool Closed; public void GoWrite(byte[] data) => Hex.Dumper_Write(this, Hex.ByteSlice(data)); }
+
 /// <summary>Shim for Go's <c>encoding/hex</c>.</summary>
 public static class Hex
 {
@@ -172,5 +182,94 @@ public static class Hex
         var outb = new byte[n];
         for (int i = 0; i < n; i++) outb[i] = (byte)System.Convert.ToInt64(dst[i]);
         return new GoReader { Data = outb };
+    }
+
+    internal static GoSlice ByteSlice(byte[] b)
+    {
+        var d = new object?[b.Length];
+        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
+    }
+    private static byte[] Sub(byte[] a, int from, int to)
+    {
+        var r = new byte[to - from];
+        System.Array.Copy(a, from, r, 0, to - from);
+        return r;
+    }
+    private static byte ToChar(byte b) => (b < 32 || b > 126) ? (byte)'.' : b;
+
+    // hex.NewEncoder(w) io.Writer: each Write hex-encodes its bytes onto w. Returns the count
+    // of SOURCE bytes consumed (Go counts written/2), matching encoding/hex.
+    public static object NewEncoder(object? w) => new GoHexEncoder { W = w };
+    public static object?[] Encoder_Write(object eo, GoSlice p)
+    {
+        var e = (GoHexEncoder)eo;
+        int len = p.Len;
+        var hex = new byte[len * 2];
+        for (int i = 0; i < len; i++)
+        {
+            byte b = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
+            hex[i * 2] = (byte)HexDigits[b >> 4];
+            hex[i * 2 + 1] = (byte)HexDigits[b & 0x0f];
+        }
+        Compress.WriteRaw(e.W, hex);
+        return new object?[] { (long)len, null };
+    }
+
+    // hex.Dumper(w) io.WriteCloser: faithful port of (*dumper).Write/Close — streams the same
+    // bytes hex.Dump produces, but incrementally and stateful across Write calls.
+    public static object Dumper(object? w) => new GoHexDumper { W = w };
+    public static object?[] Dumper_Write(object ho, GoSlice data)
+    {
+        var h = (GoHexDumper)ho;
+        if (h.Closed) return new object?[] { 0L, new GoError(GoString.FromDotNetString("encoding/hex: dumper closed")) };
+        var buf = new byte[14];
+        long n = 0;
+        for (int i = 0; i < data.Len; i++)
+        {
+            byte d = (byte)System.Convert.ToInt64(data.Data![data.Off + i]);
+            if (h.Used == 0)
+            {
+                buf[0] = (byte)(h.N >> 24); buf[1] = (byte)(h.N >> 16); buf[2] = (byte)(h.N >> 8); buf[3] = (byte)h.N;
+                for (int k = 0; k < 4; k++) { buf[4 + k * 2] = (byte)HexDigits[buf[k] >> 4]; buf[4 + k * 2 + 1] = (byte)HexDigits[buf[k] & 0x0f]; }
+                buf[12] = (byte)' '; buf[13] = (byte)' ';
+                Compress.WriteRaw(h.W, Sub(buf, 4, 14));
+            }
+            buf[0] = (byte)HexDigits[d >> 4]; buf[1] = (byte)HexDigits[d & 0x0f];
+            buf[2] = (byte)' ';
+            int l = 3;
+            if (h.Used == 7) { buf[3] = (byte)' '; l = 4; }
+            else if (h.Used == 15) { buf[3] = (byte)' '; buf[4] = (byte)'|'; l = 5; }
+            Compress.WriteRaw(h.W, Sub(buf, 0, l));
+            n++;
+            h.RightChars[h.Used] = ToChar(d);
+            h.Used++; h.N++;
+            if (h.Used == 16)
+            {
+                h.RightChars[16] = (byte)'|'; h.RightChars[17] = (byte)'\n';
+                Compress.WriteRaw(h.W, Sub(h.RightChars, 0, 18));
+                h.Used = 0;
+            }
+        }
+        return new object?[] { n, null };
+    }
+    public static object? Dumper_Close(object ho)
+    {
+        var h = (GoHexDumper)ho;
+        if (h.Closed) return null;
+        h.Closed = true;
+        if (h.Used == 0) return null;
+        var buf = new byte[] { (byte)' ', (byte)' ', (byte)' ', (byte)' ', (byte)'|' };
+        int nBytes = h.Used;
+        while (h.Used < 16)
+        {
+            int l = 3;
+            if (h.Used == 7) l = 4; else if (h.Used == 15) l = 5;
+            Compress.WriteRaw(h.W, Sub(buf, 0, l));
+            h.Used++;
+        }
+        h.RightChars[nBytes] = (byte)'|'; h.RightChars[nBytes + 1] = (byte)'\n';
+        Compress.WriteRaw(h.W, Sub(h.RightChars, 0, nBytes + 2));
+        return null;
     }
 }

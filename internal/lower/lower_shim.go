@@ -102,7 +102,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Encode": {"Hex", "Encode"}, "Decode": {"Hex", "Decode"}, "Dump": {"Hex", "Dump"},
 		"EncodedLen": {"Hex", "EncodedLen"}, "DecodedLen": {"Hex", "DecodedLen"},
 		"AppendEncode": {"Hex", "AppendEncode"}, "AppendDecode": {"Hex", "AppendDecode"},
-		"NewDecoder": {"Hex", "NewDecoder"},
+		"NewDecoder": {"Hex", "NewDecoder"}, "NewEncoder": {"Hex", "NewEncoder"}, "Dumper": {"Hex", "Dumper"},
 	},
 	"encoding/base32": {
 		"NewEncoding": {"Base32", "NewEncoding"}, "NewEncoder": {"Base32", "NewEncoder"}, "NewDecoder": {"Base32", "NewDecoder"},
@@ -497,6 +497,8 @@ var opaqueShimTypes = map[string]bool{
 	"net/mail.Address":               true,
 	"go/token.Position":               true,
 	"encoding/csv.ParseError":          true,
+	"encoding/hex.encoder":             true,
+	"encoding/hex.dumper":              true,
 	"text/scanner.Position":            true,
 	"text/scanner.Scanner":             true,
 	"go/token.FileSet":                true,
@@ -1532,6 +1534,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/csv.Writer": {
 		"Write": {"Csv", "Write"}, "Flush": {"Csv", "Flush"}, "WriteAll": {"Csv", "WriteAll"}, "Error": {"Csv", "Error"},
+	},
+	"encoding/hex.encoder": {
+		"Write": {"Hex", "Encoder_Write"},
+	},
+	"encoding/hex.dumper": {
+		"Write": {"Hex", "Dumper_Write"}, "Close": {"Hex", "Dumper_Close"},
 	},
 	"compress/gzip.Reader": {
 		"Read": {"Compress", "CompR_Read"}, "Reset": {"Compress", "CompR_Reset"}, "Close": {"Compress", "CompR_Close"}, "Multistream": {"Compress", "CompR_Multistream"},

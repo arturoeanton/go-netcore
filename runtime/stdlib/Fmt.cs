@@ -140,6 +140,7 @@ public static class Fmt
         switch (w)
         {
             case null: Out(s); return n;
+            case IGoWriter gw: gw.GoWrite(Encoding.UTF8.GetBytes(s)); return n;
             case GoStringBuilder sb: sb.SB.Append(s); return n;
             case GoBuffer buf: foreach (byte b in Encoding.UTF8.GetBytes(s)) buf.B.Add(b); return n;
             case GoFile f when f.Wr != null: { var b = Encoding.UTF8.GetBytes(s); f.Wr.Write(b, 0, b.Length); return n; }

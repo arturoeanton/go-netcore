@@ -2,6 +2,11 @@ namespace GoCLR.Stdlib;
 
 using GoCLR.Runtime;
 
+/// <summary>A shim writer that wants string-sink routing — io.WriteString, fmt.Fprintf,
+/// Compress.WriteRaw — to flow through its own byte-level Write (so it can transform the
+/// bytes, e.g. hex-encode them) instead of punching straight to the underlying sink.</summary>
+public interface IGoWriter { void GoWrite(byte[] data); }
+
 /// <summary>An in-memory reader (strings.Reader / bytes.Reader / an http response
 /// body) over a byte array. Tagged with every Go type it backs so that compiled Go
 /// calling an interface method on it (e.g. io.MultiReader's multiReader.Read invoking
