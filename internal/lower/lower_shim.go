@@ -108,7 +108,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"NewEncoding": {"Base32", "NewEncoding"}, "NewEncoder": {"Base32", "NewEncoder"}, "NewDecoder": {"Base32", "NewDecoder"},
 	},
 	"encoding/base64": {
-		"NewEncoding": {"Base64", "NewEncoding"}, "NewDecoder": {"Base64", "NewDecoder"},
+		"NewEncoding": {"Base64", "NewEncoding"}, "NewDecoder": {"Base64", "NewDecoder"}, "NewEncoder": {"Base64", "NewEncoder"},
 	},
 	"crypto/sha256":   {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}, "Sum256": {"Crypto", "Sha256Sum256"}, "Sum224": {"Crypto", "Sha256Sum224"}},
 	"crypto/sha1":     {"New": {"Crypto", "Sha1New"}, "Sum": {"Crypto", "Sha1Sum"}},
@@ -499,6 +499,7 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/csv.ParseError":          true,
 	"encoding/hex.encoder":             true,
 	"encoding/hex.dumper":              true,
+	"encoding/base64.encoder":          true,
 	"text/scanner.Position":            true,
 	"text/scanner.Scanner":             true,
 	"go/token.FileSet":                true,
@@ -1540,6 +1541,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/hex.dumper": {
 		"Write": {"Hex", "Dumper_Write"}, "Close": {"Hex", "Dumper_Close"},
+	},
+	"encoding/base64.encoder": {
+		"Write": {"Base64", "Encoder_Write"}, "Close": {"Base64", "Encoder_Close"},
 	},
 	"compress/gzip.Reader": {
 		"Read": {"Compress", "CompR_Read"}, "Reset": {"Compress", "CompR_Reset"}, "Close": {"Compress", "CompR_Close"}, "Multistream": {"Compress", "CompR_Multistream"},

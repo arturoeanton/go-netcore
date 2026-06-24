@@ -15,6 +15,19 @@ public sealed class GoBase64
     public const string UrlAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 }
 
+/// <summary>encoding/base64.encoder (the io.WriteCloser from base64.NewEncoder): buffers
+/// input in groups of 3 bytes, encoding complete groups on each Write and holding the
+/// trailing fringe until Close, which flushes it with padding.</summary>
+[GoShim("encoding/base64.encoder")]
+public sealed class GoBase64Encoder : IGoWriter
+{
+    public GoBase64 Enc = null!;
+    public object? W;
+    public byte[] Buf = new byte[3];
+    public int Nbuf;
+    public void GoWrite(byte[] data) => Base64.Encoder_Write(this, Base64.ToSlice(data));
+}
+
 /// <summary>Shim for Go's <c>encoding/base64</c>. StdEncoding/URLEncoding/RawStd/RawURL
 /// are package vars (shim variables); the *Encoding methods dispatch here.</summary>
 public static class Base64
@@ -55,6 +68,7 @@ public static class Base64
         for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
+    internal static GoSlice ToSlice(byte[] b) => Slice(b);
 
     public static object Strict(object enc) => enc;
 
@@ -167,5 +181,62 @@ public static class Base64
         var raw = Readers.Drain(r);
         var (b, _) = Dec(System.Text.Encoding.ASCII.GetString(raw), (GoBase64)enc);
         return new GoReader { Data = b ?? System.Array.Empty<byte>() };
+    }
+
+    // base64.NewEncoder(enc, w) io.WriteCloser: faithful port of (*encoder).Write/Close —
+    // encode complete 3-byte groups eagerly, hold the trailing fringe until Close.
+    public static object NewEncoder(object enc, object? w) => new GoBase64Encoder { Enc = (GoBase64)enc, W = w };
+
+    private static byte[] EncGroup(byte[] b, int len, GoBase64 enc)
+    {
+        byte[] sub = len == b.Length ? b : b[..len];
+        return System.Text.Encoding.ASCII.GetBytes(Enc(sub, enc));
+    }
+
+    public static object?[] Encoder_Write(object eo, GoSlice p)
+    {
+        var e = (GoBase64Encoder)eo;
+        byte[] src = Bytes(p);
+        long n = 0;
+        int pi = 0;
+        // Leading fringe: top up the buffered partial group.
+        if (e.Nbuf > 0)
+        {
+            int i = 0;
+            for (; pi < src.Length && e.Nbuf < 3; pi++, i++) { e.Buf[e.Nbuf] = src[pi]; e.Nbuf++; }
+            n += i;
+            if (e.Nbuf < 3) return new object?[] { n, null };
+            Compress.WriteRaw(e.W, EncGroup(e.Buf, 3, e.Enc));
+            e.Nbuf = 0;
+        }
+        // Large interior chunks (whole groups of 3).
+        while (src.Length - pi >= 3)
+        {
+            int nn = src.Length - pi;
+            nn -= nn % 3;
+            var chunk = new byte[nn];
+            System.Array.Copy(src, pi, chunk, 0, nn);
+            Compress.WriteRaw(e.W, EncGroup(chunk, nn, e.Enc));
+            n += nn; pi += nn;
+        }
+        // Trailing fringe: hold the incomplete group for the next Write or Close.
+        int rem = src.Length - pi;
+        for (int i = 0; i < rem; i++) e.Buf[i] = src[pi + i];
+        e.Nbuf = rem;
+        n += rem;
+        return new object?[] { n, null };
+    }
+
+    public static object? Encoder_Close(object eo)
+    {
+        var e = (GoBase64Encoder)eo;
+        if (e.Nbuf > 0)
+        {
+            var sub = new byte[e.Nbuf];
+            System.Array.Copy(e.Buf, sub, e.Nbuf);
+            e.Nbuf = 0;
+            Compress.WriteRaw(e.W, System.Text.Encoding.ASCII.GetBytes(Enc(sub, e.Enc)));
+        }
+        return null;
     }
 }
