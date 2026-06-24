@@ -132,6 +132,57 @@ public static partial class Rand2
         return hi;
     }
 
+    // v2 ziggurat (normal.go/exp.go): same tables as v1 (reuse GoRand.*) but draws ONE
+    // Uint64 per iteration, splitting it into the value (low 32) and index (high bits).
+    private const double RnV2 = 3.442619855899, ReV2 = 7.69711747013104972;
+    private static uint AbsI32(int i) => i < 0 ? (uint)(-i) : (uint)i;
+    private static double F64(object r) => (double)((Su(r) << 11) >> 11) / (double)(1UL << 53);
+    public static double RandV2_NormFloat64(object r)
+    {
+        while (true)
+        {
+            ulong u = Su(r);
+            int j = (int)u;
+            int i = (int)((u >> 32) & 0x7F);
+            double x = (double)j * (double)GoRand.Wn[i];
+            if (AbsI32(j) < GoRand.Kn[i]) return x;
+            if (i == 0)
+            {
+                double y;
+                do { x = -System.Math.Log(F64(r)) * (1.0 / RnV2); y = -System.Math.Log(F64(r)); } while (y + y < x * x);
+                return j > 0 ? RnV2 + x : -RnV2 - x;
+            }
+            if (GoRand.Fn[i] + (float)F64(r) * (GoRand.Fn[i - 1] - GoRand.Fn[i]) < (float)System.Math.Exp(-.5 * x * x)) return x;
+        }
+    }
+    public static double RandV2_ExpFloat64(object r)
+    {
+        while (true)
+        {
+            ulong u = Su(r);
+            uint j = (uint)u;
+            int i = (int)(byte)(u >> 32);
+            double x = (double)j * (double)GoRand.We[i];
+            if (j < GoRand.Ke[i]) return x;
+            if (i == 0) return ReV2 - System.Math.Log(F64(r));
+            if (GoRand.Fe[i] + (float)F64(r) * (GoRand.Fe[i - 1] - GoRand.Fe[i]) < (float)System.Math.Exp(-x)) return x;
+        }
+    }
+
+    // v2 Shuffle/Perm: single-phase Fisher-Yates consuming uint64n(i+1) per step.
+    public static void RandV2_Shuffle(object r, long n, GoClosure swap)
+    {
+        if (n < 0) throw Panic("invalid argument to Shuffle");
+        for (long i = n - 1; i > 0; i--) GoRuntime.InvokeArgs(swap, i, (long)Uint64n(r, (ulong)(i + 1)));
+    }
+    public static GoSlice RandV2_Perm(object r, long n)
+    {
+        var p = new object?[n];
+        for (long i = 0; i < n; i++) p[i] = i;
+        for (long i = n - 1; i > 0; i--) { long j = (long)Uint64n(r, (ulong)(i + 1)); var t = p[i]; p[i] = p[j]; p[j] = t; }
+        return new GoSlice { Data = p, Off = 0, Len = (int)n, Cap = (int)n };
+    }
+
     private static GoPanicException Panic(string m) => new(GoString.FromDotNetString(m));
     public static ulong RandV2_Uint64N(object r, ulong n) { if (n == 0) throw Panic("invalid argument to Uint64N"); return Uint64n(r, n); }
     public static long RandV2_Int64N(object r, long n) { if (n <= 0) throw Panic("invalid argument to Int64N"); return (long)Uint64n(r, (ulong)n); }

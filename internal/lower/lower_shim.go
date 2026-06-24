@@ -1870,6 +1870,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Uint64N": {"Rand2", "RandV2_Uint64N"}, "Int64N": {"Rand2", "RandV2_Int64N"}, "Uint32N": {"Rand2", "RandV2_Uint32N"},
 		"Int32N": {"Rand2", "RandV2_Int32N"}, "IntN": {"Rand2", "RandV2_IntN"}, "UintN": {"Rand2", "RandV2_UintN"},
 		"Float64": {"Rand2", "RandV2_Float64"}, "Float32": {"Rand2", "RandV2_Float32"},
+		"NormFloat64": {"Rand2", "RandV2_NormFloat64"}, "ExpFloat64": {"Rand2", "RandV2_ExpFloat64"},
+		"Perm": {"Rand2", "RandV2_Perm"}, "Shuffle": {"Rand2", "RandV2_Shuffle"},
 	},
 	"math/rand.Rand": {
 		"Int63": {"Rand", "Rand_Int63"}, "Int": {"Rand", "Rand_Int"}, "Int63n": {"Rand", "Rand_Int63n"},
