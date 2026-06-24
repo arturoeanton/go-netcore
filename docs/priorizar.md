@@ -13,7 +13,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
    y firma de `json.Number.Float64/Int64/String` (receiver string → param GoString). Fixture 453.
 3. ✅ text/template + html/template — tags `0.0.91`–`0.0.97` (motor real: parse+exec, escaping
    contextual, safe types, contextos URL/JS/CSS/event/style). Fixtures 436–441.
-4. ⬜ per-function stdlib coverage matrix
+4. ✅ per-function stdlib coverage matrix — tag `0.0.110.coverage-matrix` (`goclr coverage` [--gap/--missing/--json]; cruza la API exportada de cada paquete (go/packages) contra los registros de shims + compileFromSource; total 51% / 1853 de 3632 símbolos en 95 paquetes; snapshot en docs/COVERAGE.md)
 5. ⬜ GORM mini target con una sola entidad
 6. ⬜ bench/startup report
 7. ⬜ NativeAOT smoke
@@ -41,7 +41,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 
 1. ✅ `goclr test` compatible con `go test` — facilidad media, impacto altísimo · tag `0.0.52.goclr-test`
 2. ✅ Compatibility report estable HTML/JSON — alta, altísimo · tag `0.0.53.compat-report`
-3. ⬜ Matriz de cobertura por función stdlib/externa — alta/media, alto
+3. ✅ Matriz de cobertura por función stdlib/externa — alta/media, alto · tag `0.0.110.coverage-matrix`
 4. ⬜ Errores accionables `GCLR05xx/GCLR07xx` (símbolo, por qué, workaround, build tag, overlay) — alta, alto
 5. ✅ typed-nil en interfaces — media, altísimo · tag `0.0.54.typed-nil-iface` (residual documentado: `== nil` del puntero recuperado)
 6. ✅ panic no recuperado con formato Go (`panic:` + goroutine stack) — media, alto · tag `0.0.57.panic-format`

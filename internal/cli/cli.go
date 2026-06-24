@@ -20,6 +20,7 @@ func commands() []command {
 		{"build", "Compile a Go main package to a .NET assembly (.dll)", cmdBuild},
 		{"run", "Compile and run a Go main package", cmdRun},
 		{"analyze", "Analyze compatibility of packages with a GoCLR profile", cmdAnalyze},
+		{"coverage", "Per-function stdlib coverage matrix (toward full standard support)", cmdCoverage},
 		{"test", "Compile and run compatible Go tests", cmdTest},
 		{"doctor", "Verify the local environment for goclr", cmdDoctor},
 		{"clean", "Remove goclr build artifacts", cmdClean},
