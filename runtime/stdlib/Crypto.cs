@@ -275,4 +275,16 @@ public static class Crypto
         for (int i = 0; i < b.Len; i++) b.Data![b.Off + i] = (int)buf[i];
         return new object?[] { (long)b.Len, null };
     }
+
+    // crypto/rand.Text(): a cryptographically-random 26-char RFC 4648 base32 string
+    // (⌈log₃₂ 2¹²⁸⌉). Non-deterministic, like Go — verified by structure, not byte-equality.
+    private const string Base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    public static GoString RandText()
+    {
+        var src = new byte[26];
+        RandomNumberGenerator.Fill(src);
+        var sb = new System.Text.StringBuilder(26);
+        foreach (byte x in src) sb.Append(Base32Alphabet[x % 32]);
+        return GoString.FromDotNetString(sb.ToString());
+    }
 }

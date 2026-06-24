@@ -863,6 +863,22 @@ public static class Reflect
         for (int i = 0; i < outs.Length; i++) data[i] = new GoReflectValue { V = outs[i] };
         return new GoSlice { Data = data, Off = 0, Len = data.Length, Cap = data.Length };
     }
+    // reflect.Value.FieldByIndexErr(index): like FieldByIndex but returns (Value, error)
+    // instead of panicking. The single-level navigation never steps through a nil pointer here.
+    public static object?[] Value_FieldByIndexErr(object? v, GoSlice index) =>
+        new object?[] { Value_FieldByIndex(v, index), null };
+
+    // reflect.Value.FieldByNameFunc(match): the first field whose name satisfies match.
+    public static object Value_FieldByNameFunc(object? v, GoClosure match)
+    {
+        var obj = RVal(v);
+        if (obj == null) return new GoReflectValue { V = null };
+        foreach (var f in obj.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
+            if (GoRuntime.InvokeArgs(match, GoString.FromDotNetString(f.Name)) is bool b && b)
+                return Value_FieldByName(v, GoString.FromDotNetString(f.Name));
+        return new GoReflectValue { V = null };
+    }
+
     public static object Value_FieldByName(object? v, GoString name)
     {
         var obj = RVal(v);
