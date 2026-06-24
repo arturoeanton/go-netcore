@@ -1556,6 +1556,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Sign": {"Big", "Rat_Sign"}, "IsInt": {"Big", "Rat_IsInt"}, "Cmp": {"Big", "Rat_Cmp"},
 		"SetFrac64": {"Big", "Rat_SetFrac64"}, "SetInt64": {"Big", "Rat_SetInt64"}, "SetInt": {"Big", "Rat_SetInt"},
 		"SetFrac": {"Big", "Rat_SetFrac"}, "SetString": {"Big", "Rat_SetString"},
+		"FloatString": {"Big", "Rat_FloatString"}, "Float64": {"Big", "Rat_Float64"}, "SetFloat64": {"Big", "Rat_SetFloat64"}, "SetUint64": {"Big", "Rat_SetUint64"},
+		"MarshalText": {"Big", "Rat_MarshalText"}, "AppendText": {"Big", "Rat_AppendText"}, "UnmarshalText": {"Big", "Rat_UnmarshalText"},
+		"GobEncode": {"Big", "Rat_GobEncode"}, "GobDecode": {"Big", "Rat_GobDecode"},
 	},
 	"hash/maphash.Hash": {
 		"WriteByte": {"MapHash", "WriteByte"}, "Write": {"MapHash", "Write"}, "WriteString": {"MapHash", "WriteString"},

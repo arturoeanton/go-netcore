@@ -83,6 +83,107 @@ public static class Big
     {
         var r = R(z); r.Num = V(a); r.Den = V(b); return Norm(r);
     }
+    // FloatString(prec): decimal with prec digits, rounded half away from zero.
+    public static GoString Rat_FloatString(object x, long prec)
+    {
+        var r = R(x);
+        bool neg = r.Num.Sign < 0;
+        BigInteger n = BigInteger.Abs(r.Num), d = r.Den;
+        BigInteger p10 = BigInteger.Pow(10, (int)prec);
+        BigInteger scaled = n * p10, q = scaled / d, rem = scaled % d;
+        if (2 * rem >= d) q++;                                  // round half away from zero
+        string digits = q.ToString();
+        var sb = new System.Text.StringBuilder();
+        if (neg && !q.IsZero) sb.Append('-');
+        if (prec == 0) { sb.Append(digits); return GoString.FromDotNetString(sb.ToString()); }
+        if (digits.Length <= (int)prec) digits = new string('0', (int)prec + 1 - digits.Length) + digits;
+        sb.Append(digits.Substring(0, digits.Length - (int)prec)).Append('.').Append(digits.Substring(digits.Length - (int)prec));
+        return GoString.FromDotNetString(sb.ToString());
+    }
+
+    public static object?[] Rat_MarshalText(object x) => new object?[] { BytesOfStr(Rat_RatString(x).ToDotNetString()), null };
+    public static object?[] Rat_AppendText(object x, GoSlice b)
+    {
+        var extra = System.Text.Encoding.ASCII.GetBytes(Rat_RatString(x).ToDotNetString());
+        var d = new object?[b.Len + extra.Length];
+        for (int i = 0; i < b.Len; i++) d[i] = b.Data![b.Off + i];
+        for (int i = 0; i < extra.Length; i++) d[b.Len + i] = (int)extra[i];
+        return new object?[] { new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length }, null };
+    }
+    public static object? Rat_UnmarshalText(object z, GoSlice text)
+    {
+        var rr = Rat_SetString(z, GoString.FromDotNetString(StrOfBytes(text)));
+        return rr[1] is bool ok && !ok ? new GoError(GoString.FromDotNetString("math/big: cannot unmarshal into a *big.Rat")) : null;
+    }
+
+    private static byte[] BigEndianMag(BigInteger v)
+    {
+        v = BigInteger.Abs(v);
+        if (v.IsZero) return System.Array.Empty<byte>();
+        var le = v.ToByteArray();
+        int len = le.Length;
+        while (len > 1 && le[len - 1] == 0) len--;
+        var be = new byte[len];
+        for (int i = 0; i < len; i++) be[i] = le[len - 1 - i];
+        return be;
+    }
+    // Gob: [version<<1|sign] [uint32 BE len(numBytes)] [num big-endian] [den big-endian].
+    public static object?[] Rat_GobEncode(object x)
+    {
+        var r = R(x);
+        byte[] nb = BigEndianMag(r.Num), db = BigEndianMag(r.Den);
+        int header = (1 << 1) | (r.Num.Sign < 0 ? 1 : 0);
+        var d = new System.Collections.Generic.List<object?> { header,
+            (nb.Length >> 24) & 0xff, (nb.Length >> 16) & 0xff, (nb.Length >> 8) & 0xff, nb.Length & 0xff };
+        foreach (var b in nb) d.Add((int)b);
+        foreach (var b in db) d.Add((int)b);
+        return new object?[] { new GoSlice { Data = d.ToArray(), Off = 0, Len = d.Count, Cap = d.Count }, null };
+    }
+    public static object? Rat_GobDecode(object z, GoSlice buf)
+    {
+        var r = R(z);
+        if (buf.Len == 0) { r.Num = 0; r.Den = 1; return null; }
+        int header = (int)System.Convert.ToInt64(buf.Data![buf.Off]);
+        bool neg = (header & 1) != 0;
+        int nl = ((int)System.Convert.ToInt64(buf.Data![buf.Off + 1]) << 24) | ((int)System.Convert.ToInt64(buf.Data![buf.Off + 2]) << 16)
+               | ((int)System.Convert.ToInt64(buf.Data![buf.Off + 3]) << 8) | (int)System.Convert.ToInt64(buf.Data![buf.Off + 4]);
+        BigInteger num = 0, den = 0;
+        for (int i = 0; i < nl; i++) num = (num << 8) | (byte)System.Convert.ToInt64(buf.Data![buf.Off + 5 + i]);
+        for (int i = 5 + nl; i < buf.Len; i++) den = (den << 8) | (byte)System.Convert.ToInt64(buf.Data![buf.Off + i]);
+        r.Num = neg ? -num : num; r.Den = den.IsZero ? 1 : den;
+        return null;
+    }
+
+    private static (BigInteger num, BigInteger den) DoubleToRational(double f)
+    {
+        long bits = System.BitConverter.DoubleToInt64Bits(f);
+        bool neg = bits < 0;
+        int exp = (int)((bits >> 52) & 0x7FF);
+        long mant = bits & 0xFFFFFFFFFFFFF;
+        if (exp == 0) exp = 1; else mant |= 0x10000000000000;
+        exp -= 1075;
+        BigInteger num = mant, den = 1;
+        if (exp >= 0) num <<= exp; else den <<= -exp;
+        return (neg ? -num : num, den);
+    }
+    public static object? Rat_SetFloat64(object z, double f)
+    {
+        if (double.IsNaN(f) || double.IsInfinity(f)) return null;
+        var r = R(z);
+        if (f == 0) { r.Num = 0; r.Den = 1; return r; }
+        var (num, den) = DoubleToRational(f);
+        r.Num = num; r.Den = den; return Norm(r);
+    }
+    public static object Rat_SetUint64(object z, ulong a) { var r = R(z); r.Num = a; r.Den = 1; return r; }
+    public static object?[] Rat_Float64(object x)
+    {
+        var r = R(x);
+        double d = (double)r.Num / (double)r.Den;
+        var (dn, dd) = DoubleToRational(d);
+        bool exact = double.IsFinite(d) && dn * r.Den == r.Num * dd;
+        return new object?[] { d, exact };
+    }
+
     public static object?[] Rat_SetString(object z, GoString s)
     {
         string str = s.ToDotNetString().Trim();
