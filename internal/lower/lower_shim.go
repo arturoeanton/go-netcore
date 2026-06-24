@@ -93,6 +93,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"encoding/base32": {
 		"NewEncoding": {"Base32", "NewEncoding"}, "NewEncoder": {"Base32", "NewEncoder"}, "NewDecoder": {"Base32", "NewDecoder"},
 	},
+	"encoding/base64": {
+		"NewEncoding": {"Base64", "NewEncoding"}, "NewDecoder": {"Base64", "NewDecoder"},
+	},
 	"crypto/sha256":   {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}, "Sum256": {"Crypto", "Sha256Sum256"}, "Sum224": {"Crypto", "Sha256Sum224"}},
 	"crypto/sha1":     {"New": {"Crypto", "Sha1New"}, "Sum": {"Crypto", "Sha1Sum"}},
 	"crypto/elliptic": {"P224": {"Crypto509", "P224"}, "P256": {"Crypto509", "P256"}, "P384": {"Crypto509", "P384"}, "P521": {"Crypto509", "P521"}},
@@ -1436,7 +1439,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"EncodeToString": {"Base64", "EncodeToString"}, "DecodeString": {"Base64", "DecodeString"},
 		"EncodedLen": {"Base64", "EncodedLen"}, "DecodedLen": {"Base64", "DecodedLen"}, "Encode": {"Base64", "Encode"}, "Decode": {"Base64", "Decode"},
 		"Strict": {"Base64", "Strict"},
+		"WithPadding": {"Base64", "WithPadding"}, "AppendEncode": {"Base64", "AppendEncode"}, "AppendDecode": {"Base64", "AppendDecode"},
 	},
+	"encoding/base64.CorruptInputError": {"Error": {"Base64", "CorruptInputError_Error"}},
 	"encoding/binary.littleEndian": binaryMethods,
 	"encoding/binary.bigEndian":    binaryMethods,
 	"encoding/binary.ByteOrder":    binaryMethods,
