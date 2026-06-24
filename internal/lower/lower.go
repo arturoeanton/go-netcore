@@ -90,6 +90,9 @@ type lowerCtx struct {
 	// compositeKey maps a map type id to the identity id of its key type (a Stringer enum
 	// key), so fmt re-tags bare map keys to dispatch their String().
 	compositeKey map[int64]int64
+	// byteNamedIds are identity-bearing named types whose underlying is []byte, so fmt
+	// formats them as a string for %s/%q/%x (json.RawMessage, xml.CharData, …).
+	byteNamedIds map[int64]bool
 	// shimNamed resolves an opaque-shim type's "pkg/path.Name" to its *types.Named
 	// (lazily, by scanning the program's import closure) so interface dispatch can ask
 	// types.Implements whether a shim type satisfies an interface — a precise,
@@ -147,6 +150,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		compositeIds:       map[string]int64{},
 		compositeElem:      map[int64]int64{},
 		compositeKey:       map[int64]int64{},
+		byteNamedIds:       map[int64]bool{},
 		typeDescIds:        map[string]int{},
 		bag:                bag,
 	}

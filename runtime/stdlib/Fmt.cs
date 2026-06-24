@@ -319,6 +319,8 @@ public static class Fmt
         // The typed-box name (if any) before unwrapping, so %x can tell a []byte ("[]uint8",
         // formatted as a hex string) from a []int ("[]int", which recurses element-wise).
         string? wname = v is GoNamed g0 ? Rt.NamedTypeName(g0.TypeId) : null;
+        // A named []byte type (json.RawMessage, xml.CharData) also formats as bytes for %x/%q.
+        bool wByteNamed = v is GoNamed g0b && Rt.IsByteNamed(g0b.TypeId);
         // A typed-box value dispatches its Stringer for %v/%s and names itself for
         // %T (handled downstream); every other verb formats the underlying value —
         // unwrap here so the numeric/char/quote paths never see the wrapper (and so
@@ -340,13 +342,13 @@ public static class Fmt
             case 'd': return IntVerb(v, sp, 10, false);
             case 'b': return IntVerb(v, sp, 2, false);
             case 'o': return IntVerb(v, sp, 8, sp.Hash);
-            case 'x': return v is GoString gx ? HexStr(gx, false) : v is GoSlice sx ? (IsByteSliceName(wname) ? HexSlice(sx, false) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IntVerb(v, sp, 16, sp.Hash);
-            case 'X': return v is GoString gX ? HexStr(gX, true) : v is GoSlice sX ? (IsByteSliceName(wname) ? HexSlice(sX, true) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IntVerb(v, sp, -16, sp.Hash);
+            case 'x': return v is GoString gx ? HexStr(gx, false) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IntVerb(v, sp, 16, sp.Hash);
+            case 'X': return v is GoString gX ? HexStr(gX, true) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IntVerb(v, sp, -16, sp.Hash);
             case 't': return v is bool bb ? (bb ? "true" : "false") : BadVerb(verb, v);
             case 'c': return IsIntegral(v) ? char.ConvertFromUtf32((int)ToLong(v)) : BadVerb(verb, v);
             case 'U': return IsIntegral(v) ? UnicodeVerb(ToLong(v), sp.Hash) : BadVerb(verb, v);
             case 's': return StrVerb(v, sp);
-            case 'q': return v is GoSlice qsl && IsByteSliceName(wname) ? GoQuote(GoString.FromBytesOwned(SliceToBytes(qsl))) : QuoteVerb(v);
+            case 'q': return v is GoSlice qsl && (IsByteSliceName(wname) || wByteNamed) ? GoQuote(GoString.FromBytesOwned(SliceToBytes(qsl))) : QuoteVerb(v);
             case 'f':
             case 'F': return FloatVerb(v, sp, () => GoFtoa.FormatF(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
             case 'e': return FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
@@ -414,7 +416,7 @@ public static class Fmt
         if (IsIntegral(v) || IsFloaty(v) || v is bool) return BadVerb('s', v);
         // %s of a []byte is its string form (Go treats []byte as a string). The typed
         // box carries "[]uint8", so a byte slice is distinguishable from []int.
-        if (v is GoNamed bnm && bnm.Value is GoSlice bsl && IsByteTag(Rt.NamedTypeName(bnm.TypeId)))
+        if (v is GoNamed bnm && bnm.Value is GoSlice bsl && (IsByteTag(Rt.NamedTypeName(bnm.TypeId)) || Rt.IsByteNamed(bnm.TypeId)))
             v = GoString.FromBytesOwned(SliceToBytes(bsl));
         string s = v switch
         {

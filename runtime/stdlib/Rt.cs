@@ -43,6 +43,14 @@ public static class Rt
     /// <summary>The element/value identity id of a composite type id, or 0.</summary>
     public static long CompositeElemId(long compId) => _compositeElem.TryGetValue(compId, out var e) ? e : 0;
 
+    // Named types whose underlying type is []byte (json.RawMessage, xml.CharData, …): fmt
+    // formats them as a string for %s/%q/%x, like a plain []byte.
+    private static readonly System.Collections.Generic.HashSet<long> _byteNamed = new();
+    /// <summary>Marks a named type id as a []byte-underlying type (called once at startup).</summary>
+    public static void RegisterByteNamed(long id) => _byteNamed.Add(id);
+    /// <summary>Whether a named type id has a []byte underlying type.</summary>
+    public static bool IsByteNamed(long id) => _byteNamed.Contains(id);
+
     // Map type id -> key type's identity id, for re-tagging bare map keys.
     private static readonly System.Collections.Generic.Dictionary<long, long> _compositeKey = new();
     /// <summary>Records a map's key identity id (called once at startup).</summary>

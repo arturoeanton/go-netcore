@@ -46,6 +46,13 @@ func (c *lowerCtx) namedIdentity(t types.Type) (id int64, ok bool) {
 	id = c.nextTypeId() // shared with struct ids so the id is globally unique
 	c.namedIds[named] = id
 	c.namedNames[id] = namedDisplayName(named)
+	// A named type whose underlying is []byte (json.RawMessage, xml.CharData, …) must
+	// format as a string for %s/%q/%x, like a plain []byte.
+	if s, ok := named.Underlying().(*types.Slice); ok {
+		if b, ok := s.Elem().Underlying().(*types.Basic); ok && (b.Kind() == types.Byte || b.Kind() == types.Uint8) {
+			c.byteNamedIds[id] = true
+		}
+	}
 	return id, true
 }
 
@@ -115,6 +122,13 @@ func (c *lowerCtx) tagComposite(t types.Type) int64 {
 	id := c.nextTypeId()
 	c.compositeIds[key] = id
 	c.namedNames[id] = typeDescStr(t) // Go's %T spelling: "[]int", "template.HTML"
+	// A named []byte (a method-less `type Blob []byte`) reaches here, not namedIdentity;
+	// mark it so fmt formats it as a string for %s/%q/%x.
+	if s, ok := t.Underlying().(*types.Slice); ok {
+		if b, ok := s.Elem().Underlying().(*types.Basic); ok && b.Kind() == types.Uint8 {
+			c.byteNamedIds[id] = true
+		}
+	}
 	// If the element/value type carries runtime identity (a Stringer enum, an error,
 	// …), record its id so fmt can re-tag the bare elements of this composite and
 	// dispatch their String()/Error() — registering the element in namedIds also makes
@@ -334,6 +348,14 @@ func (l *funcLowerer) emitRegisterNamedTypes() {
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
 			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "RegisterCompositeElem",
 			Params: []goir.Type{goir.TInt64, goir.TInt64}, Ret: goir.TVoid,
+		}})
+	}
+	// Named []byte types, so fmt formats them as strings for %s/%q/%x.
+	for id := range l.byteNamedIds {
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "RegisterByteNamed",
+			Params: []goir.Type{goir.TInt64}, Ret: goir.TVoid,
 		}})
 	}
 	// Map-key identities, so fmt can re-tag a map[Stringer]V's bare keys.
