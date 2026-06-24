@@ -6,10 +6,15 @@ using GoCLR.Runtime;
 public sealed class GoCsvReader
 {
     public string Data = "";
+    public byte[]? Raw;
     public char Comma = ',';
     public System.Collections.Generic.List<System.Collections.Generic.List<string>>? Rows;
     public int RowIdx;
     public int Expect = -1;
+    // Per-record field positions (1-based line, 1-based byte column) and the input-stream
+    // byte offset reached after reading that record. Populated lazily by Csv.EnsurePositions.
+    public System.Collections.Generic.List<System.Collections.Generic.List<(int line, int col)>>? Positions;
+    public System.Collections.Generic.List<long>? Offsets;
 }
 public sealed class GoCsvWriter { public object? W; public char Comma = ','; public System.Text.StringBuilder SB = new(); }
 
@@ -34,7 +39,11 @@ public sealed class GoCsvParseError : IGoError, IGoWrapped
 /// <summary>Shim for a subset of Go's <c>encoding/csv</c>.</summary>
 public static class Csv
 {
-    public static object NewReader(object? r) => new GoCsvReader { Data = System.Text.Encoding.UTF8.GetString(Readers.Drain(r)) };
+    public static object NewReader(object? r)
+    {
+        var raw = Readers.Drain(r);
+        return new GoCsvReader { Raw = raw, Data = System.Text.Encoding.UTF8.GetString(raw) };
+    }
     public static object NewWriter(object? w) => new GoCsvWriter { W = w };
 
     private static GoSlice Row(System.Collections.Generic.List<string> fields)
@@ -96,6 +105,151 @@ public static class Csv
         }
         var d = rows.ToArray();
         return new object?[] { new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length }, null };
+    }
+
+    // (*csv.Reader).FieldPos(field) (line, column): the 1-based line and byte-column of the
+    // start of the given field in the record most recently returned by Read. Panics on a
+    // bad index, matching Go.
+    public static object?[] FieldPos(object ro, long field)
+    {
+        var r = (GoCsvReader)ro;
+        EnsurePositions(r);
+        int rec = r.RowIdx - 1; // the record most recently returned by Read
+        if (rec < 0 || rec >= r.Positions!.Count || field < 0 || field >= r.Positions[rec].Count)
+            throw new GoPanicException(GoString.FromDotNetString("out of range index passed to FieldPos"));
+        var p = r.Positions[rec][(int)field];
+        return new object?[] { (long)p.line, (long)p.col };
+    }
+
+    // (*csv.Reader).InputOffset() int64: the input-stream byte offset of the current reader
+    // position — the end of the most recently read row / start of the next.
+    public static long InputOffset(object ro)
+    {
+        var r = (GoCsvReader)ro;
+        EnsurePositions(r);
+        if (r.RowIdx <= 0 || r.Offsets!.Count == 0) return 0;
+        int rec = System.Math.Min(r.RowIdx, r.Offsets.Count) - 1;
+        return r.Offsets[rec];
+    }
+
+    // Faithful port of (*csv.Reader).readRecord position bookkeeping over the buffered input
+    // (default options: configured Comma, no Comment/TrimLeadingSpace/LazyQuotes). It records,
+    // per record, every field's (line, col) start and the input offset reached after the record.
+    private static void EnsurePositions(GoCsvReader r)
+    {
+        if (r.Positions != null) return;
+        var data = r.Raw ?? System.Array.Empty<byte>();
+        byte comma = (byte)r.Comma;
+        var allPos = new System.Collections.Generic.List<System.Collections.Generic.List<(int, int)>>();
+        var offsets = new System.Collections.Generic.List<long>();
+
+        int cursor = 0;
+        long offset = 0;
+        int numLine = 0;
+
+        // readLine: ReadSlice('\n') equivalent over `data`. Returns the line bytes (with a
+        // trailing \r\n normalized to \n, and a lone \r dropped at EOF), advancing cursor,
+        // offset (by raw bytes read) and numLine. `eof` is true when this read hit end-of-input.
+        byte[]? ReadLine(out bool eof)
+        {
+            if (cursor >= data.Length) { eof = true; return null; }
+            int start = cursor;
+            int nl = System.Array.IndexOf(data, (byte)'\n', cursor);
+            int end = nl >= 0 ? nl + 1 : data.Length;
+            int readSize = end - start;
+            cursor = end;
+            offset += readSize;
+            numLine++;
+            eof = nl < 0; // reached EOF without a terminating newline
+            var line = new byte[readSize];
+            System.Array.Copy(data, start, line, 0, readSize);
+            if (eof && readSize > 0 && line[readSize - 1] == (byte)'\r')
+            {
+                var t = new byte[readSize - 1];
+                System.Array.Copy(line, t, readSize - 1);
+                line = t;
+            }
+            int n = line.Length;
+            if (n >= 2 && line[n - 2] == (byte)'\r' && line[n - 1] == (byte)'\n')
+            {
+                var t = new byte[n - 1];
+                System.Array.Copy(line, t, n - 1);
+                t[n - 2] = (byte)'\n';
+                line = t;
+            }
+            return line;
+        }
+
+        int LengthNL(byte[] b, int li) => (b.Length > li && b[b.Length - 1] == (byte)'\n') ? 1 : 0;
+
+        while (true)
+        {
+            byte[]? line;
+            bool eof;
+            // Skip blank lines (a line that is empty or just a newline).
+            while (true)
+            {
+                line = ReadLine(out eof);
+                if (line == null) break;
+                if (line.Length == LengthNL(line, 0)) { if (eof) { line = null; break; } continue; }
+                break;
+            }
+            if (line == null) break;
+
+            var fieldPositions = new System.Collections.Generic.List<(int, int)>();
+            int li = 0, posLine = numLine, posCol = 1;
+            bool done = false;
+            while (!done)
+            {
+                if (li >= line.Length || line[li] != (byte)'"')
+                {
+                    // Non-quoted field.
+                    int rel = IndexOfByteFrom(line, comma, li);
+                    fieldPositions.Add((posLine, posCol));
+                    if (rel >= 0) { li += rel + 1; posCol += rel + 1; }
+                    else done = true; // end of record (field runs to end of line)
+                }
+                else
+                {
+                    // Quoted field.
+                    var fieldPos = (posLine, posCol);
+                    li++; posCol++; // consume opening quote
+                    while (true)
+                    {
+                        int rel = IndexOfByteFrom(line, (byte)'"', li);
+                        if (rel >= 0)
+                        {
+                            li += rel + 1; posCol += rel + 1; // consume up to and incl. the quote
+                            int rn = li < line.Length ? line[li] : -1;
+                            if (rn == (byte)'"') { li++; posCol++; } // "" → escaped quote
+                            else if (rn == comma) { li++; posCol++; fieldPositions.Add(fieldPos); break; }
+                            else if (line.Length - li == LengthNL(line, li)) { fieldPositions.Add(fieldPos); done = true; break; }
+                            // else: bare/invalid quote — be lenient and keep scanning the field
+                        }
+                        else if (li < line.Length)
+                        {
+                            // Quote spans to next line: advance over the rest, read the next line.
+                            posCol += line.Length - li;
+                            if (eof) { fieldPositions.Add(fieldPos); done = true; break; }
+                            line = ReadLine(out eof); li = 0;
+                            if (line == null) { fieldPositions.Add(fieldPos); done = true; break; }
+                            if (line.Length > 0) { posLine = numLine; posCol = 1; }
+                        }
+                        else { fieldPositions.Add(fieldPos); done = true; break; }
+                    }
+                }
+            }
+            allPos.Add(fieldPositions);
+            offsets.Add(offset);
+        }
+        r.Positions = allPos;
+        r.Offsets = offsets;
+    }
+
+    private static int IndexOfByteFrom(byte[] b, byte v, int from)
+    {
+        for (int i = from; i < b.Length; i++) if (b[i] == v) return i - from;
+        return -1;
     }
 
     // RFC 4180-ish parser (quotes, embedded commas/newlines, doubled quotes).

@@ -1528,7 +1528,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Next": {"List", "Element_Next"}, "Prev": {"List", "Element_Prev"},
 	},
 	"encoding/csv.Reader": {
-		"ReadAll": {"Csv", "ReadAll"}, "Read": {"Csv", "Read"},
+		"ReadAll": {"Csv", "ReadAll"}, "Read": {"Csv", "Read"}, "FieldPos": {"Csv", "FieldPos"}, "InputOffset": {"Csv", "InputOffset"},
 	},
 	"encoding/csv.Writer": {
 		"Write": {"Csv", "Write"}, "Flush": {"Csv", "Flush"}, "WriteAll": {"Csv", "WriteAll"}, "Error": {"Csv", "Error"},
