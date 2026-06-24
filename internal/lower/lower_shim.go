@@ -301,6 +301,13 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Parse": {"Time", "Parse"}, "LoadLocation": {"Time", "LoadLocation"}, "ParseDuration": {"Time", "ParseDuration"}, "ParseInLocation": {"Time", "ParseInLocation"},
 		"Tick": {"Time", "Tick"}, "AfterFunc": {"Time", "AfterFunc"},
 	},
+	"math/cmplx": {
+		"Abs": {"Cmplx", "Abs"}, "Conj": {"Cmplx", "Conj"}, "Phase": {"Cmplx", "Phase"}, "Polar": {"Cmplx", "Polar"},
+		"Inf": {"Cmplx", "Inf"}, "NaN": {"Cmplx", "NaN"}, "IsInf": {"Cmplx", "IsInf"},
+		"IsNaN": {"Cmplx", "IsNaN"}, "Sqrt": {"Cmplx", "Sqrt"}, "Log": {"Cmplx", "Log"},
+		"Log10": {"Cmplx", "Log10"},
+		// Exp/Rect deferred: backed by Sin/Cos/Exp which are not byte-exact with Go on this platform.
+	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
 		"LeadingZeros": {"MathBits", "LeadingZeros"}, "LeadingZeros64": {"MathBits", "LeadingZeros64"},

@@ -628,7 +628,7 @@ public static class Fmt
             case double d: return FormatFloatV(d);
             case GoString gs: return gs.ToDotNetString();
             case IGoError e: return e.Error().ToDotNetString();
-            case GoComplex c: return "(" + FormatFloatV(c.Re) + (c.Im < 0 ? "-" : "+") + FormatFloatV(System.Math.Abs(c.Im)) + "i)";
+            case GoComplex c: return "(" + FormatFloatV(c.Re) + ComplexImag(c.Im) + "i)";
             // Go prints &{...}/&[...]/&map[...] for pointers to a composite, but a
             // hex address for a pointer to a scalar.
             case GoPtr p when p.Value is GoSlice || p.Value is GoMap || IsStructVal(p.Value):
@@ -746,6 +746,15 @@ public static class Fmt
     }
 
     private static string FormatFloatV(double d) => GoFtoa.Shortest(d);
+
+    // The imaginary part of a complex always carries an explicit sign (Go formats it with
+    // plus forced). FormatFloatV already yields a leading sign for negatives, -0, ±Inf;
+    // only finite non-negatives and NaN need a '+' prepended.
+    private static string ComplexImag(double im)
+    {
+        string s = FormatFloatV(im);
+        return s.Length > 0 && (s[0] == '+' || s[0] == '-') ? s : "+" + s;
+    }
 
     private static string FormatSlice(GoSlice s, bool plus, bool hash)
     {
