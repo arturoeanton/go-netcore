@@ -235,6 +235,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"io/fs": {
 		"Stat": {"Fs", "Stat"}, "Sub": {"Fs", "Sub"}, "ValidPath": {"Fs", "ValidPath"}, "ReadDir": {"Fs", "ReadDir"},
+		"FormatDirEntry": {"Fs", "FormatDirEntry"},
 	},
 	"net/netip": {
 		"AddrFrom4": {"Netip", "AddrFrom4"}, "AddrFrom16": {"Netip", "AddrFrom16"}, "AddrFromSlice": {"Netip", "AddrFromSlice"},
@@ -1703,6 +1704,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"io/fs.FileMode": {
 		"Type": {"Fs", "Mode_Type"}, "IsDir": {"Fs", "Mode_IsDir"}, "IsRegular": {"Fs", "Mode_IsRegular"}, "Perm": {"Fs", "Mode_Perm"},
+		"String": {"Fs", "Mode_String"},
 	},
 	"crypto/sha3.SHAKE": {
 		"Write": {"Crypto", "Shake_Write"}, "Read": {"Crypto", "Shake_Read"}, "Reset": {"Crypto", "Shake_Reset"},

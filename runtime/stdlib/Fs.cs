@@ -68,6 +68,31 @@ public static class Fs
     private const uint ModeType = 0x8000_0000u | 0x4000_0000u | 0x2000_0000u | 0x1000_0000u
         | 0x0800_0000u | 0x0400_0000u | 0x0200_0000u | 0x0100_0000u | 0x0080_0000u;
 
+    // (fs.FileMode).String(): the "drwxrwxrwx"-style mode string, ported from io/fs.fs.go.
+    public static GoString Mode_String(uint m)
+    {
+        const string str = "dalTLDpSugct?";
+        var buf = new char[32];
+        int w = 0;
+        for (int i = 0; i < str.Length; i++)
+            if ((m & (1u << (32 - 1 - i))) != 0) buf[w++] = str[i];
+        if (w == 0) buf[w++] = '-';
+        const string rwx = "rwxrwxrwx";
+        for (int i = 0; i < rwx.Length; i++)
+            buf[w++] = (m & (1u << (9 - 1 - i))) != 0 ? rwx[i] : '-';
+        return GoString.FromDotNetString(new string(buf, 0, w));
+    }
+
+    // fs.FormatDirEntry(dir): "<type-string> <name>[/]" (Type has no perm bits, so strip
+    // the trailing 9 rwx chars). Supports goclr's own GoDirEntry.
+    public static GoString FormatDirEntry(object de)
+    {
+        string mode = Mode_String(DirEntry_Type(de)).ToDotNetString();
+        mode = mode.Substring(0, mode.Length - 9);
+        string name = DirEntry_Name(de).ToDotNetString();
+        return GoString.FromDotNetString(mode + " " + name + (DirEntry_IsDir(de) ? "/" : ""));
+    }
+
     public static uint Mode_Type(uint m) => m & ModeType;
     public static bool Mode_IsDir(uint m) => (m & 0x8000_0000u) != 0;
     public static bool Mode_IsRegular(uint m) => (m & ModeType) == 0;
