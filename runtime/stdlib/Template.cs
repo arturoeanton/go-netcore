@@ -17,6 +17,22 @@ public sealed class GoTemplate
     public readonly Dictionary<string, GoClosure> Funcs = new();
 }
 
+/// <summary>html/template.Error: an escaping error (code + location + description). Error()
+/// formats "html/template:[name[:line]]: desc" (the parse.Node case needs a tree, omitted).</summary>
+[GoShim("html/template.Error")]
+public sealed class GoHtmlError : IGoError
+{
+    public long ErrorCode, Line;
+    public string Name = "", Description = "";
+    public GoString Error()
+    {
+        string s = Line != 0 ? "html/template:" + Name + ":" + Line + ": " + Description
+            : Name.Length != 0 ? "html/template:" + Name + ": " + Description
+            : "html/template: " + Description;
+        return GoString.FromDotNetString(s);
+    }
+}
+
 /// <summary>text/template.ExecError: a template name + the pre-formatted execution error.
 /// Error() delegates to the wrapped error; Unwrap()/Is follow it.</summary>
 [GoShim("text/template.ExecError")]
@@ -185,6 +201,18 @@ public static class Template
         foreach (var kv in t.Funcs) c.Funcs[kv.Key] = kv.Value;
         return new object?[] { c, null };
     }
+
+    // html/template.Error struct + methods.
+    public static object HtmlErrorZero() => new GoHtmlError();
+    public static long HtmlError_ErrorCode(object e) => ((GoHtmlError)e).ErrorCode;
+    public static GoString HtmlError_Name(object e) => GoString.FromDotNetString(((GoHtmlError)e).Name);
+    public static long HtmlError_Line(object e) => ((GoHtmlError)e).Line;
+    public static GoString HtmlError_Description(object e) => GoString.FromDotNetString(((GoHtmlError)e).Description);
+    public static void HtmlError_SetErrorCode(object e, long v) => ((GoHtmlError)e).ErrorCode = v;
+    public static void HtmlError_SetName(object e, GoString v) => ((GoHtmlError)e).Name = v.ToDotNetString();
+    public static void HtmlError_SetLine(object e, long v) => ((GoHtmlError)e).Line = v;
+    public static void HtmlError_SetDescription(object e, GoString v) => ((GoHtmlError)e).Description = v.ToDotNetString();
+    public static GoString HtmlError_Error(object e) => ((GoHtmlError)e).Error();
 
     // text/template.ExecError struct + methods (value-receiver error).
     public static object ExecErrorZero() => new GoExecError();
