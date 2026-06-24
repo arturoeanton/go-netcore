@@ -85,77 +85,94 @@ public static partial class Strconv
         return true;
     }
 
-    public static GoString Quote(GoString s)
+    public static GoString Quote(GoString s) => QuoteWith(s, '"', false, false);
+    public static GoString QuoteToASCII(GoString s) => QuoteWith(s, '"', true, false);
+    public static GoString QuoteToGraphicG(GoString s) => QuoteWith(s, '"', false, true);
+
+    // Faithful port of strconv.quoteWith / appendEscapedRune over the string's runes,
+    // decoding raw bytes so an invalid UTF-8 byte becomes \xNN exactly as Go does.
+    private static GoString QuoteWith(GoString s, char quote, bool asciiOnly, bool graphicOnly)
     {
-        var sb = new System.Text.StringBuilder("\"");
-        foreach (char c in s.ToDotNetString())
+        var sb = new System.Text.StringBuilder();
+        sb.Append(quote);
+        byte[] b = s.Bytes;
+        for (int i = 0; i < b.Length;)
         {
-            switch (c)
+            int r = b[i], width = 1;
+            if (r >= 0x80) (r, width) = DecodeRune(b, i);
+            if (width == 1 && r == 0xFFFD) // invalid byte
             {
-                case '"': sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\t': sb.Append("\\t"); break;
-                case '\r': sb.Append("\\r"); break;
-                default: sb.Append(c); break;
+                sb.Append("\\x").Append(LowerHex[b[i] >> 4]).Append(LowerHex[b[i] & 0xF]);
+                i++;
+                continue;
             }
+            AppendEscapedRune(sb, r, quote, asciiOnly, graphicOnly);
+            i += width;
         }
-        sb.Append('"');
+        sb.Append(quote);
         return GoString.FromDotNetString(sb.ToString());
     }
+    private const string LowerHex = "0123456789abcdef";
 
-    public static GoString QuoteToASCII(GoString s)
+    // utf8.DecodeRune over a byte slice at i: returns (rune, width); (0xFFFD,1) on invalid.
+    private static (int, int) DecodeRune(byte[] b, int i)
     {
-        var sb = new System.Text.StringBuilder("\"");
-        foreach (var r in s.ToDotNetString().EnumerateRunes())
+        byte b0 = b[i];
+        int n = b0 < 0xC0 ? 1 : b0 < 0xE0 ? 2 : b0 < 0xF0 ? 3 : b0 < 0xF8 ? 4 : 1;
+        if (n == 1 || i + n > b.Length) return (0xFFFD, 1);
+        int r = b0 & (0x7F >> n);
+        for (int k = 1; k < n; k++)
         {
-            int cp = r.Value;
-            switch (cp)
-            {
-                case '"': sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\t': sb.Append("\\t"); break;
-                case '\r': sb.Append("\\r"); break;
-                default:
-                    if (cp >= 0x20 && cp < 0x7f) sb.Append((char)cp);
-                    else if (cp < 0x10000) sb.Append("\\u").Append(cp.ToString("x4", Inv));
-                    else sb.Append("\\U").Append(cp.ToString("x8", Inv));
-                    break;
-            }
+            if ((b[i + k] & 0xC0) != 0x80) return (0xFFFD, 1);
+            r = (r << 6) | (b[i + k] & 0x3F);
         }
-        sb.Append('"');
-        return GoString.FromDotNetString(sb.ToString());
+        // Reject overlong/surrogate/out-of-range per utf8.DecodeRune.
+        int[] mins = { 0, 0, 0x80, 0x800, 0x10000 };
+        if (r < mins[n] || (r >= 0xD800 && r <= 0xDFFF) || r > 0x10FFFF) return (0xFFFD, 1);
+        return (r, n);
     }
 
     public static GoString NumError_Error(object o) => ((GoNumError)o).Error();
     public static object? NumError_Unwrap(object o) => ((GoNumError)o).Err;
 
-    // Quote a single rune in 'quote' delimiters; toASCII escapes every non-ASCII rune.
-    private static void AppendEscapedRune(System.Text.StringBuilder sb, int cp, char quote, bool toASCII)
+    // strconv.appendEscapedRune, ported verbatim: backslash/quote first, then IsPrint,
+    // then the \a..\v shorthands, then \x / \u / \U.
+    private static void AppendEscapedRune(System.Text.StringBuilder sb, int r, char quote, bool asciiOnly, bool graphicOnly)
     {
-        switch (cp)
+        if (r == quote || r == '\\') { sb.Append('\\').Append((char)r); return; }
+        if (asciiOnly)
         {
-            case '\\': sb.Append("\\\\"); return;
-            case '\n': sb.Append("\\n"); return;
-            case '\t': sb.Append("\\t"); return;
-            case '\r': sb.Append("\\r"); return;
+            if (r < 0x80 && IsPrint(r)) { sb.Append((char)r); return; }
+        }
+        else if (IsPrint(r) || (graphicOnly && r <= 0xFFFF && Bsearch16(isGraphic, (ushort)r).found))
+        {
+            sb.Append(char.ConvertFromUtf32(r));
+            return;
+        }
+        switch (r)
+        {
             case 7: sb.Append("\\a"); return;
             case 8: sb.Append("\\b"); return;
-            case 11: sb.Append("\\v"); return;
             case 12: sb.Append("\\f"); return;
+            case '\n': sb.Append("\\n"); return;
+            case '\r': sb.Append("\\r"); return;
+            case '\t': sb.Append("\\t"); return;
+            case 11: sb.Append("\\v"); return;
         }
-        if (cp == quote) { sb.Append('\\').Append((char)cp); return; }
-        if (cp >= 0x20 && cp < 0x7f) { sb.Append((char)cp); return; }
-        if (!toASCII && cp >= 0x20 && cp <= 0x10FFFF) { sb.Append(char.ConvertFromUtf32(cp)); return; }
-        if (cp < 0x100) sb.Append("\\x").Append(cp.ToString("x2", Inv));
-        else if (cp < 0x10000) sb.Append("\\u").Append(cp.ToString("x4", Inv));
-        else sb.Append("\\U").Append(cp.ToString("x8", Inv));
+        if (r < ' ' || r == 0x7f)
+            sb.Append("\\x").Append(LowerHex[(r >> 4) & 0xF]).Append(LowerHex[r & 0xF]);
+        else if (r < 0x10000)
+            sb.Append("\\u").Append(((uint)r).ToString("x4", Inv));
+        else
+        {
+            if (r > 0x10FFFF) r = 0xFFFD;
+            sb.Append("\\U").Append(((uint)r).ToString("x8", Inv));
+        }
     }
-    public static GoString QuoteRune(int r) { var sb = new System.Text.StringBuilder("'"); AppendEscapedRune(sb, r, '\'', false); return GoString.FromDotNetString(sb.Append('\'').ToString()); }
-    public static GoString QuoteRuneToASCII(int r) { var sb = new System.Text.StringBuilder("'"); AppendEscapedRune(sb, r, '\'', true); return GoString.FromDotNetString(sb.Append('\'').ToString()); }
-    public static GoString QuoteRuneToGraphic(int r) => QuoteRune(r);
-    public static GoString QuoteToGraphic(GoString s) => Quote(s);
+    public static GoString QuoteRune(int r) { var sb = new System.Text.StringBuilder("'"); AppendEscapedRune(sb, r, '\'', false, false); return GoString.FromDotNetString(sb.Append('\'').ToString()); }
+    public static GoString QuoteRuneToASCII(int r) { var sb = new System.Text.StringBuilder("'"); AppendEscapedRune(sb, r, '\'', true, false); return GoString.FromDotNetString(sb.Append('\'').ToString()); }
+    public static GoString QuoteRuneToGraphic(int r) { var sb = new System.Text.StringBuilder("'"); AppendEscapedRune(sb, r, '\'', false, true); return GoString.FromDotNetString(sb.Append('\'').ToString()); }
+    public static GoString QuoteToGraphic(GoString s) => QuoteToGraphicG(s);
     public static GoSlice AppendQuoteToASCII(GoSlice dst, GoString s) => AppendStr(dst, QuoteToASCII(s).ToDotNetString());
     public static GoSlice AppendQuoteToGraphic(GoSlice dst, GoString s) => AppendStr(dst, QuoteToGraphic(s).ToDotNetString());
     public static GoSlice AppendQuoteRune(GoSlice dst, int r) => AppendStr(dst, QuoteRune(r).ToDotNetString());

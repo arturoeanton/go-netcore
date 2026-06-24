@@ -456,7 +456,7 @@ public static class Fmt
         if (v is GoNamed bnm && bnm.Value is GoSlice bbs && IsByteTag(Rt.NamedTypeName(bnm.TypeId)))
             return GoQuote(GoString.FromBytesOwned(SliceToBytes(bbs)));
         if (v is GoString gq) return GoQuote(gq);
-        if (IsIntegral(v)) return "'" + char.ConvertFromUtf32((int)ToLong(v)) + "'";
+        if (IsIntegral(v)) return Strconv.QuoteRune((int)ToLong(v)).ToDotNetString();
         // %q over a slice quotes each element.
         if (v is GoSlice sl)
         {
@@ -506,36 +506,9 @@ public static class Fmt
         return sb.ToString();
     }
 
-    // Go-style quoted string: prints valid runes, escapes specials, and emits
-    // \xNN for bytes that are not part of a valid UTF-8 sequence.
-    private static string GoQuote(GoString gs)
-    {
-        var sb = new StringBuilder("\"");
-        byte[] b = gs.Bytes;
-        int i = 0;
-        while (i < b.Length)
-        {
-            int n = Utf8DecodeLen(b, i);
-            if (n == 1 && b[i] >= 0x80) { sb.Append("\\x").Append(b[i].ToString("x2", Inv)); i++; continue; }
-            if (n == 1)
-            {
-                char c = (char)b[i];
-                switch (c)
-                {
-                    case '"': sb.Append("\\\""); break;
-                    case '\\': sb.Append("\\\\"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    // Non-printable ASCII (control chars 0x00-0x1F and DEL 0x7F) escape as \xNN.
-                    default: if (c < 0x20 || c == 0x7f) sb.Append("\\x").Append(((int)c).ToString("x2", Inv)); else sb.Append(c); break;
-                }
-                i++;
-            }
-            else { sb.Append(Encoding.UTF8.GetString(b, i, n)); i += n; }
-        }
-        return sb.Append('"').ToString();
-    }
+    // Go-style quoted string (%q): the byte-exact strconv.Quote (printable classification,
+    // \a..\v shorthands, \xNN for invalid bytes, \u/\U for non-printable runes).
+    private static string GoQuote(GoString gs) => Strconv.Quote(gs).ToDotNetString();
 
     // Length (1-4) of the UTF-8 sequence starting at b[i]; 1 if invalid.
     private static int Utf8DecodeLen(byte[] b, int i)
