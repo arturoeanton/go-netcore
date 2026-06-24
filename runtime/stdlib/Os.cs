@@ -260,6 +260,31 @@ public static class Os
     public static bool IsNotExist(object? err) =>
         err is GoError g && g.Error().ToDotNetString().EndsWith("no such file or directory", System.StringComparison.Ordinal);
 
+    // os.IsExist(err): does err report that a file already exists? (matched by message suffix,
+    // mirroring IsNotExist). A generic or nil error is not an "exists" error.
+    public static bool IsExist(object? err) =>
+        err is GoError g && g.Error().ToDotNetString().EndsWith("file already exists", System.StringComparison.Ordinal);
+
+    // os.IsTimeout(err): does err report an I/O timeout? goclr models this as the
+    // ErrDeadlineExceeded sentinel ("i/o timeout"); generic/nil errors are not timeouts.
+    public static bool IsTimeout(object? err) =>
+        err is GoError g && g.Error().ToDotNetString().EndsWith("i/o timeout", System.StringComparison.Ordinal);
+
+    // os.IsPathSeparator(c): is c the OS path separator? On the platforms goclr targets
+    // (unix-like), that is '/'.
+    public static bool IsPathSeparator(int c) => c == '/';
+
+    // os.Getpagesize(): the underlying machine's memory page size (matches the host OS, as
+    // Go's does — e.g. 16384 on Apple silicon, 4096 on x86 Linux).
+    public static long Getpagesize() => System.Environment.SystemPageSize;
+
+    // os.Clearenv(): delete all environment variables.
+    public static void Clearenv()
+    {
+        foreach (System.Collections.DictionaryEntry e in System.Environment.GetEnvironmentVariables())
+            System.Environment.SetEnvironmentVariable((string)e.Key, null);
+    }
+
     // os.CreateTemp(dir, pattern) (*os.File, error): create a new temp file. A "*" in
     // pattern is replaced with a random string (else it's a suffix).
     public static object?[] CreateTemp(GoString dir, GoString pattern)
