@@ -132,7 +132,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/subtle": {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}, "ConstantTimeCopy": {"Subtle", "ConstantTimeCopy"}, "ConstantTimeLessOrEq": {"Subtle", "ConstantTimeLessOrEq"}, "WithDataIndependentTiming": {"Subtle", "WithDataIndependentTiming"}},
 	"mime":          {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}, "FormatMediaType": {"Mime", "FormatMediaType"}, "AddExtensionType": {"Mime", "AddExtensionType"}},
 	"mime/multipart": {"NewReader": {"Multipart", "NewReader"}, "NewWriter": {"Multipart", "NewWriter"}},
-	"net/mail":      {"ParseAddress": {"Mail", "ParseAddress"}},
+	"net/mail":      {"ParseAddress": {"Mail", "ParseAddress"}, "ParseAddressList": {"Mail", "ParseAddressList"}},
 	"os/signal": {
 		"Notify": {"Ossignal", "Notify"}, "Stop": {"Ossignal", "Stop"},
 		"Reset": {"Ossignal", "Reset"}, "Ignore": {"Ossignal", "Ignore"},
@@ -600,6 +600,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/csv.ErrQuote":          {"Csv", "ErrQuote"},
 	"encoding/csv.ErrFieldCount":     {"Csv", "ErrFieldCount"},
 	"encoding/csv.ErrTrailingComma":  {"Csv", "ErrTrailingComma"},
+	"net/mail.ErrHeaderNotPresent":   {"Mail", "ErrHeaderNotPresent"},
 	"bufio.ErrInvalidUnreadByte":     {"Bufio", "ErrInvalidUnreadByte"},
 	"bufio.ErrInvalidUnreadRune":     {"Bufio", "ErrInvalidUnreadRune"},
 	"bufio.ErrTooLong":               {"Bufio", "ErrTooLong"},
@@ -965,6 +966,9 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 		"Name": {"Http", "Cookie_SetName"}, "Value": {"Http", "Cookie_SetValue"}, "Path": {"Http", "Cookie_SetPath"},
 		"Domain": {"Http", "Cookie_SetDomain"}, "MaxAge": {"Http", "Cookie_SetMaxAge"}, "Secure": {"Http", "Cookie_SetSecure"}, "HttpOnly": {"Http", "Cookie_SetHttpOnly"},
 	},
+	"net/mail.Address": {
+		"Name": {"Mail", "Address_SetName"}, "Address": {"Mail", "Address_SetAddress"},
+	},
 	"net/http.Request": {
 		"ContentLength": {"Http", "Req_SetContentLength"}, "Trailer": {"Http", "Req_SetTrailer"}, "TLS": {"Http", "Req_SetTLS"}, "Body": {"Http", "Req_SetBody"},
 	},
@@ -1058,6 +1062,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"syscall.SockaddrInet6":          {"Syscall", "NewSockaddrInet6"},
 	"net/http.Server":                {"HttpTypes", "NewServer"},
 	"net/http.Cookie":                {"Http", "NewCookie"},
+	"net/mail.Address":               {"Mail", "NewAddress"},
 	"net/http.Client":                {"Http", "NewClient"},
 	"log.Logger":                     {"Log", "NewLoggerZero"},
 	"net/http.Transport":             {"HttpTypes", "NewTransport"},
@@ -1564,6 +1569,15 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net/textproto.MIMEHeader": {
 		"Get": {"Textproto", "MIMEHeader_Get"}, "Set": {"Textproto", "MIMEHeader_Set"}, "Add": {"Textproto", "MIMEHeader_Add"},
 		"Del": {"Textproto", "MIMEHeader_Del"}, "Values": {"Textproto", "MIMEHeader_Values"},
+	},
+	"net/mail.Address": {
+		"String": {"Mail", "Address_String"},
+	},
+	"net/mail.AddressParser": {
+		"Parse": {"Mail", "AddressParser_Parse"}, "ParseList": {"Mail", "AddressParser_ParseList"},
+	},
+	"net/mail.Header": {
+		"Get": {"Mail", "Header_Get"},
 	},
 	"crypto/x509.PublicKeyAlgorithm": {
 		"String": {"Crypto509", "PublicKeyAlgorithm_String"},
