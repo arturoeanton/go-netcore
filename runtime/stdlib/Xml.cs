@@ -141,6 +141,54 @@ public static class Xml
     public static object? Decoder_Decode(object d, object? v) => new GoError(GoString.FromDotNetString("xml: decoding is not supported under goclr"));
     public static object?[] Decoder_Token(object d) => new object?[] { null, Io.EOFSentinel };
 
+    // ---- escaping, token copies, and constants ----
+    private static byte[] RawBytes(GoSlice b) { var x = new byte[b.Len]; for (int i = 0; i < b.Len; i++) x[i] = (byte)System.Convert.ToInt64(b.Data![b.Off + i]); return x; }
+    private static string XmlEscape(string s)
+    {
+        var sb = new StringBuilder();
+        foreach (char c in s)
+            sb.Append(c switch
+            {
+                '"' => "&#34;", '\'' => "&#39;", '&' => "&amp;", '<' => "&lt;", '>' => "&gt;",
+                '\t' => "&#x9;", '\n' => "&#xA;", '\r' => "&#xD;", _ => c.ToString(),
+            });
+        return sb.ToString();
+    }
+    public static object? EscapeText(object? w, GoSlice s) { Fmt.WriteTo(w, XmlEscape(GoString.FromBytes(RawBytes(s)).ToDotNetString())); return null; }
+    public static void Escape(object? w, GoSlice s) { Fmt.WriteTo(w, XmlEscape(GoString.FromBytes(RawBytes(s)).ToDotNetString())); }
+
+    private static GoSlice CopyBytes(GoSlice b) { var d = new object?[b.Len]; for (int i = 0; i < b.Len; i++) d[i] = b.Data![b.Off + i]; return new GoSlice { Data = d, Off = 0, Len = b.Len, Cap = b.Len }; }
+    public static GoSlice CharData_Copy(GoSlice b) => CopyBytes(b); // CharData = []byte
+    public static GoSlice Comment_Copy(GoSlice b) => CopyBytes(b);  // Comment = []byte
+    public static GoSlice Directive_Copy(GoSlice b) => CopyBytes(b); // Directive = []byte
+    public static object ProcInst_Copy(object o) => o;               // a struct value: the receiver copy suffices
+    public static object StartElement_Copy(object s)
+    {
+        var st = (GoXmlStart)s;
+        return new GoXmlStart { Name = new GoXmlName { Space = st.Name.Space, Local = st.Name.Local }, Attr = st.Attr.Data == null ? st.Attr : CopyBytes(st.Attr) };
+    }
+    public static object StartElement_End(object s) { var st = (GoXmlStart)s; return new GoXmlEnd { Name = new GoXmlName { Space = st.Name.Space, Local = st.Name.Local } }; }
+
+    public static GoString TagPathError_Error(object e) => GoString.FromDotNetString("xml: bad tag path");
+    public static GoString UnmarshalError_Error(GoString s) => s; // UnmarshalError is a named string
+
+    // xml.CopyToken: a deep copy of a token (StartElement/EndElement/CharData/...).
+    public static object? CopyToken(object? t) => t switch
+    {
+        GoXmlStart st => StartElement_Copy(st),
+        GoSlice b => CopyBytes(b),
+        _ => t,
+    };
+
+    // xml.HTMLAutoClose: the void HTML elements (Go's historical list).
+    public static object HTMLAutoClose()
+    {
+        string[] tags = { "basefont", "br", "area", "link", "img", "param", "hr", "input", "col", "frame", "isindex", "base", "meta" };
+        var d = new object?[tags.Length];
+        for (int i = 0; i < tags.Length; i++) d[i] = GoString.FromDotNetString(tags[i]);
+        return new GoSlice { Data = d, Off = 0, Len = tags.Length, Cap = tags.Length };
+    }
+
     // ---- reflection marshaler ---------------------------------------------
     private static void WriteValue(StringBuilder sb, object? v, string? elem)
     {

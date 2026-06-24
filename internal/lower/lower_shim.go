@@ -57,6 +57,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"encoding/xml": {
 		"Marshal": {"Xml", "Marshal"}, "MarshalIndent": {"Xml", "MarshalIndent"}, "NewEncoder": {"Xml", "NewEncoder"},
 		"Unmarshal": {"Xml", "Unmarshal"}, "NewDecoder": {"Xml", "NewDecoder"},
+		"Escape": {"Xml", "Escape"}, "EscapeText": {"Xml", "EscapeText"}, "CopyToken": {"Xml", "CopyToken"},
 	},
 	"net/http/httputil": {
 		"DumpRequest": {"Httputil", "DumpRequest"},
@@ -584,6 +585,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"io.EOF":                         {"Io", "EOF"},
 	"bytes.ErrTooLarge":              {"BytesBuffer", "ErrTooLarge"},
 	"encoding/binary.NativeEndian":   {"Binary", "NativeEndian"},
+	"encoding/xml.HTMLAutoClose":     {"Xml", "HTMLAutoClose"},
 	"io.ErrUnexpectedEOF":            {"Io", "ErrUnexpectedEOF"},
 	"net.ErrClosed":                  {"Net", "ErrClosed"},
 	"net/http.ErrAbortHandler":       {"Http", "ErrAbortHandler"},
@@ -1307,6 +1309,13 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"encoding/xml.Decoder": {
 		"Decode": {"Xml", "Decoder_Decode"}, "Token": {"Xml", "Decoder_Token"},
 	},
+	"encoding/xml.StartElement": {"Copy": {"Xml", "StartElement_Copy"}, "End": {"Xml", "StartElement_End"}},
+	"encoding/xml.CharData":     {"Copy": {"Xml", "CharData_Copy"}},
+	"encoding/xml.Comment":      {"Copy": {"Xml", "Comment_Copy"}},
+	"encoding/xml.Directive":    {"Copy": {"Xml", "Directive_Copy"}},
+	"encoding/xml.ProcInst":     {"Copy": {"Xml", "ProcInst_Copy"}},
+	"encoding/xml.TagPathError":  {"Error": {"Xml", "TagPathError_Error"}},
+	"encoding/xml.UnmarshalError": {"Error": {"Xml", "UnmarshalError_Error"}},
 	"io.ReadCloser": {
 		"Close": {"Http", "Body_Close"},
 	},
