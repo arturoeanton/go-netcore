@@ -962,13 +962,31 @@ public static class Http
         m.Data[ck] = GoSlices.AppendOne(s, val);
     }
     public static void Header_Del(GoMap h, GoString key) => h.Data?.Remove(Canon(key));
-    public static GoString Header_Values(GoMap h, GoString key) => Header_Get(h, key);
+    // http.Header.Values(key) []string: every value for the canonical key (Go returns
+    // all of them, not just the first like Get) — a nil slice when the key is absent.
+    public static GoSlice Header_Values(GoMap h, GoString key)
+    {
+        var m = (GoMap)h;
+        if (m.Data != null && m.Data.TryGetValue(Canon(key), out var v) && v is GoSlice s) return s;
+        return new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 };
+    }
     public static GoMap Header_Clone(GoMap h)
     {
         var src = (GoMap)h;
         if (src.Data == null) return new GoMap { Data = null };
         var m = GoMaps.Make();
-        foreach (var kv in src.Data) m.Data![kv.Key] = kv.Value;
+        // Go deep-copies the value slices, so a mutation of the clone (Add/Set) cannot
+        // reach back into the original. Copy each []string into its own backing array.
+        foreach (var kv in src.Data)
+        {
+            if (kv.Value is GoSlice s && s.Data != null)
+            {
+                var d = new object?[s.Len];
+                for (int i = 0; i < s.Len; i++) d[i] = s.Data[s.Off + i];
+                m.Data![kv.Key] = new GoSlice { Data = d, Off = 0, Len = s.Len, Cap = s.Len };
+            }
+            else m.Data![kv.Key] = kv.Value;
+        }
         return m;
     }
     public static object? Header_Write(GoMap h, object? w) => null;
