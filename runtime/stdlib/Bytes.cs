@@ -251,4 +251,61 @@ public static class Bytes
         }
         return S(outb.ToArray());
     }
+
+    // The bytes funcs that mirror strings reuse the string forms on a transcoded view.
+    private static GoString GS(GoSlice s) => GoString.FromBytes(B(s));
+    private static GoSlice BytesOf(GoString g) => S(g.Bytes);
+    private static GoSlice SlicesFromStr(GoSlice r)
+    {
+        var d = new object?[r.Len];
+        for (int i = 0; i < r.Len; i++) d[i] = BytesOf((GoString)r.Data![r.Off + i]!);
+        return new GoSlice { Data = d, Off = 0, Len = r.Len, Cap = r.Len };
+    }
+    private static GoClosure ByteSeq(GoSlice partsAsStr)
+    {
+        var parts = new System.Collections.Generic.List<byte[]>();
+        for (int i = 0; i < partsAsStr.Len; i++) parts.Add(((GoString)partsAsStr.Data![partsAsStr.Off + i]!).Bytes);
+        return NativeClosures.Make(args =>
+        {
+            if (args.Length == 0 || args[0] is not GoClosure yield) return null;
+            foreach (var p in parts) if (GoRuntime.InvokeArgs(yield, S(p)) is not true) break;
+            return null;
+        });
+    }
+
+    public static bool ContainsAny(GoSlice s, GoString chars) => IndexAny(s, chars) >= 0;
+    public static bool ContainsRune(GoSlice s, int r) => IndexRune(s, r) >= 0;
+    public static bool ContainsFunc(GoSlice s, GoClosure f) => IndexFunc(s, f) >= 0;
+    public static long IndexFunc(GoSlice s, GoClosure f) => Strings.IndexFunc(GS(s), f);
+    public static long LastIndexAny(GoSlice s, GoString chars) => Strings.LastIndexAny(GS(s), chars);
+    public static long LastIndexFunc(GoSlice s, GoClosure f) => Strings.LastIndexFunc(GS(s), f);
+    public static object?[] Cut(GoSlice s, GoSlice sep) { var r = Strings.Cut(GS(s), GS(sep)); return new object?[] { BytesOf((GoString)r[0]!), BytesOf((GoString)r[1]!), r[2] }; }
+    public static object?[] CutPrefix(GoSlice s, GoSlice prefix) { var r = Strings.CutPrefix(GS(s), GS(prefix)); return new object?[] { BytesOf((GoString)r[0]!), r[1] }; }
+    public static object?[] CutSuffix(GoSlice s, GoSlice suffix) { var r = Strings.CutSuffix(GS(s), GS(suffix)); return new object?[] { BytesOf((GoString)r[0]!), r[1] }; }
+    public static GoSlice Fields(GoSlice s) => SlicesFromStr(Strings.Fields(GS(s)));
+    public static GoSlice FieldsFunc(GoSlice s, GoClosure f) => SlicesFromStr(Strings.FieldsFunc(GS(s), f));
+    public static GoSlice SplitN(GoSlice s, GoSlice sep, long n) => SlicesFromStr(Strings.SplitN(GS(s), GS(sep), n));
+    public static GoSlice SplitAfter(GoSlice s, GoSlice sep) => SlicesFromStr(Strings.SplitAfter(GS(s), GS(sep)));
+    public static GoSlice Map(GoClosure f, GoSlice s) => BytesOf(Strings.Map(f, GS(s)));
+    public static GoSlice Title(GoSlice s) => BytesOf(Strings.Title(GS(s)));
+    public static GoSlice ToTitle(GoSlice s) => BytesOf(Strings.ToTitle(GS(s)));
+    public static GoSlice ToValidUTF8(GoSlice s, GoSlice repl) => BytesOf(Strings.ToValidUTF8(GS(s), GS(repl)));
+    public static GoSlice TrimLeft(GoSlice s, GoString cut) => BytesOf(Strings.TrimLeft(GS(s), cut));
+    public static GoSlice TrimRight(GoSlice s, GoString cut) => BytesOf(Strings.TrimRight(GS(s), cut));
+    public static GoSlice TrimFunc(GoSlice s, GoClosure f) => BytesOf(Strings.TrimFunc(GS(s), f));
+    public static GoSlice TrimLeftFunc(GoSlice s, GoClosure f) => BytesOf(Strings.TrimLeftFunc(GS(s), f));
+    public static GoSlice TrimRightFunc(GoSlice s, GoClosure f) => BytesOf(Strings.TrimRightFunc(GS(s), f));
+    public static GoClosure SplitSeq(GoSlice s, GoSlice sep) => ByteSeq(Strings.Split(GS(s), GS(sep)));
+    public static GoClosure SplitAfterSeq(GoSlice s, GoSlice sep) => ByteSeq(Strings.SplitAfter(GS(s), GS(sep)));
+    public static GoClosure FieldsSeq(GoSlice s) => ByteSeq(Strings.Fields(GS(s)));
+    public static GoClosure FieldsFuncSeq(GoSlice s, GoClosure f) => ByteSeq(Strings.FieldsFunc(GS(s), f));
+    public static GoClosure Lines(GoSlice s) => ByteSeq(LinesAsStr(GS(s).ToDotNetString()));
+    private static GoSlice LinesAsStr(string str)
+    {
+        var parts = new System.Collections.Generic.List<object?>();
+        int start = 0;
+        for (int i = 0; i < str.Length; i++) if (str[i] == '\n') { parts.Add(GoString.FromDotNetString(str.Substring(start, i - start + 1))); start = i + 1; }
+        if (start < str.Length) parts.Add(GoString.FromDotNetString(str.Substring(start)));
+        return new GoSlice { Data = parts.ToArray(), Off = 0, Len = parts.Count, Cap = parts.Count };
+    }
 }

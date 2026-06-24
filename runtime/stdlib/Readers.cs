@@ -60,6 +60,7 @@ public static class Readers
     }
     // (*strings.Reader / *bytes.Reader).Reset / Seek / ReadAt / WriteTo / UnreadRune.
     public static void Reader_Reset(object r, GoString s) { var gr = (GoReader)r; gr.Data = s.Bytes; gr.Pos = 0; gr.PrevRune = -1; }
+    public static void Reader_ResetBytes(object r, GoSlice b) { var gr = (GoReader)r; var d = new byte[b.Len]; for (int i = 0; i < b.Len; i++) d[i] = (byte)System.Convert.ToInt64(b.Data![b.Off + i]); gr.Data = d; gr.Pos = 0; gr.PrevRune = -1; }
     public static object?[] Reader_Seek(object r, long offset, long whence)
     {
         var gr = (GoReader)r;

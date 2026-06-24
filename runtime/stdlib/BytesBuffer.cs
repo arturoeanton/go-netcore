@@ -4,7 +4,7 @@ using System.Text;
 using GoCLR.Runtime;
 
 [GoShim("bytes.Buffer")]
-public sealed class GoBuffer { public readonly System.Collections.Generic.List<byte> B = new(); public int Pos; }
+public sealed class GoBuffer { public readonly System.Collections.Generic.List<byte> B = new(); public int Pos; public int LastRuneSize = -1; }
 
 /// <summary>Shim for bytes.Buffer.</summary>
 public static class BytesBuffer
@@ -13,6 +13,49 @@ public static class BytesBuffer
     public static object NewBuffer(GoSlice b) { var g = new GoBuffer(); for (int i = 0; i < b.Len; i++) g.B.Add((byte)System.Convert.ToInt64(b.Data![b.Off + i])); return g; }
     public static object NewBufferString(GoString s) { var g = new GoBuffer(); g.B.AddRange(s.Bytes); return g; }
     private static GoBuffer G(object b) => (GoBuffer)b;
+
+    public static readonly GoError ErrTooLargeErr = new(GoString.FromDotNetString("bytes.Buffer: too large"));
+    public static object ErrTooLarge() => ErrTooLargeErr;
+
+    public static long Cap(object b) => G(b).B.Capacity;
+    public static long Available(object b) { var g = G(b); return g.B.Capacity - g.B.Count; }
+    public static GoSlice AvailableBuffer(object b) => new() { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
+    private static GoSlice ByteSlice(System.Collections.Generic.List<byte> src, int from, int count)
+    {
+        var d = new object?[count];
+        for (int i = 0; i < count; i++) d[i] = (int)src[from + i];
+        return new GoSlice { Data = d, Off = 0, Len = count, Cap = count };
+    }
+    public static object?[] Peek(object b, long n)
+    {
+        var g = G(b); int avail = g.B.Count - g.Pos; int k = (int)System.Math.Min(n, avail);
+        return new object?[] { ByteSlice(g.B, g.Pos, k), k < n ? Io.EOFSentinel : null };
+    }
+    public static object?[] ReadBytes(object b, int delim)
+    {
+        var g = G(b);
+        int start = g.Pos;
+        while (g.Pos < g.B.Count) { byte c = g.B[g.Pos++]; if (c == (byte)delim) return new object?[] { ByteSlice(g.B, start, g.Pos - start), null }; }
+        return new object?[] { ByteSlice(g.B, start, g.Pos - start), Io.EOFSentinel }; // EOF: all bytes read, delim not found
+    }
+    public static object?[] ReadFrom(object b, object? r)
+    {
+        var data = Readers.Drain(r);
+        G(b).B.AddRange(data);
+        return new object?[] { (long)data.Length, null };
+    }
+    public static object? UnreadByte(object b)
+    {
+        var g = G(b);
+        if (g.Pos == 0) return new GoError(GoString.FromDotNetString("bytes.Buffer: UnreadByte: no byte to unread"));
+        g.Pos--; return null;
+    }
+    public static object? UnreadRune(object b)
+    {
+        var g = G(b);
+        if (g.LastRuneSize < 0) return new GoError(GoString.FromDotNetString("bytes.Buffer: UnreadRune: previous operation was not a successful ReadRune"));
+        g.Pos -= g.LastRuneSize; g.LastRuneSize = -1; return null;
+    }
 
     public static GoString String(object b) { var g = G(b); return GoString.FromBytesOwned(g.B.GetRange(g.Pos, g.B.Count - g.Pos).ToArray()); }
     public static long Len(object b) { var g = G(b); return g.B.Count - g.Pos; }
@@ -116,6 +159,7 @@ public static class BytesBuffer
         int n = first < 0x80 ? 1 : first >= 0xF0 ? 4 : first >= 0xE0 ? 3 : first >= 0xC0 ? 2 : 1;
         var bytes = new byte[n];
         for (int i = 0; i < n && g.Pos < g.B.Count; i++) bytes[i] = g.B[g.Pos + i];
+        g.LastRuneSize = n;
         g.Pos += n;
         var s = System.Text.Encoding.UTF8.GetString(bytes);
         int cp = s.Length > 0 ? char.ConvertToUtf32(s, 0) : 0xFFFD;

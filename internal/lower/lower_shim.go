@@ -294,6 +294,13 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ToLower": {"Bytes", "ToLower"}, "TrimSpace": {"Bytes", "TrimSpace"}, "Trim": {"Bytes", "Trim"}, "TrimPrefix": {"Bytes", "TrimPrefix"}, "TrimSuffix": {"Bytes", "TrimSuffix"}, "Repeat": {"Bytes", "Repeat"},
 		"Split": {"Bytes", "Split"}, "SplitAfterN": {"Bytes", "SplitAfterN"}, "Join": {"Bytes", "Join"},
 		"NewReader": {"Readers", "NewBytesReader"}, "NewBuffer": {"BytesBuffer", "NewBuffer"}, "NewBufferString": {"BytesBuffer", "NewBufferString"},
+		"ContainsAny": {"Bytes", "ContainsAny"}, "ContainsRune": {"Bytes", "ContainsRune"}, "ContainsFunc": {"Bytes", "ContainsFunc"},
+		"IndexFunc": {"Bytes", "IndexFunc"}, "LastIndexAny": {"Bytes", "LastIndexAny"}, "LastIndexFunc": {"Bytes", "LastIndexFunc"},
+		"Cut": {"Bytes", "Cut"}, "CutPrefix": {"Bytes", "CutPrefix"}, "CutSuffix": {"Bytes", "CutSuffix"},
+		"Fields": {"Bytes", "Fields"}, "FieldsFunc": {"Bytes", "FieldsFunc"}, "SplitN": {"Bytes", "SplitN"}, "SplitAfter": {"Bytes", "SplitAfter"},
+		"Map": {"Bytes", "Map"}, "Title": {"Bytes", "Title"}, "ToTitle": {"Bytes", "ToTitle"}, "ToValidUTF8": {"Bytes", "ToValidUTF8"},
+		"TrimLeft": {"Bytes", "TrimLeft"}, "TrimRight": {"Bytes", "TrimRight"}, "TrimFunc": {"Bytes", "TrimFunc"}, "TrimLeftFunc": {"Bytes", "TrimLeftFunc"}, "TrimRightFunc": {"Bytes", "TrimRightFunc"},
+		"Lines": {"Bytes", "Lines"}, "SplitSeq": {"Bytes", "SplitSeq"}, "SplitAfterSeq": {"Bytes", "SplitAfterSeq"}, "FieldsSeq": {"Bytes", "FieldsSeq"}, "FieldsFuncSeq": {"Bytes", "FieldsFuncSeq"},
 	},
 	"strconv": {
 		"Itoa": {"Strconv", "Itoa"}, "Atoi": {"Strconv", "Atoi"},
@@ -561,6 +568,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"context.Canceled":               {"Context", "Canceled"},
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 	"io.EOF":                         {"Io", "EOF"},
+	"bytes.ErrTooLarge":              {"BytesBuffer", "ErrTooLarge"},
 	"io.ErrUnexpectedEOF":            {"Io", "ErrUnexpectedEOF"},
 	"net.ErrClosed":                  {"Net", "ErrClosed"},
 	"net/http.ErrAbortHandler":       {"Http", "ErrAbortHandler"},
@@ -1189,6 +1197,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"bytes.Reader": {
 		"Read": {"Readers", "Reader_Read"}, "ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
 		"ReadRune": {"Readers", "Reader_ReadRune"}, "Len": {"Readers", "Reader_Len"}, "Size": {"Readers", "Reader_Size"},
+		"Reset": {"Readers", "Reader_ResetBytes"}, "Seek": {"Readers", "Reader_Seek"}, "ReadAt": {"Readers", "Reader_ReadAt"},
+		"WriteTo": {"Readers", "Reader_WriteTo"}, "UnreadRune": {"Readers", "Reader_UnreadRune"},
 	},
 	"reflect.Type": {
 		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},
@@ -1441,6 +1451,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Truncate": {"BytesBuffer", "Truncate"}, "Grow": {"BytesBuffer", "Grow"},
 		"ReadByte": {"BytesBuffer", "ReadByte"}, "ReadRune": {"BytesBuffer", "ReadRune"}, "Next": {"BytesBuffer", "Next"},
 		"WriteTo": {"BytesBuffer", "WriteTo"},
+		"Cap": {"BytesBuffer", "Cap"}, "Available": {"BytesBuffer", "Available"}, "AvailableBuffer": {"BytesBuffer", "AvailableBuffer"},
+		"Peek": {"BytesBuffer", "Peek"}, "ReadBytes": {"BytesBuffer", "ReadBytes"}, "ReadFrom": {"BytesBuffer", "ReadFrom"},
+		"UnreadByte": {"BytesBuffer", "UnreadByte"}, "UnreadRune": {"BytesBuffer", "UnreadRune"},
 	},
 	"os.File": {
 		"Fd": {"Os", "File_Fd"}, "Close": {"Os", "File_Close"}, "Write": {"Os", "File_Write"}, "WriteString": {"Os", "File_WriteString"}, "Read": {"Os", "File_Read"}, "Name": {"Os", "File_Name"}, "Sync": {"Os", "File_Sync"}, "WriteAt": {"Os", "File_WriteAt"}, "ReadAt": {"Os", "File_ReadAt"}, "Seek": {"Os", "File_Seek"}, "Truncate": {"Os", "File_Truncate"}, "Stat": {"Os", "File_Stat"},

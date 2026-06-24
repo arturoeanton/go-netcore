@@ -442,6 +442,9 @@ public static class Fmt
         // invokes the method first — even for a named integer like `type Color int`, %q
         // yields the quoted String(), not a rune literal).
         if (TryStringer(v, out var sv)) return GoQuote(GoString.FromDotNetString(sv));
+        // A []byte (e.g. a nested element of [][]byte) quotes as its string, like Go.
+        if (v is GoNamed bnm && bnm.Value is GoSlice bbs && IsByteTag(Rt.NamedTypeName(bnm.TypeId)))
+            return GoQuote(GoString.FromBytesOwned(SliceToBytes(bbs)));
         if (v is GoString gq) return GoQuote(gq);
         if (IsIntegral(v)) return "'" + char.ConvertFromUtf32((int)ToLong(v)) + "'";
         // %q over a slice quotes each element.
