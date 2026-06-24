@@ -230,6 +230,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ResolveIPAddr": {"Net", "ResolveIPAddr"}, "ResolveUnixAddr": {"Net", "ResolveUnixAddr"},
 		"ListenUDP": {"Net", "ListenUDP"}, "DialUDP": {"Net", "DialUDP"},
 		"Interfaces": {"Net", "Interfaces"},
+		"IPv4": {"Net", "IPv4"}, "IPv4Mask": {"Net", "IPv4Mask"}, "CIDRMask": {"Net", "CIDRMask"},
 	},
 	"net/http": {
 		"Get": {"Http", "Get"}, "Post": {"Http", "Post"}, "ReadResponse": {"Http", "ReadResponse"},
@@ -1539,9 +1540,20 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"To4": {"Net", "IP_To4"}, "To16": {"Net", "IP_To16"}, "Equal": {"Net", "IP_Equal"}, "String": {"Net", "IP_String"},
 		"IsLoopback": {"Net", "IP_IsLoopback"}, "IsLinkLocalUnicast": {"Net", "IP_IsLinkLocalUnicast"}, "IsLinkLocalMulticast": {"Net", "IP_IsLinkLocalMulticast"},
 		"IsMulticast": {"Net", "IP_IsMulticast"}, "IsPrivate": {"Net", "IP_IsPrivate"}, "IsUnspecified": {"Net", "IP_IsUnspecified"}, "IsGlobalUnicast": {"Net", "IP_IsGlobalUnicast"},
+		"Mask": {"Net", "IP_Mask"}, "DefaultMask": {"Net", "IP_DefaultMask"}, "IsInterfaceLocalMulticast": {"Net", "IP_IsInterfaceLocalMulticast"},
+		"MarshalText": {"Net", "IP_MarshalText"}, "AppendText": {"Net", "IP_AppendText"},
+	},
+	"net.IPMask": {
+		"Size": {"Net", "IPMask_Size"}, "String": {"Net", "IPMask_String"},
+	},
+	"net.HardwareAddr": {
+		"String": {"Net", "HardwareAddr_String"},
+	},
+	"net.Flags": {
+		"String": {"Net", "Flags_String"},
 	},
 	"net.IPNet": {
-		"Contains": {"Net", "IPNet_Contains"}, "String": {"Net", "IPNet_String"},
+		"Contains": {"Net", "IPNet_Contains"}, "String": {"Net", "IPNet_String"}, "Network": {"Net", "IPNet_Network"},
 	},
 	"net.OpError": {
 		"Error": {"Net", "OpError_Error"}, "Unwrap": {"Net", "OpError_Unwrap"}, "Timeout": {"Net", "OpError_Timeout"}, "Temporary": {"Net", "OpError_Temporary"},

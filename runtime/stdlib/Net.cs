@@ -410,8 +410,15 @@ public static class Net
     public static GoString IP_String(GoSlice ip)
     {
         var b = Raw(ip);
-        try { return GoString.FromDotNetString(new IPAddress(b).ToString()); }
-        catch { return GoString.FromDotNetString("<nil>"); }
+        if (b.Length == 0) return GoString.FromDotNetString("<nil>");
+        // Go renders a 4-byte IP and a v4-mapped 16-byte IP as a dotted quad (not ::ffff:a.b.c.d).
+        var p4 = Raw(IP_To4(ip));
+        if (p4.Length == 4) return GoString.FromDotNetString($"{p4[0]}.{p4[1]}.{p4[2]}.{p4[3]}");
+        if (b.Length == 16) { try { return GoString.FromDotNetString(new IPAddress(b).ToString()); } catch { } }
+        // Invalid length: Go returns "?" + lowercase hex of the bytes.
+        var sb = new System.Text.StringBuilder("?");
+        foreach (var by in b) sb.Append(by.ToString("x2"));
+        return GoString.FromDotNetString(sb.ToString());
     }
 
     // net.IP predicates (operate on the 4- or 16-byte slice; mirror Go's classification).
@@ -463,6 +470,120 @@ public static class Net
         var b = Raw(ip);
         return (b.Length == 4 || b.Length == 16) && !IP_IsUnspecified(ip) && !IP_IsLoopback(ip)
             && !IP_IsMulticast(ip) && !IP_IsLinkLocalUnicast(ip);
+    }
+
+    // --- pure IP/IPMask/HardwareAddr/Flags methods + mask constructors ---
+    public static GoSlice IPv4(int a, int b, int c, int d) => IPv4Bytes((byte)a, (byte)b, (byte)c, (byte)d);
+    public static GoSlice IPv4Mask(int a, int b, int c, int d) => Bytes(new[] { (byte)a, (byte)b, (byte)c, (byte)d });
+    public static GoSlice CIDRMask(long ones, long bits)
+    {
+        if (bits != 32 && bits != 128) return NilBytes();
+        if (ones < 0 || ones > bits) return NilBytes();
+        int l = (int)(bits / 8);
+        var m = new byte[l];
+        long n = ones;
+        for (int i = 0; i < l; i++)
+        {
+            if (n >= 8) { m[i] = 0xff; n -= 8; continue; }
+            m[i] = (byte)~(0xff >> (int)n);
+            n = 0;
+        }
+        return Bytes(m);
+    }
+
+    private static bool AllFF(byte[] b, int s, int e) { for (int i = s; i < e; i++) if (b[i] != 0xff) return false; return true; }
+    private static bool V4Prefix(byte[] ip) { for (int i = 0; i < 10; i++) if (ip[i] != 0) return false; return ip[10] == 0xff && ip[11] == 0xff; }
+    private static GoSlice AppendB(GoSlice dst, byte[] extra)
+    {
+        var d = new object?[dst.Len + extra.Length];
+        for (int i = 0; i < dst.Len; i++) d[i] = dst.Data![dst.Off + i];
+        for (int i = 0; i < extra.Length; i++) d[dst.Len + i] = (int)extra[i];
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
+
+    public static GoSlice IP_Mask(GoSlice ipS, GoSlice maskS)
+    {
+        byte[] ip = Raw(ipS), mask = Raw(maskS);
+        if (mask.Length == 16 && ip.Length == 4 && AllFF(mask, 0, 12)) mask = mask[12..];
+        if (mask.Length == 4 && ip.Length == 16 && V4Prefix(ip)) ip = ip[12..];
+        int n = ip.Length;
+        if (n != mask.Length) return NilBytes();
+        var outb = new byte[n];
+        for (int i = 0; i < n; i++) outb[i] = (byte)(ip[i] & mask[i]);
+        return Bytes(outb);
+    }
+    public static GoSlice IP_DefaultMask(GoSlice ipS)
+    {
+        var ip = Raw(IP_To4(ipS));
+        if (ip.Length != 4) return NilBytes();
+        if (ip[0] < 0x80) return Bytes(new byte[] { 0xff, 0, 0, 0 });
+        if (ip[0] < 0xC0) return Bytes(new byte[] { 0xff, 0xff, 0, 0 });
+        return Bytes(new byte[] { 0xff, 0xff, 0xff, 0 });
+    }
+    public static bool IP_IsInterfaceLocalMulticast(GoSlice ipS)
+    {
+        var b = Raw(ipS);
+        return b.Length == 16 && b[0] == 0xff && (b[1] & 0x0f) == 0x01;
+    }
+    public static object?[] IP_MarshalText(GoSlice ipS)
+    {
+        var b = Raw(ipS);
+        if (b.Length == 0) return new object?[] { Bytes(System.Array.Empty<byte>()), null };
+        if (b.Length != 4 && b.Length != 16) return new object?[] { NilBytes(), new GoError(GoString.FromDotNetString("invalid IP address")) };
+        return new object?[] { Bytes(System.Text.Encoding.UTF8.GetBytes(IP_String(ipS).ToDotNetString())), null };
+    }
+    public static object?[] IP_AppendText(GoSlice ipS, GoSlice dst)
+    {
+        var mt = IP_MarshalText(ipS);
+        if (mt[1] != null) return new object?[] { dst, mt[1] };
+        return new object?[] { AppendB(dst, Raw((GoSlice)mt[0]!)), null };
+    }
+
+    private static int SimpleMaskLen(byte[] mask)
+    {
+        int n = 0;
+        for (int i = 0; i < mask.Length; i++)
+        {
+            int v = mask[i];
+            if (v == 0xff) { n += 8; continue; }
+            while ((v & 0x80) != 0) { n++; v = (v << 1) & 0xff; }
+            if (v != 0) return -1;
+            for (i++; i < mask.Length; i++) if (mask[i] != 0) return -1;
+            break;
+        }
+        return n;
+    }
+    public static object?[] IPMask_Size(GoSlice mS)
+    {
+        var m = Raw(mS);
+        int ones = SimpleMaskLen(m), bits = m.Length * 8;
+        return ones == -1 ? new object?[] { 0L, 0L } : new object?[] { (long)ones, (long)bits };
+    }
+    public static GoString IPMask_String(GoSlice mS)
+    {
+        var m = Raw(mS);
+        if (m.Length == 0) return GoString.FromDotNetString("<nil>");
+        var sb = new System.Text.StringBuilder();
+        foreach (var b in m) sb.Append(b.ToString("x2"));
+        return GoString.FromDotNetString(sb.ToString());
+    }
+    public static GoString IPNet_Network(object n) => GoString.FromDotNetString("ip+net");
+    public static GoString HardwareAddr_String(GoSlice aS)
+    {
+        var a = Raw(aS);
+        if (a.Length == 0) return GoString.FromDotNetString("");
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < a.Length; i++) { if (i > 0) sb.Append(':'); sb.Append(a[i].ToString("x2")); }
+        return GoString.FromDotNetString(sb.ToString());
+    }
+    private static readonly string[] FlagNames = { "up", "broadcast", "loopback", "pointtopoint", "multicast", "running" };
+    public static GoString Flags_String(ulong f)
+    {
+        string s = "";
+        for (int i = 0; i < FlagNames.Length; i++)
+            if ((f & (1UL << i)) != 0) { if (s != "") s += "|"; s += FlagNames[i]; }
+        if (s == "") s = "0";
+        return GoString.FromDotNetString(s);
     }
 
     // net.IPNet field reads (opaque GoNetAddr).
