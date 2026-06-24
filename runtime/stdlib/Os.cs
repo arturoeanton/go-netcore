@@ -616,6 +616,30 @@ public static class Os
         _ => e.Message,
     };
 
+    // os.ReadDir(name) ([]os.DirEntry, error): the directory's entries sorted by filename
+    // (byte order, like Go). Entries are GoDirEntry (matches the fs.DirEntry interface).
+    public static object?[] ReadDir(GoString name)
+    {
+        string dir = name.ToDotNetString();
+        try
+        {
+            if (!System.IO.Directory.Exists(dir))
+                return new object?[] { new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 }, new GoError(GoString.FromDotNetString("open " + dir + ": no such file or directory")) };
+            var names = new System.Collections.Generic.List<string>(System.IO.Directory.GetFileSystemEntries(dir));
+            names.Sort(System.StringComparer.Ordinal);
+            var d = new object?[names.Count];
+            for (int i = 0; i < names.Count; i++)
+                d[i] = new GoDirEntry
+                {
+                    EntryName = GoString.FromDotNetString(System.IO.Path.GetFileName(names[i])),
+                    Dir = System.IO.Directory.Exists(names[i]),
+                    FullPath = names[i],
+                };
+            return new object?[] { new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length }, null };
+        }
+        catch (System.Exception e) { return new object?[] { new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 }, new GoError(GoString.FromDotNetString("readdir " + dir + ": " + Errno(e))) }; }
+    }
+
     // os.Chdir(dir): change the working directory.
     public static object? Chdir(GoString dir)
     {
