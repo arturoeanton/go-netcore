@@ -106,7 +106,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/rsa": {"GenerateKey": {"Crypto509", "RsaGenerateKey"},
 		"VerifyPKCS1v15": {"CryptoSign", "VerifyPKCS1v15"}, "SignPKCS1v15": {"CryptoSign", "SignPKCS1v15"},
 		"VerifyPSS": {"CryptoSign", "VerifyPSS"}, "SignPSS": {"CryptoSign", "SignPSS"}},
-	"crypto/tls": {"Server": {"HttpTypes", "TlsServer"}, "Client": {"HttpTypes", "TlsClient"}, "X509KeyPair": {"HttpTypes", "X509KeyPair"}, "LoadX509KeyPair": {"HttpTypes", "LoadX509KeyPair"}, "NewListener": {"HttpTypes", "NewListener"}, "Listen": {"HttpTypes", "TlsListen"}},
+	"crypto/tls": {"Server": {"HttpTypes", "TlsServer"}, "Client": {"HttpTypes", "TlsClient"}, "X509KeyPair": {"HttpTypes", "X509KeyPair"}, "LoadX509KeyPair": {"HttpTypes", "LoadX509KeyPair"}, "NewListener": {"HttpTypes", "NewListener"}, "Listen": {"HttpTypes", "TlsListen"}, "CipherSuiteName": {"HttpTypes", "CipherSuiteName"}, "VersionName": {"HttpTypes", "VersionName"}},
 	"crypto/x509": {
 		"NewCertPool": {"Crypto509", "NewCertPool"},
 		"CreateCertificate": {"Crypto509", "CreateCertificate"}, "ParseCertificate": {"Crypto509", "ParseCertificate"}, "ParseCertificates": {"Crypto509", "ParseCertificates"},
@@ -1545,6 +1545,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net.IPMask": {
 		"Size": {"Net", "IPMask_Size"}, "String": {"Net", "IPMask_String"},
+	},
+	"crypto/tls.ClientAuthType": {
+		"String": {"HttpTypes", "ClientAuthType_String"},
+	},
+	"crypto/tls.CurveID": {
+		"String": {"HttpTypes", "CurveID_String"},
 	},
 	"net.HardwareAddr": {
 		"String": {"Net", "HardwareAddr_String"},
