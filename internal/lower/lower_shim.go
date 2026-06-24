@@ -355,6 +355,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Lines": {"Bytes", "Lines"}, "SplitSeq": {"Bytes", "SplitSeq"}, "SplitAfterSeq": {"Bytes", "SplitAfterSeq"}, "FieldsSeq": {"Bytes", "FieldsSeq"}, "FieldsFuncSeq": {"Bytes", "FieldsFuncSeq"},
 	},
 	"strconv": {
+		"IsPrint": {"Strconv", "IsPrint"}, "IsGraphic": {"Strconv", "IsGraphic"},
 		"Itoa": {"Strconv", "Itoa"}, "Atoi": {"Strconv", "Atoi"},
 		"FormatInt": {"Strconv", "FormatInt"}, "FormatUint": {"Strconv", "FormatUint"},
 		"FormatBool": {"Strconv", "FormatBool"}, "FormatFloat": {"Strconv", "FormatFloat"},

@@ -15,7 +15,7 @@ public sealed class GoNumError : IGoError
 /// <summary>Shim for Go's <c>strconv</c> package. Integer/bool conversions are
 /// exact; float formatting is best-effort (Go's shortest-decimal ftoa is not yet
 /// ported). Parse* return a boxed (value, error) tuple.</summary>
-public static class Strconv
+public static partial class Strconv
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
