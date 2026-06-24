@@ -7,6 +7,7 @@ using GoCLR.Runtime;
 public sealed class GoFile { public bool IsStderr; public bool IsStdin; public System.IO.Stream? Wr; public string Path = ""; }
 
 /// <summary>An os.SyscallError (a syscall-tagged error).</summary>
+[GoShim("os.SyscallError")]
 public sealed class GoSyscallError { public string Syscall = ""; public object? Err; }
 
 /// <summary>An fs.FS rooted at a directory (os.DirFS). An opaque handle; goclr's serving
@@ -399,6 +400,73 @@ public static class Os
 
     public static GoString Getenv(GoString key) =>
         GoString.FromDotNetString(System.Environment.GetEnvironmentVariable(key.ToDotNetString()) ?? "");
+
+    // os.Hostname() (string, error).
+    public static object?[] Hostname()
+    {
+        try { return new object?[] { GoString.FromDotNetString(System.Net.Dns.GetHostName()), null }; }
+        catch (System.Exception e) { return new object?[] { GoString.FromDotNetString(""), new GoError(e.Message) }; }
+    }
+
+    // os.IsPermission(err): true only for the ErrPermission sentinel (Go matches by error
+    // identity, not message text — a generic error that merely ends in "permission denied"
+    // is NOT a permission error).
+    public static bool IsPermission(object? err) =>
+        err is GoError g && g.Error().ToDotNetString() == "permission denied";
+
+    // os.NewSyscallError(syscall, err): wrap err (nil err -> nil).
+    public static object? NewSyscallError(GoString syscall, object? err) =>
+        err == null ? null : new GoSyscallError { Syscall = syscall.ToDotNetString(), Err = err };
+
+    // os.Expand(s, mapping) — replace $var / ${var} using a faithful port of Go's getShellName.
+    public static GoString Expand(GoString s, GoClosure mapping) =>
+        GoString.FromDotNetString(ExpandStr(s.ToDotNetString(), name =>
+            GoRuntime.InvokeArgs(mapping, GoString.FromDotNetString(name)) is GoString gs ? gs.ToDotNetString() : ""));
+
+    // os.ExpandEnv(s) — expand using the environment.
+    public static GoString ExpandEnv(GoString s) =>
+        GoString.FromDotNetString(ExpandStr(s.ToDotNetString(), n => System.Environment.GetEnvironmentVariable(n) ?? ""));
+
+    private static bool IsShellSpecial(char c) => c is '*' or '#' or '$' or '@' or '!' or '?' or '-' || (c >= '0' && c <= '9');
+    private static bool IsAlphaNum(char c) => c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    private static (string name, int w) GetShellName(string s)
+    {
+        if (s.Length == 0) return ("", 0);
+        if (s[0] == '{')
+        {
+            if (s.Length > 2 && IsShellSpecial(s[1]) && s[2] == '}') return (s.Substring(1, 1), 3);
+            for (int i = 1; i < s.Length; i++)
+                if (s[i] == '}') { if (i == 1) return ("", 2); return (s.Substring(1, i - 1), i + 1); }
+            return ("", 1);
+        }
+        if (IsShellSpecial(s[0])) return (s.Substring(0, 1), 1);
+        int j = 0;
+        while (j < s.Length && IsAlphaNum(s[j])) j++;
+        return (s.Substring(0, j), j);
+    }
+    private static string ExpandStr(string s, System.Func<string, string> mapping)
+    {
+        var sb = new System.Text.StringBuilder();
+        int i = 0;
+        bool used = false;
+        for (int j = 0; j < s.Length; j++)
+        {
+            if (s[j] == '$' && j + 1 < s.Length)
+            {
+                used = true;
+                sb.Append(s, i, j - i);
+                var (name, w) = GetShellName(s.Substring(j + 1));
+                if (name.Length == 0 && w > 0) { /* invalid syntax; drop the chars */ }
+                else if (name.Length == 0) sb.Append(s[j]);
+                else sb.Append(mapping(name));
+                j += w;
+                i = j + 1;
+            }
+        }
+        if (!used) return s;
+        sb.Append(s, i, s.Length - i);
+        return sb.ToString();
+    }
 
     // os.FindProcess(pid) (*Process, error): single-process under goclr — return an inert handle.
     public static object?[] FindProcess(long pid) => new object?[] { new GoProcess(), null };

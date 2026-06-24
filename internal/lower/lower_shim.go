@@ -314,6 +314,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"os": {
 		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"}, "Getwd": {"Os", "Getwd"}, "Environ": {"Os", "Environ"}, "FindProcess": {"Os", "FindProcess"}, "DirFS": {"Os", "DirFS"},
+		"Hostname": {"Os", "Hostname"}, "IsPermission": {"Os", "IsPermission"}, "NewSyscallError": {"Os", "NewSyscallError"}, "Expand": {"Os", "Expand"}, "ExpandEnv": {"Os", "ExpandEnv"},
 		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
 		"Getuid": {"Os", "Getuid"}, "Getgid": {"Os", "Getgid"}, "Getppid": {"Os", "Getppid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
