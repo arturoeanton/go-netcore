@@ -1,0 +1,21 @@
+package main
+import ("fmt";"strings";"unicode")
+func main(){
+ fmt.Println(strings.Clone("hello"))
+ fmt.Println(strings.ContainsFunc("a1b",unicode.IsDigit))
+ a,ok:=strings.CutPrefix("https://x","https://");fmt.Printf("%q %v\n",a,ok)
+ a2,ok2:=strings.CutPrefix("x","https://");fmt.Printf("%q %v\n",a2,ok2)
+ b,ok3:=strings.CutSuffix("file.go",".go");fmt.Printf("%q %v\n",b,ok3)
+ fmt.Println(strings.LastIndexAny("go gopher","go"),strings.LastIndexAny("abc","xyz"))
+ fmt.Println(strings.LastIndexFunc("a1b2c",unicode.IsDigit))
+ fmt.Println(strings.ToValidUTF8("a\xffb","?"))
+ // seq functions invoked directly (range-over-func desugaring is separate)
+ strings.Lines("x\ny\nz")(func(ln string)bool{fmt.Printf("[%q]",ln);return true});fmt.Println()
+ strings.SplitSeq("a,b,c",",")(func(p string)bool{fmt.Print(p,"|");return true});fmt.Println()
+ strings.FieldsSeq("  a  b c ")(func(p string)bool{fmt.Print(p,"|");return true});fmt.Println()
+ r:=strings.NewReader("hello world")
+ buf:=make([]byte,5);n,_:=r.ReadAt(buf,6);fmt.Println(n,string(buf[:n]))
+ r.Seek(0,0);one:=make([]byte,2);r.Read(one);pos,_:=r.Seek(0,1);fmt.Println(pos)
+ var sb strings.Builder;r.Seek(0,0);r.WriteTo(&sb);fmt.Println(sb.String())
+ r2:=strings.NewReader("abc");ru,_,_:=r2.ReadRune();fmt.Printf("%c",ru);r2.UnreadRune();ru2,_,_:=r2.ReadRune();fmt.Printf("%c\n",ru2)
+}

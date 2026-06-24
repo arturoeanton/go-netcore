@@ -329,6 +329,12 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"TrimFunc": {"Strings", "TrimFunc"}, "TrimLeftFunc": {"Strings", "TrimLeftFunc"}, "TrimRightFunc": {"Strings", "TrimRightFunc"},
 		"IndexFunc": {"Strings", "IndexFunc"}, "FieldsFunc": {"Strings", "FieldsFunc"},
 		"NewReplacer": {"Strings", "NewReplacer"},
+		"Clone": {"Strings", "Clone"}, "ContainsFunc": {"Strings", "ContainsFunc"},
+		"CutPrefix": {"Strings", "CutPrefix"}, "CutSuffix": {"Strings", "CutSuffix"},
+		"LastIndexAny": {"Strings", "LastIndexAny"}, "LastIndexFunc": {"Strings", "LastIndexFunc"},
+		"ToValidUTF8": {"Strings", "ToValidUTF8"},
+		"Lines": {"Strings", "Lines"}, "SplitSeq": {"Strings", "SplitSeq"}, "SplitAfterSeq": {"Strings", "SplitAfterSeq"},
+		"FieldsSeq": {"Strings", "FieldsSeq"}, "FieldsFuncSeq": {"Strings", "FieldsFuncSeq"},
 	},
 }
 
@@ -1145,6 +1151,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"strings.Reader": {
 		"Read": {"Readers", "Reader_Read"}, "ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},
 		"ReadRune": {"Readers", "Reader_ReadRune"}, "Len": {"Readers", "Reader_Len"}, "Size": {"Readers", "Reader_Size"},
+		"Reset": {"Readers", "Reader_Reset"}, "Seek": {"Readers", "Reader_Seek"}, "ReadAt": {"Readers", "Reader_ReadAt"},
+		"WriteTo": {"Readers", "Reader_WriteTo"}, "UnreadRune": {"Readers", "Reader_UnreadRune"},
 	},
 	"bytes.Reader": {
 		"Read": {"Readers", "Reader_Read"}, "ReadByte": {"Readers", "Reader_ReadByte"}, "UnreadByte": {"Readers", "Reader_UnreadByte"},

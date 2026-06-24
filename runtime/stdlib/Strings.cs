@@ -257,6 +257,112 @@ public static class Strings
         return GoString.FromDotNetString(sb.ToString());
     }
 
+    // strings.Clone returns a fresh copy of s's bytes (a distinct backing array).
+    public static GoString Clone(GoString s)
+    {
+        if (s.Bytes.Length == 0) return GoString.FromDotNetString("");
+        var b = new byte[s.Bytes.Length];
+        System.Array.Copy(s.Bytes, b, b.Length);
+        return GoString.FromBytes(b);
+    }
+    public static bool ContainsFunc(GoString s, GoClosure f) => IndexFunc(s, f) >= 0;
+    // strings.CutPrefix(s, prefix) -> (after, found).
+    public static object?[] CutPrefix(GoString s, GoString prefix)
+    {
+        string str = s.ToDotNetString(), p = prefix.ToDotNetString();
+        return str.StartsWith(p, StringComparison.Ordinal)
+            ? new object?[] { GoString.FromDotNetString(str.Substring(p.Length)), true }
+            : new object?[] { s, false };
+    }
+    // strings.CutSuffix(s, suffix) -> (before, found).
+    public static object?[] CutSuffix(GoString s, GoString suffix)
+    {
+        string str = s.ToDotNetString(), p = suffix.ToDotNetString();
+        return p.Length > 0 && str.EndsWith(p, StringComparison.Ordinal)
+            ? new object?[] { GoString.FromDotNetString(str.Substring(0, str.Length - p.Length)), true }
+            : new object?[] { s, false };
+    }
+    public static long LastIndexAny(GoString s, GoString chars)
+    {
+        string str = s.ToDotNetString(), set = chars.ToDotNetString();
+        long last = -1;
+        for (int i = 0; i < str.Length;)
+        {
+            int cp = char.ConvertToUtf32(str, i);
+            string ch = char.ConvertFromUtf32(cp);
+            if (set.Contains(ch, StringComparison.Ordinal)) last = System.Text.Encoding.UTF8.GetByteCount(str.Substring(0, i));
+            i += ch.Length;
+        }
+        return last;
+    }
+    public static long LastIndexFunc(GoString s, GoClosure f)
+    {
+        string str = s.ToDotNetString();
+        long last = -1;
+        for (int i = 0; i < str.Length;)
+        {
+            int cp = char.ConvertToUtf32(str, i);
+            if (RunePred(f, cp)) last = System.Text.Encoding.UTF8.GetByteCount(str.Substring(0, i));
+            i += char.ConvertFromUtf32(cp).Length;
+        }
+        return last;
+    }
+    // strings.ToValidUTF8 replaces each run of invalid UTF-8 bytes with the replacement.
+    public static GoString ToValidUTF8(GoString s, GoString replacement)
+    {
+        byte[] b = s.Bytes, repl = replacement.Bytes;
+        var outb = new System.Collections.Generic.List<byte>(b.Length);
+        int i = 0;
+        bool prevInvalid = false;
+        while (i < b.Length)
+        {
+            var status = System.Text.Rune.DecodeFromUtf8(new System.ReadOnlySpan<byte>(b, i, b.Length - i), out _, out int consumed);
+            if (status == System.Buffers.OperationStatus.Done)
+            {
+                for (int k = 0; k < consumed; k++) outb.Add(b[i + k]);
+                i += consumed;
+                prevInvalid = false;
+            }
+            else
+            {
+                if (!prevInvalid) { outb.AddRange(repl); prevInvalid = true; }
+                i++;
+            }
+        }
+        return GoString.FromBytes(outb.ToArray());
+    }
+
+    // ---- iter.Seq[string] producers (Go 1.24): return a func(yield func(string) bool) ----
+    private static GoClosure SeqOf(System.Collections.Generic.List<string> parts) =>
+        NativeClosures.Make(args =>
+        {
+            if (args.Length == 0 || args[0] is not GoClosure yield) return null;
+            foreach (var p in parts)
+                if (GoRuntime.InvokeArgs(yield, GoString.FromDotNetString(p)) is not true) break;
+            return null;
+        });
+    private static System.Collections.Generic.List<string> SliceStrings(GoSlice sl)
+    {
+        var list = new System.Collections.Generic.List<string>(sl.Len);
+        for (int i = 0; i < sl.Len; i++) list.Add(((GoString)sl.Data![sl.Off + i]!).ToDotNetString());
+        return list;
+    }
+    public static GoClosure SplitSeq(GoString s, GoString sep) => SeqOf(SliceStrings(Split(s, sep)));
+    public static GoClosure SplitAfterSeq(GoString s, GoString sep) => SeqOf(SliceStrings(SplitAfter(s, sep)));
+    public static GoClosure FieldsSeq(GoString s) => SeqOf(SliceStrings(Fields(s)));
+    public static GoClosure FieldsFuncSeq(GoString s, GoClosure f) => SeqOf(SliceStrings(FieldsFunc(s, f)));
+    // strings.Lines yields each line including its trailing "\n" (the last without one if absent).
+    public static GoClosure Lines(GoString s)
+    {
+        string str = s.ToDotNetString();
+        var parts = new System.Collections.Generic.List<string>();
+        int start = 0;
+        for (int i = 0; i < str.Length; i++)
+            if (str[i] == '\n') { parts.Add(str.Substring(start, i - start + 1)); start = i + 1; }
+        if (start < str.Length) parts.Add(str.Substring(start));
+        return SeqOf(parts);
+    }
+
     // strings.NewReplacer(oldnew ...string) *Replacer — pairs of old, new.
     public static object NewReplacer(GoSlice pairs)
     {

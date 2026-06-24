@@ -11,7 +11,7 @@ using GoCLR.Runtime;
 [GoShim("io.ReadCloser")]
 [GoShim("strings.Reader")]
 [GoShim("bytes.Reader")]
-public sealed class GoReader { public byte[] Data = System.Array.Empty<byte>(); public int Pos; }
+public sealed class GoReader { public byte[] Data = System.Array.Empty<byte>(); public int Pos; public int PrevRune = -1; }
 
 /// <summary>strings.NewReader / bytes.NewReader and the shared byte-extraction the
 /// io / bufio shims use to consume a reader.</summary>
@@ -41,6 +41,7 @@ public static class Readers
         int n = System.Math.Min(p.Len, gr.Data.Length - gr.Pos);
         for (int i = 0; i < n; i++) p.Data![p.Off + i] = (int)gr.Data[gr.Pos + i];
         gr.Pos += n;
+        gr.PrevRune = -1; // a non-ReadRune op invalidates UnreadRune
         return new object?[] { (long)n, null };
     }
     public static long Reader_Len(object r) { var gr = (GoReader)r; return gr.Data.Length - gr.Pos; }
@@ -53,8 +54,55 @@ public static class Readers
         System.Array.Copy(gr.Data, gr.Pos, rem, 0, rem.Length);
         var s = System.Text.Encoding.UTF8.GetString(rem);
         var rune = System.Text.Rune.GetRuneAt(s, 0);
+        gr.PrevRune = gr.Pos; // so UnreadRune can restore exactly this read
         gr.Pos += rune.Utf8SequenceLength;
         return new object?[] { rune.Value, (long)rune.Utf8SequenceLength, null };
+    }
+    // (*strings.Reader / *bytes.Reader).Reset / Seek / ReadAt / WriteTo / UnreadRune.
+    public static void Reader_Reset(object r, GoString s) { var gr = (GoReader)r; gr.Data = s.Bytes; gr.Pos = 0; gr.PrevRune = -1; }
+    public static object?[] Reader_Seek(object r, long offset, long whence)
+    {
+        var gr = (GoReader)r;
+        long abs;
+        switch (whence)
+        {
+            case 0: abs = offset; break;
+            case 1: abs = gr.Pos + offset; break;
+            case 2: abs = gr.Data.Length + offset; break;
+            default: return new object?[] { 0L, new GoError(GoString.FromDotNetString("strings.Reader.Seek: invalid whence")) };
+        }
+        if (abs < 0) return new object?[] { 0L, new GoError(GoString.FromDotNetString("strings.Reader.Seek: negative position")) };
+        gr.Pos = (int)abs;
+        gr.PrevRune = -1;
+        return new object?[] { abs, null };
+    }
+    public static object?[] Reader_ReadAt(object r, GoSlice p, long off)
+    {
+        var gr = (GoReader)r;
+        if (off < 0) return new object?[] { 0L, new GoError(GoString.FromDotNetString("strings.Reader.ReadAt: negative offset")) };
+        if (off >= gr.Data.Length) return new object?[] { 0L, Io.EOFSentinel };
+        int n = System.Math.Min(p.Len, gr.Data.Length - (int)off);
+        for (int i = 0; i < n; i++) p.Data![p.Off + i] = (int)gr.Data[(int)off + i];
+        return new object?[] { (long)n, n < p.Len ? Io.EOFSentinel : null };
+    }
+    public static object?[] Reader_WriteTo(object r, object? w)
+    {
+        var gr = (GoReader)r;
+        int n = gr.Data.Length - gr.Pos;
+        if (n <= 0) return new object?[] { 0L, null };
+        var rem = new byte[n];
+        System.Array.Copy(gr.Data, gr.Pos, rem, 0, n);
+        gr.Pos = gr.Data.Length;
+        Compress.WriteRaw(w, rem);
+        return new object?[] { (long)n, null };
+    }
+    public static object? Reader_UnreadRune(object r)
+    {
+        var gr = (GoReader)r;
+        if (gr.PrevRune < 0) return new GoError(GoString.FromDotNetString("strings.Reader.UnreadRune: previous operation was not ReadRune"));
+        gr.Pos = gr.PrevRune;
+        gr.PrevRune = -1;
+        return null;
     }
     public static object NewBytesReader(GoSlice b)
     {
