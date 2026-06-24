@@ -194,7 +194,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Default": {"Log", "Default"}, "Output": {"Log", "Output"}, "SetOutput": {"Log", "SetOutput"}, "Writer": {"Log", "Writer"},
 	},
 	"math/big": {
-		"NewInt": {"Big", "NewInt"}, "NewFloat": {"Big", "NewFloat"}, "Jacobi": {"Big", "Jacobi"},
+		"NewInt": {"Big", "NewInt"}, "NewFloat": {"Big", "NewFloat"}, "Jacobi": {"Big", "Jacobi"}, "NewRat": {"Big", "NewRat"},
 	},
 	"path": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
@@ -530,6 +530,7 @@ var opaqueShimTypes = map[string]bool{
 	"hash.Hash64":                        true,
 	"math/big.Int":                       true,
 	"math/big.Float":                     true,
+	"math/big.Rat":                       true,
 	"hash/maphash.Hash":                  true,
 	"encoding/base32.Encoding":           true,
 	"strings.Reader":                     true,
@@ -1102,6 +1103,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"time.Time":                      {"Time", "TimeZero"},
 	"math/big.Int":                   {"Big", "IntZero"},
 	"math/big.Float":                 {"Big", "FloatZero"},
+	"math/big.Rat":                   {"Big", "RatZero"},
 	"hash/maphash.Hash":              {"MapHash", "New"},
 	"net.IPNet":                      {"Net", "NewIPNet"},
 	"net.UDPAddr":                    {"Net", "NewUDPAddr"},
@@ -1546,6 +1548,14 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetInt": {"Big", "Float_SetInt"}, "Sub": {"Big", "Float_Sub"}, "Cmp": {"Big", "Float_Cmp"},
 		"Sign": {"Big", "Float_Sign"}, "IsInt": {"Big", "Float_IsInt"}, "String": {"Big", "Float_String"},
 		"Text": {"Big", "Float_Text"}, "Int": {"Big", "Float_Int"}, "SetString": {"Big", "Float_SetString"},
+	},
+	"math/big.Rat": {
+		"Add": {"Big", "Rat_Add"}, "Sub": {"Big", "Rat_Sub"}, "Mul": {"Big", "Rat_Mul"}, "Quo": {"Big", "Rat_Quo"},
+		"Neg": {"Big", "Rat_Neg"}, "Inv": {"Big", "Rat_Inv"}, "Abs": {"Big", "Rat_Abs"}, "Set": {"Big", "Rat_Set"},
+		"String": {"Big", "Rat_String"}, "RatString": {"Big", "Rat_RatString"}, "Num": {"Big", "Rat_Num"}, "Denom": {"Big", "Rat_Denom"},
+		"Sign": {"Big", "Rat_Sign"}, "IsInt": {"Big", "Rat_IsInt"}, "Cmp": {"Big", "Rat_Cmp"},
+		"SetFrac64": {"Big", "Rat_SetFrac64"}, "SetInt64": {"Big", "Rat_SetInt64"}, "SetInt": {"Big", "Rat_SetInt"},
+		"SetFrac": {"Big", "Rat_SetFrac"}, "SetString": {"Big", "Rat_SetString"},
 	},
 	"hash/maphash.Hash": {
 		"WriteByte": {"MapHash", "WriteByte"}, "Write": {"MapHash", "Write"}, "WriteString": {"MapHash", "WriteString"},

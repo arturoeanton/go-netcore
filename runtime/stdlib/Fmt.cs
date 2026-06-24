@@ -30,6 +30,10 @@ public static class Fmt
         s = "";
         // reflect's well-known types format via their String() shim (like error).
         if (v is GoReflectType rt) { s = Reflect.Type_String(rt).ToDotNetString(); return true; }
+        // math/big values are Stringers (fmt.Println prints them via String()).
+        if (v is GoBigRat) { s = Big.Rat_String(v).ToDotNetString(); return true; }
+        if (v is GoBigInt) { s = Big.Int_String(v).ToDotNetString(); return true; }
+        if (v is GoBigFloat) { s = Big.Float_String(v).ToDotNetString(); return true; }
         if (v is GoSignal sg) { s = sg.Name; return true; }
         if (v is GoNamed kn && Rt.NamedTypeName(kn.TypeId) == "reflect.Kind")
         { s = GoKind.Name((int)System.Convert.ToInt64(kn.Value ?? 0L)); return true; }

@@ -10,6 +10,9 @@ public sealed class GoBigInt { public BigInteger V; }
 /// Number range goja converts through it (integers up to 2^53), lossy beyond.</summary>
 public sealed class GoBigFloat { public double V; }
 
+/// <summary>A *big.Rat handle: an exact rational Num/Den (Den &gt; 0, always reduced).</summary>
+public sealed class GoBigRat { public BigInteger Num; public BigInteger Den = 1; }
+
 /// <summary>Shim for a subset of Go's <c>math/big</c> (Int). Methods return the
 /// receiver (the destination), matching Go's chaining.</summary>
 public static class Big
@@ -36,6 +39,64 @@ public static class Big
         if (double.TryParse(s.ToDotNetString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
         { ((GoBigFloat)z).V = v; return new object?[] { z, true }; }
         return new object?[] { null, false };
+    }
+
+    // --- big.Rat (exact rational, two BigIntegers) ---
+    private static GoBigRat Norm(GoBigRat r)
+    {
+        if (r.Den.Sign < 0) { r.Num = -r.Num; r.Den = -r.Den; }
+        if (r.Num.IsZero) { r.Den = 1; return r; }
+        var g = BigInteger.GreatestCommonDivisor(BigInteger.Abs(r.Num), r.Den);
+        if (g > BigInteger.One) { r.Num /= g; r.Den /= g; }
+        return r;
+    }
+    private static GoBigRat R(object o) => (GoBigRat)o;
+    public static object NewRat(long a, long b)
+    {
+        if (b == 0) throw new GoPanicException(GoString.FromDotNetString("division by zero"));
+        return Norm(new GoBigRat { Num = a, Den = b });
+    }
+    public static object RatZero() => new GoBigRat { Num = 0, Den = 1 };
+    public static object Rat_Add(object z, object x, object y) { var a = R(x); var b = R(y); var r = R(z); r.Num = a.Num * b.Den + b.Num * a.Den; r.Den = a.Den * b.Den; return Norm(r); }
+    public static object Rat_Sub(object z, object x, object y) { var a = R(x); var b = R(y); var r = R(z); r.Num = a.Num * b.Den - b.Num * a.Den; r.Den = a.Den * b.Den; return Norm(r); }
+    public static object Rat_Mul(object z, object x, object y) { var a = R(x); var b = R(y); var r = R(z); r.Num = a.Num * b.Num; r.Den = a.Den * b.Den; return Norm(r); }
+    public static object Rat_Quo(object z, object x, object y) { var a = R(x); var b = R(y); var r = R(z); r.Num = a.Num * b.Den; r.Den = a.Den * b.Num; return Norm(r); }
+    public static object Rat_Neg(object z, object x) { var a = R(x); var r = R(z); r.Num = -a.Num; r.Den = a.Den; return r; }
+    public static object Rat_Inv(object z, object x) { var a = R(x); var r = R(z); var n = a.Num; r.Num = a.Den; r.Den = n; return Norm(r); }
+    public static object Rat_Abs(object z, object x) { var a = R(x); var r = R(z); r.Num = BigInteger.Abs(a.Num); r.Den = a.Den; return r; }
+    public static object Rat_Set(object z, object x) { var a = R(x); var r = R(z); r.Num = a.Num; r.Den = a.Den; return r; }
+    public static GoString Rat_String(object x) { var r = R(x); return GoString.FromDotNetString(r.Num + "/" + r.Den); }
+    public static GoString Rat_RatString(object x) { var r = R(x); return GoString.FromDotNetString(r.Den.IsOne ? r.Num.ToString() : r.Num + "/" + r.Den); }
+    public static object Rat_Num(object x) => new GoBigInt { V = R(x).Num };
+    public static object Rat_Denom(object x) => new GoBigInt { V = R(x).Den };
+    public static long Rat_Sign(object x) => R(x).Num.Sign;
+    public static bool Rat_IsInt(object x) => R(x).Den.IsOne;
+    public static long Rat_Cmp(object x, object y) { var a = R(x); var b = R(y); return (a.Num * b.Den).CompareTo(b.Num * a.Den); }
+    public static object Rat_SetFrac64(object z, long a, long b)
+    {
+        if (b == 0) throw new GoPanicException(GoString.FromDotNetString("division by zero"));
+        var r = R(z); r.Num = a; r.Den = b; return Norm(r);
+    }
+    public static object Rat_SetInt64(object z, long a) { var r = R(z); r.Num = a; r.Den = 1; return r; }
+    public static object Rat_SetInt(object z, object i) { var r = R(z); r.Num = V(i); r.Den = 1; return r; }
+    public static object Rat_SetFrac(object z, object a, object b)
+    {
+        var r = R(z); r.Num = V(a); r.Den = V(b); return Norm(r);
+    }
+    public static object?[] Rat_SetString(object z, GoString s)
+    {
+        string str = s.ToDotNetString().Trim();
+        var r = R(z);
+        try
+        {
+            int slash = str.IndexOf('/');
+            if (slash >= 0) { r.Num = BigInteger.Parse(str.Substring(0, slash)); r.Den = BigInteger.Parse(str.Substring(slash + 1)); }
+            else { r.Num = BigInteger.Parse(str); r.Den = 1; }
+            if (r.Den.IsZero) return new object?[] { null, false };
+            Norm(r);
+            return new object?[] { r, true };
+        }
+        catch { return new object?[] { null, false }; }
     }
 
     public static object NewInt(long x) => new GoBigInt { V = x };
