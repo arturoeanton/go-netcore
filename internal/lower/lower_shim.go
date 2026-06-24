@@ -39,6 +39,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Dim": {"Math", "Dim"}, "FMA": {"Math", "FMA"}, "Frexp": {"Math", "Frexp"}, "Ldexp": {"Math", "Ldexp"},
 		"Ilogb": {"Math", "Ilogb"}, "Logb": {"Math", "Logb"}, "Nextafter": {"Math", "Nextafter"},
 		"Nextafter32": {"Math", "Nextafter32"}, "RoundToEven": {"Math", "RoundToEven"}, "Sincos": {"Math", "Sincos"},
+		"Gamma": {"Math", "Gamma"},
 	},
 	"go/ast": {
 		"IsExported": {"Ast", "IsExported"},

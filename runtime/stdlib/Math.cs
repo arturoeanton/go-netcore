@@ -171,4 +171,80 @@ public static class Math
     }
 
     public static object?[] Sincos(double x) => new object?[] { SM.Sin(x), SM.Cos(x) };
+
+    // --- math.Gamma (faithful port of Go's src/math/gamma.go; Sun/FreeBSD Cephes constants) ---
+    private static readonly double[] _gamP =
+    {
+        1.60119522476751861407e-04, 1.19135147006586384913e-03, 1.04213797561761569935e-02,
+        4.76367800457137231464e-02, 2.07448227648435975150e-01, 4.94214826801497100753e-01,
+        9.99999999999999996796e-01,
+    };
+    private static readonly double[] _gamQ =
+    {
+        -2.31581873324120129819e-05, 5.39605580493303397842e-04, -4.45641913851797240494e-03,
+        1.18139785222060435552e-02, 3.58236398605498653373e-02, -2.34591795718243348568e-01,
+        7.14304917030273074085e-02, 1.00000000000000000320e+00,
+    };
+    private static readonly double[] _gamS =
+    {
+        7.87311395793093628397e-04, -2.29549961613378126380e-04, -2.68132617805781232825e-03,
+        3.47222221605458667310e-03, 8.33333333333482257126e-02,
+    };
+
+    private static bool IsNegInt(double x)
+    {
+        if (x < 0) { double xf = x - SM.Truncate(x); return xf == 0; }
+        return false;
+    }
+    private static (double, double) Stirling(double x)
+    {
+        if (x > 200) return (double.PositiveInfinity, 1);
+        const double SqrtTwoPi = 2.506628274631000502417;
+        const double MaxStirling = 143.01608;
+        double w = 1 / x;
+        w = 1 + w * ((((_gamS[0] * w + _gamS[1]) * w + _gamS[2]) * w + _gamS[3]) * w + _gamS[4]);
+        double y1 = SM.Exp(x);
+        double y2 = 1.0;
+        if (x > MaxStirling) { double v = SM.Pow(x, 0.5 * x - 0.25); y2 = v / y1; y1 = v; } // Go: y1, y2 = v, v/y1 (simultaneous)
+        else { y1 = SM.Pow(x, x - 0.5) / y1; }
+        return (y1, SqrtTwoPi * w * y2);
+    }
+
+    public static double Gamma(double x)
+    {
+        const double Euler = 0.57721566490153286060651209008240243104215933593992;
+        if (IsNegInt(x) || double.IsNegativeInfinity(x) || double.IsNaN(x)) return double.NaN;
+        if (double.IsPositiveInfinity(x)) return double.PositiveInfinity;
+        if (x == 0) return double.IsNegative(x) ? double.NegativeInfinity : double.PositiveInfinity;
+        double q = SM.Abs(x);
+        double p = SM.Floor(q);
+        if (q > 33)
+        {
+            if (x >= 0) { var (a, b) = Stirling(x); return a * b; }
+            int signgam = 1;
+            long ip = (long)p;
+            if ((ip & 1) == 0) signgam = -1;
+            double zb = q - p;
+            if (zb > 0.5) { p = p + 1; zb = q - p; }
+            zb = q * SM.Sin(System.Math.PI * zb);
+            if (zb == 0) return Inf(signgam);
+            var (sq1, sq2) = Stirling(q);
+            double absz = SM.Abs(zb);
+            double d = absz * sq1 * sq2;
+            zb = double.IsInfinity(d) ? System.Math.PI / absz / sq1 / sq2 : System.Math.PI / d;
+            return signgam * zb;
+        }
+        double z = 1.0;
+        while (x >= 3) { x = x - 1; z = z * x; }
+        while (x < 0) { if (x > -1e-09) goto small; z = z / x; x = x + 1; }
+        while (x < 2) { if (x < 1e-09) goto small; z = z / x; x = x + 1; }
+        if (x == 2) return z;
+        x = x - 2;
+        p = (((((x * _gamP[0] + _gamP[1]) * x + _gamP[2]) * x + _gamP[3]) * x + _gamP[4]) * x + _gamP[5]) * x + _gamP[6];
+        q = ((((((x * _gamQ[0] + _gamQ[1]) * x + _gamQ[2]) * x + _gamQ[3]) * x + _gamQ[4]) * x + _gamQ[5]) * x + _gamQ[6]) * x + _gamQ[7];
+        return z * p / q;
+    small:
+        if (x == 0) return double.PositiveInfinity;
+        return z / ((1 + Euler * x) * x);
+    }
 }
