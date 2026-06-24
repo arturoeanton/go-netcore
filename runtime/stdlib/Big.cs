@@ -286,6 +286,41 @@ public static class Big
     public static object Int_Lsh(object z, object x, ulong n) { ((GoBigInt)z).V = V(x) << (int)n; return z; }
     public static object Int_Rsh(object z, object x, ulong n) { ((GoBigInt)z).V = V(x) >> (int)n; return z; }
 
+    // Int.Bits() []Word: the absolute value as little-endian 64-bit limbs (Word = uintptr,
+    // 64-bit here); normalized so the zero value yields an empty slice.
+    public static GoSlice Int_Bits(object x)
+    {
+        var m = BigInteger.Abs(V(x));
+        var limbs = new System.Collections.Generic.List<object?>();
+        var mask = (BigInteger)ulong.MaxValue;
+        while (m > 0) { limbs.Add((ulong)(m & mask)); m >>= 64; }
+        var d = limbs.ToArray();
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
+    // Int.SetBits(abs []Word): rebuild the magnitude from little-endian 64-bit limbs; the
+    // result is non-negative (Go clears the sign).
+    public static object Int_SetBits(object z, GoSlice abs)
+    {
+        BigInteger v = 0;
+        for (int i = abs.Len - 1; i >= 0; i--)
+            v = (v << 64) | (BigInteger)System.Convert.ToUInt64(abs.Data![abs.Off + i]);
+        ((GoBigInt)z).V = v;
+        return z;
+    }
+
+    // (big.Accuracy).String() and (big.RoundingMode).String(): stringer for the enum
+    // (the receiver is the underlying int8 / uint8, dispatched like time.Duration).
+    public static GoString Accuracy_String(int i) => GoString.FromDotNetString(i switch
+    {
+        -1 => "Below", 0 => "Exact", 1 => "Above", _ => "Accuracy(" + i + ")",
+    });
+    public static GoString RoundingMode_String(int i) => GoString.FromDotNetString(i switch
+    {
+        0 => "ToNearestEven", 1 => "ToNearestAway", 2 => "ToZero",
+        3 => "AwayFromZero", 4 => "ToNegativeInf", 5 => "ToPositiveInf",
+        _ => "RoundingMode(" + i + ")",
+    });
+
     public static object Int_SetBytes(object z, GoSlice buf)
     {
         int n = buf.Len;

@@ -1566,6 +1566,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"String": {"Big", "Int_String"}, "SetString": {"Big", "Int_SetString"},
 		"SetInt64": {"Big", "Int_SetInt64"}, "SetUint64": {"Big", "Int_SetUint64"},
 		"Lsh": {"Big", "Int_Lsh"}, "Rsh": {"Big", "Int_Rsh"}, "SetBytes": {"Big", "Int_SetBytes"},
+		"Bits": {"Big", "Int_Bits"}, "SetBits": {"Big", "Int_SetBits"},
 		"Bytes": {"Big", "Int_Bytes"}, "Text": {"Big", "Int_Text"}, "DivMod": {"Big", "Int_DivMod"},
 		"Uint64": {"Big", "Int_Uint64"}, "And": {"Big", "Int_And"}, "Or": {"Big", "Int_Or"},
 		"Xor": {"Big", "Int_Xor"}, "Not": {"Big", "Int_Not"}, "BitLen": {"Big", "Int_BitLen"},
@@ -1797,6 +1798,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"AppendText": {"Netip", "Prefix_AppendText"}, "MarshalText": {"Netip", "Prefix_MarshalText"}, "UnmarshalText": {"Netip", "Prefix_UnmarshalText"},
 		"AppendBinary": {"Netip", "Prefix_AppendBinary"}, "MarshalBinary": {"Netip", "Prefix_MarshalBinary"}, "UnmarshalBinary": {"Netip", "Prefix_UnmarshalBinary"},
 	},
+	"math/big.Accuracy":   {"String": {"Big", "Accuracy_String"}},
+	"math/big.RoundingMode": {"String": {"Big", "RoundingMode_String"}},
 	"flag.FlagSet": {
 		"Bool": {"Flag", "FS_Bool"}, "Int": {"Flag", "FS_Int"}, "Int64": {"Flag", "FS_Int64"}, "Uint": {"Flag", "FS_Uint"},
 		"Uint64": {"Flag", "FS_Uint64"}, "Float64": {"Flag", "FS_Float64"}, "String": {"Flag", "FS_String"}, "Duration": {"Flag", "FS_Duration"},
