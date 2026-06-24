@@ -90,6 +90,47 @@ public static class GoToken
         return true;
     }
 
+    public static long File_End(object fo) { var f = (GoTokenFile)fo; return f.Base + f.Size; }
+    public static GoSlice File_Lines(object fo)
+    {
+        var f = (GoTokenFile)fo;
+        var d = new object?[f.Lines.Count];
+        for (int i = 0; i < f.Lines.Count; i++) d[i] = (long)f.Lines[i];
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
+    public static void File_MergeLine(object fo, long line)
+    {
+        var f = (GoTokenFile)fo;
+        if (line < 1) throw new GoPanicException(GoString.FromDotNetString($"invalid line number {line} (should be >= 1)"));
+        if (line >= f.Lines.Count) throw new GoPanicException(GoString.FromDotNetString($"invalid line number {line} (should be < {f.Lines.Count})"));
+        f.Lines.RemoveAt((int)line); // drop the entry for line+1 (at index line)
+    }
+    public static void File_SetLinesForContent(object fo, GoSlice content)
+    {
+        var f = (GoTokenFile)fo;
+        var lines = new System.Collections.Generic.List<int>();
+        int line = 0;
+        for (int offset = 0; offset < content.Len; offset++)
+        {
+            byte b = (byte)System.Convert.ToInt64(content.Data![content.Off + offset]);
+            if (line >= 0) lines.Add(line);
+            line = -1;
+            if (b == '\n') line = offset + 1;
+        }
+        f.Lines = lines;
+    }
+    public static void FileSet_Iterate(object so, GoClosure yield)
+    {
+        var s = (GoTokenFileSet)so;
+        foreach (var f in new System.Collections.Generic.List<GoTokenFile>(s.Files))
+            if (GoRuntime.InvokeArgs(yield, f) is bool ok && !ok) break;
+    }
+    public static void FileSet_RemoveFile(object so, object? file)
+    {
+        var s = (GoTokenFileSet)so;
+        if (file is GoTokenFile f) s.Files.Remove(f);
+    }
+
     private static long FixOffset(GoTokenFile f, long offset) => offset < 0 ? 0 : offset > f.Size ? f.Size : offset;
     private static int SearchInts(System.Collections.Generic.List<int> a, long x)
     {
