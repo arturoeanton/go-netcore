@@ -63,6 +63,31 @@ public sealed class GoCertPool { }
 /// certificate and private-key parse/marshal — backed by .NET's X509 stack.</summary>
 public static class Crypto509
 {
+    // --- x509 enum String() data tables (verified byte-exact vs go run) ---
+    public static GoString PublicKeyAlgorithm_String(long a) => GoString.FromDotNetString(a switch
+    {
+        1 => "RSA", 2 => "DSA", 3 => "ECDSA", 4 => "Ed25519", _ => a.ToString(),
+    });
+    public static GoString SignatureAlgorithm_String(long a) => GoString.FromDotNetString(a switch
+    {
+        2 => "MD5-RSA", 3 => "SHA1-RSA", 4 => "SHA256-RSA", 5 => "SHA384-RSA", 6 => "SHA512-RSA",
+        7 => "DSA-SHA1", 8 => "DSA-SHA256", 9 => "ECDSA-SHA1", 10 => "ECDSA-SHA256", 11 => "ECDSA-SHA384",
+        12 => "ECDSA-SHA512", 13 => "SHA256-RSAPSS", 14 => "SHA384-RSAPSS", 15 => "SHA512-RSAPSS", 16 => "Ed25519",
+        _ => a.ToString(),
+    });
+    public static GoString KeyUsage_String(long k) => GoString.FromDotNetString(k switch
+    {
+        1 => "digitalSignature", 2 => "contentCommitment", 4 => "keyEncipherment", 8 => "dataEncipherment",
+        16 => "keyAgreement", 32 => "keyCertSign", 64 => "cRLSign", 128 => "encipherOnly", 256 => "decipherOnly",
+        _ => $"KeyUsage({k})",
+    });
+    public static GoString ExtKeyUsage_String(long e) => GoString.FromDotNetString(e switch
+    {
+        0 => "anyExtendedKeyUsage", 1 => "serverAuth", 2 => "clientAuth", 3 => "codeSigning", 4 => "emailProtection",
+        5 => "ipsecEndSystem", 6 => "ipsecTunnel", 7 => "ipsecUser", 8 => "timeStamping", 9 => "OCSPSigning",
+        10 => "msSGC", 11 => "nsSGC", 12 => "msCodeCom", 13 => "msKernelCode", _ => $"ExtKeyUsage({e})",
+    });
+
     // --- cert pool (TLS trust store; goclr serves plain HTTP, so it's an inert handle) ---
     public static object NewCertPool() => new GoCertPool();
     public static bool CertPool_AppendCertsFromPEM(object pool, GoSlice pem) => true;

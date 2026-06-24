@@ -1548,6 +1548,18 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net.IPMask": {
 		"Size": {"Net", "IPMask_Size"}, "String": {"Net", "IPMask_String"},
 	},
+	"crypto/x509.PublicKeyAlgorithm": {
+		"String": {"Crypto509", "PublicKeyAlgorithm_String"},
+	},
+	"crypto/x509.SignatureAlgorithm": {
+		"String": {"Crypto509", "SignatureAlgorithm_String"},
+	},
+	"crypto/x509.KeyUsage": {
+		"String": {"Crypto509", "KeyUsage_String"},
+	},
+	"crypto/x509.ExtKeyUsage": {
+		"String": {"Crypto509", "ExtKeyUsage_String"},
+	},
 	"crypto/tls.ClientAuthType": {
 		"String": {"HttpTypes", "ClientAuthType_String"},
 	},
