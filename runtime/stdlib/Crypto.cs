@@ -81,7 +81,7 @@ public static partial class Crypto
     // digest as a fixed-size array (the lowering types the extern result by the Go
     // signature; the value is a GoSlice over the digest bytes).
     public static GoSlice Sha256Sum256(GoSlice d) => Slice(SHA256.HashData(Bytes(d)), default);
-    public static GoSlice Sha256Sum224(GoSlice d) => Slice(SHA256.HashData(Bytes(d))[..28], default); // SHA-224 over SHA-256 core not exposed; truncate
+    public static GoSlice Sha256Sum224(GoSlice d) => Slice(Sha256Core(Bytes(d), Iv224, 28), default); // SHA-224 uses the alternate IV, not a truncation
     public static GoSlice Sha512Sum512(GoSlice d) => Slice(SHA512.HashData(Bytes(d)), default);
     public static GoSlice Sha512Sum384(GoSlice d) => Slice(SHA384.HashData(Bytes(d)), default);
     // SHA-512/224 and SHA-512/256: the SHA-512 core with FIPS 180-4 alternate IVs (no .NET
@@ -202,6 +202,7 @@ public static partial class Crypto
         }
         if (h.Algo == "fnv128") return Fnv128(data, false);
         if (h.Algo == "fnv128a") return Fnv128(data, true);
+        if (h.Algo == "SHA224") return Sha256Core(data, Iv224, 28);
         if (h.Algo == "SHA512/224") return Sha512Core(data, Iv512_224, 28);
         if (h.Algo == "SHA512/256") return Sha512Core(data, Iv512_256, 32);
         if (h.Algo.StartsWith("SHA3-", System.StringComparison.Ordinal)) return Sha3Digest(h.Algo, data);
