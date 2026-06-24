@@ -17,8 +17,9 @@ func TestComputeCoverage_ShimmedPackage(t *testing.T) {
 	if p.Total == 0 || p.Covered == 0 || p.Covered >= p.Total {
 		t.Fatalf("strings should be partially covered: covered=%d total=%d", p.Covered, p.Total)
 	}
-	// A core shimmed func is covered; a Go-1.24 iterator helper is not yet.
-	want := map[string]bool{"Split": true, "Join": true, "SplitSeq": false}
+	// A core shimmed func is covered; the Go-1.24 iterator helper SplitSeq is too, now
+	// that range-over-func is lowered (it compiles from source and is consumable).
+	want := map[string]bool{"Split": true, "Join": true, "SplitSeq": true}
 	got := map[string]bool{}
 	for _, s := range p.Symbols {
 		got[s.Name] = s.Covered

@@ -979,12 +979,10 @@ func (l *funcLowerer) rangeStmt(s *ast.RangeStmt) {
 		l.rangeChan(s, xt)
 		return
 	}
-	// range over a function value (Go 1.23 iterators, iter.Seq/iter.Seq2): not yet
-	// lowered. Diagnose it precisely rather than with the generic subset message — the
-	// stdlib overlay (slices/maps) avoids it internally, so only user-written
-	// range-over-func and direct iterator consumption hit this.
+	// range over a function value (Go 1.23 iterators, iter.Seq/iter.Seq2): lower the
+	// body to a yield closure and call the iterator with it.
 	if xt.Kind == goir.KFunc {
-		l.fail(s.Pos(), "range over a function value (Go 1.23 iterators) is not yet supported")
+		l.rangeFunc(s)
 		return
 	}
 	if xt.Kind != goir.KString {

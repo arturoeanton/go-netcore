@@ -459,9 +459,10 @@ func main() {
 }
 
 func TestLowerUnsupported(t *testing.T) {
-	// range-over-func (Go 1.23 iterators) is still outside the M1 subset — a stable
-	// rejection-path probe. (Bound method values, which this test used to assert were
-	// unsupported, now lower and run; so does range-over-int.)
+	// A range-over-func body whose control flow must unwind through the iterator — here
+	// a `return` from the enclosing function — is outside the supported subset and is
+	// rejected honestly. (Plain range-over-func with break/continue now lowers and runs,
+	// as do bound method values and range-over-int.)
 	pkg := loadMain(t, `package main
 
 func count(yield func(int) bool) {
@@ -472,10 +473,17 @@ func count(yield func(int) bool) {
 	}
 }
 
-func main() {
+func find() int {
 	for v := range count {
-		_ = v
+		if v == 2 {
+			return v
+		}
 	}
+	return -1
+}
+
+func main() {
+	_ = find()
 }
 `)
 	bag := &diagnostics.Bag{}

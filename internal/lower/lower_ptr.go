@@ -57,6 +57,15 @@ func (c *lowerCtx) analyzeAddrTaken(body ast.Node) map[types.Object]bool {
 				set[v] = true
 			}
 			return false
+		case *ast.RangeStmt:
+			// A range-over-func body is lowered to its own yield closure, so its free
+			// variables become captured cells here. Do not descend (like a FuncLit).
+			if c.isRangeOverFunc(n) {
+				for _, v := range c.litFreeVars(rangeFuncLit(n)) {
+					set[v] = true
+				}
+				return false
+			}
 		case *ast.UnaryExpr:
 			if n.Op == token.AND {
 				mark(n.X)
