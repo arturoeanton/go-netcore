@@ -36,6 +36,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Float64bits": {"Math", "Float64bits"}, "Float64frombits": {"Math", "Float64frombits"}, "Float32bits": {"Math", "Float32bits"}, "Float32frombits": {"Math", "Float32frombits"},
 		"Acosh": {"Math", "Acosh"}, "Asinh": {"Math", "Asinh"}, "Atanh": {"Math", "Atanh"},
 		"Expm1": {"Math", "Expm1"}, "Log1p": {"Math", "Log1p"},
+		"Dim": {"Math", "Dim"}, "FMA": {"Math", "FMA"}, "Frexp": {"Math", "Frexp"}, "Ldexp": {"Math", "Ldexp"},
+		"Ilogb": {"Math", "Ilogb"}, "Logb": {"Math", "Logb"}, "Nextafter": {"Math", "Nextafter"},
+		"Nextafter32": {"Math", "Nextafter32"}, "RoundToEven": {"Math", "RoundToEven"}, "Sincos": {"Math", "Sincos"},
 	},
 	"go/ast": {
 		"IsExported": {"Ast", "IsExported"},

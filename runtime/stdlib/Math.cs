@@ -53,4 +53,122 @@ public static class Math
     public static float Float32frombits(uint b) => System.BitConverter.Int32BitsToSingle(unchecked((int)b));
 
     public static double Inf(long sign) => sign >= 0 ? double.PositiveInfinity : double.NegativeInfinity;
+
+    // --- IEEE-754 bit-level functions (faithful ports of Go's math source) ---
+    private const int    fShift = 52;
+    private const ulong  fMask  = 0x7FF;
+    private const int    fBias  = 1023;
+    private const ulong  fFrac  = (1UL << fShift) - 1;   // fraction mask
+    private const ulong  fSign  = 1UL << 63;             // sign mask
+    private const ulong  fUvone = 0x3FF0000000000000UL;  // +1.0
+    private const double SmallestNormal = 2.2250738585072014e-308; // 2**-1022
+
+    // normalize returns a normal number y and exponent exp satisfying x == y * 2**exp.
+    private static (double y, int exp) Normalize(double x)
+    {
+        if (SM.Abs(x) < SmallestNormal) return (x * (1L << 52), -52);
+        return (x, 0);
+    }
+
+    public static double Dim(double x, double y)
+    {
+        double v = x - y;
+        if (v <= 0) return 0; // negative, zero, or NaN-subtraction collapses below
+        return v;
+    }
+
+    public static double FMA(double x, double y, double z) => SM.FusedMultiplyAdd(x, y, z);
+
+    public static object?[] Frexp(double f)
+    {
+        if (f == 0) return new object?[] { f, 0L };                 // ±0
+        if (double.IsInfinity(f) || double.IsNaN(f)) return new object?[] { f, 0L };
+        var (nf, e) = Normalize(f);
+        ulong x = Float64bits(nf);
+        long exp = e + (long)((x >> fShift) & fMask) - fBias + 1;
+        x &= ~(fMask << fShift);
+        x |= (ulong)(-1 + fBias) << fShift;
+        return new object?[] { Float64frombits(x), exp };
+    }
+
+    public static double Ldexp(double frac, long exp)
+    {
+        if (frac == 0) return frac;                                  // ±0
+        if (double.IsInfinity(frac) || double.IsNaN(frac)) return frac;
+        var (nf, e) = Normalize(frac);
+        exp += e;
+        ulong x = Float64bits(nf);
+        exp += (long)((x >> fShift) & fMask) - fBias;
+        if (exp < -1075) return SM.CopySign(0, frac);               // underflow
+        if (exp > 1023) return frac < 0 ? double.NegativeInfinity : double.PositiveInfinity; // overflow
+        double m = 1;
+        if (exp < -1022) { exp += 53; m = 1.0 / (1L << 53); }        // denormal
+        x &= ~(fMask << fShift);
+        x |= (ulong)(exp + fBias) << fShift;
+        return m * Float64frombits(x);
+    }
+
+    private static int IlogbRaw(double x)
+    {
+        var (nx, exp) = Normalize(x);
+        return (int)((Float64bits(nx) >> fShift) & fMask) - fBias + exp;
+    }
+
+    public static long Ilogb(double x)
+    {
+        if (double.IsNaN(x)) return int.MaxValue;
+        if (x == 0) return int.MinValue;
+        if (double.IsInfinity(x)) return int.MaxValue;
+        return IlogbRaw(x);
+    }
+
+    public static double Logb(double x)
+    {
+        if (x == 0) return double.NegativeInfinity;
+        if (double.IsInfinity(x)) return double.PositiveInfinity;
+        if (double.IsNaN(x)) return x;
+        return IlogbRaw(x);
+    }
+
+    public static double Nextafter(double x, double y)
+    {
+        if (double.IsNaN(x) || double.IsNaN(y)) return double.NaN;
+        if (x == y) return x;
+        if (x == 0) return SM.CopySign(Float64frombits(1), y);
+        if ((y > x) == (x > 0)) return Float64frombits(Float64bits(x) + 1);
+        return Float64frombits(Float64bits(x) - 1);
+    }
+
+    public static float Nextafter32(float x, float y)
+    {
+        if (float.IsNaN(x) || float.IsNaN(y)) return (float)double.NaN;
+        if (x == y) return x;
+        if (x == 0) return (float)SM.CopySign(Float32frombits(1), y);
+        if ((y > x) == (x > 0)) return Float32frombits(Float32bits(x) + 1);
+        return Float32frombits(Float32bits(x) - 1);
+    }
+
+    public static double RoundToEven(double x)
+    {
+        ulong bits = Float64bits(x);
+        ulong e = (bits >> fShift) & fMask;
+        if (e >= fBias)
+        {
+            const ulong halfMinusULP = (1UL << (fShift - 1)) - 1;
+            e -= fBias;
+            bits += (halfMinusULP + ((bits >> (int)(fShift - e)) & 1)) >> (int)e;
+            bits &= ~(fFrac >> (int)e);
+        }
+        else if (e == fBias - 1 && (bits & fFrac) != 0)
+        {
+            bits = (bits & fSign) | fUvone; // ±1
+        }
+        else
+        {
+            bits &= fSign; // ±0
+        }
+        return Float64frombits(bits);
+    }
+
+    public static object?[] Sincos(double x) => new object?[] { SM.Sin(x), SM.Cos(x) };
 }
