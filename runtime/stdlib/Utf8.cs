@@ -53,6 +53,16 @@ public static class Utf8
         return bytes.Length;
     }
 
+    // utf8.AppendRune(p []byte, r rune) []byte — append r's UTF-8 encoding to p.
+    public static GoSlice AppendRune(GoSlice p, int r)
+    {
+        var rune = System.Text.Rune.IsValid(r) ? new System.Text.Rune(r) : System.Text.Rune.ReplacementChar;
+        var bytes = Encoding.UTF8.GetBytes(rune.ToString());
+        var add = new object?[bytes.Length];
+        for (int i = 0; i < bytes.Length; i++) add[i] = (int)bytes[i];
+        return Rt.AppendSlice(p, new GoSlice { Data = add, Off = 0, Len = bytes.Length, Cap = bytes.Length });
+    }
+
     public static object?[] DecodeRuneInString(GoString s)
     {
         var str = s.ToDotNetString();
