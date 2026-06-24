@@ -66,6 +66,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Set": {"Flag", "Set"}, "Parsed": {"Flag", "Parsed"}, "NArg": {"Flag", "NArg"}, "NFlag": {"Flag", "NFlag"}, "Arg": {"Flag", "Arg"}, "Args": {"Flag", "Args"},
 		"Visit": {"Flag", "Visit"}, "VisitAll": {"Flag", "VisitAll"}, "Func": {"Flag", "Func"}, "BoolFunc": {"Flag", "BoolFunc"},
 		"Var": {"Flag", "Var"}, "SetOutput": {"Flag", "SetOutput"},
+		"PrintDefaults": {"Flag", "PrintDefaults"}, "UnquoteUsage": {"Flag", "UnquoteUsage"},
 	},
 	"syscall": {
 		"FcntlFlock": {"Syscall", "FcntlFlock"}, "Fsync": {"Syscall", "Fsync"},
@@ -1927,6 +1928,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Lookup": {"Flag", "FS_Lookup"}, "Visit": {"Flag", "FS_Visit"}, "VisitAll": {"Flag", "FS_VisitAll"},
 		"Func": {"Flag", "FS_Func"}, "BoolFunc": {"Flag", "FS_BoolFunc"}, "Var": {"Flag", "FS_Var"},
 		"Init": {"Flag", "FS_Init"}, "Output": {"Flag", "FS_Output"}, "SetOutput": {"Flag", "FS_SetOutput"},
+		"PrintDefaults": {"Flag", "FS_PrintDefaults"},
 	},
 	"context.Context": {
 		"Value": {"Context", "Context_Value"}, "Err": {"Context", "Context_Err"},

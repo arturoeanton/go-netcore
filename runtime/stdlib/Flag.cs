@@ -70,7 +70,8 @@ public static class Flag
     // Func/BoolFunc(name, usage, fn): a flag whose Set calls fn(value). DefValue is "".
     public static void FS_Func(object fs, GoString name, GoString usage, GoClosure fn) =>
         FS(fs).Formal[name.ToDotNetString()] = new GoFlag { Name = name.ToDotNetString(), Usage = usage.ToDotNetString(), Kind = 8, Callback = fn, DefValue = "" };
-    public static void FS_BoolFunc(object fs, GoString name, GoString usage, GoClosure fn) => FS_Func(fs, name, usage, fn);
+    public static void FS_BoolFunc(object fs, GoString name, GoString usage, GoClosure fn) =>
+        FS(fs).Formal[name.ToDotNetString()] = new GoFlag { Name = name.ToDotNetString(), Usage = usage.ToDotNetString(), Kind = 10, Callback = fn, DefValue = "" };
     public static void Func(GoString name, GoString usage, GoClosure fn) => FS_Func(_cmd, name, usage, fn);
     public static void BoolFunc(GoString name, GoString usage, GoClosure fn) => FS_Func(_cmd, name, usage, fn);
 
@@ -81,6 +82,59 @@ public static class Flag
         FS(fs).Formal[name.ToDotNetString()] = new GoFlag { Name = name.ToDotNetString(), Usage = usage.ToDotNetString(), Kind = 9, Callback = value, DefValue = def };
     }
     public static void Var(object? value, GoString name, GoString usage) => FS_Var(_cmd, value, name, usage);
+
+    // flag.UnquoteUsage(*Flag) (name, usage): a back-quoted word in the usage names the
+    // value placeholder; otherwise the placeholder is derived from the flag's type.
+    public static object?[] UnquoteUsage(object fo)
+    {
+        var fl = (GoFlag)fo;
+        string usage = fl.Usage, name = "";
+        for (int i = 0; i < usage.Length; i++)
+        {
+            if (usage[i] != '`') continue;
+            for (int j = i + 1; j < usage.Length; j++)
+                if (usage[j] == '`')
+                {
+                    name = usage.Substring(i + 1, j - i - 1);
+                    usage = usage.Substring(0, i) + name + usage.Substring(j + 1);
+                    return new object?[] { GoString.FromDotNetString(name), GoString.FromDotNetString(usage) };
+                }
+            break; // only one back quote: fall through to the type name
+        }
+        name = fl.Kind switch { 0 or 10 => "", 7 => "duration", 5 => "float", 1 or 2 => "int", 6 => "string", 3 or 4 => "uint", _ => "value" };
+        return new object?[] { GoString.FromDotNetString(name), GoString.FromDotNetString(usage) };
+    }
+
+    // The default-text that equals the zero value for a flag's kind (default shown only if differs).
+    private static string ZeroFor(int kind) => kind switch { 0 or 10 => "false", 6 or 8 or 9 => "", 7 => "0s", _ => "0" };
+
+    // (*FlagSet).PrintDefaults(): the usage block, ported from flag.go (two-space indent,
+    // "-name type", tab/newline alignment, " (default x)" for non-zero defaults).
+    public static void FS_PrintDefaults(object fso)
+    {
+        var fs = FS(fso);
+        var names = new List<string>(fs.Formal.Keys);
+        names.Sort(System.StringComparer.Ordinal);
+        var sb = new System.Text.StringBuilder();
+        foreach (var nm in names)
+        {
+            var fl = fs.Formal[nm];
+            var b = new System.Text.StringBuilder();
+            b.Append("  -").Append(fl.Name);
+            var uq = UnquoteUsage(fl);
+            string name = ((GoString)uq[0]!).ToDotNetString(), usage = ((GoString)uq[1]!).ToDotNetString();
+            if (name.Length > 0) b.Append(' ').Append(name);
+            b.Append(b.Length <= 4 ? "\t" : "\n    \t");
+            b.Append(usage.Replace("\n", "\n    \t"));
+            if (fl.DefValue != ZeroFor(fl.Kind))
+                b.Append(fl.Kind == 6
+                    ? " (default " + Strconv.Quote(GoString.FromDotNetString(fl.DefValue)).ToDotNetString() + ")"
+                    : " (default " + fl.DefValue + ")");
+            sb.Append(b).Append('\n');
+        }
+        Fmt.WriteTo(fs.Out ?? Os.Stderr(), sb.ToString());
+    }
+    public static void PrintDefaults() => FS_PrintDefaults(_cmd);
 
     public static object NewFlagSet(GoString name, long errorHandling) =>
         new GoFlagSet { Name = name.ToDotNetString(), ErrorHandling = (int)errorHandling };
@@ -117,7 +171,7 @@ public static class Flag
             case 5: { var r = Strconv.ParseFloat(GoString.FromDotNetString(s), 64); if (r[1] != null) return NumErr("ParseFloat", s, r[1]); fl.Ptr.Value = (double)r[0]!; return null; }
             case 6: fl.Ptr.Value = GoString.FromDotNetString(s); return null;
             case 7: { var r = Time.ParseDuration(GoString.FromDotNetString(s)); if (r[1] != null) return "parse error"; fl.Ptr.Value = (long)r[0]!; return null; }
-            case 8: // Func/BoolFunc: invoke the callback closure (it returns an error or nil).
+            case 8: case 10: // Func/BoolFunc: invoke the callback closure (returns error or nil).
             {
                 var res = GoRuntime.InvokeArgs((GoClosure)fl.Callback!, GoString.FromDotNetString(s));
                 return res is GoError g ? g.Error().ToDotNetString() : null;
