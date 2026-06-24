@@ -5,6 +5,10 @@ using GoCLR.Runtime;
 /// <summary>A net/mail.Address (parsed name + address).</summary>
 public sealed class GoMailAddress { public string Name = ""; public string Address = ""; }
 
+/// <summary>A net/mail.Message: a parsed header (map[string][]string) plus the body reader.</summary>
+[GoShim("net/mail.Message")]
+public sealed class GoMailMessage { public GoMap Header = GoMaps.Make(); public object? Body; }
+
 /// <summary>Shim for a subset of Go's <c>net/mail</c> (address parsing).</summary>
 public static class Mail
 {
@@ -101,4 +105,31 @@ public static class Mail
 
     // mail.Header.Get(key) — canonical-key lookup (mail.Header is map[string][]string).
     public static GoString Header_Get(GoMap? h, GoString key) => Textproto.MIMEHeader_Get(h, key);
+
+    // mail.Header.AddressList(key) ([]*Address, error): parse the header's address list, or
+    // ErrHeaderNotPresent when the key is absent/empty (matching Go).
+    public static object?[] Header_AddressList(GoMap? h, GoString key)
+    {
+        var v = Textproto.MIMEHeader_Get(h, key);
+        if (v.Len == 0) return new object?[] { default(GoSlice), ErrHeaderNotPresentSentinel };
+        return ParseAddressList(v);
+    }
+
+    // mail.ReadMessage(r) (*Message, error): parse the RFC 5322 header (via the textproto
+    // MIME-header parser), leaving the remaining bytes as the body reader.
+    public static object?[] ReadMessage(object? r)
+    {
+        var raw = Readers.Drain(r);
+        var tp = new GoTextprotoReader { Data = raw };
+        var hres = Textproto.Reader_ReadMIMEHeader(tp);
+        if (hres[1] != null && !ReferenceEquals(hres[1], Io.EOFSentinel))
+            return new object?[] { null, hres[1] };
+        var body = new byte[raw.Length - tp.Pos];
+        System.Array.Copy(raw, tp.Pos, body, 0, body.Length);
+        return new object?[] { new GoMailMessage { Header = (GoMap)hres[0]!, Body = new GoReader { Data = body } }, null };
+    }
+
+    // *mail.Message field reads.
+    public static GoMap Message_Header(object m) => ((GoMailMessage)m).Header;
+    public static object? Message_Body(object m) => ((GoMailMessage)m).Body;
 }

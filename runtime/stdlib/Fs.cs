@@ -17,6 +17,13 @@ public sealed class GoDirEntry
 /// from source). Only the mask/predicate methods are modeled.</summary>
 public static class Fs
 {
+    // fs.SkipDir / fs.SkipAll: the sentinel errors a WalkDirFunc returns to skip a directory
+    // or stop the walk (filepath.SkipDir/SkipAll alias these).
+    public static readonly GoError SkipDirSentinel = new(GoString.FromDotNetString("skip this directory"));
+    public static object SkipDir() => SkipDirSentinel;
+    public static readonly GoError SkipAllSentinel = new(GoString.FromDotNetString("skip everything and stop the walk"));
+    public static object SkipAll() => SkipAllSentinel;
+
     // fs.DirEntry method set (mirrors os.FileInfo's, routed through interface dispatch).
     public static GoString DirEntry_Name(object de) => ((GoDirEntry)de).EntryName;
     public static bool DirEntry_IsDir(object de) => ((GoDirEntry)de).Dir;
