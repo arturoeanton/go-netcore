@@ -729,6 +729,14 @@ public static class Reflect
         var s = (GoSlice)RValC(v)!;
         return new GoReflectValue { V = GoCLR.Runtime.GoSlices.Slice(s, lo, hi) };
     }
+    // reflect.Value.Slice3(lo, hi, max): a three-index slice sharing the backing array.
+    public static object Value_Slice3(object v, long lo, long hi, long max)
+    {
+        var s = (GoSlice)RValC(v)!;
+        return new GoReflectValue { V = new GoSlice { Data = s.Data, Off = s.Off + (int)lo, Len = (int)(hi - lo), Cap = (int)(max - lo) } };
+    }
+    // reflect.Value.SetBytes(b): set a settable []byte value to b.
+    public static void Value_SetBytes(object v, GoSlice b) => DoSet(v, b);
     // reflect.Value.Pointer() returns uintptr (goclr: UInt64).
     public static ulong Value_Pointer(object? v)
     {
@@ -776,9 +784,68 @@ public static class Reflect
         };
         return new GoReflectValue { V = bound };
     }
-    public static bool Value_OverflowInt(object? v, long x) => false;
-    public static bool Value_OverflowUint(object? v, ulong x) => false;
-    public static bool Value_OverflowFloat(object? v, double x) => false;
+    // Bit width of an integer/float Kind (Int/Uint/Uintptr are 64-bit on goclr's target).
+    private static int BitSize(int k)
+    {
+        if (k == GoKind.Int8 || k == GoKind.Uint8) return 8;
+        if (k == GoKind.Int16 || k == GoKind.Uint16) return 16;
+        if (k == GoKind.Int32 || k == GoKind.Uint32 || k == GoKind.Float32) return 32;
+        return 64; // Int/Int64/Uint/Uint64/Uintptr/Float64
+    }
+    // reflect.Value.OverflowInt/Uint: truncate to the type's bit width and see if it changed.
+    public static bool Value_OverflowInt(object? v, long x)
+    {
+        int b = BitSize((int)Value_Kind(v));
+        if (b == 64) return false;
+        long trunc = (x << (64 - b)) >> (64 - b); // arithmetic (sign-extending) shift
+        return x != trunc;
+    }
+    public static bool Value_OverflowUint(object? v, ulong x)
+    {
+        int b = BitSize((int)Value_Kind(v));
+        if (b == 64) return false;
+        ulong trunc = (x << (64 - b)) >> (64 - b); // logical shift
+        return x != trunc;
+    }
+    // overflowFloat32: x is finite and beyond float32 range (Inf does not overflow).
+    private static bool OverflowFloat32(double x)
+    {
+        if (x < 0) x = -x;
+        const double MaxFloat32 = 3.40282346638528859811704183484516925440e+38;
+        return MaxFloat32 < x && x <= double.MaxValue;
+    }
+    public static bool Value_OverflowFloat(object? v, double x) =>
+        (int)Value_Kind(v) == GoKind.Float32 && OverflowFloat32(x);
+    public static bool Value_OverflowComplex(object? v, GoComplex x) =>
+        (int)Value_Kind(v) == GoKind.Complex64 && (OverflowFloat32(x.Re) || OverflowFloat32(x.Im));
+
+    // reflect.Value.Clear: zero every element of a slice, or delete every map entry.
+    public static void Value_Clear(object v)
+    {
+        var x = RVal(v);
+        if (x is GoSlice s && s.Data != null)
+            for (int i = 0; i < s.Len; i++) s.Data[s.Off + i] = ZeroLike(s.Data[s.Off + i]);
+        else if (x is GoMap m && m.Data != null)
+            m.Data.Clear();
+    }
+    private static object? ZeroLike(object? e) => e switch
+    {
+        long => 0L, int => 0, ulong => (ulong)0, uint => (uint)0, double => 0.0, float => 0f,
+        bool => false, GoString => GoString.FromDotNetString(""), _ => null,
+    };
+
+    // reflect.Value.Grow(n): ensure spare capacity for n more elements (cap >= len+n),
+    // reallocating the backing array and writing the grown slice back.
+    public static void Value_Grow(object v, long n)
+    {
+        if (n < 0) throw new GoPanicException(GoString.FromDotNetString("reflect.Value.Grow: negative len"));
+        if (RVal(v) is not GoSlice s) return;
+        long need = (long)s.Len + n;
+        if (need <= s.Cap) return;
+        var data = new object?[need];
+        if (s.Data != null) System.Array.Copy(s.Data, s.Off, data, 0, s.Len);
+        DoSet(v, new GoSlice { Data = data, Off = 0, Len = s.Len, Cap = (int)need });
+    }
 
     // Call(in []Value) []Value: invoke the wrapped function with the unwrapped
     // argument Values and wrap each result as a Value. The wrapped value is a
