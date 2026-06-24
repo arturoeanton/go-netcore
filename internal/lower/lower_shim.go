@@ -596,6 +596,10 @@ var shimVarRegistry = map[string]shimFunc{
 	"path/filepath.ErrBadPattern":   {"Path", "ErrBadPattern"},
 	"encoding/hex.ErrLength":        {"Hex", "ErrLength"},
 	"mime.ErrInvalidMediaParameter": {"Mime", "ErrInvalidMediaParameter"},
+	"encoding/csv.ErrBareQuote":      {"Csv", "ErrBareQuote"},
+	"encoding/csv.ErrQuote":          {"Csv", "ErrQuote"},
+	"encoding/csv.ErrFieldCount":     {"Csv", "ErrFieldCount"},
+	"encoding/csv.ErrTrailingComma":  {"Csv", "ErrTrailingComma"},
 	"bufio.ErrInvalidUnreadByte":     {"Bufio", "ErrInvalidUnreadByte"},
 	"bufio.ErrInvalidUnreadRune":     {"Bufio", "ErrInvalidUnreadRune"},
 	"bufio.ErrTooLong":               {"Bufio", "ErrTooLong"},
@@ -1417,10 +1421,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Next": {"List", "Element_Next"}, "Prev": {"List", "Element_Prev"},
 	},
 	"encoding/csv.Reader": {
-		"ReadAll": {"Csv", "ReadAll"},
+		"ReadAll": {"Csv", "ReadAll"}, "Read": {"Csv", "Read"},
 	},
 	"encoding/csv.Writer": {
-		"Write": {"Csv", "Write"}, "Flush": {"Csv", "Flush"},
+		"Write": {"Csv", "Write"}, "Flush": {"Csv", "Flush"}, "WriteAll": {"Csv", "WriteAll"}, "Error": {"Csv", "Error"},
 	},
 	"compress/gzip.Reader": {
 		"Read": {"Compress", "CompR_Read"}, "Reset": {"Compress", "CompR_Reset"}, "Close": {"Compress", "CompR_Close"}, "Multistream": {"Compress", "CompR_Multistream"},
