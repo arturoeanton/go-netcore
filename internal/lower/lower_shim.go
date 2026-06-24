@@ -84,6 +84,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Encode": {"Hex", "Encode"}, "Decode": {"Hex", "Decode"}, "Dump": {"Hex", "Dump"},
 		"EncodedLen": {"Hex", "EncodedLen"}, "DecodedLen": {"Hex", "DecodedLen"},
 	},
+	"encoding/base32": {
+		"NewEncoding": {"Base32", "NewEncoding"}, "NewEncoder": {"Base32", "NewEncoder"}, "NewDecoder": {"Base32", "NewDecoder"},
+	},
 	"crypto/sha256":   {"New": {"Crypto", "Sha256New"}, "New224": {"Crypto", "Sha224New"}, "Sum256": {"Crypto", "Sha256Sum256"}, "Sum224": {"Crypto", "Sha256Sum224"}},
 	"crypto/sha1":     {"New": {"Crypto", "Sha1New"}, "Sum": {"Crypto", "Sha1Sum"}},
 	"crypto/elliptic": {"P224": {"Crypto509", "P224"}, "P256": {"Crypto509", "P256"}, "P384": {"Crypto509", "P384"}, "P521": {"Crypto509", "P521"}},
@@ -573,6 +576,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"net.IPv6unspecified":            {"Net", "IPv6unspecified"},
 	"net.IPv6loopback":               {"Net", "IPv6loopback"},
 	"encoding/base32.StdEncoding":    {"Base32", "StdEncoding"},
+	"encoding/base32.HexEncoding":    {"Base32", "HexEncoding"},
 	"context.Canceled":               {"Context", "Canceled"},
 	"context.DeadlineExceeded":       {"Context", "DeadlineExceeded"},
 	"io.EOF":                         {"Io", "EOF"},
@@ -1417,7 +1421,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"encoding/base32.Encoding": {
 		"EncodeToString": {"Base32", "EncodeToString"}, "DecodeString": {"Base32", "DecodeString"},
+		"Encode": {"Base32", "Enc_Encode"}, "Decode": {"Base32", "Enc_Decode"}, "EncodedLen": {"Base32", "Enc_EncodedLen"}, "DecodedLen": {"Base32", "Enc_DecodedLen"},
+		"AppendEncode": {"Base32", "Enc_AppendEncode"}, "AppendDecode": {"Base32", "Enc_AppendDecode"}, "WithPadding": {"Base32", "Enc_WithPadding"},
 	},
+	"encoding/base32.CorruptInputError": {"Error": {"Base32", "CorruptInputError_Error"}},
 	"math/big.Int": {
 		"Add": {"Big", "Int_Add"}, "Sub": {"Big", "Int_Sub"}, "Mul": {"Big", "Int_Mul"},
 		"Div": {"Big", "Int_Div"}, "Mod": {"Big", "Int_Mod"}, "Neg": {"Big", "Int_Neg"},
