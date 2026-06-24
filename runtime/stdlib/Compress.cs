@@ -29,6 +29,23 @@ public static class Compress
         _ => new GZipStream(mem, CompressionMode.Compress, true),
     };
     public static object GzipNewWriter(object? w) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 0), Kind = 0 }; }
+    // gzip.NewWriterLevel(w, level) (*Writer, error): valid level is [HuffmanOnly(-2), BestCompression(9)].
+    public static object?[] GzipNewWriterLevel(object? w, long level)
+    {
+        if (level < -2 || level > 9)
+            return new object?[] { null, new GoError(GoString.FromDotNetString($"gzip: invalid compression level: {level}")) };
+        var m = new MemoryStream();
+        return new object?[] { new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 0), Kind = 0 }, null };
+    }
+    // gzip/zlib/flate Writer.Reset(w): discard buffered state and write subsequent output to w.
+    public static void CompW_Reset(object wo, object? w)
+    {
+        var c = (GoCompWriter)wo;
+        c.Z.Dispose();
+        c.Mem = new MemoryStream();
+        c.W = w;
+        c.Z = Wrap(c.Mem, c.Kind);
+    }
     public static object ZlibNewWriter(object? w) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 1), Kind = 1 }; }
     public static object FlateNewWriter(object? w, long level) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 2), Kind = 2 }; }
 
@@ -104,4 +121,7 @@ public static class Compress
         return null;
     }
     public static object? CompR_Close(object rd) => null;
+    // gzip.Reader.Multistream(ok): the snapshot reader already holds the fully-decompressed
+    // stream, so toggling multistream mode is a no-op here.
+    public static void CompR_Multistream(object rd, bool ok) { }
 }

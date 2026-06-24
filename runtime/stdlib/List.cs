@@ -90,6 +90,42 @@ public static class List
         return e;
     }
 
+    // MoveBefore/MoveAfter: relocate e (already in l) adjacent to mark. No-op if e isn't in
+    // l, mark isn't in l, or e == mark — matching Go. N is unchanged (a move, not insert).
+    public static void List_MoveBefore(object lo, object eo, object marko)
+    {
+        var l = (GoList)lo; var e = (GoElement)eo; var m = (GoElement)marko;
+        if (e.List != l || e == m || m.List != l) return;
+        Unlink(l, e);
+        e.Nxt = m; e.Prv = m.Prv;
+        if (m.Prv != null) m.Prv.Nxt = e; else l.Head = e;
+        m.Prv = e;
+    }
+    public static void List_MoveAfter(object lo, object eo, object marko)
+    {
+        var l = (GoList)lo; var e = (GoElement)eo; var m = (GoElement)marko;
+        if (e.List != l || e == m || m.List != l) return;
+        Unlink(l, e);
+        e.Prv = m; e.Nxt = m.Nxt;
+        if (m.Nxt != null) m.Nxt.Prv = e; else l.Tail = e;
+        m.Nxt = e;
+    }
+
+    // PushBackList/PushFrontList: append copies of other's values. The element count is
+    // snapshotted first so other == l (self-append) terminates, as in Go.
+    public static void List_PushBackList(object lo, object oo)
+    {
+        var l = (GoList)lo; var other = (GoList)oo;
+        int n = other.N; var e = other.Head;
+        for (int i = 0; i < n && e != null; i++) { List_PushBack(l, e.Value); e = e.Nxt; }
+    }
+    public static void List_PushFrontList(object lo, object oo)
+    {
+        var l = (GoList)lo; var other = (GoList)oo;
+        int n = other.N; var e = other.Tail;
+        for (int i = 0; i < n && e != null; i++) { List_PushFront(l, e.Value); e = e.Prv; }
+    }
+
     public static object? Element_Next(object e) => ((GoElement)e).Nxt;
     public static object? Element_Prev(object e) => ((GoElement)e).Prv;
     public static object? Element_Value(object e) => ((GoElement)e).Value;

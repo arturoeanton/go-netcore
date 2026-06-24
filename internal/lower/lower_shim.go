@@ -158,7 +158,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"hash/fnv":        {"New32": {"Hashes", "Fnv32"}, "New32a": {"Hashes", "Fnv32a"}, "New64": {"Hashes", "Fnv64"}, "New64a": {"Hashes", "Fnv64a"}, "New128": {"Hashes", "Fnv128"}, "New128a": {"Hashes", "Fnv128a"}},
 	"hash/crc32":      {"ChecksumIEEE": {"Hashes", "Crc32ChecksumIEEE"}, "Update": {"Hashes", "Crc32Update"}, "NewIEEE": {"Hashes", "Crc32NewIEEE"}, "MakeTable": {"Hashes", "Crc32MakeTable"}, "Checksum": {"Hashes", "Crc32Checksum"}, "New": {"Hashes", "Crc32New"}},
 	"hash/adler32":    {"Checksum": {"Hashes", "Adler32Checksum"}, "New": {"Hashes", "Adler32New"}},
-	"compress/gzip":   {"NewWriter": {"Compress", "GzipNewWriter"}, "NewReader": {"Compress", "GzipNewReader"}},
+	"compress/gzip":   {"NewWriter": {"Compress", "GzipNewWriter"}, "NewWriterLevel": {"Compress", "GzipNewWriterLevel"}, "NewReader": {"Compress", "GzipNewReader"}},
 	"compress/zlib":   {"NewWriter": {"Compress", "ZlibNewWriter"}, "NewReader": {"Compress", "ZlibNewReader"}},
 	"compress/flate":  {"NewWriter": {"Compress", "FlateNewWriter"}, "NewReader": {"Compress", "FlateNewReader"}},
 	"net/url": {
@@ -176,8 +176,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"log": {
 		"New": {"Log", "New"}, "Print": {"Log", "Print"}, "Println": {"Log", "Println"}, "Printf": {"Log", "Printf"},
 		"Fatal": {"Log", "Fatal"}, "Fatalf": {"Log", "Fatalf"}, "Fatalln": {"Log", "Fatalln"},
-		"Panic": {"Log", "Panic"}, "Panicf": {"Log", "Panicf"},
+		"Panic": {"Log", "Panic"}, "Panicf": {"Log", "Panicf"}, "Panicln": {"Log", "Panicln"},
 		"SetFlags": {"Log", "SetFlags"}, "SetPrefix": {"Log", "SetPrefix"}, "Flags": {"Log", "Flags"}, "Prefix": {"Log", "Prefix"},
+		"Default": {"Log", "Default"}, "Output": {"Log", "Output"}, "SetOutput": {"Log", "SetOutput"}, "Writer": {"Log", "Writer"},
 	},
 	"math/big": {
 		"NewInt": {"Big", "NewInt"}, "NewFloat": {"Big", "NewFloat"},
@@ -1159,7 +1160,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"log.Logger": {
 		"Print": {"Log", "Logger_Print"}, "Println": {"Log", "Logger_Println"}, "Printf": {"Log", "Logger_Printf"}, "Output": {"Log", "Logger_Output"},
-		"Fatal": {"Log", "Logger_Fatal"}, "Fatalf": {"Log", "Logger_Fatalf"}, "Fatalln": {"Log", "Logger_Fatalln"}, "Panic": {"Log", "Logger_Panic"}, "Panicf": {"Log", "Logger_Panicf"},
+		"Fatal": {"Log", "Logger_Fatal"}, "Fatalf": {"Log", "Logger_Fatalf"}, "Fatalln": {"Log", "Logger_Fatalln"}, "Panic": {"Log", "Logger_Panic"}, "Panicf": {"Log", "Logger_Panicf"}, "Panicln": {"Log", "Logger_Panicln"},
 		"SetFlags": {"Log", "Logger_SetFlags"}, "Flags": {"Log", "Logger_Flags"}, "SetPrefix": {"Log", "Logger_SetPrefix"}, "Prefix": {"Log", "Logger_Prefix"}, "SetOutput": {"Log", "Logger_SetOutput"}, "Writer": {"Log", "Logger_Writer"},
 	},
 	"net/http.Server": {
@@ -1386,6 +1387,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"PushBack": {"List", "List_PushBack"}, "PushFront": {"List", "List_PushFront"}, "Remove": {"List", "List_Remove"},
 		"MoveToFront": {"List", "List_MoveToFront"}, "MoveToBack": {"List", "List_MoveToBack"},
 		"Init": {"List", "List_Init"}, "InsertBefore": {"List", "List_InsertBefore"}, "InsertAfter": {"List", "List_InsertAfter"},
+		"MoveBefore": {"List", "List_MoveBefore"}, "MoveAfter": {"List", "List_MoveAfter"},
+		"PushBackList": {"List", "List_PushBackList"}, "PushFrontList": {"List", "List_PushFrontList"},
 	},
 	"container/list.Element": {
 		"Next": {"List", "Element_Next"}, "Prev": {"List", "Element_Prev"},
@@ -1397,10 +1400,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Write": {"Csv", "Write"}, "Flush": {"Csv", "Flush"},
 	},
 	"compress/gzip.Reader": {
-		"Read": {"Compress", "CompR_Read"}, "Reset": {"Compress", "CompR_Reset"}, "Close": {"Compress", "CompR_Close"},
+		"Read": {"Compress", "CompR_Read"}, "Reset": {"Compress", "CompR_Reset"}, "Close": {"Compress", "CompR_Close"}, "Multistream": {"Compress", "CompR_Multistream"},
 	},
 	"compress/gzip.Writer": {
-		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"},
+		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"}, "Reset": {"Compress", "CompW_Reset"},
 	},
 	"compress/zlib.Writer": {
 		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"},
