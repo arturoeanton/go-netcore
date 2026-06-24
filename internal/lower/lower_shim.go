@@ -120,7 +120,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/rand":   {"Read": {"Crypto", "RandRead"}, "Int": {"Crypto", "RandInt"}},
 	"runtime/debug": {"ReadBuildInfo": {"Debug", "ReadBuildInfo"}, "Stack": {"Debug", "Stack"}, "PrintStack": {"Debug", "PrintStack"}, "SetGCPercent": {"Debug", "SetGCPercent"}, "FreeOSMemory": {"Debug", "FreeOSMemory"}},
 	"crypto/hmac":   {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
-	"crypto/subtle": {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}},
+	"crypto/subtle": {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}, "ConstantTimeCopy": {"Subtle", "ConstantTimeCopy"}, "ConstantTimeLessOrEq": {"Subtle", "ConstantTimeLessOrEq"}, "WithDataIndependentTiming": {"Subtle", "WithDataIndependentTiming"}},
 	"mime":          {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}},
 	"mime/multipart": {"NewReader": {"Multipart", "NewReader"}, "NewWriter": {"Multipart", "NewWriter"}},
 	"net/mail":      {"ParseAddress": {"Mail", "ParseAddress"}},
@@ -262,6 +262,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"WithValue": {"Context", "WithValue"}, "WithCancel": {"Context", "WithCancel"},
 		"WithTimeout": {"Context", "WithTimeout"}, "WithDeadline": {"Context", "WithDeadline"}, "WithCancelCause": {"Context", "WithCancelCause"},
 		"Cause": {"Context", "Cause"},
+		"WithTimeoutCause": {"Context", "WithTimeoutCause"}, "WithDeadlineCause": {"Context", "WithDeadlineCause"},
+		"WithoutCancel": {"Context", "WithoutCancel"}, "AfterFunc": {"Context", "AfterFunc"},
 	},
 	"sort": {
 		"Ints": {"Sort", "Ints"}, "Float64s": {"Sort", "Float64s"}, "Strings": {"Sort", "Strings"},

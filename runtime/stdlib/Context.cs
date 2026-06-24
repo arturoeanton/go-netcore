@@ -13,9 +13,10 @@ public sealed class GoContext
     public GoChan? DoneCh;     // non-null only for cancelable contexts
     public object? ErrVal;     // set once on cancel/timeout
     public object? CauseVal;   // the cancel cause (WithCancelCause); == ErrVal for a plain cancel
+    public bool NoCancel;      // WithoutCancel: never done, never errs, but parent's values remain
 
-    public GoChan? Done() => DoneCh ?? Parent?.Done();
-    public object? Err() => ErrVal ?? Parent?.Err();
+    public GoChan? Done() => NoCancel ? null : (DoneCh ?? Parent?.Done());
+    public object? Err() => NoCancel ? null : (ErrVal ?? Parent?.Err());
 
     public object? Cause()
     {
@@ -44,6 +45,19 @@ public sealed class GoContext
             if (ErrVal != null) return;
             ErrVal = err;
             CauseVal = err;
+            DoneCh?.Close();
+        }
+    }
+
+    // CancelErrCause: set a specific Err() (e.g. DeadlineExceeded) while Cause() reports the
+    // supplied cause (or Err itself when the cause is nil). Used by With*Cause timeouts.
+    public void CancelErrCause(object err, object? cause)
+    {
+        lock (this)
+        {
+            if (ErrVal != null) return;
+            ErrVal = err;
+            CauseVal = cause ?? err;
             DoneCh?.Close();
         }
     }
@@ -122,6 +136,56 @@ public static class Context
         else
             ctx.Cancel(DeadlineErr);
         return new object?[] { ctx, cancel };
+    }
+
+    // context.WithTimeoutCause / WithDeadlineCause: like WithTimeout/WithDeadline but the
+    // deadline cancellation reports `cause` via context.Cause (Err stays DeadlineExceeded).
+    public static object?[] WithTimeoutCause(object parent, long timeout, object? cause)
+    {
+        var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
+        var cancel = NativeClosures.Make(_ => { ctx.Cancel(CanceledErr); return null; });
+        double ms = timeout / 1_000_000.0;
+        if (ms > 0) System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.CancelErrCause(DeadlineErr, cause));
+        else ctx.CancelErrCause(DeadlineErr, cause);
+        return new object?[] { ctx, cancel };
+    }
+    public static object?[] WithDeadlineCause(object parent, object? deadline, object? cause)
+    {
+        var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
+        var cancel = NativeClosures.Make(_ => { ctx.Cancel(CanceledErr); return null; });
+        long nowNs = (System.DateTime.UtcNow - new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)).Ticks * 100;
+        long deadlineNs = deadline is GoTime t ? t.N : nowNs;
+        double ms = (deadlineNs - nowNs) / 1_000_000.0;
+        if (ms > 0) System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.CancelErrCause(DeadlineErr, cause));
+        else ctx.CancelErrCause(DeadlineErr, cause);
+        return new object?[] { ctx, cancel };
+    }
+
+    // context.WithoutCancel(parent): a context that is never cancelled (Done()==nil, Err()==nil)
+    // but still resolves the parent's values.
+    public static object WithoutCancel(object parent) =>
+        new GoContext { Parent = (GoContext)parent, NoCancel = true };
+
+    // context.AfterFunc(ctx, f) (stop func() bool): run f in its own goroutine once ctx is done;
+    // stop() cancels that, returning true if it prevented f from running.
+    public static GoClosure AfterFunc(object ctxo, GoClosure f)
+    {
+        var ctx = (GoContext)ctxo;
+        var gate = new object();
+        bool stopped = false, ran = false;
+        if (ctx.Done() != null)
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                while (ctx.Err() == null) System.Threading.Thread.Sleep(1);
+                lock (gate) { if (stopped) return; ran = true; }
+                GoRuntime.Invoke(f);
+            });
+        }
+        return NativeClosures.Make(_ =>
+        {
+            lock (gate) { if (ran || stopped) return (object)false; stopped = true; return (object)true; }
+        });
     }
 
     // context.Context method shims (receiver as first arg).
