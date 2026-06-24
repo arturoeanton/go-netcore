@@ -233,6 +233,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"AddrFrom4": {"Netip", "AddrFrom4"}, "AddrFrom16": {"Netip", "AddrFrom16"}, "AddrFromSlice": {"Netip", "AddrFromSlice"},
 		"IPv4Unspecified": {"Netip", "IPv4Unspecified"}, "IPv6Unspecified": {"Netip", "IPv6Unspecified"}, "IPv6Loopback": {"Netip", "IPv6Loopback"},
 		"IPv6LinkLocalAllNodes": {"Netip", "IPv6LinkLocalAllNodes"}, "IPv6LinkLocalAllRouters": {"Netip", "IPv6LinkLocalAllRouters"},
+		"ParseAddr": {"Netip", "ParseAddr"}, "MustParseAddr": {"Netip", "MustParseAddr"},
 	},
 	"net": {
 		"Listen": {"Net", "Listen"}, "Dial": {"Net", "Dial"}, "FileListener": {"Net", "FileListener"},
@@ -1760,6 +1761,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"IsMulticast": {"Netip", "Addr_IsMulticast"}, "IsGlobalUnicast": {"Netip", "Addr_IsGlobalUnicast"},
 		"IsLinkLocalUnicast": {"Netip", "Addr_IsLinkLocalUnicast"}, "IsLinkLocalMulticast": {"Netip", "Addr_IsLinkLocalMulticast"},
 		"IsInterfaceLocalMulticast": {"Netip", "Addr_IsInterfaceLocalMulticast"}, "IsPrivate": {"Netip", "Addr_IsPrivate"},
+		"WithZone": {"Netip", "Addr_WithZone"}, "StringExpanded": {"Netip", "Addr_StringExpanded"},
+		"AppendTo": {"Netip", "Addr_AppendTo"}, "AppendText": {"Netip", "Addr_AppendText"}, "MarshalText": {"Netip", "Addr_MarshalText"},
+		"AppendBinary": {"Netip", "Addr_AppendBinary"}, "MarshalBinary": {"Netip", "Addr_MarshalBinary"},
+		"UnmarshalText": {"Netip", "Addr_UnmarshalText"}, "UnmarshalBinary": {"Netip", "Addr_UnmarshalBinary"},
 	},
 	"context.Context": {
 		"Value": {"Context", "Context_Value"}, "Err": {"Context", "Context_Err"},

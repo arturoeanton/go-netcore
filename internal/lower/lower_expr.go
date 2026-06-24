@@ -574,6 +574,18 @@ func (l *funcLowerer) compare(op token.Token, operandType goir.Type) {
 		}
 		return
 	}
+	if operandType.Shim != "" {
+		// An opaque stdlib value type (e.g. netip.Addr) is comparable by value in Go,
+		// but its runtime handle is a reference object; compare field-wise.
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ValueEqual",
+			Params: []goir.Type{goir.TObject, goir.TObject}, Ret: goir.TBool,
+		}})
+		if op == token.NEQ {
+			l.emit(goir.Op{Code: goir.OpNot})
+		}
+		return
+	}
 	if operandType.Kind == goir.KPtr || operandType.Kind == goir.KObject {
 		// Reference equality (pointers, interface-vs-nil).
 		l.emit(goir.Op{Code: goir.OpCeq})
