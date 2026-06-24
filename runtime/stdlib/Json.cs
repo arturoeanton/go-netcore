@@ -495,6 +495,90 @@ public static class Json
     public static GoString SyntaxErr_Error(object e) => GoString.FromDotNetString("json: syntax error");
     public static long SyntaxErr_Offset(object e) => 0;
 
+    public static long Decoder_InputOffset(object dec) => ((GoJsonDecoder)dec).InputOffset();
+    // json.Delim is a rune; its String() is the single character.
+    public static GoString Delim_String(int d) => GoString.FromDotNetString(char.ConvertFromUtf32(d));
+
+    // RawMessage ([]byte) round-trips its bytes verbatim.
+    public static object?[] RawMessage_MarshalJSON(GoSlice m) =>
+        m.Data == null || m.Len == 0
+            ? new object?[] { GoStrings.ToByteSlice(GoString.FromDotNetString("null")), null }
+            : new object?[] { m, null };
+    // (*RawMessage).UnmarshalJSON: the pointer-to-named-slice receiver lowers to the GoSlice
+    // value, so an explicit call copies into the receiver's backing array where it has room
+    // (the json decoder fills RawMessage struct fields directly; this serves the rare direct
+    // call). Returns nil.
+    public static object? RawMessage_UnmarshalJSON(GoSlice m, GoSlice data)
+    {
+        if (m.Data != null)
+            for (int i = 0; i < data.Len && i < m.Cap; i++) m.Data[m.Off + i] = data.Data![data.Off + i];
+        return null;
+    }
+
+    // json.Compact / HTMLEscape / Indent: stream src into the *bytes.Buffer dst.
+    public static object? Compact(object? dst, GoSlice src) { Fmt.WriteTo(dst, CompactStr(SliceToString(src))); return null; }
+    public static void HTMLEscape(object? dst, GoSlice src)
+    {
+        var sb = new StringBuilder();
+        foreach (char c in SliceToString(src))
+            sb.Append(c switch { '<' => "\\u003c", '>' => "\\u003e", '&' => "\\u0026", '\u2028' => "\\u2028", '\u2029' => "\\u2029", _ => c.ToString() });
+        Fmt.WriteTo(dst, sb.ToString());
+    }
+    public static object? Indent(object? dst, GoSlice src, GoString prefix, GoString indent)
+    {
+        Fmt.WriteTo(dst, IndentStr(SliceToString(src), prefix.ToDotNetString(), indent.ToDotNetString()));
+        return null;
+    }
+    private static string CompactStr(string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        bool inStr = false;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (inStr) { sb.Append(c); if (c == '\\' && i + 1 < s.Length) sb.Append(s[++i]); else if (c == '"') inStr = false; }
+            else if (c == '"') { inStr = true; sb.Append(c); }
+            else if (c != ' ' && c != '\t' && c != '\n' && c != '\r') sb.Append(c);
+        }
+        return sb.ToString();
+    }
+    private static string IndentStr(string raw, string prefix, string indent)
+    {
+        string s = CompactStr(raw);
+        var sb = new StringBuilder();
+        bool inStr = false;
+        int depth = 0;
+        void NL(int d) { sb.Append('\n').Append(prefix); for (int k = 0; k < d; k++) sb.Append(indent); }
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (inStr) { sb.Append(c); if (c == '\\' && i + 1 < s.Length) sb.Append(s[++i]); else if (c == '"') inStr = false; continue; }
+            switch (c)
+            {
+                case '"': inStr = true; sb.Append(c); break;
+                case '{': case '[':
+                    if (i + 1 < s.Length && s[i + 1] == (c == '{' ? '}' : ']')) { sb.Append(c).Append(s[++i]); }
+                    else { sb.Append(c); depth++; NL(depth); }
+                    break;
+                case '}': case ']': depth--; NL(depth); sb.Append(c); break;
+                case ',': sb.Append(c); NL(depth); break;
+                case ':': sb.Append(": "); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    // Error-type Error()/Unwrap() — the canonical message prefixes (Go embeds the
+    // offending type/value; these rarely-inspected values carry the stable message head).
+    public static GoString UnsupportedTypeError_Error(object e) => GoString.FromDotNetString("json: unsupported type");
+    public static GoString UnsupportedValueError_Error(object e) => GoString.FromDotNetString("json: unsupported value");
+    public static GoString InvalidUTF8Error_Error(object e) => GoString.FromDotNetString("json: invalid UTF-8 in string");
+    public static GoString InvalidUnmarshalError_Error(object e) => GoString.FromDotNetString("json: Unmarshal(nil)");
+    public static GoString UnmarshalFieldError_Error(object e) => GoString.FromDotNetString("json: cannot unmarshal");
+    public static GoString MarshalerError_Error(object e) => GoString.FromDotNetString("json: error calling MarshalJSON");
+    public static object? MarshalerError_Unwrap(object e) => null;
+
     // json.Number (a named string carrying numeric text): Float64()/Int64()/String(). The
     // value-receiver methods are dispatched with the underlying string representation, so the
     // shim takes a GoString.
@@ -597,6 +681,9 @@ public sealed class GoJsonDecoder
     private readonly List<int> _ends = new(); // byte offset just past each token
     private byte[] _raw = System.Array.Empty<byte>();
     private int _pos;
+
+    // The byte offset of the input stream just past the most recently read token.
+    public long InputOffset() => _pos > 0 && _pos <= _ends.Count ? _ends[_pos - 1] : 0;
 
     // A JSON null token, distinct from "end of stream".
     private static readonly object NullTok = new();

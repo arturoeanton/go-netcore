@@ -77,6 +77,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Marshal": {"Json", "Marshal"}, "MarshalIndent": {"Json", "MarshalIndent"},
 		"NewDecoder": {"Json", "NewDecoder"}, "NewEncoder": {"Json", "NewEncoder"},
 		"Valid": {"Json", "Valid"}, "Unmarshal": {"Json", "UnmarshalValue"},
+		"Compact": {"Json", "Compact"}, "HTMLEscape": {"Json", "HTMLEscape"}, "Indent": {"Json", "Indent"},
 	},
 	"encoding/hex": {
 		"EncodeToString": {"Hex", "EncodeToString"}, "DecodeString": {"Hex", "DecodeString"},
@@ -1065,6 +1066,14 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"encoding/json.Number": {
 		"Float64": {"Json", "Number_Float64"}, "Int64": {"Json", "Number_Int64"}, "String": {"Json", "Number_String"},
 	},
+	"encoding/json.Delim":      {"String": {"Json", "Delim_String"}},
+	"encoding/json.RawMessage": {"MarshalJSON": {"Json", "RawMessage_MarshalJSON"}, "UnmarshalJSON": {"Json", "RawMessage_UnmarshalJSON"}},
+	"encoding/json.UnsupportedTypeError":  {"Error": {"Json", "UnsupportedTypeError_Error"}},
+	"encoding/json.UnsupportedValueError": {"Error": {"Json", "UnsupportedValueError_Error"}},
+	"encoding/json.InvalidUTF8Error":      {"Error": {"Json", "InvalidUTF8Error_Error"}},
+	"encoding/json.InvalidUnmarshalError": {"Error": {"Json", "InvalidUnmarshalError_Error"}},
+	"encoding/json.UnmarshalFieldError":   {"Error": {"Json", "UnmarshalFieldError_Error"}},
+	"encoding/json.MarshalerError":        {"Error": {"Json", "MarshalerError_Error"}, "Unwrap": {"Json", "MarshalerError_Unwrap"}},
 	"encoding/json.UnmarshalTypeError": {
 		"Error": {"Json", "UTE_Error"},
 	},
@@ -1145,6 +1154,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"encoding/json.Decoder": {
 		"Token": {"Json", "Decoder_Token"}, "More": {"Json", "Decoder_More"},
 		"Decode": {"Json", "Decoder_Decode"}, "UseNumber": {"Json", "Decoder_UseNumber"}, "DisallowUnknownFields": {"Json", "Decoder_DisallowUnknownFields"},
+		"InputOffset": {"Json", "Decoder_InputOffset"},
 		"Buffered": {"Json", "Decoder_Buffered"},
 	},
 	"encoding/json.Encoder": {
