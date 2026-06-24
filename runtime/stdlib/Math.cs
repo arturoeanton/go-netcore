@@ -172,6 +172,67 @@ public static class Math
 
     public static object?[] Sincos(double x) => new object?[] { SM.Sin(x), SM.Cos(x) };
 
+    // --- math.Erfinv / math.Erfcinv (faithful port of Go's src/math/erfinv.go) ---
+    private const double ei_a0 = 1.1975323115670912564578e0, ei_a1 = 4.7072688112383978012285e1,
+        ei_a2 = 6.9706266534389598238465e2, ei_a3 = 4.8548868893843886794648e3, ei_a4 = 1.6235862515167575384252e4,
+        ei_a5 = 2.3782041382114385731252e4, ei_a6 = 1.1819493347062294404278e4, ei_a7 = 8.8709406962545514830200e2;
+    private const double ei_b0 = 1.0000000000000000000e0, ei_b1 = 4.2313330701600911252e1,
+        ei_b2 = 6.8718700749205790830e2, ei_b3 = 5.3941960214247511077e3, ei_b4 = 2.1213794301586595867e4,
+        ei_b5 = 3.9307895800092710610e4, ei_b6 = 2.8729085735721942674e4, ei_b7 = 5.2264952788528545610e3;
+    private const double ei_c0 = 1.42343711074968357734e0, ei_c1 = 4.63033784615654529590e0,
+        ei_c2 = 5.76949722146069140550e0, ei_c3 = 3.64784832476320460504e0, ei_c4 = 1.27045825245236838258e0,
+        ei_c5 = 2.41780725177450611770e-1, ei_c6 = 2.27238449892691845833e-2, ei_c7 = 7.74545014278341407640e-4;
+    private const double ei_d0 = 1.4142135623730950488016887e0, ei_d1 = 2.9036514445419946173133295e0,
+        ei_d2 = 2.3707661626024532365971225e0, ei_d3 = 9.7547832001787427186894837e-1, ei_d4 = 2.0945065210512749128288442e-1,
+        ei_d5 = 2.1494160384252876777097297e-2, ei_d6 = 7.7441459065157709165577218e-4, ei_d7 = 1.4859850019840355905497876e-9;
+    private const double ei_e0 = 6.65790464350110377720e0, ei_e1 = 5.46378491116411436990e0,
+        ei_e2 = 1.78482653991729133580e0, ei_e3 = 2.96560571828504891230e-1, ei_e4 = 2.65321895265761230930e-2,
+        ei_e5 = 1.24266094738807843860e-3, ei_e6 = 2.71155556874348757815e-5, ei_e7 = 2.01033439929228813265e-7;
+    private const double ei_f0 = 1.414213562373095048801689e0, ei_f1 = 8.482908416595164588112026e-1,
+        ei_f2 = 1.936480946950659106176712e-1, ei_f3 = 2.103693768272068968719679e-2, ei_f4 = 1.112800997078859844711555e-3,
+        ei_f5 = 2.611088405080593625138020e-5, ei_f6 = 2.010321207683943062279931e-7, ei_f7 = 2.891024605872965461538222e-15;
+    private const double Ln2 = 0.693147180559945309417232121458176568075500134360255254120680;
+
+    public static double Erfinv(double x)
+    {
+        if (double.IsNaN(x) || x <= -1 || x >= 1)
+        {
+            if (x == -1 || x == 1) return Inf((long)x);
+            return double.NaN;
+        }
+        bool sign = false;
+        if (x < 0) { x = -x; sign = true; }
+        double ans;
+        if (x <= 0.85)
+        {
+            double r = Fma(-(0.25 * x), x, 0.180625); // Go contracts 0.180625 - 0.25*x*x to FMA
+            double z1 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_a7, r, ei_a6), r, ei_a5), r, ei_a4), r, ei_a3), r, ei_a2), r, ei_a1), r, ei_a0);
+            double z2 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_b7, r, ei_b6), r, ei_b5), r, ei_b4), r, ei_b3), r, ei_b2), r, ei_b1), r, ei_b0);
+            ans = (x * z1) / z2;
+        }
+        else
+        {
+            double z1, z2;
+            double r = SM.Sqrt(Ln2 - SM.Log(1.0 - x));
+            if (r <= 5.0)
+            {
+                r -= 1.6;
+                z1 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_c7, r, ei_c6), r, ei_c5), r, ei_c4), r, ei_c3), r, ei_c2), r, ei_c1), r, ei_c0);
+                z2 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_d7, r, ei_d6), r, ei_d5), r, ei_d4), r, ei_d3), r, ei_d2), r, ei_d1), r, ei_d0);
+            }
+            else
+            {
+                r -= 5.0;
+                z1 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_e7, r, ei_e6), r, ei_e5), r, ei_e4), r, ei_e3), r, ei_e2), r, ei_e1), r, ei_e0);
+                z2 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_f7, r, ei_f6), r, ei_f5), r, ei_f4), r, ei_f3), r, ei_f2), r, ei_f1), r, ei_f0);
+            }
+            ans = z1 / z2;
+        }
+        return sign ? -ans : ans;
+    }
+
+    public static double Erfcinv(double x) => Erfinv(1 - x);
+
     // --- math.Erf / math.Erfc (faithful port of Go's src/math/erf.go; Sun fdlibm constants) ---
     private const double erf_erx = 8.45062911510467529297e-01;
     private const double erf_efx = 1.28379167095512586316e-01, erf_efx8 = 1.02703333676410069053e+00;
