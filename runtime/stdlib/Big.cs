@@ -162,6 +162,95 @@ public static class Big
     public static long Int_Sign(object z) => V(z).Sign;
     public static long Int_Int64(object z) => (long)V(z);
     public static GoString Int_String(object z) => GoString.FromDotNetString(V(z).ToString());
+
+    // ---- additional pure Int methods (byte-exact via BigInteger) ----
+    public static ulong Int_Bit(object x, long i) => (ulong)((V(x) >> (int)i) & 1);
+    public static ulong Int_TrailingZeroBits(object x)
+    {
+        var v = BigInteger.Abs(V(x));
+        if (v.IsZero) return 0;
+        ulong n = 0;
+        while ((v & 1) == 0) { v >>= 1; n++; }
+        return n;
+    }
+    public static object Int_AndNot(object z, object x, object y) { ((GoBigInt)z).V = V(x) & ~V(y); return z; }
+    public static object Int_SetBit(object z, object x, long i, ulong b)
+    {
+        BigInteger mask = BigInteger.One << (int)i;
+        ((GoBigInt)z).V = b != 0 ? (V(x) | mask) : (V(x) & ~mask);
+        return z;
+    }
+    private static BigInteger MulRangeBI(long a, long b)
+    {
+        if (a > b) return BigInteger.One;
+        if (a <= 0 && b >= 0) return BigInteger.Zero;
+        BigInteger r = BigInteger.One;
+        for (long i = a; i <= b; i++) r *= i;
+        return r;
+    }
+    public static object Int_MulRange(object z, long a, long b) { ((GoBigInt)z).V = MulRangeBI(a, b); return z; }
+    public static object Int_Binomial(object z, long n, long k)
+    {
+        if (k > n) { ((GoBigInt)z).V = 0; return z; }
+        if (k > n - k) k = n - k;
+        ((GoBigInt)z).V = MulRangeBI(n - k + 1, n) / MulRangeBI(1, k);
+        return z;
+    }
+    public static object?[] Int_Float64(object x)
+    {
+        var v = V(x);
+        double d = (double)v;
+        int acc;                                              // Accuracy is int8 -> int
+        if (double.IsInfinity(d)) acc = d > 0 ? 1 : -1;       // Above / Below on overflow
+        else { int c = new BigInteger(d).CompareTo(v); acc = c > 0 ? 1 : (c < 0 ? -1 : 0); }
+        return new object?[] { d, acc };
+    }
+    public static object Int_ModInverse(object z, object g, object n)
+    {
+        BigInteger m = BigInteger.Abs(V(n)), a = ((V(g) % m) + m) % m;
+        BigInteger old_r = a, r = m, old_s = 1, s = 0;
+        while (r != 0) { var q = old_r / r; (old_r, r) = (r, old_r - q * r); (old_s, s) = (s, old_s - q * s); }
+        BigInteger res = old_r == 1 ? ((old_s % m) + m) % m : BigInteger.Zero;
+        ((GoBigInt)z).V = res;
+        return z;
+    }
+
+    private static GoSlice BytesOfStr(string s)
+    {
+        var b = System.Text.Encoding.ASCII.GetBytes(s);
+        var d = new object?[b.Length];
+        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
+    }
+    private static string StrOfBytes(GoSlice b)
+    {
+        var by = new byte[b.Len];
+        for (int i = 0; i < b.Len; i++) by[i] = (byte)System.Convert.ToInt64(b.Data![b.Off + i]);
+        return System.Text.Encoding.UTF8.GetString(by);
+    }
+    public static object?[] Int_MarshalText(object x) => new object?[] { BytesOfStr(V(x).ToString()), null };
+    public static object?[] Int_MarshalJSON(object x) => new object?[] { BytesOfStr(V(x).ToString()), null };
+    public static object? Int_UnmarshalText(object z, GoSlice text)
+    {
+        string s = StrOfBytes(text).Trim();
+        try { ((GoBigInt)z).V = BigInteger.Parse(s); return null; }
+        catch { return new GoError(GoString.FromDotNetString("math/big: cannot unmarshal \"" + s + "\" into a *big.Int")); }
+    }
+    public static object? Int_UnmarshalJSON(object z, GoSlice text)
+    {
+        string s = StrOfBytes(text).Trim().Trim('"');
+        if (s == "null") return null;
+        try { ((GoBigInt)z).V = BigInteger.Parse(s); return null; }
+        catch { return new GoError(GoString.FromDotNetString("math/big: cannot unmarshal \"" + s + "\" into a *big.Int")); }
+    }
+    public static GoSlice Int_Append(object x, GoSlice buf, long base_)
+    {
+        var extra = System.Text.Encoding.ASCII.GetBytes(Int_Text(x, base_).ToDotNetString());
+        var d = new object?[buf.Len + extra.Length];
+        for (int i = 0; i < buf.Len; i++) d[i] = buf.Data![buf.Off + i];
+        for (int i = 0; i < extra.Length; i++) d[buf.Len + i] = (int)extra[i];
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
     public static object?[] Int_SetString(object z, GoString s, long base_)
     {
         try

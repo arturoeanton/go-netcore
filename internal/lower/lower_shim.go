@@ -1513,6 +1513,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"IsInt64": {"Big", "Int_IsInt64"}, "IsUint64": {"Big", "Int_IsUint64"},
 		"CmpAbs": {"Big", "Int_CmpAbs"}, "Sqrt": {"Big", "Int_Sqrt"}, "ProbablyPrime": {"Big", "Int_ProbablyPrime"},
 		"QuoRem": {"Big", "Int_QuoRem"},
+		"Bit": {"Big", "Int_Bit"}, "SetBit": {"Big", "Int_SetBit"}, "TrailingZeroBits": {"Big", "Int_TrailingZeroBits"}, "AndNot": {"Big", "Int_AndNot"},
+		"MulRange": {"Big", "Int_MulRange"}, "Binomial": {"Big", "Int_Binomial"}, "Float64": {"Big", "Int_Float64"}, "ModInverse": {"Big", "Int_ModInverse"},
+		"MarshalText": {"Big", "Int_MarshalText"}, "UnmarshalText": {"Big", "Int_UnmarshalText"}, "MarshalJSON": {"Big", "Int_MarshalJSON"}, "UnmarshalJSON": {"Big", "Int_UnmarshalJSON"},
+		"Append": {"Big", "Int_Append"},
 	},
 	"math/big.Float": {
 		"SetInt": {"Big", "Float_SetInt"}, "Sub": {"Big", "Float_Sub"}, "Cmp": {"Big", "Float_Cmp"},
