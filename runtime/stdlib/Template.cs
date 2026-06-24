@@ -48,6 +48,34 @@ public static class Template
     sealed class PipeArg : Arg { public Pipe Pipe = new(); } // a parenthesized sub-pipeline
 
     // ---- public shim surface ----------------------------------------------
+    // template.IsTrue(val) (truth, ok): does val count as "true" for if/with? Ported from
+    // text/template's isTrue (operating on the boxed value rather than a reflect.Value).
+    public static object?[] IsTrueFunc(object? val)
+    {
+        var v = val;
+        if (v is GoNamed n) v = n.Value;
+        if (v == null) return new object?[] { false, true };       // untyped/typed nil
+        switch (v)
+        {
+            case bool b: return new object?[] { b, true };
+            case GoString s: return new object?[] { s.Len > 0, true };
+            case GoSlice sl: return new object?[] { sl.Len > 0, true };
+            case GoMap m: return new object?[] { m.Data != null && m.Data.Count > 0, true };
+            case long l: return new object?[] { l != 0, true };
+            case int i: return new object?[] { i != 0, true };
+            case ulong u: return new object?[] { u != 0, true };
+            case uint ui: return new object?[] { ui != 0, true };
+            case double d: return new object?[] { d != 0, true };
+            case float f: return new object?[] { f != 0, true };
+            case GoComplex c: return new object?[] { c.Re != 0 || c.Im != 0, true };
+            case GoPtr p: return new object?[] { p.Value != null || p.Arr != null || p.FGet != null, true }; // nil pointer is false
+            case GoClosure: return new object?[] { true, true };    // func
+            case GoChan: return new object?[] { true, true };       // chan
+        }
+        // Anything else is a struct value, which is always true.
+        return new object?[] { true, true };
+    }
+
     public static object New(GoString name) => new GoTemplate { Name = name.ToDotNetString() };
     public static object NewHtml(GoString name) => new GoTemplate { Name = name.ToDotNetString(), Html = true };
 
