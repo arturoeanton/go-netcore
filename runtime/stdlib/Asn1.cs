@@ -44,4 +44,22 @@ public static class Asn1
         for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
+
+    // asn1.NullBytes = []byte{tagNull, 0} = {5, 0}.
+    public static object NullBytes() => new GoSlice { Data = new object?[] { 5, 0 }, Off = 0, Len = 2, Cap = 2 };
+
+    // (asn1.ObjectIdentifier []int).String()/Equal() — dotted decimal, element-wise compare.
+    public static GoString OID_String(GoSlice oid)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < oid.Len; i++) { if (i > 0) sb.Append('.'); sb.Append(System.Convert.ToInt64(oid.Data![oid.Off + i])); }
+        return GoString.FromDotNetString(sb.ToString());
+    }
+    public static bool OID_Equal(GoSlice a, GoSlice b)
+    {
+        if (a.Len != b.Len) return false;
+        for (int i = 0; i < a.Len; i++)
+            if (System.Convert.ToInt64(a.Data![a.Off + i]) != System.Convert.ToInt64(b.Data![b.Off + i])) return false;
+        return true;
+    }
 }

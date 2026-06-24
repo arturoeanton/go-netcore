@@ -605,6 +605,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/csv.ErrFieldCount":     {"Csv", "ErrFieldCount"},
 	"encoding/csv.ErrTrailingComma":  {"Csv", "ErrTrailingComma"},
 	"net/mail.ErrHeaderNotPresent":   {"Mail", "ErrHeaderNotPresent"},
+	"encoding/asn1.NullBytes":        {"Asn1", "NullBytes"},
 	"bufio.ErrInvalidUnreadByte":     {"Bufio", "ErrInvalidUnreadByte"},
 	"bufio.ErrInvalidUnreadRune":     {"Bufio", "ErrInvalidUnreadRune"},
 	"bufio.ErrTooLong":               {"Bufio", "ErrTooLong"},
@@ -1576,6 +1577,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net/mail.Address": {
 		"String": {"Mail", "Address_String"},
+	},
+	"encoding/asn1.ObjectIdentifier": {
+		"String": {"Asn1", "OID_String"}, "Equal": {"Asn1", "OID_Equal"},
 	},
 	"net/mail.AddressParser": {
 		"Parse": {"Mail", "AddressParser_Parse"}, "ParseList": {"Mail", "AddressParser_ParseList"},
