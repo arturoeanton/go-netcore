@@ -809,7 +809,7 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http.Cookie": {
 		"Name": {"Http", "Cookie_Name"}, "Value": {"Http", "Cookie_Value"}, "Path": {"Http", "Cookie_Path"},
-		"Domain": {"Http", "Cookie_Domain"}, "MaxAge": {"Http", "Cookie_MaxAge"}, "Secure": {"Http", "Cookie_Secure"}, "HttpOnly": {"Http", "Cookie_HttpOnly"},
+		"Domain": {"Http", "Cookie_Domain"}, "MaxAge": {"Http", "Cookie_MaxAge"}, "Secure": {"Http", "Cookie_Secure"}, "HttpOnly": {"Http", "Cookie_HttpOnly"}, "SameSite": {"Http", "Cookie_SameSite"},
 	},
 	"sync.Pool": {
 		"New": {"Sync", "Pool_New"},
@@ -1079,7 +1079,7 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http.Cookie": {
 		"Name": {"Http", "Cookie_SetName"}, "Value": {"Http", "Cookie_SetValue"}, "Path": {"Http", "Cookie_SetPath"},
-		"Domain": {"Http", "Cookie_SetDomain"}, "MaxAge": {"Http", "Cookie_SetMaxAge"}, "Secure": {"Http", "Cookie_SetSecure"}, "HttpOnly": {"Http", "Cookie_SetHttpOnly"},
+		"Domain": {"Http", "Cookie_SetDomain"}, "MaxAge": {"Http", "Cookie_SetMaxAge"}, "Secure": {"Http", "Cookie_SetSecure"}, "HttpOnly": {"Http", "Cookie_SetHttpOnly"}, "SameSite": {"Http", "Cookie_SetSameSite"},
 	},
 	"net/mail.Address": {
 		"Name": {"Mail", "Address_SetName"}, "Address": {"Mail", "Address_SetAddress"},

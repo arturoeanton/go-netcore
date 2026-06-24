@@ -53,6 +53,7 @@ public sealed class GoCookie
     public long MaxAge;
     public bool Secure;
     public bool HttpOnly;
+    public long SameSite;
 }
 
 /// <summary>An *http.Client (over the pooled static HttpClient).</summary>
@@ -690,6 +691,7 @@ public static class Http
     public static long Cookie_MaxAge(object c) => ((GoCookie)c).MaxAge;
     public static bool Cookie_Secure(object c) => ((GoCookie)c).Secure;
     public static bool Cookie_HttpOnly(object c) => ((GoCookie)c).HttpOnly;
+    public static long Cookie_SameSite(object c) => ((GoCookie)c).SameSite;
     public static void Cookie_SetName(object c, GoString v) => ((GoCookie)c).Name = v.ToDotNetString();
     public static void Cookie_SetValue(object c, GoString v) => ((GoCookie)c).Value = v.ToDotNetString();
     public static void Cookie_SetPath(object c, GoString v) => ((GoCookie)c).Path = v.ToDotNetString();
@@ -697,17 +699,56 @@ public static class Http
     public static void Cookie_SetMaxAge(object c, long v) => ((GoCookie)c).MaxAge = v;
     public static void Cookie_SetSecure(object c, bool v) => ((GoCookie)c).Secure = v;
     public static void Cookie_SetHttpOnly(object c, bool v) => ((GoCookie)c).HttpOnly = v;
+    public static void Cookie_SetSameSite(object c, long v) => ((GoCookie)c).SameSite = v;
+    // (*http.Cookie).String(): the Set-Cookie serialization. Mirrors net/http: an invalid
+    // name yields "", the value/path are sanitized, a leading '.' is stripped off Domain,
+    // MaxAge<0 emits "Max-Age=0", and SameSite is rendered. Expires is deferred (needs
+    // time.Time formatting) — the field is not modeled, so it is never emitted.
     public static GoString Cookie_String(object c)
     {
         var ck = (GoCookie)c;
+        if (!IsCookieNameValid(ck.Name)) return GoString.FromDotNetString("");
         var sb = new System.Text.StringBuilder();
-        sb.Append(ck.Name).Append('=').Append(ck.Value);
-        if (ck.Path.Length > 0) sb.Append("; Path=").Append(ck.Path);
-        if (ck.Domain.Length > 0) sb.Append("; Domain=").Append(ck.Domain);
+        sb.Append(ck.Name).Append('=').Append(SanitizeCookieValue(ck.Value));
+        if (ck.Path.Length > 0) sb.Append("; Path=").Append(SanitizeCookiePath(ck.Path));
+        if (ck.Domain.Length > 0)
+        {
+            string d = ck.Domain[0] == '.' ? ck.Domain.Substring(1) : ck.Domain;
+            sb.Append("; Domain=").Append(d);
+        }
         if (ck.MaxAge > 0) sb.Append("; Max-Age=").Append(ck.MaxAge);
+        else if (ck.MaxAge < 0) sb.Append("; Max-Age=0");
         if (ck.HttpOnly) sb.Append("; HttpOnly");
         if (ck.Secure) sb.Append("; Secure");
+        switch (ck.SameSite)
+        {
+            case 2: sb.Append("; SameSite=Lax"); break;    // SameSiteLaxMode
+            case 3: sb.Append("; SameSite=Strict"); break; // SameSiteStrictMode
+            case 4: sb.Append("; SameSite=None"); break;   // SameSiteNoneMode
+            // 0 (unset) and 1 (SameSiteDefaultMode) emit nothing.
+        }
         return GoString.FromDotNetString(sb.ToString());
+    }
+
+    // net/http.sanitizeCookieValue: drop bytes outside [0x20,0x7f) or in {" ; \\}, then
+    // wrap in double quotes if the result contains a space or comma.
+    private static string SanitizeCookieValue(string v)
+    {
+        var sb = new System.Text.StringBuilder(v.Length);
+        foreach (char ch in v)
+            if (ch >= 0x20 && ch < 0x7f && ch != '"' && ch != ';' && ch != '\\') sb.Append(ch);
+        string s = sb.ToString();
+        if (s.Length != 0 && (s.IndexOf(' ') >= 0 || s.IndexOf(',') >= 0)) return "\"" + s + "\"";
+        return s;
+    }
+
+    // net/http.sanitizeCookiePath: drop bytes outside [0x20,0x7f) or equal to ';'.
+    private static string SanitizeCookiePath(string v)
+    {
+        var sb = new System.Text.StringBuilder(v.Length);
+        foreach (char ch in v)
+            if (ch >= 0x20 && ch < 0x7f && ch != ';') sb.Append(ch);
+        return sb.ToString();
     }
 
     /// <summary>http.ErrNotMultipart — the sentinel ParseMultipartForm returns for a
