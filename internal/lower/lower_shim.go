@@ -1776,12 +1776,16 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net/netip.AddrPort": {
 		"Addr": {"Netip", "AddrPort_Addr"}, "Port": {"Netip", "AddrPort_Port"}, "IsValid": {"Netip", "AddrPort_IsValid"},
 		"Compare": {"Netip", "AddrPort_Compare"}, "String": {"Netip", "AddrPort_String"}, "AppendTo": {"Netip", "AddrPort_AppendTo"},
+		"AppendText": {"Netip", "AddrPort_AppendText"}, "MarshalText": {"Netip", "AddrPort_MarshalText"}, "UnmarshalText": {"Netip", "AddrPort_UnmarshalText"},
+		"AppendBinary": {"Netip", "AddrPort_AppendBinary"}, "MarshalBinary": {"Netip", "AddrPort_MarshalBinary"}, "UnmarshalBinary": {"Netip", "AddrPort_UnmarshalBinary"},
 	},
 	"net/netip.Prefix": {
 		"Addr": {"Netip", "Prefix_Addr"}, "Bits": {"Netip", "Prefix_Bits"}, "IsValid": {"Netip", "Prefix_IsValid"},
 		"IsSingleIP": {"Netip", "Prefix_IsSingleIP"}, "Masked": {"Netip", "Prefix_Masked"}, "Compare": {"Netip", "Prefix_Compare"},
 		"Contains": {"Netip", "Prefix_Contains"}, "Overlaps": {"Netip", "Prefix_Overlaps"}, "String": {"Netip", "Prefix_String"},
 		"AppendTo": {"Netip", "Prefix_AppendTo"},
+		"AppendText": {"Netip", "Prefix_AppendText"}, "MarshalText": {"Netip", "Prefix_MarshalText"}, "UnmarshalText": {"Netip", "Prefix_UnmarshalText"},
+		"AppendBinary": {"Netip", "Prefix_AppendBinary"}, "MarshalBinary": {"Netip", "Prefix_MarshalBinary"}, "UnmarshalBinary": {"Netip", "Prefix_UnmarshalBinary"},
 	},
 	"context.Context": {
 		"Value": {"Context", "Context_Value"}, "Err": {"Context", "Context_Err"},

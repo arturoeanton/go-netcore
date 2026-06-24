@@ -455,6 +455,64 @@ public static class Netip
     }
     private static object?[] APErr(string msg) => new object?[] { new GoNetipAddrPort(), new GoError(GoString.FromDotNetString(msg)) };
 
+    public static object?[] AddrPort_AppendText(object po, GoSlice b) => new object?[] { AddrPort_AppendTo(po, b), null };
+    public static object?[] AddrPort_MarshalText(object po) { var b = AddrPort_AppendTo(po, Empty()); return new object?[] { b, null }; }
+    public static object?[] AddrPort_AppendBinary(object po, GoSlice b)
+    {
+        var p = (GoNetipAddrPort)po;
+        var withAddr = Append(b, BinBytes(p.Ip));
+        return new object?[] { Append(withAddr, new byte[] { (byte)p.Port, (byte)(p.Port >> 8) }), null }; // little-endian uint16
+    }
+    public static object?[] AddrPort_MarshalBinary(object po) => AddrPort_AppendBinary(po, Empty());
+    public static object? AddrPort_UnmarshalText(object po, GoSlice text)
+    {
+        var p = (GoNetipAddrPort)po;
+        if (text.Len == 0) { p.Ip = new GoNetipAddr(); p.Port = 0; return null; }
+        var r = ParseAddrPort(GoString.FromDotNetString(BytesToStr(text)));
+        if (r[1] != null) return r[1];
+        var np = (GoNetipAddrPort)r[0]!; p.Ip = np.Ip; p.Port = np.Port; return null;
+    }
+    public static object? AddrPort_UnmarshalBinary(object po, GoSlice b)
+    {
+        var p = (GoNetipAddrPort)po;
+        if (b.Len < 2) return new GoError(GoString.FromDotNetString("unexpected slice size"));
+        var addr = new GoNetipAddr();
+        var e = Addr_UnmarshalBinary(addr, Sub(b, 0, b.Len - 2));
+        if (e != null) return e;
+        int port = (int)(U8(b, b.Len - 2) | (U8(b, b.Len - 1) << 8)); // little-endian
+        p.Ip = addr; p.Port = port; return null;
+    }
+
+    public static object?[] Prefix_AppendText(object po, GoSlice b) => new object?[] { Prefix_AppendTo(po, b), null };
+    public static object?[] Prefix_MarshalText(object po) => new object?[] { Prefix_AppendTo(po, Empty()), null };
+    public static object?[] Prefix_AppendBinary(object po, GoSlice b)
+    {
+        var p = (GoNetipPrefix)po;
+        var noz = (GoNetipAddr)Addr_WithoutZone(p.Ip);
+        var withAddr = Append(b, BinBytes(noz));
+        return new object?[] { Append(withAddr, new byte[] { (byte)Prefix_Bits(po) }), null };
+    }
+    public static object?[] Prefix_MarshalBinary(object po) => Prefix_AppendBinary(po, Empty());
+    public static object? Prefix_UnmarshalText(object po, GoSlice text)
+    {
+        var p = (GoNetipPrefix)po;
+        if (text.Len == 0) { p.Ip = new GoNetipAddr(); p.BitsPlusOne = 0; return null; }
+        var r = ParsePrefix(GoString.FromDotNetString(BytesToStr(text)));
+        if (r[1] != null) return r[1];
+        var np = (GoNetipPrefix)r[0]!; p.Ip = np.Ip; p.BitsPlusOne = np.BitsPlusOne; return null;
+    }
+    public static object? Prefix_UnmarshalBinary(object po, GoSlice b)
+    {
+        var p = (GoNetipPrefix)po;
+        if (b.Len < 1) return new GoError(GoString.FromDotNetString("unexpected slice size"));
+        var addr = new GoNetipAddr();
+        var e = Addr_UnmarshalBinary(addr, Sub(b, 0, b.Len - 1));
+        if (e != null) return e;
+        var np = (GoNetipPrefix)PrefixFrom(addr, (long)U8(b, b.Len - 1));
+        p.Ip = np.Ip; p.BitsPlusOne = np.BitsPlusOne; return null;
+    }
+    private static GoSlice Empty() => new() { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
+
     // ---- Prefix --------------------------------------------------------------------------
     public static object PrefixFrom(object ipo, long bits)
     {
