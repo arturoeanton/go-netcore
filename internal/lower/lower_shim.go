@@ -1947,6 +1947,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"reflect.Value": {
 		"Kind": {"Reflect", "Value_Kind"}, "Type": {"Reflect", "Value_Type"},
+		"Comparable": {"Reflect", "Value_Comparable"}, "Equal": {"Reflect", "Value_Equal"},
 		"CanInt": {"Reflect", "Value_CanInt"}, "CanUint": {"Reflect", "Value_CanUint"}, "CanFloat": {"Reflect", "Value_CanFloat"}, "CanComplex": {"Reflect", "Value_CanComplex"},
 		"Interface": {"Reflect", "Value_Interface"}, "Int": {"Reflect", "Value_Int"},
 		"Uint": {"Reflect", "Value_Uint"}, "Float": {"Reflect", "Value_Float"},

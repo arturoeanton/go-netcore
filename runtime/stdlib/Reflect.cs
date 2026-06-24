@@ -210,6 +210,47 @@ public static class Reflect
     public static long Value_NumField(object? v) => Fields(RVal(v))?.Length ?? 0;
     public static bool Value_IsNil(object? v) { var x = RVal(v); return x == null || (x is GoSlice s && s.Data == null) || (x is GoMap m && m.Data == null); }
     public static bool Value_IsValid(object? v) => RVal(v) != null;
+
+    // reflect.Value.Comparable: whether values of this kind are comparable. Slice/map/func
+    // (and invalid) are not; scalars/string/pointer/chan are. Struct/array element-wise
+    // comparability is treated as comparable (best effort: a struct/array of scalars).
+    public static bool Value_Comparable(object? v)
+    {
+        int k = (int)Value_Kind(v);
+        if (k == GoKind.Invalid || k == GoKind.Slice || k == GoKind.Map || k == GoKind.Func) return false;
+        if (k == GoKind.Interface)
+        {
+            var e = RVal(v);
+            return e == null || Value_Comparable(new GoReflectValue { V = e });
+        }
+        return true;
+    }
+
+    // reflect.Value.Equal: compares two Values. Differing kinds compare false; comparable
+    // kinds compare by value; slice/map/func panic, as in Go.
+    public static bool Value_Equal(object? v, object? u)
+    {
+        var rv = RVal(v);
+        var ru = RVal(u);
+        if (rv == null || ru == null) return (rv == null) == (ru == null); // two invalid Values are equal
+        int kv = (int)Value_Kind(v), ku = (int)Value_Kind(u);
+        if (kv != ku) return false;
+        if (kv == GoKind.Bool) return Convert.ToBoolean(rv) == Convert.ToBoolean(ru);
+        if (kv == GoKind.Float32 || kv == GoKind.Float64) return Convert.ToDouble(rv) == Convert.ToDouble(ru);
+        if (kv == GoKind.Complex64 || kv == GoKind.Complex128)
+        {
+            var cv = rv as GoComplex ?? new GoComplex(0, 0);
+            var cu = ru as GoComplex ?? new GoComplex(0, 0);
+            return cv.Re == cu.Re && cv.Im == cu.Im;
+        }
+        if (kv == GoKind.String) return rv is GoString sv && ru is GoString su && sv.ToDotNetString() == su.ToDotNetString();
+        if (kv == GoKind.Ptr || kv == GoKind.Chan || kv == GoKind.UnsafePointer) return ReferenceEquals(rv, ru);
+        if (kv == GoKind.Slice || kv == GoKind.Map || kv == GoKind.Func)
+            throw new GoPanicException(GoString.FromDotNetString(
+                "reflect.Value.Equal: values of type " + Str(Value_Type(v)) + " are not comparable"));
+        if (kv >= GoKind.Uint && kv <= GoKind.Uintptr) return Convert.ToUInt64(rv) == Convert.ToUInt64(ru);
+        return Convert.ToInt64(rv) == Convert.ToInt64(ru);
+    }
     public static bool Value_IsZero(object? v)
     {
         var x = RVal(v);
