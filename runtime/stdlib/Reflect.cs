@@ -589,6 +589,14 @@ public static class Reflect
         string name = (int)i >= 0 && (int)i < ms.Count ? ms[(int)i] : "";
         return new GoReflectMethod { Name = name, Index = (int)i };
     }
+    // reflect.Type.MethodByName(name) (Method, bool): the exported method of that name.
+    public static object?[] Type_MethodByName(object t, GoString name)
+    {
+        var ms = ExportedMethods(TDesc(t));
+        int idx = ms.IndexOf(name.ToDotNetString());
+        if (idx < 0) return new object?[] { new GoReflectMethod(), false };
+        return new object?[] { new GoReflectMethod { Name = ms[idx], Index = idx }, true };
+    }
     public static long Type_NumIn(object t) => 0;
     public static long Type_NumOut(object t) => 0;
     public static object Type_In(object t, long i) => new GoReflectType { Sample = null };

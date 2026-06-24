@@ -22,6 +22,9 @@ func main() {
 	}
 	sort.Strings(ms)
 	fmt.Println("methods", ms)
+	if mb, ok := t.MethodByName("Wave"); ok { fmt.Println("byname", mb.Name) }
+	_, okm := t.MethodByName("secret")
+	fmt.Println("byname unexported:", okm)
 
 	// MapRange iteration (sorted for determinism).
 	m := map[string]int{"alpha": 1, "beta": 2, "gamma": 3}

@@ -1437,7 +1437,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"In": {"Reflect", "Type_In"}, "Out": {"Reflect", "Type_Out"},
 		"AssignableTo": {"Reflect", "Type_AssignableTo"}, "ConvertibleTo": {"Reflect", "Type_ConvertibleTo"},
 		"Comparable": {"Reflect", "Type_Comparable"}, "Implements": {"Reflect", "Type_Implements"},
-		"PkgPath": {"Reflect", "Type_PkgPath"}, "Method": {"Reflect", "Type_Method"},
+		"PkgPath": {"Reflect", "Type_PkgPath"}, "Method": {"Reflect", "Type_Method"}, "MethodByName": {"Reflect", "Type_MethodByName"},
 	},
 	"reflect.Kind": {
 		"String": {"Reflect", "Kind_String"},
