@@ -177,10 +177,15 @@ public static class Http
     // http.Error(w, msg, code): write the status code and message.
     public static void Error(object w, GoString msg, long code)
     {
+        var h = RW_Header(w);
+        Header_Del(h, GoString.FromDotNetString("Content-Length"));
+        Header_Set(h, GoString.FromDotNetString("Content-Type"), GoString.FromDotNetString("text/plain; charset=utf-8"));
+        Header_Set(h, GoString.FromDotNetString("X-Content-Type-Options"), GoString.FromDotNetString("nosniff"));
         RW_WriteHeader(w, code);
-        var by = (msg.ToDotNetString() + "\n");
-        Fmt.WriteTo(w, by);
+        Fmt.WriteTo(w, msg.ToDotNetString() + "\n");
     }
+    // http.NotFound(w, r): reply with a 404 "page not found" plain-text body.
+    public static void NotFound(object w, object? r) => Error(w, GoString.FromDotNetString("404 page not found"), 404);
 
     // http.CanonicalHeaderKey(s): canonical MIME header key ("content-type" -> "Content-Type").
     public static GoString CanonicalHeaderKey(GoString s) => Textproto.CanonicalMIMEHeaderKey(s);

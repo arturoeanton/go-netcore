@@ -81,8 +81,8 @@ public static class Httptest
         buf.B.AddRange(((GoRespWriter)r).Body.ToArray());
         return buf;
     }
-    public static object Recorder_HeaderMap(object r) => ((GoRespWriter)r).Headers ??= GoMaps.Make();
-    public static object Recorder_Header(object r) => ((GoRespWriter)r).Headers ??= GoMaps.Make();
+    public static GoMap Recorder_HeaderMap(object r) => ((GoRespWriter)r).Headers ??= GoMaps.Make();
+    public static GoMap Recorder_Header(object r) => ((GoRespWriter)r).Headers ??= GoMaps.Make();
     public static object?[] Recorder_Write(object r, GoSlice p) => Http.RW_Write(r, p);
     public static void Recorder_WriteHeader(object r, long code) => Http.RW_WriteHeader(r, code);
     public static GoString Recorder_BodyString(object r) =>
