@@ -159,6 +159,9 @@ public static class Http
     public static object ErrServerClosed() => ErrServerClosedSentinel;
     public static readonly GoError ErrHandlerTimeoutSentinel = new(GoString.FromDotNetString("http: Handler timeout"));
     public static object ErrHandlerTimeout() => ErrHandlerTimeoutSentinel;
+    // http.ErrNoCookie: the sentinel (*Request).Cookie returns for a missing cookie.
+    public static readonly GoError ErrNoCookieSentinel = new(GoString.FromDotNetString("http: named cookie not present"));
+    public static object ErrNoCookie() => ErrNoCookieSentinel;
     private static readonly GoReader _noBody = new();
     public static object NoBody() => _noBody;
     private static readonly object _localAddrKey = new();
@@ -466,33 +469,43 @@ public static class Http
         return new object?[] { new GoTime { IsZero = true }, new GoError(GoString.FromDotNetString("http: invalid time")) };
     }
 
-    // (*http.Request).Cookie(name) (*http.Cookie, error): parse the Cookie header.
+    // net/http.readCookies(filter): parse the request's Cookie header into cookies whose
+    // name is valid and value parses, optionally keeping only the named one (filter). Each
+    // part is trimmed, a quoted value is unquoted, and invalid name/value parts are skipped.
+    private static System.Collections.Generic.List<object?> ReadCookies(GoRequest r, string filter)
+    {
+        var list = new System.Collections.Generic.List<object?>();
+        string line = HeaderValue(r, "Cookie").Trim(' ', '\t');
+        foreach (var raw in line.Split(';'))
+        {
+            string part = raw.Trim(' ', '\t');
+            if (part.Length == 0) continue;
+            int eq = part.IndexOf('=');
+            string name = eq < 0 ? part : part.Substring(0, eq);
+            string val = eq < 0 ? "" : part.Substring(eq + 1);
+            name = name.Trim(' ', '\t');
+            if (!IsCookieNameValid(name)) continue;
+            if (filter.Length != 0 && filter != name) continue;
+            var (v, ok) = ParseCookieValue(val, true);
+            if (!ok) continue;
+            list.Add(new GoCookie { Name = name, Value = v });
+        }
+        return list;
+    }
+
+    // (*http.Request).Cookie(name) (*http.Cookie, error): the first cookie with that name,
+    // or ErrNoCookie. An empty name yields ErrNoCookie immediately, like Go.
     public static object?[] Req_Cookie(object r, GoString name)
     {
         string want = name.ToDotNetString();
-        foreach (var pair in HeaderValue((GoRequest)r, "Cookie").Split(';'))
-        {
-            string p = pair.Trim();
-            int eq = p.IndexOf('=');
-            if (eq <= 0) continue;
-            if (p.Substring(0, eq) == want)
-            {
-                var ck = new GoCookie { Name = want, Value = p.Substring(eq + 1) };
-                return new object?[] { ck, null };
-            }
-        }
-        return new object?[] { null, new GoError("http: named cookie not present") };
+        if (want.Length == 0) return new object?[] { null, ErrNoCookieSentinel };
+        var found = ReadCookies((GoRequest)r, want);
+        if (found.Count > 0) return new object?[] { found[0], null };
+        return new object?[] { null, ErrNoCookieSentinel };
     }
     public static GoSlice Req_Cookies(object r)
     {
-        var list = new System.Collections.Generic.List<object?>();
-        foreach (var pair in HeaderValue((GoRequest)r, "Cookie").Split(';'))
-        {
-            string p = pair.Trim();
-            int eq = p.IndexOf('=');
-            if (eq <= 0) continue;
-            list.Add(new GoCookie { Name = p.Substring(0, eq), Value = p.Substring(eq + 1) });
-        }
+        var list = ReadCookies((GoRequest)r, "");
         return new GoSlice { Data = list.ToArray(), Off = 0, Len = list.Count, Cap = list.Count };
     }
 

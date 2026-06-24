@@ -725,6 +725,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"net/http.ErrSkipAltProtocol":    {"Http", "ErrSkipAltProtocol"},
 	"net/http.ErrServerClosed":       {"Http", "ErrServerClosed"},
 	"net/http.ErrHandlerTimeout":     {"Http", "ErrHandlerTimeout"},
+	"net/http.ErrNoCookie":           {"Http", "ErrNoCookie"},
 	"net/http.NoBody":                {"Http", "NoBody"},
 	"net/http.DefaultServeMux":       {"HttpTypes", "DefaultServeMux"},
 	"net/http.LocalAddrContextKey":   {"Http", "LocalAddrContextKey"},
