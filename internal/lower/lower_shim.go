@@ -1682,8 +1682,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"String": {"Time", "Duration_String"}, "Truncate": {"Time", "Duration_Truncate"}, "Round": {"Time", "Duration_Round"},
 		"Abs": {"Time", "Duration_Abs"},
 	},
+	"reflect.ChanDir": {
+		"String": {"Reflect", "ChanDir_String"},
+	},
 	"reflect.Value": {
 		"Kind": {"Reflect", "Value_Kind"}, "Type": {"Reflect", "Value_Type"},
+		"CanInt": {"Reflect", "Value_CanInt"}, "CanUint": {"Reflect", "Value_CanUint"}, "CanFloat": {"Reflect", "Value_CanFloat"}, "CanComplex": {"Reflect", "Value_CanComplex"},
 		"Interface": {"Reflect", "Value_Interface"}, "Int": {"Reflect", "Value_Int"},
 		"Uint": {"Reflect", "Value_Uint"}, "Float": {"Reflect", "Value_Float"},
 		"String": {"Reflect", "Value_String"}, "Bool": {"Reflect", "Value_Bool"}, "Bytes": {"Reflect", "Value_Bytes"},

@@ -173,6 +173,17 @@ public static class Reflect
     public static ulong Value_Uint(object? v) => Convert.ToUInt64(RVal(v) ?? (ulong)0);
     public static double Value_Float(object? v) => Convert.ToDouble(RVal(v) ?? 0.0);
     public static GoComplex Value_Complex(object? v) => RVal(v) as GoComplex ?? new GoComplex(0, 0);
+    // Kind-class predicates (reflect.Value.CanInt/CanUint/CanFloat/CanComplex).
+    public static bool Value_CanInt(object? v) { var k = Value_Kind(v); return k >= (ulong)GoKind.Int && k <= (ulong)GoKind.Int64; }
+    public static bool Value_CanUint(object? v) { var k = Value_Kind(v); return k >= (ulong)GoKind.Uint && k <= (ulong)GoKind.Uintptr; }
+    public static bool Value_CanFloat(object? v) { var k = Value_Kind(v); return k == (ulong)GoKind.Float32 || k == (ulong)GoKind.Float64; }
+    public static bool Value_CanComplex(object? v) { var k = Value_Kind(v); return k == (ulong)GoKind.Complex64 || k == (ulong)GoKind.Complex128; }
+
+    // (reflect.ChanDir).String(): RecvDir=1, SendDir=2, BothDir=3.
+    public static GoString ChanDir_String(long d) => GoString.FromDotNetString(d switch
+    {
+        2 => "chan<-", 1 => "<-chan", 3 => "chan", _ => "ChanDir" + d,
+    });
     public static GoString Value_String(object? v)
     {
         var x = RVal(v);
