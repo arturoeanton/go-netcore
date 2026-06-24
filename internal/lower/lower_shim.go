@@ -178,6 +178,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"hash/crc64":      {"MakeTable": {"Hashes", "Crc64MakeTable"}, "New": {"Hashes", "Crc64New"}, "Checksum": {"Hashes", "Crc64Checksum"}, "Update": {"Hashes", "Crc64Update"}},
 	"index/suffixarray": {"New": {"Suffixarray", "New"}},
 	"mime/quotedprintable": {"NewWriter": {"QuotedPrintable", "NewWriter"}, "NewReader": {"QuotedPrintable", "NewReader"}},
+	"go/token": {"IsKeyword": {"GoToken", "IsKeyword"}, "IsIdentifier": {"GoToken", "IsIdentifier"}, "IsExported": {"GoToken", "IsExported"}, "Lookup": {"GoToken", "Lookup"}},
 	"hash/crc32":      {"ChecksumIEEE": {"Hashes", "Crc32ChecksumIEEE"}, "Update": {"Hashes", "Crc32Update"}, "NewIEEE": {"Hashes", "Crc32NewIEEE"}, "MakeTable": {"Hashes", "Crc32MakeTable"}, "Checksum": {"Hashes", "Crc32Checksum"}, "New": {"Hashes", "Crc32New"}},
 	"hash/adler32":    {"Checksum": {"Hashes", "Adler32Checksum"}, "New": {"Hashes", "Adler32New"}},
 	"compress/gzip":   {"NewWriter": {"Compress", "GzipNewWriter"}, "NewWriterLevel": {"Compress", "GzipNewWriterLevel"}, "NewReader": {"Compress", "GzipNewReader"}},
@@ -1205,6 +1206,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"index/suffixarray.Index": {"Bytes": {"Suffixarray", "Index_Bytes"}, "FindAllIndex": {"Suffixarray", "Index_FindAllIndex"}},
 	"mime/quotedprintable.Writer": {"Write": {"QuotedPrintable", "QPWriter_Write"}, "Close": {"QuotedPrintable", "QPWriter_Close"}},
 	"mime/quotedprintable.Reader": {"Read": {"QuotedPrintable", "QPReader_Read"}},
+	"go/token.Token": {"String": {"GoToken", "Token_String"}, "IsLiteral": {"GoToken", "Token_IsLiteral"}, "IsOperator": {"GoToken", "Token_IsOperator"}, "IsKeyword": {"GoToken", "Token_IsKeyword"}, "Precedence": {"GoToken", "Token_Precedence"}},
 	"strconv.NumError": {
 		"Error": {"Strconv", "NumError_Error"}, "Unwrap": {"Strconv", "NumError_Unwrap"},
 	},
