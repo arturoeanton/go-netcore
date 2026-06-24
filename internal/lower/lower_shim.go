@@ -41,6 +41,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Nextafter32": {"Math", "Nextafter32"}, "RoundToEven": {"Math", "RoundToEven"}, "Sincos": {"Math", "Sincos"},
 		"Gamma": {"Math", "Gamma"}, "Erf": {"Math", "Erf"}, "Erfc": {"Math", "Erfc"},
 		"Erfinv": {"Math", "Erfinv"}, "Erfcinv": {"Math", "Erfcinv"},
+		// Lgamma: ported (Math.Lgamma) but DEFERRED/unregistered — heavily Log/Sin/Cos-dependent
+		// (inherits .NET transcendental ULP) and a case-2 anomaly for |x|<0.19 needs diagnosis.
 	},
 	"go/ast": {
 		"IsExported": {"Ast", "IsExported"},

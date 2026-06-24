@@ -172,6 +172,183 @@ public static class Math
 
     public static object?[] Sincos(double x) => new object?[] { SM.Sin(x), SM.Cos(x) };
 
+    // --- math.Lgamma (faithful port of Go's src/math/lgamma.go) ---
+    private static readonly double[] _lgamA = {
+        7.72156649015328655494e-02, 3.22467033424113591611e-01, 6.73523010531292681824e-02, 2.05808084325167332806e-02,
+        7.38555086081402883957e-03, 2.89051383673415629091e-03, 1.19270763183362067845e-03, 5.10069792153511336608e-04,
+        2.20862790713908385557e-04, 1.08011567247583939954e-04, 2.52144565451257326939e-05, 4.48640949618915160150e-05,
+    };
+    private static readonly double[] _lgamR = {
+        1.0, 1.39200533467621045958e+00, 7.21935547567138069525e-01, 1.71933865632803078993e-01,
+        1.86459191715652901344e-02, 7.77942496381893596434e-04, 7.32668430744625636189e-06,
+    };
+    private static readonly double[] _lgamS = {
+        -7.72156649015328655494e-02, 2.14982415960608852501e-01, 3.25778796408930981787e-01, 1.46350472652464452805e-01,
+        2.66422703033638609560e-02, 1.84028451407337715652e-03, 3.19475326584100867617e-05,
+    };
+    private static readonly double[] _lgamT = {
+        4.83836122723810047042e-01, -1.47587722994593911752e-01, 6.46249402391333854778e-02, -3.27885410759859649565e-02,
+        1.79706750811820387126e-02, -1.03142241298341437450e-02, 6.10053870246291332635e-03, -3.68452016781138256760e-03,
+        2.25964780900612472250e-03, -1.40346469989232843813e-03, 8.81081882437654011382e-04, -5.38595305356740546715e-04,
+        3.15632070903625950361e-04, -3.12754168375120860518e-04, 3.35529192635519073543e-04,
+    };
+    private static readonly double[] _lgamU = {
+        -7.72156649015328655494e-02, 6.32827064025093366517e-01, 1.45492250137234768737e+00, 9.77717527963372745603e-01,
+        2.28963728064692451092e-01, 1.33810918536787660377e-02,
+    };
+    private static readonly double[] _lgamV = {
+        1.0, 2.45597793713041134822e+00, 2.12848976379893395361e+00, 7.69285150456672783825e-01,
+        1.04222645593369134254e-01, 3.21709242282423911810e-03,
+    };
+    private static readonly double[] _lgamW = {
+        4.18938533204672725052e-01, 8.33333333333329678849e-02, -2.77777777728775536470e-03, 7.93650558643019558500e-04,
+        -5.95187557450339963135e-04, 8.36339918996282139126e-04, -1.63092934096575273989e-03,
+    };
+
+    private static double SinPi(double x)
+    {
+        const double Two52s = 1L << 52, Two53s = 1L << 53;
+        if (x < 0.25) return -SM.Sin(System.Math.PI * x);
+        double z = SM.Floor(x);
+        int n;
+        if (z != x)
+        {
+            x = x % 2;
+            n = (int)(x * 4);
+        }
+        else
+        {
+            if (x >= Two53s) { x = 0; n = 0; }
+            else
+            {
+                if (x < Two52s) z = x + Two52s;
+                n = (int)(1 & Float64bits(z));
+                x = n;
+                n <<= 2;
+            }
+        }
+        switch (n)
+        {
+            case 0: x = SM.Sin(System.Math.PI * x); break;
+            case 1: case 2: x = SM.Cos(System.Math.PI * (0.5 - x)); break;
+            case 3: case 4: x = SM.Sin(System.Math.PI * (1 - x)); break;
+            case 5: case 6: x = -SM.Cos(System.Math.PI * (x - 1.5)); break;
+            default: x = SM.Sin(System.Math.PI * (x - 2)); break;
+        }
+        return -x;
+    }
+
+    public static object?[] Lgamma(double x)
+    {
+        const double Ymin = 1.461632144968362245;
+        const double Two52 = 1L << 52, Two58 = 1L << 58;
+        const double Tiny = 1.0 / (1L << 70);
+        const double Tc = 1.46163214496836224576e+00, Tf = -1.21486290535849611461e-01, Tt = -3.63867699703950536541e-18;
+        long sign = 1;
+        if (double.IsNaN(x)) return new object?[] { x, sign };
+        if (double.IsInfinity(x)) return new object?[] { x, sign };
+        if (x == 0) return new object?[] { double.PositiveInfinity, sign };
+
+        bool neg = false;
+        if (x < 0) { x = -x; neg = true; }
+        if (x < Tiny)
+        {
+            if (neg) sign = -1;
+            return new object?[] { -SM.Log(x), sign };
+        }
+        double nadj = 0;
+        if (neg)
+        {
+            if (x >= Two52) return new object?[] { double.PositiveInfinity, sign };
+            double t0 = SinPi(x);
+            if (t0 == 0) return new object?[] { double.PositiveInfinity, sign };
+            nadj = SM.Log(System.Math.PI / SM.Abs(t0 * x));
+            if (t0 < 0) sign = -1;
+        }
+
+        double lgamma;
+        if (x == 1 || x == 2) lgamma = 0;
+        else if (x < 2)
+        {
+            double y; int i;
+            if (x <= 0.9)
+            {
+                lgamma = -SM.Log(x);
+                if (x >= (Ymin - 1 + 0.27)) { y = 1 - x; i = 0; }
+                else if (x >= (Ymin - 1 - 0.27)) { y = x - (Tc - 1); i = 1; }
+                else { y = x; i = 2; }
+            }
+            else
+            {
+                lgamma = 0;
+                if (x >= (Ymin + 0.27)) { y = 2 - x; i = 0; }
+                else if (x >= (Ymin - 0.27)) { y = x - Tc; i = 1; }
+                else { y = x - 1; i = 2; }
+            }
+            switch (i)
+            {
+                case 0:
+                    {
+                        double z = y * y;
+                        double p1 = Fma(z, Fma(z, Fma(z, Fma(z, Fma(z, _lgamA[10], _lgamA[8]), _lgamA[6]), _lgamA[4]), _lgamA[2]), _lgamA[0]);
+                        double p2 = z * Fma(z, Fma(z, Fma(z, Fma(z, Fma(z, _lgamA[11], _lgamA[9]), _lgamA[7]), _lgamA[5]), _lgamA[3]), _lgamA[1]);
+                        double p = Fma(y, p1, p2);
+                        lgamma += Fma(-0.5, y, p);
+                        break;
+                    }
+                case 1:
+                    {
+                        double z = y * y;
+                        double w = z * y;
+                        double p1 = Fma(w, Fma(w, Fma(w, Fma(w, _lgamT[12], _lgamT[9]), _lgamT[6]), _lgamT[3]), _lgamT[0]);
+                        double p2 = Fma(w, Fma(w, Fma(w, Fma(w, _lgamT[13], _lgamT[10]), _lgamT[7]), _lgamT[4]), _lgamT[1]);
+                        double p3 = Fma(w, Fma(w, Fma(w, Fma(w, _lgamT[14], _lgamT[11]), _lgamT[8]), _lgamT[5]), _lgamT[2]);
+                        double p = Fma(z, p1, -Fma(-w, Fma(y, p3, p2), Tt));
+                        lgamma += Tf + p;
+                        break;
+                    }
+                default:
+                    {
+                        double p1 = y * Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, _lgamU[5], _lgamU[4]), _lgamU[3]), _lgamU[2]), _lgamU[1]), _lgamU[0]);
+                        double p2 = Fma(y, Fma(y, Fma(y, Fma(y, _lgamV[5], _lgamV[4]), _lgamV[3]), _lgamV[2]), _lgamV[1]);
+                        p2 = Fma(y, p2, 1);
+                        lgamma += Fma(-0.5, y, p1 / p2);
+                        break;
+                    }
+            }
+        }
+        else if (x < 8)
+        {
+            int i = (int)x;
+            double y = x - i;
+            double p = y * Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, _lgamS[6], _lgamS[5]), _lgamS[4]), _lgamS[3]), _lgamS[2]), _lgamS[1]), _lgamS[0]);
+            double q = Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, _lgamR[6], _lgamR[5]), _lgamR[4]), _lgamR[3]), _lgamR[2]), _lgamR[1]);
+            q = Fma(y, q, 1);
+            lgamma = Fma(0.5, y, p / q);
+            double z = 1.0;
+            switch (i)
+            {
+                case 7: z *= (y + 6); goto case 6;
+                case 6: z *= (y + 5); goto case 5;
+                case 5: z *= (y + 4); goto case 4;
+                case 4: z *= (y + 3); goto case 3;
+                case 3: z *= (y + 2); lgamma += SM.Log(z); break;
+            }
+        }
+        else if (x < Two58)
+        {
+            double t = SM.Log(x);
+            double z = 1 / x;
+            double y = z * z;
+            double w = Fma(z, Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, _lgamW[6], _lgamW[5]), _lgamW[4]), _lgamW[3]), _lgamW[2]), _lgamW[1]), _lgamW[0]);
+            lgamma = Fma(x - 0.5, t - 1, w);
+        }
+        else lgamma = x * (SM.Log(x) - 1);
+
+        if (neg) lgamma = nadj - lgamma;
+        return new object?[] { lgamma, sign };
+    }
+
     // --- math.Erfinv / math.Erfcinv (faithful port of Go's src/math/erfinv.go) ---
     private const double ei_a0 = 1.1975323115670912564578e0, ei_a1 = 4.7072688112383978012285e1,
         ei_a2 = 6.9706266534389598238465e2, ei_a3 = 4.8548868893843886794648e3, ei_a4 = 1.6235862515167575384252e4,
