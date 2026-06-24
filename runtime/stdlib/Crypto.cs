@@ -194,6 +194,8 @@ public static class Crypto
             };
             return hm.ComputeHash(data);
         }
+        if (h.Algo == "fnv128") return Fnv128(data, false);
+        if (h.Algo == "fnv128a") return Fnv128(data, true);
         if (h.Algo.StartsWith("SHA3-", System.StringComparison.Ordinal)) return Sha3Digest(h.Algo, data);
         using HashAlgorithm ha = h.Algo switch
         {
@@ -205,6 +207,29 @@ public static class Crypto
             _ => SHA256.Create(),
         };
         return ha.ComputeHash(data);
+    }
+
+    // FNV-1/FNV-1a 128-bit (hash/fnv New128/New128a). Faithful port of Go's sum128 Write:
+    // prime128 = 2**88 + 0x13b, kept as two uint64 words s0 (high) / s1 (low). FNV-1
+    // multiplies then XORs the byte into the low word; FNV-1a XORs first. Digest is the
+    // 16 bytes big-endian (high word then low word).
+    private static byte[] Fnv128(byte[] data, bool a)
+    {
+        const ulong offHi = 0x6c62272e07bb0142UL, offLo = 0x62b821756295c58dUL;
+        const ulong primeLo = 0x13b; const int primeShift = 24;
+        ulong s0 = offHi, s1 = offLo;
+        foreach (byte c in data)
+        {
+            if (a) s1 ^= c;
+            ulong hi = System.Math.BigMul(primeLo, s1, out ulong lo);
+            hi += (s1 << primeShift) + primeLo * s0;
+            s1 = lo; s0 = hi;
+            if (!a) s1 ^= c;
+        }
+        var o = new byte[16];
+        for (int i = 0; i < 8; i++) o[i] = (byte)(s0 >> (56 - 8 * i));
+        for (int i = 0; i < 8; i++) o[8 + i] = (byte)(s1 >> (56 - 8 * i));
+        return o;
     }
 
     // hash.Hash methods.

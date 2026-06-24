@@ -21,6 +21,10 @@ public static class Hashes
     public static object Fnv32a() => new GoHash32 { H = 2166136261u, Algo = "fnv32a" };
     public static object Fnv64() => new GoHash64 { H = 14695981039346656037ul, Algo = "fnv64" };
     public static object Fnv64a() => new GoHash64 { H = 14695981039346656037ul, Algo = "fnv64a" };
+    // fnv.New128/New128a return a 128-bit hash.Hash; reuse the GoHash buffer plumbing
+    // (Crypto.Hash_Write/Hash_Sum), with the FNV-128 digest computed in Crypto.Digest.
+    public static object Fnv128() => new GoHash { Algo = "fnv128", Size = 16, Block = 1 };
+    public static object Fnv128a() => new GoHash { Algo = "fnv128a", Size = 16, Block = 1 };
 
     public static object?[] H32_Write(object ho, GoSlice p)
     {

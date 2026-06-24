@@ -155,7 +155,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"encoding/binary": {"Write": {"Binary", "Write"}, "Read": {"Binary", "Read"}, "Size": {"Binary", "Size"}, "PutUvarint": {"Binary", "PutUvarint"}, "Uvarint": {"Binary", "Uvarint"}, "PutVarint": {"Binary", "PutVarint"}, "Varint": {"Binary", "Varint"}, "ReadUvarint": {"Binary", "ReadUvarint"}, "ReadVarint": {"Binary", "ReadVarint"}, "Append": {"Binary", "Append"}, "AppendUvarint": {"Binary", "AppendUvarint"}, "AppendVarint": {"Binary", "AppendVarint"}, "Encode": {"Binary", "Encode"}, "Decode": {"Binary", "Decode"}},
 	"crypto/aes":      {"NewCipher": {"Aes", "NewCipher"}},
 	"crypto/cipher":   {"NewGCM": {"Aes", "NewGCM"}},
-	"hash/fnv":        {"New32": {"Hashes", "Fnv32"}, "New32a": {"Hashes", "Fnv32a"}, "New64": {"Hashes", "Fnv64"}, "New64a": {"Hashes", "Fnv64a"}},
+	"hash/fnv":        {"New32": {"Hashes", "Fnv32"}, "New32a": {"Hashes", "Fnv32a"}, "New64": {"Hashes", "Fnv64"}, "New64a": {"Hashes", "Fnv64a"}, "New128": {"Hashes", "Fnv128"}, "New128a": {"Hashes", "Fnv128a"}},
 	"hash/crc32":      {"ChecksumIEEE": {"Hashes", "Crc32ChecksumIEEE"}, "Update": {"Hashes", "Crc32Update"}, "NewIEEE": {"Hashes", "Crc32NewIEEE"}, "MakeTable": {"Hashes", "Crc32MakeTable"}, "Checksum": {"Hashes", "Crc32Checksum"}, "New": {"Hashes", "Crc32New"}},
 	"hash/adler32":    {"Checksum": {"Hashes", "Adler32Checksum"}, "New": {"Hashes", "Adler32New"}},
 	"compress/gzip":   {"NewWriter": {"Compress", "GzipNewWriter"}, "NewReader": {"Compress", "GzipNewReader"}},
@@ -185,11 +185,13 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"path": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
+		"Match": {"Path", "Match"},
 	},
 	"path/filepath": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
 		"ToSlash": {"Path", "ToSlash"}, "FromSlash": {"Path", "FromSlash"}, "Walk": {"Path", "Walk"}, "Abs": {"Path", "Abs"},
+		"Match": {"Path", "Match"},
 	},
 	"fmt": {
 		"Sprint": {"Fmt", "Sprint"}, "Sprintln": {"Fmt", "Sprintln"}, "Sprintf": {"Fmt", "Sprintf"},
@@ -568,6 +570,8 @@ var shimVarRegistry = map[string]shimFunc{
 	"hash/crc32.IEEETable":           {"Hashes", "Crc32IEEETable"},
 	"bufio.ErrBufferFull":            {"Bufio", "ErrBufferFull"},
 	"bufio.ErrNegativeCount":         {"Bufio", "ErrNegativeCount"},
+	"path.ErrBadPattern":            {"Path", "ErrBadPattern"},
+	"path/filepath.ErrBadPattern":   {"Path", "ErrBadPattern"},
 	"bufio.ErrInvalidUnreadByte":     {"Bufio", "ErrInvalidUnreadByte"},
 	"bufio.ErrInvalidUnreadRune":     {"Bufio", "ErrInvalidUnreadRune"},
 	"bufio.ErrTooLong":               {"Bufio", "ErrTooLong"},
