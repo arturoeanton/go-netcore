@@ -301,6 +301,11 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ParseFloat": {"Strconv", "ParseFloat"}, "ParseBool": {"Strconv", "ParseBool"},
 		"Quote": {"Strconv", "Quote"}, "QuoteToASCII": {"Strconv", "QuoteToASCII"},
 		"CanBackquote": {"Strconv", "CanBackquote"}, "AppendInt": {"Strconv", "AppendInt"}, "AppendUint": {"Strconv", "AppendUint"}, "AppendBool": {"Strconv", "AppendBool"}, "AppendFloat": {"Strconv", "AppendFloat"}, "AppendQuote": {"Strconv", "AppendQuote"},
+		"QuoteRune": {"Strconv", "QuoteRune"}, "QuoteRuneToASCII": {"Strconv", "QuoteRuneToASCII"}, "QuoteRuneToGraphic": {"Strconv", "QuoteRuneToGraphic"}, "QuoteToGraphic": {"Strconv", "QuoteToGraphic"},
+		"AppendQuoteToASCII": {"Strconv", "AppendQuoteToASCII"}, "AppendQuoteToGraphic": {"Strconv", "AppendQuoteToGraphic"},
+		"AppendQuoteRune": {"Strconv", "AppendQuoteRune"}, "AppendQuoteRuneToASCII": {"Strconv", "AppendQuoteRuneToASCII"}, "AppendQuoteRuneToGraphic": {"Strconv", "AppendQuoteRuneToGraphic"},
+		"Unquote": {"Strconv", "Unquote"}, "UnquoteChar": {"Strconv", "UnquoteChar"}, "QuotedPrefix": {"Strconv", "QuotedPrefix"},
+		"FormatComplex": {"Strconv", "FormatComplex"}, "ParseComplex": {"Strconv", "ParseComplex"},
 	},
 	"unicode/utf8": {
 		"RuneCountInString": {"Utf8", "RuneCountInString"}, "RuneCount": {"Utf8", "RuneCount"},
@@ -1051,6 +1056,9 @@ var binaryMethods = map[string]shimFunc{
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
 	"runtime.Frames": {"Next": {"Goruntime", "Frames_Next"}},
+	"strconv.NumError": {
+		"Error": {"Strconv", "NumError_Error"}, "Unwrap": {"Strconv", "NumError_Unwrap"},
+	},
 	"encoding/json.Number": {
 		"Float64": {"Json", "Number_Float64"}, "Int64": {"Json", "Number_Int64"}, "String": {"Json", "Number_String"},
 	},
