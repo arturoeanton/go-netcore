@@ -5,6 +5,7 @@ using GoCLR.Runtime;
 /// <summary>A go/token.Position: a resolved source position (file, byte offset, 1-based
 /// line and column).</summary>
 [GoShim("go/token.Position")]
+[GoShim("text/scanner.Position")]
 public sealed class GoPosition { public string Filename = ""; public long Offset, Line, Column; }
 
 /// <summary>A go/token.File: a file in a FileSet, with its base Pos, size and line-offset
@@ -212,6 +213,29 @@ public static class GoToken
     }
     // (token.Pos).IsValid(): a Pos is valid iff it is not NoPos (0).
     public static bool Pos_IsValid(long p) => p != 0;
+
+    // (text/scanner.Position).String(): "<input>" when unnamed, ":line:col" when valid.
+    public static GoString ScannerPosition_String(object po)
+    {
+        var p = (GoPosition)po;
+        string s = p.Filename.Length == 0 ? "<input>" : p.Filename;
+        if (p.Line > 0) s += $":{p.Line}:{p.Column}";
+        return GoString.FromDotNetString(s);
+    }
+
+    // text/scanner.TokenString(tok): the token's name, or its quoted rune for a literal char.
+    public static GoString ScannerTokenString(int tok)
+    {
+        string? name = tok switch
+        {
+            -1 => "EOF", -2 => "Ident", -3 => "Int", -4 => "Float",
+            -5 => "Char", -6 => "String", -7 => "RawString", -8 => "Comment", _ => null,
+        };
+        if (name != null) return GoString.FromDotNetString(name);
+        string ch = tok >= 0 && tok <= 0x10FFFF && !(tok >= 0xD800 && tok <= 0xDFFF)
+            ? char.ConvertFromUtf32(tok) : "�"; // string(rune): invalid -> U+FFFD
+        return Strconv.Quote(GoString.FromDotNetString(ch));
+    }
 
     private static readonly string[] Tokens = { "ILLEGAL", "EOF", "COMMENT", "", "IDENT", "INT", "FLOAT", "IMAG", "CHAR", "STRING", "", "", "+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>", "&^", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=", "&^=", "&&", "||", "<-", "++", "--", "==", "<", ">", "=", "!", "!=", "<=", ">=", ":=", "...", "(", "[", "{", ",", ".", ")", "]", "}", ";", ":", "", "", "break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto", "if", "import", "interface", "map", "package", "range", "return", "select", "struct", "switch", "type", "var", "", "", "~", "" };
     private const int LiteralBeg=3, LiteralEnd=10, OperatorBeg=11, OperatorEnd=59, KeywordBeg=60, KeywordEnd=86, Tilde=88, Ident=4;
