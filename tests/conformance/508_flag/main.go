@@ -1,0 +1,33 @@
+package main
+import ("fmt";"flag";"time")
+func main(){
+ fs:=flag.NewFlagSet("app",flag.ContinueOnError)
+ verbose:=fs.Bool("v",false,"verbose")
+ n:=fs.Int("n",10,"count")
+ big:=fs.Int64("big",1,"")
+ u:=fs.Uint("u",0,"")
+ u64:=fs.Uint64("u64",0,"")
+ rate:=fs.Float64("rate",1.5,"")
+ name:=fs.String("name","def","")
+ dur:=fs.Duration("timeout",2*time.Second,"")
+ var port int
+ fs.IntVar(&port,"port",8080,"")
+ err:=fs.Parse([]string{"-v","-n=5","--big","999","-u","7","-u64=42","-rate","3.14","-name=hello","-timeout=1m30s","-port","9000","extra1","extra2"})
+ fmt.Println("err",err)
+ fmt.Println(*verbose,*n,*big,*u,*u64,*rate,*name,*dur,port)
+ fmt.Println("parsed",fs.Parsed(),"narg",fs.NArg(),"nflag",fs.NFlag(),"name",fs.Name())
+ fmt.Println("args",fs.Args(),"arg0",fs.Arg(0),"arg1",fs.Arg(1),"arg5",fs.Arg(5))
+ fs2:=flag.NewFlagSet("",flag.ContinueOnError)
+ b1:=fs2.Bool("a",false,""); b2:=fs2.Bool("b",true,"")
+ fs2.Parse([]string{"-a=true","-b=false"}); fmt.Println(*b1,*b2)
+ fs3:=flag.NewFlagSet("",flag.ContinueOnError)
+ x:=fs3.Int("x",0,"")
+ fmt.Println("set",fs3.Set("x","99"),*x,"nflag",fs3.NFlag())
+ fmt.Println("setbad",fs3.Set("nope","1"))
+ fmt.Println("seterr",fs3.Set("x","abc"))
+ fs7:=flag.NewFlagSet("",flag.ContinueOnError); fv:=fs7.Bool("f",false,"")
+ fs7.Parse([]string{"-f","--","-notaflag"}); fmt.Println(*fv,fs7.Args())
+ // hex/octal int parse, negative
+ fs8:=flag.NewFlagSet("",flag.ContinueOnError); h:=fs8.Int("h",0,""); neg:=fs8.Int("neg",0,"")
+ fs8.Parse([]string{"-h=0x1F","-neg=-42"}); fmt.Println(*h,*neg)
+}
