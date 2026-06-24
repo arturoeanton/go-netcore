@@ -217,10 +217,53 @@ public sealed class GoRandSource
 }
 
 // *math/rand.Rand wrapping a source. Methods mirror Go's value stream exactly.
-public sealed class GoRand
+public sealed partial class GoRand
 {
     private readonly GoRandSource src;
     public GoRand(object source) => src = (GoRandSource)source;
+
+    // ziggurat constants (tables in RandZiggurat.cs).
+    private const double Rn = 3.442619855899, Re = 7.69711747013104972;
+    private static uint AbsInt32(int i) => i < 0 ? (uint)(-i) : (uint)i;
+
+    // rand.NormFloat64: standard normal via the ziggurat method (verbatim port of normal.go;
+    // the math.Exp result is truncated to float32 before comparison, so the arm64 Exp ULP is
+    // absorbed and the PRNG stream is consumed identically to Go).
+    public double NormFloat64()
+    {
+        while (true)
+        {
+            int j = (int)Uint32(); // possibly negative
+            int i = j & 0x7F;
+            double x = (double)j * (double)Wn[i];
+            if (AbsInt32(j) < Kn[i]) return x;
+            if (i == 0)
+            {
+                double y;
+                do
+                {
+                    x = -System.Math.Log(Float64()) * (1.0 / Rn);
+                    y = -System.Math.Log(Float64());
+                } while (y + y < x * x);
+                return j > 0 ? Rn + x : -Rn - x;
+            }
+            if (Fn[i] + (float)Float64() * (Fn[i - 1] - Fn[i]) < (float)System.Math.Exp(-.5 * x * x)) return x;
+        }
+    }
+
+    // rand.ExpFloat64: exponential via the ziggurat method (verbatim port of exp.go).
+    public double ExpFloat64()
+    {
+        while (true)
+        {
+            uint j = Uint32();
+            int i = (int)(j & 0xFF);
+            double x = (double)j * (double)We[i];
+            if (j < Ke[i]) return x;
+            if (i == 0) return Re - System.Math.Log(Float64());
+            if (Fe[i] + (float)Float64() * (Fe[i - 1] - Fe[i]) < (float)System.Math.Exp(-x)) return x;
+        }
+    }
 
     public long Int63() => src.Int63();
     public long Int() { ulong u = (ulong)src.Int63(); return (long)(u << 1 >> 1); }
@@ -366,8 +409,12 @@ public static class Rand
     public static int Int31n(int n) => Global.Int31n(n);
     public static float Float32() => Global.Float32();
     public static object?[] Read(GoSlice p) => Global.Read(p);
+    public static double NormFloat64() => Global.NormFloat64();
+    public static double ExpFloat64() => Global.ExpFloat64();
 
     // *rand.Rand method shims (receiver as first arg).
+    public static double Rand_NormFloat64(object r) => ((GoRand)r).NormFloat64();
+    public static double Rand_ExpFloat64(object r) => ((GoRand)r).ExpFloat64();
     public static long Rand_Int63(object r) => ((GoRand)r).Int63();
     public static long Rand_Int(object r) => ((GoRand)r).Int();
     public static long Rand_Int63n(object r, long n) => ((GoRand)r).Int63n(n);
