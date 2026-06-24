@@ -24,7 +24,7 @@ public sealed class GoFileHeader
 public sealed class GoMultipartReader { public object? R; public string Boundary = ""; }
 
 /// <summary>A mime/multipart.Writer: marshals form fields/parts to an underlying writer.</summary>
-public sealed class GoMultipartWriter { public object? W; public string Boundary = "goclrFormBoundary7MA4YWxkTrZu0gW"; }
+public sealed class GoMultipartWriter { public object? W; public string Boundary = "goclrFormBoundary7MA4YWxkTrZu0gW"; public bool HasPart; }
 
 /// <summary>Shim for a subset of mime/multipart (Form parsing + FileHeader/File).</summary>
 public static class Multipart
@@ -55,20 +55,42 @@ public static class Multipart
         ((GoMultipartWriter)mw).Boundary = s;
         return null;
     }
+    // Write a part header. Go separates parts with a leading "\r\n--boundary" after the first
+    // part (the first part gets no leading CRLF); the closing boundary likewise gets one.
+    private static void WritePartHeader(GoMultipartWriter w, string headerLines)
+    {
+        string prefix = w.HasPart ? "\r\n--" + w.Boundary + "\r\n" : "--" + w.Boundary + "\r\n";
+        w.HasPart = true;
+        Compress.WriteRaw(w.W, Encoding.UTF8.GetBytes(prefix + headerLines + "\r\n"));
+    }
+    private static string EscapeQuotes(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
     public static object?[] Writer_WriteField(object mw, GoString name, GoString val)
     {
         var w = (GoMultipartWriter)mw;
-        string s = "--" + w.Boundary + "\r\nContent-Disposition: form-data; name=\"" + name.ToDotNetString() + "\"\r\n\r\n"
-                   + val.ToDotNetString() + "\r\n";
-        Compress.WriteRaw(w.W, Encoding.UTF8.GetBytes(s));
+        WritePartHeader(w, "Content-Disposition: form-data; name=\"" + EscapeQuotes(name.ToDotNetString()) + "\"\r\n");
+        Compress.WriteRaw(w.W, Encoding.UTF8.GetBytes(val.ToDotNetString()));
         return new object?[] { null };
     }
-    // CreatePart(header textproto.MIMEHeader) (io.Writer, error): write the part headers,
-    // then return the underlying writer so the caller streams the part body into it.
+    // CreateFormField(name) / CreateFormFile(name, filename) (io.Writer, error): write the part
+    // header, then return the underlying writer so the caller streams the body into it.
+    public static object?[] Writer_CreateFormField(object mw, GoString name)
+    {
+        var w = (GoMultipartWriter)mw;
+        WritePartHeader(w, "Content-Disposition: form-data; name=\"" + EscapeQuotes(name.ToDotNetString()) + "\"\r\n");
+        return new object?[] { w.W, null };
+    }
+    public static object?[] Writer_CreateFormFile(object mw, GoString name, GoString filename)
+    {
+        var w = (GoMultipartWriter)mw;
+        WritePartHeader(w, "Content-Disposition: form-data; name=\"" + EscapeQuotes(name.ToDotNetString())
+            + "\"; filename=\"" + EscapeQuotes(filename.ToDotNetString()) + "\"\r\nContent-Type: application/octet-stream\r\n");
+        return new object?[] { w.W, null };
+    }
     public static object?[] Writer_CreatePart(object mw, object? header)
     {
         var w = (GoMultipartWriter)mw;
-        var sb = new StringBuilder("--").Append(w.Boundary).Append("\r\n");
+        var sb = new StringBuilder();
         if (header is GoMap hm && hm.Data != null)
             foreach (var kv in hm.Data)
             {
@@ -81,16 +103,24 @@ public static class Multipart
                         sb.Append(hk).Append(": ").Append(hv).Append("\r\n");
                     }
             }
-        sb.Append("\r\n");
-        Compress.WriteRaw(w.W, Encoding.UTF8.GetBytes(sb.ToString()));
+        WritePartHeader(w, sb.ToString());
         return new object?[] { w.W, null };
     }
     public static object? Writer_Close(object mw)
     {
         var w = (GoMultipartWriter)mw;
-        Compress.WriteRaw(w.W, Encoding.ASCII.GetBytes("--" + w.Boundary + "--\r\n"));
+        string s = w.HasPart ? "\r\n--" + w.Boundary + "--\r\n" : "--" + w.Boundary + "--\r\n";
+        Compress.WriteRaw(w.W, Encoding.ASCII.GetBytes(s));
         return null;
     }
+
+    // mime/multipart.FileContentDisposition(fieldName, fileName) (Go 1.25).
+    public static GoString FileContentDisposition(GoString field, GoString file) =>
+        GoString.FromDotNetString("form-data; name=\"" + EscapeQuotes(field.ToDotNetString())
+            + "\"; filename=\"" + EscapeQuotes(file.ToDotNetString()) + "\"");
+
+    public static readonly GoError ErrMessageTooLargeSentinel = new(GoString.FromDotNetString("multipart: message too large"));
+    public static object ErrMessageTooLarge() => ErrMessageTooLargeSentinel;
 
     public static object? Form_RemoveAll(object f) => null; // no temp files to clean
     public static GoMap Form_Value(object f) => (GoMap)(((GoMultipartForm)f).Value ?? GoMaps.Make());

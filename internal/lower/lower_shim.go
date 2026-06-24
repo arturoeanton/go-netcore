@@ -135,7 +135,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/hmac":   {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
 	"crypto/subtle": {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}, "ConstantTimeCopy": {"Subtle", "ConstantTimeCopy"}, "ConstantTimeLessOrEq": {"Subtle", "ConstantTimeLessOrEq"}, "WithDataIndependentTiming": {"Subtle", "WithDataIndependentTiming"}},
 	"mime":          {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}, "FormatMediaType": {"Mime", "FormatMediaType"}, "AddExtensionType": {"Mime", "AddExtensionType"}},
-	"mime/multipart": {"NewReader": {"Multipart", "NewReader"}, "NewWriter": {"Multipart", "NewWriter"}},
+	"mime/multipart": {"NewReader": {"Multipart", "NewReader"}, "NewWriter": {"Multipart", "NewWriter"}, "FileContentDisposition": {"Multipart", "FileContentDisposition"}},
 	"net/mail":      {"ParseAddress": {"Mail", "ParseAddress"}, "ParseAddressList": {"Mail", "ParseAddressList"}},
 	"os/signal": {
 		"Notify": {"Ossignal", "Notify"}, "Stop": {"Ossignal", "Stop"},
@@ -609,6 +609,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/csv.ErrTrailingComma":  {"Csv", "ErrTrailingComma"},
 	"net/mail.ErrHeaderNotPresent":   {"Mail", "ErrHeaderNotPresent"},
 	"encoding/asn1.NullBytes":        {"Asn1", "NullBytes"},
+	"mime/multipart.ErrMessageTooLarge": {"Multipart", "ErrMessageTooLarge"},
 	"bufio.ErrInvalidUnreadByte":     {"Bufio", "ErrInvalidUnreadByte"},
 	"bufio.ErrInvalidUnreadRune":     {"Bufio", "ErrInvalidUnreadRune"},
 	"bufio.ErrTooLong":               {"Bufio", "ErrTooLong"},
@@ -1189,6 +1190,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetBoundary": {"Multipart", "Writer_SetBoundary"}, "WriteField": {"Multipart", "Writer_WriteField"},
 		"CreatePart": {"Multipart", "Writer_CreatePart"}, "Close": {"Multipart", "Writer_Close"},
 		"Boundary": {"Multipart", "Writer_Boundary"}, "FormDataContentType": {"Multipart", "Writer_FormDataContentType"},
+		"CreateFormField": {"Multipart", "Writer_CreateFormField"}, "CreateFormFile": {"Multipart", "Writer_CreateFormFile"},
 	},
 	"crypto/tls.Config": {
 		"Clone": {"HttpTypes", "Config_Clone"}, "BuildNameToCertificate": {"HttpTypes", "Config_BuildNameToCertificate"},
