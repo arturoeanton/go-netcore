@@ -49,6 +49,52 @@ public static class Binary
 
     public static object LittleEndian() => new GoByteOrder { Big = false };
     public static object BigEndian() => new GoByteOrder { Big = true };
+    public static object NativeEndian() => new GoByteOrder { Big = false }; // x86/ARM are little-endian
+
+    private static GoSlice AppendBytes(GoSlice buf, System.Collections.Generic.List<byte> add)
+    {
+        var d = new object?[add.Count];
+        for (int i = 0; i < add.Count; i++) d[i] = (int)add[i];
+        return Rt.AppendSlice(buf, new GoSlice { Data = d, Off = 0, Len = add.Count, Cap = add.Count });
+    }
+    public static GoSlice AppendUvarint(GoSlice buf, ulong x)
+    {
+        var add = new System.Collections.Generic.List<byte>();
+        while (x >= 0x80) { add.Add((byte)(x | 0x80)); x >>= 7; }
+        add.Add((byte)x);
+        return AppendBytes(buf, add);
+    }
+    public static GoSlice AppendVarint(GoSlice buf, long v)
+    {
+        ulong ux = (ulong)v << 1;
+        if (v < 0) ux = ~ux;
+        return AppendUvarint(buf, ux);
+    }
+    public static object?[] Append(GoSlice buf, object order, object? data)
+    {
+        var add = new System.Collections.Generic.List<byte>();
+        Ser(add, ((GoByteOrder)order).Big, data);
+        return new object?[] { AppendBytes(buf, add), null };
+    }
+    public static object?[] Encode(GoSlice buf, object order, object? data)
+    {
+        var ser = new System.Collections.Generic.List<byte>();
+        Ser(ser, ((GoByteOrder)order).Big, data);
+        if (ser.Count > buf.Len) return new object?[] { 0L, new GoError(GoString.FromDotNetString("binary.Encode: buffer too small")) };
+        for (int i = 0; i < ser.Count; i++) buf.Data![buf.Off + i] = (int)ser[i];
+        return new object?[] { (long)ser.Count, null };
+    }
+    public static object?[] Decode(GoSlice buf, object order, object? data)
+    {
+        bool big = ((GoByteOrder)order).Big;
+        var ptr = (GoPtr)data!;
+        int n = SizeOf(ptr.Value);
+        if (buf.Len < n) return new object?[] { 0L, new GoError(GoString.FromDotNetString("binary.Decode: buffer too small")) };
+        var slice = new byte[n];
+        for (int i = 0; i < n; i++) slice[i] = (byte)System.Convert.ToInt64(buf.Data![buf.Off + i]);
+        ptr.Value = Deser(ptr.Value, slice, big);
+        return new object?[] { (long)n, null };
+    }
 
     private static void Emit(System.Collections.Generic.List<byte> outp, bool big, byte[] le)
     {

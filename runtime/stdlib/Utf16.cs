@@ -12,6 +12,22 @@ public static class Utf16
 
     public static bool IsSurrogate(int r) => surr1 <= r && r < surr3;
 
+    // utf16.RuneLen: 1 for a BMP rune, 2 for a supplementary rune, -1 if invalid.
+    public static long RuneLen(int r)
+    {
+        if (r < 0 || (surr1 <= r && r < surr3) || r > maxRune) return -1;
+        return r <= 0xFFFF ? 1 : 2;
+    }
+    // utf16.AppendRune: append the UTF-16 code unit(s) for r to a ([]uint16).
+    public static GoSlice AppendRune(GoSlice a, int r)
+    {
+        var add = new System.Collections.Generic.List<object?>();
+        if (r >= 0 && r < surrSelf && !(surr1 <= r && r < surr3)) add.Add((uint)r);
+        else if (surrSelf <= r && r <= maxRune) { int v = r - surrSelf; add.Add((uint)(surr1 + ((v >> 10) & 0x3ff))); add.Add((uint)(surr2 + (v & 0x3ff))); }
+        else add.Add((uint)replacementChar);
+        return Rt.AppendSlice(a, new GoSlice { Data = add.ToArray(), Off = 0, Len = add.Count, Cap = add.Count });
+    }
+
     public static object?[] EncodeRune(int r)
     {
         if (r < surrSelf || r > maxRune)

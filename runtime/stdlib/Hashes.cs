@@ -3,7 +3,7 @@ namespace GoCLR.Stdlib;
 using GoCLR.Runtime;
 
 /// <summary>A hash.Hash32/Hash64 handle (FNV / CRC32 / CRC64 / Adler32).</summary>
-public sealed class GoHash32 { public uint H; public string Algo = ""; }
+public sealed class GoHash32 { public uint H; public string Algo = ""; public GoPtr? Tab; }
 public sealed class GoHash64 { public ulong H; public string Algo = ""; }
 
 /// <summary>Shims for hash/fnv, hash/crc32, hash/crc64, hash/adler32.</summary>
@@ -13,6 +13,8 @@ public static class Hashes
 
     // ---- FNV ----
     public static object Crc32NewIEEE() => new GoHash32 { H = 0, Algo = "crc32" };
+    // crc32.New(tab *Table): a running CRC-32 digest over the given polynomial table.
+    public static object Crc32New(GoPtr tab) => new GoHash32 { H = 0, Algo = "crc32", Tab = tab };
     // adler32.New(): a running digest. H packs (b<<16)|a; the initial value is 1 (a=1, b=0).
     public static object Adler32New() => new GoHash32 { H = 1, Algo = "adler32" };
     public static object Fnv32() => new GoHash32 { H = 2166136261u, Algo = "fnv32" };
@@ -23,7 +25,7 @@ public static class Hashes
     public static object?[] H32_Write(object ho, GoSlice p)
     {
         var h = (GoHash32)ho;
-        if (h.Algo == "crc32") { h.H = Crc32Update(h.H, null, p); return new object?[] { (long)p.Len, null }; }
+        if (h.Algo == "crc32") { h.H = Crc32Update(h.H, h.Tab!, p); return new object?[] { (long)p.Len, null }; }
         if (h.Algo == "adler32")
         {
             uint a = h.H & 0xffff, b = h.H >> 16;
@@ -75,8 +77,8 @@ public static class Hashes
     // A *crc32.Table handle carries its 256-entry table in the GoPtr cell so Update/Checksum
     // honour the polynomial (fiber builds a custom table via crc32.MakeTable for ETags).
     private static uint[] TableOf(GoCLR.Runtime.GoPtr? tab) => tab?.Value as uint[] ?? CrcTable;
-    public static object Crc32IEEETable() => new GoCLR.Runtime.GoPtr { Value = CrcTable };
-    public static object Crc32MakeTable(uint poly) => new GoCLR.Runtime.GoPtr { Value = BuildCrc(poly) };
+    public static object Crc32IEEETable() => new GoPtr { Value = CrcTable }; // a var accessor: object
+    public static GoPtr Crc32MakeTable(uint poly) => new() { Value = BuildCrc(poly) };
 
     public static uint Crc32ChecksumIEEE(GoSlice data)
     {
