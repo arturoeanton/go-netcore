@@ -20,8 +20,21 @@ public sealed class GoFileHeader
     public byte[] Content = System.Array.Empty<byte>();
 }
 
-/// <summary>A mime/multipart.Reader: an underlying reader + the boundary, parsed lazily.</summary>
-public sealed class GoMultipartReader { public object? R; public string Boundary = ""; }
+/// <summary>A mime/multipart.Reader: an underlying reader + the boundary, parsed lazily.
+/// On the first NextPart/NextRawPart the body is drained and split into Parts.</summary>
+public sealed class GoMultipartReader { public object? R; public string Boundary = ""; public List<GoMultipartPart>? Parts; public int Idx; }
+
+/// <summary>A mime/multipart.Part: one section of a multipart body — its (canonicalized)
+/// header, its raw body bytes with a read cursor, and the parsed Content-Disposition.</summary>
+[GoShim("mime/multipart.Part")]
+public sealed class GoMultipartPart
+{
+    public GoMap Header = GoMaps.Make();
+    public byte[] Content = System.Array.Empty<byte>();
+    public int Pos;
+    public string Disposition = "";
+    public Dictionary<string, string> DispParams = new();
+}
 
 /// <summary>A mime/multipart.Writer: marshals form fields/parts to an underlying writer.</summary>
 public sealed class GoMultipartWriter { public object? W; public string Boundary = "goclrFormBoundary7MA4YWxkTrZu0gW"; public bool HasPart; }
@@ -41,6 +54,127 @@ public static class Multipart
         var r = (GoMultipartReader)mr;
         var raw = Readers.Drain(r.R);
         return new object?[] { ParseForm(raw, r.Boundary), null };
+    }
+
+    // (*multipart.Reader).NextPart() (*Part, error): the next body part, decoding a
+    // quoted-printable Content-Transfer-Encoding (and dropping that header). NextRawPart is
+    // the same without the transfer-encoding decode. io.EOF when the parts are exhausted.
+    public static object?[] Reader_NextPart(object mr) => Next((GoMultipartReader)mr, true);
+    public static object?[] Reader_NextRawPart(object mr) => Next((GoMultipartReader)mr, false);
+
+    private static object?[] Next(GoMultipartReader r, bool decode)
+    {
+        if (r.Parts == null) { r.Parts = ParseParts(Readers.Drain(r.R), r.Boundary); r.Idx = 0; }
+        if (r.Idx >= r.Parts.Count) return new object?[] { null, Io.EOFSentinel };
+        var part = r.Parts[r.Idx++];
+        if (decode)
+        {
+            var cte = Textproto.MIMEHeader_Get(part.Header, GoString.FromDotNetString("Content-Transfer-Encoding"));
+            if (cte.ToDotNetString() == "quoted-printable")
+            {
+                part.Content = QuotedPrintable.DecodeBytes(part.Content);
+                part.Header.Data!.Remove(GoString.FromDotNetString("Content-Transfer-Encoding"));
+            }
+        }
+        return new object?[] { part, null };
+    }
+
+    // (*multipart.Part) methods/fields.
+    public static GoMap Part_Header(object po) => ((GoMultipartPart)po).Header;
+    public static GoString Part_FormName(object po)
+    {
+        var p = (GoMultipartPart)po;
+        if (p.Disposition != "form-data") return GoString.FromDotNetString("");
+        return GoString.FromDotNetString(p.DispParams.TryGetValue("name", out var n) ? n : "");
+    }
+    public static GoString Part_FileName(object po)
+    {
+        var p = (GoMultipartPart)po;
+        if (!p.DispParams.TryGetValue("filename", out var f) || f.Length == 0) return GoString.FromDotNetString("");
+        return GoString.FromDotNetString(FilepathBase(f));
+    }
+    public static object?[] Part_Read(object po, GoSlice buf)
+    {
+        var p = (GoMultipartPart)po;
+        int avail = p.Content.Length - p.Pos;
+        if (avail <= 0) return new object?[] { 0L, Io.EOFSentinel };
+        int n = System.Math.Min(buf.Len, avail);
+        for (int i = 0; i < n; i++) buf.Data![buf.Off + i] = (int)p.Content[p.Pos + i];
+        p.Pos += n;
+        return new object?[] { (long)n, null };
+    }
+    public static object? Part_Close(object po) => null;
+
+    // filepath.Base (unix '/'): strip directory from an uploaded filename (RFC 7578 §4.2).
+    private static string FilepathBase(string s)
+    {
+        if (s.Length == 0) return ".";
+        s = s.TrimEnd('/');
+        if (s.Length == 0) return "/";
+        int i = s.LastIndexOf('/');
+        if (i >= 0) s = s.Substring(i + 1);
+        return s.Length == 0 ? "/" : s;
+    }
+
+    // Split a multipart body into its parts (header + raw body), the streaming-API counterpart
+    // of ParseForm. Unlike ParseForm it keeps every part, including those without a name.
+    private static List<GoMultipartPart> ParseParts(byte[] raw, string boundary)
+    {
+        var parts = new List<GoMultipartPart>();
+        if (raw.Length == 0 || boundary.Length == 0) return parts;
+        byte[] delim = Encoding.ASCII.GetBytes("--" + boundary);
+        var starts = new List<int>();
+        for (int i = 0; (i = IndexOf(raw, delim, i)) >= 0; i += delim.Length) starts.Add(i);
+        for (int s = 0; s < starts.Count; s++)
+        {
+            int from = starts[s] + delim.Length;
+            if (from + 1 < raw.Length && raw[from] == '-' && raw[from + 1] == '-') break; // closing boundary
+            if (from + 1 < raw.Length && raw[from] == '\r' && raw[from + 1] == '\n') from += 2;
+            int to = s + 1 < starts.Count ? starts[s + 1] : raw.Length;
+            if (to >= 2 && raw[to - 2] == '\r' && raw[to - 1] == '\n') to -= 2;
+            if (to < from) continue;
+            var part = MakePart(raw, from, to);
+            if (part != null) parts.Add(part);
+        }
+        return parts;
+    }
+
+    private static GoMultipartPart? MakePart(byte[] raw, int from, int to)
+    {
+        int hEnd = IndexOf(raw, new byte[] { (byte)'\r', (byte)'\n', (byte)'\r', (byte)'\n' }, from);
+        if (hEnd < 0 || hEnd > to) return null;
+        string headerBlock = Encoding.ASCII.GetString(raw, from, hEnd - from);
+        int bodyStart = hEnd + 4;
+        int bodyLen = to - bodyStart;
+        if (bodyLen < 0) bodyLen = 0;
+        var content = new byte[bodyLen];
+        System.Array.Copy(raw, bodyStart, content, 0, bodyLen);
+        var part = new GoMultipartPart { Content = content };
+        string disp = "";
+        foreach (var line in headerBlock.Split("\r\n"))
+        {
+            int c = line.IndexOf(':');
+            if (c < 0) continue;
+            string hk = line.Substring(0, c).Trim();
+            string hv = line.Substring(c + 1).Trim();
+            string ck = Textproto.CanonicalMIMEHeaderKey(GoString.FromDotNetString(hk)).ToDotNetString();
+            part.Header.Data![GoString.FromDotNetString(ck)] =
+                new GoSlice { Data = new object?[] { GoString.FromDotNetString(hv) }, Off = 0, Len = 1, Cap = 1 };
+            if (hk.Equals("Content-Disposition", System.StringComparison.OrdinalIgnoreCase)) disp = hv;
+        }
+        var segs = disp.Split(';');
+        part.Disposition = segs.Length > 0 ? segs[0].Trim().ToLowerInvariant() : "";
+        for (int i = 1; i < segs.Length; i++)
+        {
+            var pseg = segs[i].Trim();
+            int eq = pseg.IndexOf('=');
+            if (eq < 0) continue;
+            string k = pseg.Substring(0, eq).Trim().ToLowerInvariant();
+            string v = pseg.Substring(eq + 1).Trim();
+            if (v.Length >= 2 && v[0] == '"' && v[^1] == '"') v = v.Substring(1, v.Length - 2);
+            part.DispParams[k] = v;
+        }
+        return part;
     }
 
     // ---- mime/multipart.Writer ----

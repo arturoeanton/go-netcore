@@ -22,6 +22,10 @@ public static class QuotedPrintable
 
     // Used by Readers.Drain so io.ReadAll(qpReader) returns the decoded bytes (the error,
     // if any, is dropped by io.ReadAll's runtime path — read directly to observe it).
+    // Decode a complete quoted-printable byte block (used by multipart's NextPart when a
+    // part declares Content-Transfer-Encoding: quoted-printable).
+    internal static byte[] DecodeBytes(byte[] input) { var (dec, _) = DecodeAll(input); return dec; }
+
     internal static byte[] DrainDecoded(GoQPReader r)
     {
         if (r.Decoded == null) { var (dec, err) = DecodeAll(Readers.Drain(r.Src)); r.Decoded = dec; r.Err = err; }

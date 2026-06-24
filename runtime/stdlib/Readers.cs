@@ -137,6 +137,7 @@ public static class Readers
             case GoBuffer gb: { int n = gb.B.Count - gb.Pos; var rem = new byte[n]; for (int i = 0; i < n; i++) rem[i] = gb.B[gb.Pos + i]; gb.Pos = gb.B.Count; return rem; }
             case GoStringBuilder sb: return System.Text.Encoding.UTF8.GetBytes(sb.SB.ToString());
             case GoQPReader qp: return QuotedPrintable.DrainDecoded(qp);
+            case GoMultipartPart mp: { var rem = new byte[mp.Content.Length - mp.Pos]; System.Array.Copy(mp.Content, mp.Pos, rem, 0, rem.Length); mp.Pos = mp.Content.Length; return rem; }
             case GoFile f when f.IsStdin: { string? all = System.Console.In.ReadToEnd(); return System.Text.Encoding.UTF8.GetBytes(all ?? ""); }
             // Any other io.Reader (a compiled multiReader/LimitReader, or a user type): drive
             // its own Read through the callback bridge until EOF.

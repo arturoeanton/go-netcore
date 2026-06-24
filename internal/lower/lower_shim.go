@@ -592,6 +592,7 @@ var opaqueShimTypes = map[string]bool{
 	"mime/multipart.File":                true,
 	"mime/multipart.Reader":              true,
 	"mime/multipart.Writer":              true,
+	"mime/multipart.Part":                true,
 	"net/http.Cookie":                    true,
 	"net/http.Client":                    true,
 	"net/http/cookiejar.Jar":             true,
@@ -772,6 +773,9 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"mime/multipart.FileHeader": {
 		"Filename": {"Multipart", "FH_Filename"}, "Size": {"Multipart", "FH_Size"}, "Header": {"Multipart", "FH_Header"},
+	},
+	"mime/multipart.Part": {
+		"Header": {"Multipart", "Part_Header"},
 	},
 	"net/http.Cookie": {
 		"Name": {"Http", "Cookie_Name"}, "Value": {"Http", "Cookie_Value"}, "Path": {"Http", "Cookie_Path"},
@@ -1270,7 +1274,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"RemoveAll": {"Multipart", "Form_RemoveAll"},
 	},
 	"mime/multipart.Reader": {
-		"ReadForm": {"Multipart", "Reader_ReadForm"},
+		"ReadForm": {"Multipart", "Reader_ReadForm"}, "NextPart": {"Multipart", "Reader_NextPart"}, "NextRawPart": {"Multipart", "Reader_NextRawPart"},
+	},
+	"mime/multipart.Part": {
+		"Read": {"Multipart", "Part_Read"}, "Close": {"Multipart", "Part_Close"}, "FormName": {"Multipart", "Part_FormName"}, "FileName": {"Multipart", "Part_FileName"},
 	},
 	"mime/multipart.Writer": {
 		"SetBoundary": {"Multipart", "Writer_SetBoundary"}, "WriteField": {"Multipart", "Writer_WriteField"},
