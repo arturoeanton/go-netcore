@@ -252,6 +252,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"ParseIP": {"Net", "ParseIP"}, "ParseMAC": {"Net", "ParseMAC"}, "ParseCIDR": {"Net", "ParseCIDR"},
 		"SplitHostPort": {"Net", "SplitHostPort"}, "JoinHostPort": {"Net", "JoinHostPort"},
 		"ResolveTCPAddr": {"Net", "ResolveTCPAddr"}, "ResolveUDPAddr": {"Net", "ResolveUDPAddr"},
+		"TCPAddrFromAddrPort": {"Net", "TCPAddrFromAddrPort"}, "UDPAddrFromAddrPort": {"Net", "UDPAddrFromAddrPort"},
 		"ResolveIPAddr": {"Net", "ResolveIPAddr"}, "ResolveUnixAddr": {"Net", "ResolveUnixAddr"},
 		"ListenUDP": {"Net", "ListenUDP"}, "DialUDP": {"Net", "DialUDP"},
 		"Interfaces": {"Net", "Interfaces"},

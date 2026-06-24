@@ -665,6 +665,16 @@ public static class Net
         string a = address.ToDotNetString();
         return new object?[] { new GoNetAddr { Str = a }, null };
     }
+    // net.TCPAddrFromAddrPort / net.UDPAddrFromAddrPort: build a *TCPAddr/*UDPAddr from a
+    // netip.AddrPort (IP = addr.AsSlice(), Port = addr.Port()).
+    public static object TCPAddrFromAddrPort(object ap) => AddrFromAddrPort(ap);
+    public static object UDPAddrFromAddrPort(object ap) => AddrFromAddrPort(ap);
+    private static GoNetAddr AddrFromAddrPort(object apObj)
+    {
+        var ap = (GoNetipAddrPort)apObj;
+        return new GoNetAddr { Ip = Netip.Addr_AsSlice(ap.Ip), Port = ap.Port, Str = "" };
+    }
+
     public static object?[] ResolveTCPAddr(GoString n, GoString a) => ResolveAddr(n, a);
     // net.ResolveUDPAddr parses host:port so the returned *UDPAddr carries IP and Port
     // (ListenUDP/DialUDP and addr.Port/addr.IP need them, not just the string form).
