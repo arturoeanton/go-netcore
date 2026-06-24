@@ -989,7 +989,30 @@ public static class Http
         }
         return m;
     }
-    public static object? Header_Write(GoMap h, object? w) => null;
+    // http.Header.Write(w): write the header in sorted key order as "Key: value\r\n",
+    // one line per value (newlines in a value become spaces, then trimmed) — matching
+    // net/http's writeSubset, which sorts keys and emits every value.
+    public static object? Header_Write(GoMap h, object? w)
+    {
+        var m = (GoMap)h;
+        if (m.Data == null) return null;
+        var pairs = new System.Collections.Generic.List<(string Key, GoSlice Vals)>();
+        foreach (var kv in m.Data)
+            if (kv.Value is GoSlice s && s.Data != null)
+                pairs.Add((((GoString)kv.Key).ToDotNetString(), s));
+        pairs.Sort((a, b) => System.String.CompareOrdinal(a.Key, b.Key));
+        var sb = new System.Text.StringBuilder();
+        foreach (var (key, vals) in pairs)
+            for (int i = 0; i < vals.Len; i++)
+            {
+                string v = ((GoString)vals.Data![vals.Off + i]!).ToDotNetString();
+                v = v.Replace('\n', ' ').Replace('\r', ' '); // headerNewlineToSpace
+                v = v.Trim(' ', '\t');                        // textproto.TrimString
+                sb.Append(key).Append(": ").Append(v).Append("\r\n");
+            }
+        Fmt.WriteTo(w, sb.ToString());
+        return null;
+    }
 
     // *http.Request field getters.
     public static GoString Req_Method(object r) => GoString.FromDotNetString(((GoRequest)r).Method);
