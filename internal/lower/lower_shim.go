@@ -87,6 +87,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"EncodeToString": {"Hex", "EncodeToString"}, "DecodeString": {"Hex", "DecodeString"},
 		"Encode": {"Hex", "Encode"}, "Decode": {"Hex", "Decode"}, "Dump": {"Hex", "Dump"},
 		"EncodedLen": {"Hex", "EncodedLen"}, "DecodedLen": {"Hex", "DecodedLen"},
+		"AppendEncode": {"Hex", "AppendEncode"}, "AppendDecode": {"Hex", "AppendDecode"},
+		"NewDecoder": {"Hex", "NewDecoder"},
 	},
 	"encoding/base32": {
 		"NewEncoding": {"Base32", "NewEncoding"}, "NewEncoder": {"Base32", "NewEncoder"}, "NewDecoder": {"Base32", "NewDecoder"},
@@ -575,6 +577,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"bufio.ErrNegativeCount":         {"Bufio", "ErrNegativeCount"},
 	"path.ErrBadPattern":            {"Path", "ErrBadPattern"},
 	"path/filepath.ErrBadPattern":   {"Path", "ErrBadPattern"},
+	"encoding/hex.ErrLength":        {"Hex", "ErrLength"},
 	"bufio.ErrInvalidUnreadByte":     {"Bufio", "ErrInvalidUnreadByte"},
 	"bufio.ErrInvalidUnreadRune":     {"Bufio", "ErrInvalidUnreadRune"},
 	"bufio.ErrTooLong":               {"Bufio", "ErrTooLong"},
@@ -1433,6 +1436,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"hash.Hash": {
 		"Write": {"Crypto", "Hash_Write"}, "Sum": {"Crypto", "Hash_Sum"}, "Reset": {"Crypto", "Hash_Reset"},
 		"Size": {"Crypto", "Hash_Size"}, "BlockSize": {"Crypto", "Hash_BlockSize"},
+	},
+	"encoding/hex.InvalidByteError": {
+		"Error": {"Hex", "InvalidByteError_Error"},
 	},
 	// Go 1.24's crypto/sha3.New* return the concrete *sha3.SHA3 (not hash.Hash). It is an
 	// opaque shim handle (the GoHash the constructor builds); its hash.Hash methods reuse
