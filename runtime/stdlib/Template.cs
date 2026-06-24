@@ -146,13 +146,68 @@ public static class Template
     // read by reflection); SafeKind reads it, and unwrapping yields the underlying value.
     sealed class Tagged { public string Kind = ""; public object? V; }
 
-    public static GoString JSEscapeString(GoString s)
+    private const string UpHex = "0123456789ABCDEF";
+    private static bool JsIsSpecial(char r) =>
+        r == '\\' || r == '\'' || r == '"' || r == '<' || r == '>' || r == '&' || r == '=' || r < ' ' || r >= 0x80;
+
+    // text/template.JSEscapeString — faithful to Go's JSEscape (dumped vs go run): \ ' "
+    // backslash-escape; < > & = use \u00XX (uppercase); other control bytes \u00XX; printable
+    // non-ASCII is kept as-is.
+    public static GoString JSEscapeString(GoString sS)
     {
+        string s = sS.ToDotNetString();
         var sb = new StringBuilder();
-        foreach (char c in s.ToDotNetString())
-            sb.Append(c switch { '<' => "\\u003c", '>' => "\\u003e", '&' => "\\u0026", '\'' => "\\u0027", '"' => "\\u0022", _ => c.ToString() });
+        foreach (char c in s)
+        {
+            if (!JsIsSpecial(c)) { sb.Append(c); continue; }
+            if (c < 0x80)
+            {
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\'': sb.Append("\\'"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '<': sb.Append("\\u003C"); break;
+                    case '>': sb.Append("\\u003E"); break;
+                    case '&': sb.Append("\\u0026"); break;
+                    case '=': sb.Append("\\u003D"); break;
+                    default: sb.Append("\\u00").Append(UpHex[(c >> 4) & 0xf]).Append(UpHex[c & 0xf]); break;
+                }
+            }
+            else if (!char.IsControl(c)) sb.Append(c);                 // printable non-ASCII kept
+            else sb.Append("\\u").Append(((int)c).ToString("X4"));
+        }
         return GoString.FromDotNetString(sb.ToString());
     }
+
+    // text/template.HTMLEscapeString — \0 -> U+FFFD, " ' & < > to numeric/named entities.
+    public static GoString HTMLEscapeString(GoString sS)
+    {
+        string s = sS.ToDotNetString();
+        var sb = new StringBuilder();
+        foreach (char c in s)
+            sb.Append(c switch
+            {
+                '\0' => "�", '"' => "&#34;", '\'' => "&#39;", '&' => "&amp;", '<' => "&lt;", '>' => "&gt;",
+                _ => c.ToString(),
+            });
+        return GoString.FromDotNetString(sb.ToString());
+    }
+
+    // The variadic Escaper funcs: format the args (fmt.Sprint) then escape.
+    public static GoString HTMLEscaper(GoSlice args) => HTMLEscapeString(Fmt.Sprint(args));
+    public static GoString JSEscaper(GoSlice args) => JSEscapeString(Fmt.Sprint(args));
+    public static GoString URLQueryEscaper(GoSlice args) => Url.QueryEscape(Fmt.Sprint(args));
+
+    // HTMLEscape(w, b) / JSEscape(w, b): write the escaped bytes to w.
+    private static string BytesToStr(GoSlice b)
+    {
+        var by = new byte[b.Len];
+        for (int i = 0; i < b.Len; i++) by[i] = (byte)System.Convert.ToInt64(b.Data![b.Off + i]);
+        return System.Text.Encoding.UTF8.GetString(by);
+    }
+    public static void HTMLEscape(object? w, GoSlice b) => Fmt.WriteTo(w, HTMLEscapeString(GoString.FromDotNetString(BytesToStr(b))).ToDotNetString());
+    public static void JSEscape(object? w, GoSlice b) => Fmt.WriteTo(w, JSEscapeString(GoString.FromDotNetString(BytesToStr(b))).ToDotNetString());
 
     // ---- lexer -------------------------------------------------------------
     sealed class Item { public bool IsAction; public string Text = ""; }
