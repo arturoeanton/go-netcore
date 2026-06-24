@@ -695,6 +695,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"bytes.ErrTooLarge":              {"BytesBuffer", "ErrTooLarge"},
 	"encoding/binary.NativeEndian":   {"Binary", "NativeEndian"},
 	"encoding/xml.HTMLAutoClose":     {"Xml", "HTMLAutoClose"},
+	"encoding/xml.HTMLEntity":        {"Xml", "HTMLEntity"},
 	"io.ErrUnexpectedEOF":            {"Io", "ErrUnexpectedEOF"},
 	"net.ErrClosed":                  {"Net", "ErrClosed"},
 	"net/http.ErrAbortHandler":       {"Http", "ErrAbortHandler"},

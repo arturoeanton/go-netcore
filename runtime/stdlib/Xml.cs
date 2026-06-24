@@ -31,7 +31,7 @@ public sealed class GoXmlEncoder
 /// plus the token API (StartElement/EndElement/CharData). Go's encoder rejects maps; this
 /// shim instead emits <c>&lt;map&gt;…&lt;/map&gt;</c>, so gin.H renders without a custom
 /// marshaler.</summary>
-public static class Xml
+public static partial class Xml
 {
     public const string HeaderConst = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     public static object Header() => GoString.FromDotNetString(HeaderConst);
