@@ -36,8 +36,35 @@ public sealed class GoFileInfo
 }
 
 /// <summary>Shim for a subset of Go's <c>os</c> package.</summary>
+/// <summary>os.LinkError: an Op/Old/New/Err quadruple from Link/Symlink/Rename, whose
+/// Error() reads "op old new: err" and Unwrap()/Is follow the wrapped error.</summary>
+[GoShim("os.LinkError")]
+public sealed class GoLinkError : IGoError, IGoWrapped
+{
+    public string Op = "", Old = "", New = "";
+    public object? Err;
+    public GoString Error() => GoString.FromDotNetString(Op + " " + Old + " " + New + ": " + ErrStr(Err));
+    public object? GoUnwrapped() => Err;
+    internal static string ErrStr(object? e) =>
+        e is IGoError g ? g.Error().ToDotNetString()
+        : e != null && Bridge.HasMethod(e, "Error") && Bridge.CallMethod(e, "Error") is GoString gs ? gs.ToDotNetString() : "";
+}
+
 public static class Os
 {
+    // os.LinkError struct + methods (5-step shim value type).
+    public static object LinkErrorZero() => new GoLinkError();
+    public static GoString LinkError_Op(object e) => GoString.FromDotNetString(((GoLinkError)e).Op);
+    public static GoString LinkError_Old(object e) => GoString.FromDotNetString(((GoLinkError)e).Old);
+    public static GoString LinkError_New(object e) => GoString.FromDotNetString(((GoLinkError)e).New);
+    public static object? LinkError_Err(object e) => ((GoLinkError)e).Err;
+    public static void LinkError_SetOp(object e, GoString v) => ((GoLinkError)e).Op = v.ToDotNetString();
+    public static void LinkError_SetOld(object e, GoString v) => ((GoLinkError)e).Old = v.ToDotNetString();
+    public static void LinkError_SetNew(object e, GoString v) => ((GoLinkError)e).New = v.ToDotNetString();
+    public static void LinkError_SetErr(object e, object? v) => ((GoLinkError)e).Err = v;
+    public static GoString LinkError_Error(object e) => ((GoLinkError)e).Error();
+    public static object? LinkError_Unwrap(object e) => ((GoLinkError)e).Err;
+
     private static readonly GoFile StdoutFile = new() { IsStderr = false };
     private static readonly GoFile StderrFile = new() { IsStderr = true };
     private static readonly GoFile StdinFile = new() { IsStdin = true };

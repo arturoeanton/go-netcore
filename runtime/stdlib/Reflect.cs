@@ -737,6 +737,8 @@ public static class Reflect
     }
     // reflect.Value.SetBytes(b): set a settable []byte value to b.
     public static void Value_SetBytes(object v, GoSlice b) => DoSet(v, b);
+    // reflect.Value.SetComplex(x): set a settable complex Value.
+    public static void Value_SetComplex(object v, GoComplex x) => DoSet(v, x);
     // reflect.Value.Pointer() returns uintptr (goclr: UInt64).
     public static ulong Value_Pointer(object? v)
     {
