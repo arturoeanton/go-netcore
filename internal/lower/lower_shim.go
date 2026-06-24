@@ -229,6 +229,11 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"io/fs": {
 		"Stat": {"Fs", "Stat"}, "Sub": {"Fs", "Sub"}, "ValidPath": {"Fs", "ValidPath"}, "ReadDir": {"Fs", "ReadDir"},
 	},
+	"net/netip": {
+		"AddrFrom4": {"Netip", "AddrFrom4"}, "AddrFrom16": {"Netip", "AddrFrom16"}, "AddrFromSlice": {"Netip", "AddrFromSlice"},
+		"IPv4Unspecified": {"Netip", "IPv4Unspecified"}, "IPv6Unspecified": {"Netip", "IPv6Unspecified"}, "IPv6Loopback": {"Netip", "IPv6Loopback"},
+		"IPv6LinkLocalAllNodes": {"Netip", "IPv6LinkLocalAllNodes"}, "IPv6LinkLocalAllRouters": {"Netip", "IPv6LinkLocalAllRouters"},
+	},
 	"net": {
 		"Listen": {"Net", "Listen"}, "Dial": {"Net", "Dial"}, "FileListener": {"Net", "FileListener"},
 		"InterfaceByName": {"Net", "InterfaceByName"},
@@ -476,6 +481,7 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/asn1.BitString":       true,
 	"html/template.Template":         true,
 	"text/template.Template":         true,
+	"net/netip.Addr":                 true,
 	"net.TCPAddr":                    true,
 	"net.UDPAddr":                    true,
 	"net.Dialer":                     true,
@@ -1092,6 +1098,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"encoding/asn1.SyntaxError":      {"Asn1", "NewSyntaxError"},
 	"encoding/asn1.BitString":       {"Asn1", "NewBitString"},
 	"net/http.Client":                {"Http", "NewClient"},
+	"net/netip.Addr":                 {"Netip", "AddrZero"},
 	"log.Logger":                     {"Log", "NewLoggerZero"},
 	"net/http.Transport":             {"HttpTypes", "NewTransport"},
 	"crypto/tls.Config":              {"HttpTypes", "NewTlsConfig"},
@@ -1742,6 +1749,17 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Shuffle": {"Rand", "Rand_Shuffle"},
 		"Uint64": {"Rand", "Rand_Uint64"}, "Uint32": {"Rand", "Rand_Uint32"}, "Int31": {"Rand", "Rand_Int31"},
 		"Int31n": {"Rand", "Rand_Int31n"}, "Float32": {"Rand", "Rand_Float32"}, "Read": {"Rand", "Rand_Read"}, "Seed": {"Rand", "Rand_Seed"},
+	},
+	"net/netip.Addr": {
+		"String": {"Netip", "Addr_String"}, "Is4": {"Netip", "Addr_Is4"}, "Is6": {"Netip", "Addr_Is6"},
+		"Is4In6": {"Netip", "Addr_Is4In6"}, "IsValid": {"Netip", "Addr_IsValid"}, "BitLen": {"Netip", "Addr_BitLen"},
+		"As4": {"Netip", "Addr_As4"}, "As16": {"Netip", "Addr_As16"}, "AsSlice": {"Netip", "Addr_AsSlice"},
+		"Unmap": {"Netip", "Addr_Unmap"}, "Zone": {"Netip", "Addr_Zone"}, "Compare": {"Netip", "Addr_Compare"},
+		"Less": {"Netip", "Addr_Less"}, "Next": {"Netip", "Addr_Next"}, "Prev": {"Netip", "Addr_Prev"},
+		"IsUnspecified": {"Netip", "Addr_IsUnspecified"}, "IsLoopback": {"Netip", "Addr_IsLoopback"},
+		"IsMulticast": {"Netip", "Addr_IsMulticast"}, "IsGlobalUnicast": {"Netip", "Addr_IsGlobalUnicast"},
+		"IsLinkLocalUnicast": {"Netip", "Addr_IsLinkLocalUnicast"}, "IsLinkLocalMulticast": {"Netip", "Addr_IsLinkLocalMulticast"},
+		"IsInterfaceLocalMulticast": {"Netip", "Addr_IsInterfaceLocalMulticast"}, "IsPrivate": {"Netip", "Addr_IsPrivate"},
 	},
 	"context.Context": {
 		"Value": {"Context", "Context_Value"}, "Err": {"Context", "Context_Err"},
