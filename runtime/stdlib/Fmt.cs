@@ -658,6 +658,7 @@ public static class Fmt
         {
             case null: return "<nil>";
             case bool b: return b ? "true" : "false";
+            case GoTime: return Time.Time_GoString(v).ToDotNetString(); // GoStringer
             case GoString gs: return GoQuote(gs);
             case long or int or ulong or uint: return Format(v, 'v', false, false);
             case double d: return FormatFloatV(d);

@@ -1,0 +1,20 @@
+package main
+import ("fmt";"time")
+func main(){
+ t:=time.Date(2009,time.November,10,23,4,5,123456789,time.UTC)
+ u:=time.Date(2010,time.January,1,0,0,0,0,time.UTC)
+ fmt.Println(t.Compare(u), u.Compare(t), t.Compare(t))
+ fmt.Println(t.UnixMicro())
+ y,w:=t.ISOWeek(); fmt.Println("isoweek",y,w)
+ fmt.Println("isdst",t.IsDST())
+ fmt.Printf("%#v\n", t)
+ fmt.Println(t.GoString())
+ mt,_:=t.MarshalText(); fmt.Printf("text=%s\n",mt)
+ mj,_:=t.MarshalJSON(); fmt.Printf("json=%s\n",mj)
+ mb,_:=t.MarshalBinary(); fmt.Printf("bin=%x\n",mb)
+ gb,_:=t.GobEncode(); fmt.Printf("gob=%x\n",gb)
+ at,_:=t.AppendText([]byte("T:")); fmt.Printf("appendtext=%s\n",at)
+ ab,_:=t.AppendBinary([]byte{0,0}); fmt.Printf("appendbin=%x\n",ab)
+ d:=-3*time.Hour; fmt.Println(d.Abs(), time.Duration(5).Abs())
+ fmt.Println("loc:",time.UTC.String(), t.Location().String())
+}

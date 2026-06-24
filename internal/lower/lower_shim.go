@@ -1634,6 +1634,15 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"IsZero": {"Time", "Time_IsZero"}, "UTC": {"Time", "Time_UTC"}, "Local": {"Time", "Time_Local"},
 		"String": {"Time", "Time_String"}, "Format": {"Time", "Time_Format"}, "AppendFormat": {"Time", "Time_AppendFormat"},
 		"Zone": {"Time", "Time_Zone"}, "YearDay": {"Time", "Time_YearDay"}, "In": {"Time", "Time_In"}, "Location": {"Time", "Time_Location"},
+		"Compare": {"Time", "Time_Compare"}, "UnixMicro": {"Time", "Time_UnixMicro"}, "ISOWeek": {"Time", "Time_ISOWeek"},
+		"IsDST": {"Time", "Time_IsDST"}, "GoString": {"Time", "Time_GoString"},
+		"MarshalText": {"Time", "Time_MarshalText"}, "AppendText": {"Time", "Time_AppendText"}, "MarshalJSON": {"Time", "Time_MarshalJSON"},
+		"MarshalBinary": {"Time", "Time_MarshalBinary"}, "AppendBinary": {"Time", "Time_AppendBinary"}, "GobEncode": {"Time", "Time_GobEncode"},
+		"UnmarshalText": {"Time", "Time_UnmarshalText"}, "UnmarshalJSON": {"Time", "Time_UnmarshalJSON"},
+		"UnmarshalBinary": {"Time", "Time_UnmarshalBinary"}, "GobDecode": {"Time", "Time_GobDecode"}, "ZoneBounds": {"Time", "Time_ZoneBounds"},
+	},
+	"time.Location": {
+		"String": {"Time", "Location_String"},
 	},
 	"time.Month": {
 		"String": {"Time", "Month_String"},
@@ -1646,6 +1655,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Hours": {"Time", "Duration_Hours"}, "Nanoseconds": {"Time", "Duration_Nanoseconds"},
 		"Microseconds": {"Time", "Duration_Microseconds"}, "Milliseconds": {"Time", "Duration_Milliseconds"},
 		"String": {"Time", "Duration_String"}, "Truncate": {"Time", "Duration_Truncate"}, "Round": {"Time", "Duration_Round"},
+		"Abs": {"Time", "Duration_Abs"},
 	},
 	"reflect.Value": {
 		"Kind": {"Reflect", "Value_Kind"}, "Type": {"Reflect", "Value_Type"},

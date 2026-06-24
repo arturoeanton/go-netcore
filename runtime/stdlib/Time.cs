@@ -223,6 +223,137 @@ public static class Time
         return new GoSlice { Data = data, Off = 0, Len = data.Length, Cap = data.Length };
     }
 
+    // ---- additional time methods ----
+    private const string RFC3339NanoLayout = "2006-01-02T15:04:05.999999999Z07:00";
+    private const long UnixToInternalSec = 62135596800L; // seconds from Jan 1, year 1 to the Unix epoch
+    private static readonly string[] MonthNames =
+        { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
+
+    private static GoSlice BytesOf(byte[] b)
+    {
+        var d = new object?[b.Length];
+        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
+    }
+    private static GoSlice AppendBytes(GoSlice b, byte[] extra)
+    {
+        var d = new object?[b.Len + extra.Length];
+        for (int i = 0; i < b.Len; i++) d[i] = b.Data![b.Off + i];
+        for (int i = 0; i < extra.Length; i++) d[b.Len + i] = (int)extra[i];
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
+
+    // (time.Duration).Abs()
+    public static long Duration_Abs(long d) => d >= 0 ? d : (d == long.MinValue ? long.MaxValue : -d);
+
+    // (time.Location).String()
+    public static GoString Location_String(object loc) => GoString.FromDotNetString(((GoLocation)loc).Name);
+
+    // (time.Time).Compare(u) -1/0/1
+    public static long Time_Compare(object t, object u)
+    {
+        long a = ((GoTime)t).N, b = ((GoTime)u).N;
+        return a < b ? -1L : (a > b ? 1L : 0L);
+    }
+
+    // (time.Time).UnixMicro()
+    public static long Time_UnixMicro(object t) => ((GoTime)t).N / Microsecond;
+
+    // (time.Time).ISOWeek() (year, week int)
+    public static object?[] Time_ISOWeek(object t)
+    {
+        var dt = ToDateTime((GoTime)t);
+        return new object?[] { (long)System.Globalization.ISOWeek.GetYear(dt), (long)System.Globalization.ISOWeek.GetWeekOfYear(dt) };
+    }
+
+    // (time.Time).IsDST() — UTC/fixed-offset zones never observe DST in this model.
+    public static bool Time_IsDST(object t) => false;
+
+    // (time.Time).GoString() — Go's %#v spelling.
+    public static GoString Time_GoString(object t)
+    {
+        var g = (GoTime)t;
+        var dt = ToDateTime(g);
+        long ns = g.N % Second; if (ns < 0) ns += Second;
+        return GoString.FromDotNetString(
+            $"time.Date({dt.Year}, time.{MonthNames[dt.Month - 1]}, {dt.Day}, {dt.Hour}, {dt.Minute}, {dt.Second}, {ns}, time.UTC)");
+    }
+
+    // Text marshaling (RFC 3339 with nanoseconds).
+    public static object?[] Time_MarshalText(object t) =>
+        new object?[] { BytesOf(System.Text.Encoding.UTF8.GetBytes(DoFormat((GoTime)t, RFC3339NanoLayout))), null };
+    public static object?[] Time_AppendText(object t, GoSlice b) =>
+        new object?[] { AppendBytes(b, System.Text.Encoding.UTF8.GetBytes(DoFormat((GoTime)t, RFC3339NanoLayout))), null };
+    public static object?[] Time_MarshalJSON(object t) =>
+        new object?[] { BytesOf(System.Text.Encoding.UTF8.GetBytes("\"" + DoFormat((GoTime)t, RFC3339NanoLayout) + "\"")), null };
+
+    // Binary marshaling — faithful port of Go's V1 layout (UTC ⇒ offsetMin = -1):
+    // [version=1][sec int64 BE][nsec int32 BE][offsetMin int16 BE] = 15 bytes. GobEncode == MarshalBinary.
+    private static byte[] MarshalBin(GoTime g)
+    {
+        long n = g.N;
+        long sec = n / Second, nsec = n % Second;
+        if (nsec < 0) { nsec += Second; sec--; }
+        long absSec = sec + UnixToInternalSec;
+        int ns = (int)nsec;
+        return new byte[]
+        {
+            1,
+            (byte)(absSec >> 56), (byte)(absSec >> 48), (byte)(absSec >> 40), (byte)(absSec >> 32),
+            (byte)(absSec >> 24), (byte)(absSec >> 16), (byte)(absSec >> 8), (byte)absSec,
+            (byte)(ns >> 24), (byte)(ns >> 16), (byte)(ns >> 8), (byte)ns,
+            0xff, 0xff, // offsetMin = -1 (UTC)
+        };
+    }
+    public static object?[] Time_MarshalBinary(object t) => new object?[] { BytesOf(MarshalBin((GoTime)t)), null };
+    public static object?[] Time_GobEncode(object t) => new object?[] { BytesOf(MarshalBin((GoTime)t)), null };
+    public static object?[] Time_AppendBinary(object t, GoSlice b) => new object?[] { AppendBytes(b, MarshalBin((GoTime)t)), null };
+
+    // The Unmarshal/GobDecode receivers are *Time; resolve the underlying GoTime to mutate it.
+    private static GoTime RecvTime(object t) => t is GoPtr p ? (GoTime)GoPtrs.Get(p)! : (GoTime)t;
+    private static string BytesToStr(GoSlice b)
+    {
+        var by = new byte[b.Len];
+        for (int i = 0; i < b.Len; i++) by[i] = (byte)System.Convert.ToInt64(b.Data![b.Off + i]);
+        return System.Text.Encoding.UTF8.GetString(by);
+    }
+    private static object? ParseInto(object t, string s)
+    {
+        var r = Parse(GoString.FromDotNetString(RFC3339NanoLayout), GoString.FromDotNetString(s));
+        if (r[1] != null) return r[1];
+        var parsed = (GoTime)r[0]!;
+        var g = RecvTime(t); g.N = parsed.N; g.IsZero = parsed.IsZero;
+        return null;
+    }
+    public static object? Time_UnmarshalText(object t, GoSlice data) => ParseInto(t, BytesToStr(data));
+    public static object? Time_UnmarshalJSON(object t, GoSlice data)
+    {
+        string s = BytesToStr(data);
+        if (s == "null") return null;                       // Go leaves the time unchanged for JSON null
+        if (s.Length >= 2 && s[0] == '"' && s[^1] == '"') s = s.Substring(1, s.Length - 2);
+        return ParseInto(t, s);
+    }
+    public static object? Time_UnmarshalBinary(object t, GoSlice data)
+    {
+        var buf = new byte[data.Len];
+        for (int i = 0; i < data.Len; i++) buf[i] = (byte)System.Convert.ToInt64(data.Data![data.Off + i]);
+        if (buf.Length == 0) return new GoError(GoString.FromDotNetString("Time.UnmarshalBinary: no data"));
+        byte version = buf[0];
+        if (version != 1 && version != 2) return new GoError(GoString.FromDotNetString("Time.UnmarshalBinary: unsupported version"));
+        int wantLen = version == 1 ? 15 : 16;
+        if (buf.Length != wantLen) return new GoError(GoString.FromDotNetString("Time.UnmarshalBinary: invalid length"));
+        long sec = ((long)buf[1] << 56) | ((long)buf[2] << 48) | ((long)buf[3] << 40) | ((long)buf[4] << 32)
+                 | ((long)buf[5] << 24) | ((long)buf[6] << 16) | ((long)buf[7] << 8) | buf[8];
+        long nsec = (buf[9] << 24) | (buf[10] << 16) | (buf[11] << 8) | buf[12];
+        long n = (sec - UnixToInternalSec) * Second + nsec;
+        var g = RecvTime(t); g.N = n; g.IsZero = false;
+        return null;
+    }
+    public static object? Time_GobDecode(object t, GoSlice data) => Time_UnmarshalBinary(t, data);
+
+    // (time.Time).ZoneBounds() — UTC has no transitions, so both bounds are the zero Time.
+    public static object?[] Time_ZoneBounds(object t) => new object?[] { new GoTime { IsZero = true }, new GoTime { IsZero = true } };
+
     // time.Parse(layout, value) (Time, error): the inverse of Format — walk the Go
     // reference-time layout, consuming the matching run from value for each token.
     // Returns the zero Time and an error if value does not match the layout. The
