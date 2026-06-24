@@ -5,7 +5,7 @@ using GoCLR.Runtime;
 /// <summary>Shim for the top-level functions of Go's <c>math/rand/v2</c>, backed by
 /// .NET's shared thread-safe random source. The sequence is not seedable/deterministic
 /// (matching rand/v2's auto-seeded global), so it is not byte-reproducible across Go.</summary>
-public static class Rand2
+public static partial class Rand2
 {
     private static System.Random R => System.Random.Shared;
 
