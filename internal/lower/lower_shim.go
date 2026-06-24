@@ -138,7 +138,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"mime/multipart": {"NewReader": {"Multipart", "NewReader"}, "NewWriter": {"Multipart", "NewWriter"}, "FileContentDisposition": {"Multipart", "FileContentDisposition"}},
 	"net/mail":      {"ParseAddress": {"Mail", "ParseAddress"}, "ParseAddressList": {"Mail", "ParseAddressList"}},
 	"os/signal": {
-		"Notify": {"Ossignal", "Notify"}, "Stop": {"Ossignal", "Stop"},
+		"Notify": {"Ossignal", "Notify"}, "Stop": {"Ossignal", "Stop"}, "Ignored": {"Ossignal", "Ignored"}, "NotifyContext": {"Ossignal", "NotifyContext"},
 		"Reset": {"Ossignal", "Reset"}, "Ignore": {"Ossignal", "Ignore"},
 	},
 	"log/slog": {
@@ -172,7 +172,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"hash/crc32":      {"ChecksumIEEE": {"Hashes", "Crc32ChecksumIEEE"}, "Update": {"Hashes", "Crc32Update"}, "NewIEEE": {"Hashes", "Crc32NewIEEE"}, "MakeTable": {"Hashes", "Crc32MakeTable"}, "Checksum": {"Hashes", "Crc32Checksum"}, "New": {"Hashes", "Crc32New"}},
 	"hash/adler32":    {"Checksum": {"Hashes", "Adler32Checksum"}, "New": {"Hashes", "Adler32New"}},
 	"compress/gzip":   {"NewWriter": {"Compress", "GzipNewWriter"}, "NewWriterLevel": {"Compress", "GzipNewWriterLevel"}, "NewReader": {"Compress", "GzipNewReader"}},
-	"compress/zlib":   {"NewWriter": {"Compress", "ZlibNewWriter"}, "NewReader": {"Compress", "ZlibNewReader"}},
+	"compress/zlib":   {"NewWriter": {"Compress", "ZlibNewWriter"}, "NewReader": {"Compress", "ZlibNewReader"}, "NewWriterLevel": {"Compress", "ZlibNewWriterLevel"}, "NewWriterLevelDict": {"Compress", "ZlibNewWriterLevelDict"}, "NewReaderDict": {"Compress", "ZlibNewReaderDict"}},
 	"compress/flate":  {"NewWriter": {"Compress", "FlateNewWriter"}, "NewReader": {"Compress", "FlateNewReader"}},
 	"net/url": {
 		"QueryEscape": {"Url", "QueryEscape"}, "PathEscape": {"Url", "PathEscape"},
@@ -1459,7 +1459,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"}, "Reset": {"Compress", "CompW_Reset"},
 	},
 	"compress/zlib.Writer": {
-		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"},
+		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"}, "Reset": {"Compress", "CompW_Reset"},
 	},
 	"compress/flate.Writer": {
 		"Write": {"Compress", "CompW_Write"}, "Close": {"Compress", "CompW_Close"}, "Flush": {"Compress", "CompW_Flush"},

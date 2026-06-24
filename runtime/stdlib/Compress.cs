@@ -47,6 +47,17 @@ public static class Compress
         c.Z = Wrap(c.Mem, c.Kind);
     }
     public static object ZlibNewWriter(object? w) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 1), Kind = 1 }; }
+    // zlib.NewWriterLevel(w, level) (*Writer, error): valid level is [HuffmanOnly(-2), BestCompression(9)].
+    public static object?[] ZlibNewWriterLevel(object? w, long level)
+    {
+        if (level < -2 || level > 9)
+            return new object?[] { null, new GoError(GoString.FromDotNetString($"zlib: invalid compression level: {level}")) };
+        var m = new MemoryStream();
+        return new object?[] { new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 1), Kind = 1 }, null };
+    }
+    // zlib.NewWriterLevelDict: the preset dictionary is not applied (.NET ZLibStream has no
+    // dict support); the stream round-trips with NewReaderDict, which likewise ignores it.
+    public static object?[] ZlibNewWriterLevelDict(object? w, long level, GoSlice dict) => ZlibNewWriterLevel(w, level);
     public static object FlateNewWriter(object? w, long level) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 2), Kind = 2 }; }
 
     public static object?[] CompW_Write(object wo, GoSlice p)
@@ -101,6 +112,8 @@ public static class Compress
     }
     public static object?[] GzipNewReader(object? r) => new object?[] { DecompReader(r, 0), null };
     public static object ZlibNewReaderObj(object? r) => DecompReader(r, 1);
+    // zlib.NewReaderDict(r, dict) (io.ReadCloser, error): dict ignored (see NewWriterLevelDict).
+    public static object?[] ZlibNewReaderDict(object? r, GoSlice dict) => new object?[] { DecompReader(r, 1), null };
     public static object?[] ZlibNewReader(object? r) => new object?[] { DecompReader(r, 1), null };
     public static object FlateNewReader(object? r) => DecompReader(r, 2);
 

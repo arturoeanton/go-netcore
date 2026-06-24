@@ -113,6 +113,12 @@ public static class Ossignal
 
     public static void Ignore(GoSlice sigs) { /* accepted; the runtime does not re-raise */ }
 
+    // signal.Ignored(sig) bool: goclr never ignores signals, so always false.
+    public static bool Ignored(object? sig) => false;
+    // signal.NotifyContext(parent, signals...) (ctx, stop): a context cancelled by stop() (and,
+    // on a real OS, by the signals). goclr delivers no signals, so it's a plain WithCancel.
+    public static object?[] NotifyContext(object parent, GoSlice signals) => Context.WithCancel(parent);
+
     // syscall.Signal methods.
     public static GoString Signal_String(object s) => GoString.FromDotNetString(((GoSignal)s).Name);
     public static void Signal_Signal(object s) { } // the os.Signal marker method
