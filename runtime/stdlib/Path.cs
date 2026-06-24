@@ -73,6 +73,81 @@ public static class Path
 
     // Go's path.Clean algorithm (lexical).
     public static GoString Clean(GoString p) => GoString.FromDotNetString(Clean(p.ToDotNetString()));
+
+    // filepath.VolumeName(path): always "" on the unix-like targets.
+    public static GoString VolumeName(GoString p) => GoString.FromDotNetString("");
+
+    // filepath.HasPrefix(p, prefix) (deprecated): a plain string prefix test on unix.
+    public static bool HasPrefix(GoString p, GoString prefix) =>
+        p.ToDotNetString().StartsWith(prefix.ToDotNetString(), System.StringComparison.Ordinal);
+
+    // filepath.SplitList(path): split on the OS list separator (':' on unix); "" -> [].
+    public static GoSlice SplitList(GoString p)
+    {
+        string s = p.ToDotNetString();
+        if (s.Length == 0) return new GoSlice { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
+        var parts = s.Split(':');
+        var d = new object?[parts.Length];
+        for (int i = 0; i < parts.Length; i++) d[i] = GoString.FromDotNetString(parts[i]);
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
+
+    // filepath.IsLocal(path): reports whether path, lexically, stays within its directory
+    // (not absolute, not escaping via "..", not empty). Ported from internal/filepathlite.
+    public static bool IsLocal(GoString p)
+    {
+        string path = p.ToDotNetString();
+        if (path.Length == 0 || path[0] == '/') return false;
+        bool hasDots = false;
+        for (string rest = path; rest.Length > 0;)
+        {
+            int slash = rest.IndexOf('/');
+            string part = slash < 0 ? rest : rest.Substring(0, slash);
+            rest = slash < 0 ? "" : rest.Substring(slash + 1);
+            if (part == "." || part == "..") { hasDots = true; break; }
+        }
+        if (hasDots) path = Clean(path);
+        if (path == ".." || path.StartsWith("../", System.StringComparison.Ordinal)) return false;
+        return true;
+    }
+
+    // filepath.Rel(basepath, targpath) (string, error): a relative path from base to targ.
+    // Unix-simplified port (VolumeName is always ""): pure lexical, no filesystem access.
+    public static object?[] Rel(GoString basePathG, GoString targPathG)
+    {
+        string basePath = basePathG.ToDotNetString(), targPath = targPathG.ToDotNetString();
+        string bas = Clean(basePath), targ = Clean(targPath);
+        if (bas == targ) return new object?[] { GoString.FromDotNetString("."), null };
+        if (bas == ".") bas = "";
+        bool baseSlashed = bas.Length > 0 && bas[0] == '/';
+        bool targSlashed = targ.Length > 0 && targ[0] == '/';
+        if (baseSlashed != targSlashed)
+            return new object?[] { GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString("Rel: can't make " + targPath + " relative to " + basePath)) };
+        int bl = bas.Length, tl = targ.Length, b0 = 0, bi = 0, t0 = 0, ti = 0;
+        while (true)
+        {
+            while (bi < bl && bas[bi] != '/') bi++;
+            while (ti < tl && targ[ti] != '/') ti++;
+            if (Span(targ, t0, ti) != Span(bas, b0, bi)) break;
+            if (bi < bl) bi++;
+            if (ti < tl) ti++;
+            b0 = bi; t0 = ti;
+        }
+        if (Span(bas, b0, bi) == "..")
+            return new object?[] { GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString("Rel: can't make " + targPath + " relative to " + basePath)) };
+        if (b0 != bl)
+        {
+            int seps = 0;
+            for (int i = b0; i < bl; i++) if (bas[i] == '/') seps++;
+            var sb = new System.Text.StringBuilder("..");
+            for (int i = 0; i < seps; i++) sb.Append("/..");
+            if (t0 != tl) { sb.Append('/'); sb.Append(targ.Substring(t0)); }
+            return new object?[] { GoString.FromDotNetString(Clean(sb.ToString())), null };
+        }
+        return new object?[] { GoString.FromDotNetString(targ.Substring(t0)), null };
+    }
+    private static string Span(string s, int a, int b) => s.Substring(a, b - a);
+
     private static string Clean(string path)
     {
         if (path.Length == 0) return ".";
