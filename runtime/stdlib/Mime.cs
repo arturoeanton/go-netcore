@@ -2,6 +2,11 @@ namespace GoCLR.Stdlib;
 
 using GoCLR.Runtime;
 
+/// <summary>A mime.WordDecoder (its CharsetReader hook is not modelled — only utf-8,
+/// iso-8859-1 and us-ascii charsets decode; others error, as Go does without a reader).</summary>
+[GoShim("mime.WordDecoder")]
+public sealed class GoWordDecoder { }
+
 /// <summary>Shim for a subset of Go's <c>mime</c> (extension -> content type).</summary>
 public static class Mime
 {
@@ -29,6 +34,143 @@ public static class Mime
     }
 
     private static bool IsUtf8(string charset) => string.Equals(charset, "UTF-8", System.StringComparison.OrdinalIgnoreCase);
+
+    // ---- RFC 2047 decoding (mime.WordDecoder.Decode / DecodeHeader) ----------------------
+    public static object WordDecoderZero() => new GoWordDecoder();
+    private static readonly GoError ErrInvalidWord = new(GoString.FromDotNetString("mime: invalid RFC 2047 encoded-word"));
+
+    public static object?[] WordDecoder_Decode(object d, GoString wordG)
+    {
+        string word = wordG.ToDotNetString();
+        if (word.Length < 8 || !word.StartsWith("=?") || !word.EndsWith("?=") || CountChar(word, '?') != 4)
+            return Fail();
+        word = word.Substring(2, word.Length - 4);
+        int c1 = word.IndexOf('?');
+        string charset = word.Substring(0, c1);
+        if (charset.Length == 0) return Fail();
+        string rest = word.Substring(c1 + 1);
+        int c2 = rest.IndexOf('?');
+        string encoding = rest.Substring(0, c2);
+        if (encoding.Length != 1) return Fail();
+        string text = rest.Substring(c2 + 1);
+        var dec = DecodeContent(encoding[0], text);
+        if (dec.err != null) return new object?[] { GoString.FromDotNetString(""), dec.err };
+        var conv = Convert(charset, dec.bytes!);
+        if (conv.err != null) return new object?[] { GoString.FromDotNetString(""), conv.err };
+        return new object?[] { GoString.FromBytes(conv.bytes!), null };
+    }
+
+    public static object?[] WordDecoder_DecodeHeader(object d, GoString headerG)
+    {
+        string header = headerG.ToDotNetString();
+        int first = header.IndexOf("=?", System.StringComparison.Ordinal);
+        if (first == -1) return new object?[] { headerG, null };
+        var buf = new System.Collections.Generic.List<byte>();
+        AppendUtf8(buf, header.Substring(0, first));
+        header = header.Substring(first);
+        bool betweenWords = false;
+        while (true)
+        {
+            int start = header.IndexOf("=?", System.StringComparison.Ordinal);
+            if (start == -1) break;
+            int cur = start + 2;
+            int i = header.IndexOf('?', cur);
+            if (i == -1) break;
+            string charset = header.Substring(cur, i - cur);
+            cur = i + 1;
+            if (header.Length < cur + 4) break;              // "Q??="
+            char encoding = header[cur]; cur++;
+            if (header[cur] != '?') break;
+            cur++;
+            int j = header.IndexOf("?=", cur, System.StringComparison.Ordinal);
+            if (j == -1) break;
+            string text = header.Substring(cur, j - cur);
+            int end = j + 2;
+            var dec = DecodeContent(encoding, text);
+            if (dec.err != null)
+            {
+                betweenWords = false;
+                AppendUtf8(buf, header.Substring(0, start + 2));
+                header = header.Substring(start + 2);
+                continue;
+            }
+            if (start > 0 && (!betweenWords || HasNonWhitespace(header.Substring(0, start))))
+                AppendUtf8(buf, header.Substring(0, start));
+            var conv = Convert(charset, dec.bytes!);
+            if (conv.err != null) return new object?[] { GoString.FromDotNetString(""), conv.err };
+            buf.AddRange(conv.bytes!);
+            header = header.Substring(end);
+            betweenWords = true;
+        }
+        if (header.Length > 0) AppendUtf8(buf, header);
+        return new object?[] { GoString.FromBytes(buf.ToArray()), null };
+    }
+
+    private static object?[] Fail() => new object?[] { GoString.FromDotNetString(""), ErrInvalidWord };
+    private static int CountChar(string s, char c) { int n = 0; foreach (char x in s) if (x == c) n++; return n; }
+    private static void AppendUtf8(System.Collections.Generic.List<byte> buf, string s) => buf.AddRange(System.Text.Encoding.UTF8.GetBytes(s));
+    private static bool HasNonWhitespace(string s)
+    {
+        foreach (char b in s) if (b != ' ' && b != '\t' && b != '\n' && b != '\r') return true;
+        return false;
+    }
+
+    private static (byte[]? bytes, object? err) DecodeContent(char encoding, string text)
+    {
+        if (encoding == 'B' || encoding == 'b')
+        {
+            try { return (System.Convert.FromBase64String(text), null); }
+            catch { return (null, ErrInvalidWord); }
+        }
+        if (encoding == 'Q' || encoding == 'q') return QDecode(text);
+        return (null, ErrInvalidWord);
+    }
+    private static (byte[]? bytes, object? err) QDecode(string s)
+    {
+        var dec = new System.Collections.Generic.List<byte>(s.Length);
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '_') dec.Add((byte)' ');
+            else if (c == '=')
+            {
+                if (i + 2 >= s.Length) return (null, ErrInvalidWord);
+                int hb = FromHex(s[i + 1]), lb = FromHex(s[i + 2]);
+                if (hb < 0 || lb < 0) return (null, new GoError(GoString.FromDotNetString($"mime: invalid hex byte 0x{(hb < 0 ? (byte)s[i + 1] : (byte)s[i + 2]):x2}")));
+                dec.Add((byte)((hb << 4) | lb));
+                i += 2;
+            }
+            else if ((c <= '~' && c >= ' ') || c == '\n' || c == '\r' || c == '\t') dec.Add((byte)c);
+            else return (null, ErrInvalidWord);
+        }
+        return (dec.ToArray(), null);
+    }
+    private static int FromHex(char b) =>
+        b >= '0' && b <= '9' ? b - '0' : b >= 'A' && b <= 'F' ? b - 'A' + 10 : b >= 'a' && b <= 'f' ? b - 'a' + 10 : -1;
+
+    private static (byte[]? bytes, object? err) Convert(string charset, byte[] content)
+    {
+        if (string.Equals("utf-8", charset, System.StringComparison.OrdinalIgnoreCase)) return (content, null);
+        if (string.Equals("iso-8859-1", charset, System.StringComparison.OrdinalIgnoreCase))
+        {
+            var o = new System.Collections.Generic.List<byte>(content.Length);
+            foreach (byte c in content) AppendRune(o, c); // rune(c)
+            return (o.ToArray(), null);
+        }
+        if (string.Equals("us-ascii", charset, System.StringComparison.OrdinalIgnoreCase))
+        {
+            var o = new System.Collections.Generic.List<byte>(content.Length);
+            foreach (byte c in content) { if (c >= 0x80) o.AddRange(new byte[] { 0xEF, 0xBF, 0xBD }); else o.Add(c); }
+            return (o.ToArray(), null);
+        }
+        return (null, new GoError(GoString.FromDotNetString($"mime: unhandled charset {Strconv.Quote(GoString.FromDotNetString(charset)).ToDotNetString()}")));
+    }
+    private static void AppendRune(System.Collections.Generic.List<byte> o, int r)
+    {
+        if (r < 0x80) o.Add((byte)r);
+        else if (r < 0x800) { o.Add((byte)(0xC0 | (r >> 6))); o.Add((byte)(0x80 | (r & 0x3F))); }
+        else { o.Add((byte)(0xE0 | (r >> 12))); o.Add((byte)(0x80 | ((r >> 6) & 0x3F))); o.Add((byte)(0x80 | (r & 0x3F))); }
+    }
     private static void OpenWord(System.Text.StringBuilder buf, string charset, int e)
     {
         buf.Append("=?"); buf.Append(charset); buf.Append('?'); buf.Append((char)e); buf.Append('?');

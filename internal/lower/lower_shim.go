@@ -500,6 +500,7 @@ var opaqueShimTypes = map[string]bool{
 	"net/netip.AddrPort":             true,
 	"net/netip.Prefix":               true,
 	"flag.FlagSet":                   true,
+	"mime.WordDecoder":               true,
 	"net.TCPAddr":                    true,
 	"net.UDPAddr":                    true,
 	"net.Dialer":                     true,
@@ -1122,6 +1123,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"net/netip.AddrPort":             {"Netip", "AddrPortZero"},
 	"net/netip.Prefix":               {"Netip", "PrefixZero"},
 	"flag.FlagSet":                   {"Flag", "NewFlagSetZero"},
+	"mime.WordDecoder":               {"Mime", "WordDecoderZero"},
 	"log.Logger":                     {"Log", "NewLoggerZero"},
 	"net/http.Transport":             {"HttpTypes", "NewTransport"},
 	"crypto/tls.Config":              {"HttpTypes", "NewTlsConfig"},
@@ -1193,6 +1195,7 @@ var binaryMethods = map[string]shimFunc{
 var shimMethodRegistry = map[string]map[string]shimFunc{
 	"runtime.Frames": {"Next": {"Goruntime", "Frames_Next"}},
 	"mime.WordEncoder": {"Encode": {"Mime", "WordEncoder_Encode"}},
+	"mime.WordDecoder": {"Decode": {"Mime", "WordDecoder_Decode"}, "DecodeHeader": {"Mime", "WordDecoder_DecodeHeader"}},
 	"strconv.NumError": {
 		"Error": {"Strconv", "NumError_Error"}, "Unwrap": {"Strconv", "NumError_Unwrap"},
 	},
