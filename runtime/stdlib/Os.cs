@@ -606,4 +606,56 @@ public static class Os
             return new GoError(GoString.FromDotNetString(ex.Message));
         }
     }
+
+    // A Go-style errno reason for a .NET filesystem exception (used in PathError messages).
+    private static string Errno(System.Exception e) => e switch
+    {
+        System.IO.FileNotFoundException => "no such file or directory",
+        System.IO.DirectoryNotFoundException => "no such file or directory",
+        System.UnauthorizedAccessException => "permission denied",
+        _ => e.Message,
+    };
+
+    // os.Chdir(dir): change the working directory.
+    public static object? Chdir(GoString dir)
+    {
+        string d = dir.ToDotNetString();
+        try { System.IO.Directory.SetCurrentDirectory(d); return null; }
+        catch (System.Exception e) { return new GoError(GoString.FromDotNetString("chdir " + d + ": " + Errno(e))); }
+    }
+
+    // os.Truncate(name, size): resize the named file (zero-padded when grown).
+    public static object? Truncate(GoString name, long size)
+    {
+        string n = name.ToDotNetString();
+        try
+        {
+            using var fs = new System.IO.FileStream(n, System.IO.FileMode.Open, System.IO.FileAccess.Write);
+            fs.SetLength(size);
+            return null;
+        }
+        catch (System.Exception e) { return new GoError(GoString.FromDotNetString("truncate " + n + ": " + Errno(e))); }
+    }
+
+    // os.Symlink(oldname, newname): create newname as a symbolic link to oldname.
+    public static object? Symlink(GoString oldname, GoString newname)
+    {
+        string o = oldname.ToDotNetString(), nw = newname.ToDotNetString();
+        try { System.IO.File.CreateSymbolicLink(nw, o); return null; }
+        catch (System.Exception e) { return new GoError(GoString.FromDotNetString("symlink " + o + " " + nw + ": " + Errno(e))); }
+    }
+
+    // os.Readlink(name): the destination of the named symbolic link.
+    public static object?[] Readlink(GoString name)
+    {
+        string n = name.ToDotNetString();
+        try
+        {
+            string? t = new System.IO.FileInfo(n).LinkTarget ?? new System.IO.DirectoryInfo(n).LinkTarget;
+            if (t == null)
+                return new object?[] { GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString("readlink " + n + ": invalid argument")) };
+            return new object?[] { GoString.FromDotNetString(t), null };
+        }
+        catch (System.Exception e) { return new object?[] { GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString("readlink " + n + ": " + Errno(e))) }; }
+    }
 }

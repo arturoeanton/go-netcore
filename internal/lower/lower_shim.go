@@ -350,6 +350,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "Rename": {"Os", "Rename"}, "UserCacheDir": {"Os", "UserCacheDir"}, "UserConfigDir": {"Os", "UserConfigDir"}, "UserHomeDir": {"Os", "UserHomeDir"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "MkdirTemp": {"Os", "MkdirTemp"}, "TempDir": {"Os", "TempDir"},
 		"Stat": {"Os", "Stat"}, "Lstat": {"Os", "Lstat"}, "IsNotExist": {"Os", "IsNotExist"}, "MkdirAll": {"Os", "MkdirAll"}, "Mkdir": {"Os", "Mkdir"}, "Chtimes": {"Os", "Chtimes"}, "Chmod": {"Os", "Chmod"},
 		"IsExist": {"Os", "IsExist"}, "IsTimeout": {"Os", "IsTimeout"}, "IsPathSeparator": {"Os", "IsPathSeparator"}, "Getpagesize": {"Os", "Getpagesize"}, "Clearenv": {"Os", "Clearenv"},
+		"Chdir": {"Os", "Chdir"}, "Truncate": {"Os", "Truncate"}, "Symlink": {"Os", "Symlink"}, "Readlink": {"Os", "Readlink"},
 	},
 	"bytes": {
 		"Equal": {"Bytes", "Equal"}, "EqualFold": {"Bytes", "EqualFold"}, "Compare": {"Bytes", "Compare"}, "Contains": {"Bytes", "Contains"},
