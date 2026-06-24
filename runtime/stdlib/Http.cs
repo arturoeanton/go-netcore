@@ -508,6 +508,95 @@ public static class Http
         Header_Add(RW_Header(w), GoString.FromDotNetString("Set-Cookie"), s);
     }
 
+    // http.ParseHTTPVersion(vers) (major, minor int, ok bool).
+    public static object?[] ParseHTTPVersion(GoString versS)
+    {
+        string vers = versS.ToDotNetString();
+        if (vers == "HTTP/1.1") return new object?[] { 1L, 1L, true };
+        if (vers == "HTTP/1.0") return new object?[] { 1L, 0L, true };
+        if (!vers.StartsWith("HTTP/", System.StringComparison.Ordinal) || vers.Length != 8 || vers[6] != '.'
+            || !char.IsDigit(vers[5]) || !char.IsDigit(vers[7]))
+            return new object?[] { 0L, 0L, false };
+        return new object?[] { (long)(vers[5] - '0'), (long)(vers[7] - '0'), true };
+    }
+
+    private static readonly GoError BlankCookieErr = new(GoString.FromDotNetString("http: blank cookie"));
+    private static readonly GoError NoEqualCookieErr = new(GoString.FromDotNetString("http: '=' not found in cookie"));
+    private static readonly GoError InvalidCookieNameErr = new(GoString.FromDotNetString("http: invalid cookie name"));
+    private static readonly GoError InvalidCookieValueErr = new(GoString.FromDotNetString("http: invalid cookie value"));
+    private static bool IsCookieNameValid(string n)
+    {
+        if (n.Length == 0) return false;
+        foreach (char c in n)
+            if (c <= ' ' || c >= 0x7f || "()<>@,;:\\\"/[]?={}".IndexOf(c) >= 0) return false; // RFC 2616 token
+        return true;
+    }
+    // Go's parseCookieValue: optionally strip surrounding quotes, then require every byte be
+    // 0x20..0x7e excluding " ; and \. Empty is valid.
+    private static (string val, bool ok) ParseCookieValue(string raw, bool allowQuote)
+    {
+        if (allowQuote && raw.Length > 1 && raw[0] == '"' && raw[^1] == '"') raw = raw.Substring(1, raw.Length - 2);
+        foreach (char c in raw)
+            if (c < 0x20 || c >= 0x7f || c == '"' || c == ';' || c == '\\') return ("", false);
+        return (raw, true);
+    }
+
+    // http.ParseCookie(line) ([]*Cookie, error): parse a Cookie header value (strict — any
+    // invalid name/value fails the whole parse, matching Go).
+    public static object?[] ParseCookie(GoString lineS)
+    {
+        string line = lineS.ToDotNetString().Trim(' ', '\t');
+        var parts = line.Split(';');
+        if (parts.Length == 1 && parts[0] == "") return new object?[] { default(GoSlice), BlankCookieErr };
+        var list = new System.Collections.Generic.List<object?>();
+        foreach (var raw in parts)
+        {
+            string s = raw.Trim(' ', '\t');
+            int eq = s.IndexOf('=');
+            if (eq < 0) return new object?[] { default(GoSlice), NoEqualCookieErr };
+            string name = s.Substring(0, eq).Trim(' ', '\t');
+            string value = s.Substring(eq + 1);
+            if (!IsCookieNameValid(name)) return new object?[] { default(GoSlice), InvalidCookieNameErr };
+            var (val, ok) = ParseCookieValue(value, true);
+            if (!ok) return new object?[] { default(GoSlice), InvalidCookieValueErr };
+            list.Add(new GoCookie { Name = name, Value = val });
+        }
+        return new object?[] { new GoSlice { Data = list.ToArray(), Off = 0, Len = list.Count, Cap = list.Count }, null };
+    }
+
+    // http.ParseSetCookie(line) (*Cookie, error): parse a single Set-Cookie line.
+    public static object?[] ParseSetCookie(GoString lineS)
+    {
+        string line = lineS.ToDotNetString().Trim(' ', '\t');
+        var parts = line.Split(';');
+        if (parts.Length == 1 && parts[0] == "") return new object?[] { null, BlankCookieErr };
+        string first = parts[0].Trim(' ', '\t');
+        int eq = first.IndexOf('=');
+        if (eq < 0) return new object?[] { null, NoEqualCookieErr };
+        string name = first.Substring(0, eq);
+        if (!IsCookieNameValid(name)) return new object?[] { null, InvalidCookieNameErr };
+        var (cval, cok) = ParseCookieValue(first.Substring(eq + 1), true);
+        if (!cok) return new object?[] { null, InvalidCookieValueErr };
+        var ck = new GoCookie { Name = name, Value = cval };
+        for (int i = 1; i < parts.Length; i++)
+        {
+            string attr = parts[i].Trim(' ', '\t');
+            if (attr.Length == 0) continue;
+            int e = attr.IndexOf('=');
+            string an = e < 0 ? attr : attr.Substring(0, e);
+            string av = e < 0 ? "" : attr.Substring(e + 1);
+            switch (an.ToLowerInvariant())
+            {
+                case "path": ck.Path = av; break;
+                case "domain": ck.Domain = av; break;
+                case "max-age": if (long.TryParse(av, out var ma)) ck.MaxAge = ma; break;
+                case "secure": ck.Secure = true; break;
+                case "httponly": ck.HttpOnly = true; break;
+            }
+        }
+        return new object?[] { ck, null };
+    }
+
     // http.Cookie field getters/setters + String.
     public static GoString Cookie_Name(object c) => GoString.FromDotNetString(((GoCookie)c).Name);
     public static GoString Cookie_Value(object c) => GoString.FromDotNetString(((GoCookie)c).Value);

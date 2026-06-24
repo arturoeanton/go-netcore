@@ -237,6 +237,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"HandleFunc": {"Http", "HandleFunc"}, "ListenAndServe": {"Http", "ListenAndServe"}, "Redirect": {"Http", "Redirect"}, "NewServeMux": {"HttpTypes", "NewServeMux"},
 		"CanonicalHeaderKey": {"Http", "CanonicalHeaderKey"}, "StatusText": {"Http", "StatusText"}, "DetectContentType": {"Http", "DetectContentType"}, "Error": {"Http", "Error"},
 		"NewResponseController": {"Http", "NewResponseController"}, "SetCookie": {"Http", "SetCookie"},
+		"ParseHTTPVersion": {"Http", "ParseHTTPVersion"}, "ParseCookie": {"Http", "ParseCookie"}, "ParseSetCookie": {"Http", "ParseSetCookie"},
 		"ServeFile": {"Http", "ServeFile"}, "ServeContent": {"Http", "ServeContent"}, "FileServer": {"Http", "FileServer"}, "StripPrefix": {"Http", "StripPrefix"}, "Serve": {"Http", "Serve"}, "ListenAndServeTLS": {"Http", "ListenAndServeTLS"},
 		"NewRequest": {"Http", "NewRequest"}, "NewRequestWithContext": {"Http", "NewRequestWithContext"}, "ParseTime": {"Http", "ParseTime"},
 	},
