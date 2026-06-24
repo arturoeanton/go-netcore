@@ -5,7 +5,17 @@ using GoCLR.Runtime;
 
 /// <summary>A *url.URL handle (parsed components).</summary>
 [GoShim("net/url.URL")]
-public sealed class GoUrl { public string Scheme = "", Host = "", Path = "", RawQuery = "", Fragment = "", Opaque = "", User = ""; }
+public sealed class GoUrl { public string Scheme = "", Host = "", Path = "", RawQuery = "", Fragment = "", Opaque = ""; public GoUserinfo? User; }
+
+/// <summary>url.Userinfo: the username (and optional password) of a URL's authority.</summary>
+public sealed class GoUserinfo { public string Username = ""; public string Password = ""; public bool HasPassword; }
+
+/// <summary>url.Error (returned by Parse on failure): Op + URL + the wrapped error.</summary>
+public sealed class GoUrlError : IGoError
+{
+    public string Op = "", Url = ""; public object? Err;
+    public GoString Error() => GoString.FromDotNetString($"{Op} \"{Url}\": {(Err is IGoError g ? g.Error().ToDotNetString() : Err?.ToString() ?? "")}");
+}
 
 /// <summary>Shim for Go's <c>net/url</c> (escapes + Parse with field getters).</summary>
 public static class Url
@@ -27,7 +37,7 @@ public static class Url
             string authority = slash < 0 ? rest : rest.Substring(0, slash);
             u.Path = slash < 0 ? "" : rest.Substring(slash);
             int at = authority.IndexOf('@');
-            if (at >= 0) { u.User = authority.Substring(0, at); authority = authority.Substring(at + 1); }
+            if (at >= 0) { u.User = ParseUserinfo(authority.Substring(0, at)); authority = authority.Substring(at + 1); }
             u.Host = authority;
         }
         else if (s.Contains(":") && !s.StartsWith("/"))
@@ -124,7 +134,28 @@ public static class Url
     public static GoString URL_RawQuery(object u) => GoString.FromDotNetString(((GoUrl)u).RawQuery);
     public static GoString URL_Fragment(object u) => GoString.FromDotNetString(((GoUrl)u).Fragment);
     public static GoString URL_Opaque(object u) => GoString.FromDotNetString(((GoUrl)u).Opaque);
-    public static object? URL_User(object u) => ((GoUrl)u).User.Length == 0 ? null : GoString.FromDotNetString(((GoUrl)u).User);
+    public static object? URL_User(object u) => ((GoUrl)u).User;
+    public static void URL_SetUser(object u, object? v) => ((GoUrl)u).User = v as GoUserinfo;
+
+    private static GoUserinfo? ParseUserinfo(string s)
+    {
+        if (s.Length == 0) return null;
+        int c = s.IndexOf(':');
+        return c < 0
+            ? new GoUserinfo { Username = s }
+            : new GoUserinfo { Username = s.Substring(0, c), Password = s.Substring(c + 1), HasPassword = true };
+    }
+
+    // url.User(username) / url.UserPassword(username, password) -> *Userinfo.
+    public static object User(GoString name) => new GoUserinfo { Username = name.ToDotNetString() };
+    public static object UserPassword(GoString name, GoString pw) => new GoUserinfo { Username = name.ToDotNetString(), Password = pw.ToDotNetString(), HasPassword = true };
+    public static GoString Userinfo_Username(object ui) => GoString.FromDotNetString(((GoUserinfo)ui).Username);
+    public static object?[] Userinfo_Password(object ui) { var u = (GoUserinfo)ui; return new object?[] { GoString.FromDotNetString(u.Password), u.HasPassword }; }
+    public static GoString Userinfo_String(object ui)
+    {
+        var u = (GoUserinfo)ui;
+        return GoString.FromDotNetString(u.HasPassword ? Escape(u.Username, true) + ":" + Escape(u.Password, true) : Escape(u.Username, true));
+    }
 
     // ResolveReference resolves a URI reference relative to a base URL (RFC 3986,
     // practical subset — scheme/host/path merge with dot-segment removal).
@@ -202,6 +233,123 @@ public static class Url
     public static void URL_SetFragment(object u, GoString v) => ((GoUrl)u).Fragment = v.ToDotNetString();
 
     public static bool URL_IsAbs(object u) => ((GoUrl)u).Scheme.Length > 0;
+    // (*URL).Hostname / Port split Host into host and port (Host may be "[ipv6]:port").
+    public static GoString URL_Hostname(object u) => GoString.FromDotNetString(SplitHostPort(((GoUrl)u).Host).host);
+    public static GoString URL_Port(object u) => GoString.FromDotNetString(SplitHostPort(((GoUrl)u).Host).port);
+    private static (string host, string port) SplitHostPort(string h)
+    {
+        int colon = h.LastIndexOf(':');
+        int bracket = h.LastIndexOf(']');
+        if (colon > bracket && colon >= 0) return (h.Substring(0, colon), h.Substring(colon + 1));
+        return (h, "");
+    }
+    public static GoString URL_EscapedPath(object u)
+    {
+        // The whole path keeps its '/' separators; only each segment is escaped.
+        var parts = ((GoUrl)u).Path.Split('/');
+        for (int i = 0; i < parts.Length; i++) parts[i] = Escape(parts[i], true);
+        return GoString.FromDotNetString(string.Join("/", parts));
+    }
+    public static GoString URL_EscapedFragment(object u) => GoString.FromDotNetString(Escape(((GoUrl)u).Fragment, true));
+    // (*URL).Redacted: String() with any password replaced by "xxxxx".
+    public static GoString URL_Redacted(object uo)
+    {
+        var u = (GoUrl)uo;
+        if (u.User == null || !u.User.HasPassword) return URL_String(uo);
+        var saved = u.User;
+        u.User = new GoUserinfo { Username = saved.Username, Password = "xxxxx", HasPassword = true };
+        var s = URL_String(uo);
+        u.User = saved;
+        return s;
+    }
+    // (*URL).Parse(ref): parse ref relative to the receiver (ResolveReference of the parsed ref).
+    public static object?[] URL_Parse(object uo, GoString refStr)
+    {
+        var r = Parse(refStr);
+        if (r[1] != null) return r;
+        return new object?[] { URL_ResolveReference(uo, r[0]!), null };
+    }
+    public static object URL_JoinPath(object uo, GoSlice elems)
+    {
+        var u = (GoUrl)URL_Clone(uo);
+        u.Path = JoinPathStr(PrependNonEmpty(u.Path, elems));
+        return u;
+    }
+    // Binary marshal of a URL is its String() bytes.
+    public static object?[] URL_MarshalBinary(object uo) => new object?[] { GoStrings.ToByteSlice(URL_String(uo)), null };
+    public static GoSlice URL_AppendBinary(object uo, GoSlice dst)
+    {
+        var b = GoStrings.ToByteSlice(URL_String(uo));
+        return Rt.AppendSlice(dst, b);
+    }
+    public static object? URL_UnmarshalBinary(object uo, GoSlice data)
+    {
+        var r = Parse(GoString.FromBytes(SliceBytes(data)));
+        if (r[1] != null) return r[1];
+        var src = (GoUrl)r[0]!; var u = (GoUrl)uo;
+        u.Scheme = src.Scheme; u.Host = src.Host; u.Path = src.Path; u.RawQuery = src.RawQuery; u.Fragment = src.Fragment; u.Opaque = src.Opaque; u.User = src.User;
+        return null;
+    }
+    private static byte[] SliceBytes(GoSlice s) { var b = new byte[s.Len]; for (int i = 0; i < s.Len; i++) b[i] = (byte)System.Convert.ToInt64(s.Data![s.Off + i]); return b; }
+
+    // url.JoinPath(base, elem...) (string, error): clean-join path elements onto base.
+    public static object?[] JoinPath(GoString baseStr, GoSlice elems)
+    {
+        var r = Parse(baseStr);
+        if (r[1] != null) return new object?[] { GoString.FromDotNetString(""), r[1] };
+        var u = (GoUrl)r[0]!;
+        u.Path = JoinPathStr(PrependNonEmpty(u.Path, elems));
+        return new object?[] { URL_String(u), null };
+    }
+    private static string[] PrependNonEmpty(string first, GoSlice elems)
+    {
+        var list = new System.Collections.Generic.List<string> { first };
+        for (int i = 0; i < elems.Len; i++) list.Add(((GoString)elems.Data![elems.Off + i]!).ToDotNetString());
+        return list.ToArray();
+    }
+    private static string JoinPathStr(string[] parts)
+    {
+        var sb = new StringBuilder();
+        foreach (var p in parts) { if (p.Length == 0) continue; if (sb.Length > 0 && sb[sb.Length - 1] != '/' && p[0] != '/') sb.Append('/'); sb.Append(p); }
+        return CleanPath(sb.ToString());
+    }
+    private static string CleanPath(string p)
+    {
+        if (p.Length == 0) return "";
+        bool rooted = p[0] == '/';
+        var stack = new System.Collections.Generic.List<string>();
+        foreach (var seg in p.Split('/'))
+        {
+            if (seg == "" || seg == ".") continue;
+            if (seg == "..") { if (stack.Count > 0 && stack[stack.Count - 1] != "..") stack.RemoveAt(stack.Count - 1); else if (!rooted) stack.Add(".."); }
+            else stack.Add(seg);
+        }
+        string joined = string.Join("/", stack);
+        string res = rooted ? "/" + joined : joined;
+        if (p[p.Length - 1] == '/' && !res.EndsWith("/") && res != "/") res += "/";
+        return res.Length == 0 ? (rooted ? "/" : "") : res;
+    }
+    // url.ParseQuery(query) (Values, error): parse "a=1&b=2" into a map[string][]string.
+    public static object?[] ParseQuery(GoString query)
+    {
+        var m = GoMaps.Make();
+        ParseQueryInto(m, query.ToDotNetString());
+        return new object?[] { m, null };
+    }
+    private static void ParseQueryInto(GoMap m, string q)
+    {
+        foreach (var pair in q.Split('&'))
+        {
+            if (pair.Length == 0) continue;
+            int eq = pair.IndexOf('=');
+            string k = eq < 0 ? pair : pair.Substring(0, eq);
+            string v = eq < 0 ? "" : pair.Substring(eq + 1);
+            var ku = Unescape(k, true); var vu = Unescape(v, true);
+            if (ku[1] != null || vu[1] != null) continue;
+            Values_Add(m, (GoString)ku[0]!, (GoString)vu[0]!);
+        }
+    }
+
     public static GoString URL_String(object uo)
     {
         var u = (GoUrl)uo;
@@ -211,13 +359,21 @@ public static class Url
         else
         {
             if (u.Host.Length > 0 || u.Scheme.Length > 0) sb.Append("//");
-            if (u.User.Length > 0) sb.Append(u.User).Append('@');
+            if (u.User != null) sb.Append(Userinfo_String(u.User).ToDotNetString()).Append('@');
             sb.Append(u.Host).Append(u.Path);
         }
         if (u.RawQuery.Length > 0) sb.Append('?').Append(u.RawQuery);
         if (u.Fragment.Length > 0) sb.Append('#').Append(u.Fragment);
         return GoString.FromDotNetString(sb.ToString());
     }
+
+    // url.Error / EscapeError / InvalidHostError methods.
+    public static GoString URLError_Error(object e) => ((GoUrlError)e).Error();
+    public static object? URLError_Unwrap(object e) => ((GoUrlError)e).Err;
+    public static bool URLError_Timeout(object e) { var err = ((GoUrlError)e).Err; return err != null && Bridge.HasMethod(err, "Timeout") && Bridge.CallMethod(err, "Timeout") is bool b && b; }
+    public static bool URLError_Temporary(object e) { var err = ((GoUrlError)e).Err; return err != null && Bridge.HasMethod(err, "Temporary") && Bridge.CallMethod(err, "Temporary") is bool b && b; }
+    public static GoString EscapeError_Error(GoString s) => GoString.FromDotNetString("invalid URL escape " + Strconv.Quote(s).ToDotNetString());
+    public static GoString InvalidHostError_Error(GoString s) => GoString.FromDotNetString("invalid character " + Strconv.Quote(s).ToDotNetString() + " in host name");
 
     public static GoString QueryEscape(GoString s) => GoString.FromDotNetString(Escape(s.ToDotNetString(), false));
     public static GoString PathEscape(GoString s) => GoString.FromDotNetString(Escape(s.ToDotNetString(), true));

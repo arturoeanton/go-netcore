@@ -157,6 +157,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"QueryEscape": {"Url", "QueryEscape"}, "PathEscape": {"Url", "PathEscape"},
 		"QueryUnescape": {"Url", "QueryUnescape"}, "PathUnescape": {"Url", "PathUnescape"},
 		"Parse": {"Url", "Parse"}, "ParseRequestURI": {"Url", "ParseRequestURI"},
+		"User": {"Url", "User"}, "UserPassword": {"Url", "UserPassword"}, "JoinPath": {"Url", "JoinPath"}, "ParseQuery": {"Url", "ParseQuery"},
 	},
 	"regexp": {
 		"Compile": {"Regexp", "Compile"}, "MustCompile": {"Regexp", "MustCompile"},
@@ -387,6 +388,8 @@ var opaqueShimTypes = map[string]bool{
 	"encoding/binary.ByteOrder":      true,
 	"regexp.Regexp":                  true,
 	"net/url.URL":                    true,
+	"net/url.Userinfo":               true,
+	"net/url.Error":                  true,
 	"net/http.Response":              true,
 	"net.Listener":                   true,
 	"net.Conn":                       true,
@@ -919,7 +922,7 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"net/url.URL": {
 		"Path": {"Url", "URL_SetPath"}, "Scheme": {"Url", "URL_SetScheme"},
 		"Host": {"Url", "URL_SetHost"}, "RawQuery": {"Url", "URL_SetRawQuery"},
-		"Fragment": {"Url", "URL_SetFragment"},
+		"Fragment": {"Url", "URL_SetFragment"}, "User": {"Url", "URL_SetUser"},
 	},
 }
 
@@ -1151,7 +1154,18 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net/url.URL": {
 		"IsAbs": {"Url", "URL_IsAbs"}, "String": {"Url", "URL_String"},
 		"ResolveReference": {"Url", "URL_ResolveReference"}, "Query": {"Url", "URL_Query"}, "RequestURI": {"Url", "URL_RequestURI"},
+		"Hostname": {"Url", "URL_Hostname"}, "Port": {"Url", "URL_Port"}, "EscapedPath": {"Url", "URL_EscapedPath"}, "EscapedFragment": {"Url", "URL_EscapedFragment"},
+		"Redacted": {"Url", "URL_Redacted"}, "Parse": {"Url", "URL_Parse"}, "JoinPath": {"Url", "URL_JoinPath"},
+		"MarshalBinary": {"Url", "URL_MarshalBinary"}, "UnmarshalBinary": {"Url", "URL_UnmarshalBinary"}, "AppendBinary": {"Url", "URL_AppendBinary"},
 	},
+	"net/url.Userinfo": {
+		"Username": {"Url", "Userinfo_Username"}, "Password": {"Url", "Userinfo_Password"}, "String": {"Url", "Userinfo_String"},
+	},
+	"net/url.Error": {
+		"Error": {"Url", "URLError_Error"}, "Unwrap": {"Url", "URLError_Unwrap"}, "Timeout": {"Url", "URLError_Timeout"}, "Temporary": {"Url", "URLError_Temporary"},
+	},
+	"net/url.EscapeError":      {"Error": {"Url", "EscapeError_Error"}},
+	"net/url.InvalidHostError": {"Error": {"Url", "InvalidHostError_Error"}},
 	"net/url.Values": {
 		"Get": {"Url", "Values_Get"}, "Set": {"Url", "Values_Set"}, "Add": {"Url", "Values_Add"},
 		"Del": {"Url", "Values_Del"}, "Has": {"Url", "Values_Has"}, "Encode": {"Url", "Values_Encode"},
