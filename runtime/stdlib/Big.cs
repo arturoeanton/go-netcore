@@ -234,6 +234,101 @@ public static class Big
         BigInteger r = m == null ? BigInteger.Pow(V(x), (int)V(y)) : BigInteger.ModPow(V(x), V(y), V(m));
         ((GoBigInt)z).V = r; return z;
     }
+
+    // (z *Int).ModSqrt(x, p): a square root of x mod the odd prime p, or nil if x is a
+    // non-residue. Ported from big/int.go: the 3-mod-4 and 5-mod-8 fast paths and the
+    // general Tonelli-Shanks loop — all exact integer arithmetic, so byte-exact.
+    public static object? Int_ModSqrt(object z, object xo, object po)
+    {
+        var Z = (GoBigInt)z;
+        BigInteger p = V(po);
+        int jac = JacobiBI(V(xo), p);
+        if (jac == -1) return null;          // x is not a square mod p
+        if (jac == 0) { Z.V = 0; return z; } // sqrt(0) = 0
+        BigInteger x = ((V(xo) % p) + p) % p;
+        BigInteger r;
+        if (p % 4 == 3) r = BigInteger.ModPow(x, (p + 1) / 4, p);
+        else if (p % 8 == 5) r = ModSqrt5Mod8(x, p);
+        else r = ModSqrtTonelliShanks(x, p);
+        Z.V = r;
+        return z;
+    }
+    private static BigInteger PosMod(BigInteger a, BigInteger p) { a %= p; return a.Sign < 0 ? a + p : a; }
+    private static BigInteger ModSqrt5Mod8(BigInteger x, BigInteger p)
+    {
+        BigInteger e = p >> 3;                          // (p-5)/8
+        BigInteger tx = x << 1;                         // 2x
+        BigInteger alpha = BigInteger.ModPow(tx, e, p);
+        BigInteger beta = PosMod(alpha * alpha, p);
+        beta = PosMod(beta * tx, p);
+        beta = PosMod(beta - 1, p);
+        beta = PosMod(beta * x, p);
+        return PosMod(beta * alpha, p);
+    }
+    private static BigInteger ModSqrtTonelliShanks(BigInteger x, BigInteger p)
+    {
+        BigInteger s = p - 1;
+        int e = 0;
+        while (s.IsEven) { s >>= 1; e++; }
+        BigInteger n = 2;
+        while (JacobiBI(n, p) != -1) n += 1;            // least non-residue
+        BigInteger y = BigInteger.ModPow(x, (s + 1) / 2, p);
+        BigInteger b = BigInteger.ModPow(x, s, p);
+        BigInteger g = BigInteger.ModPow(n, s, p);
+        int r = e;
+        while (true)
+        {
+            BigInteger t = b;
+            int m = 0;
+            while (t != 1) { t = PosMod(t * t, p); m++; }
+            if (m == 0) return y;
+            t = BigInteger.ModPow(g, BigInteger.One << (r - m - 1), p);
+            g = PosMod(t * t, p);
+            y = PosMod(y * t, p);
+            b = PosMod(b * g, p);
+            r = m;
+        }
+    }
+    // Jacobi symbol (a/n) for odd n > 0.
+    private static int JacobiBI(BigInteger a, BigInteger n)
+    {
+        a = PosMod(a, n);
+        int result = 1;
+        while (a != 0)
+        {
+            while (a.IsEven) { a >>= 1; var r8 = n % 8; if (r8 == 3 || r8 == 5) result = -result; }
+            (a, n) = (n, a);
+            if (a % 4 == 3 && n % 4 == 3) result = -result;
+            a %= n;
+        }
+        return n == 1 ? result : 0;
+    }
+
+    // (z *Int).Rand(rnd, n): a uniform random Int in [0,n), consuming rnd exactly as Go's
+    // nat.random does (per 64-bit word: two rand.Uint32 draws low|high<<32; mask the top
+    // word; reject+redraw the whole value if >= n). Byte-exact since the PRNG matches.
+    public static object Int_Rand(object z, object rnd, object no)
+    {
+        var Z = (GoBigInt)z;
+        BigInteger n = V(no);
+        if (n.Sign <= 0) { Z.V = 0; return z; }
+        var r = (GoRand)rnd;
+        int nbits = (int)n.GetBitLength();
+        int words = (nbits + 63) / 64;
+        int msw = nbits % 64; if (msw == 0) msw = 64;
+        ulong mask = msw == 64 ? ulong.MaxValue : (1UL << msw) - 1;
+        while (true)
+        {
+            BigInteger val = 0;
+            for (int i = 0; i < words; i++)
+            {
+                ulong w = (ulong)r.Uint32() | ((ulong)r.Uint32() << 32);
+                if (i == words - 1) w &= mask;
+                val |= (BigInteger)w << (64 * i);
+            }
+            if (val < n) { Z.V = val; return z; }
+        }
+    }
     public static object Int_Set(object z, object x) { ((GoBigInt)z).V = V(x); return z; }
     // QuoRem: truncated division — z = x/y (toward zero), r = x - y*z; returns (z, r).
     public static object?[] Int_QuoRem(object z, object x, object y, object r)

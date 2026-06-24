@@ -1646,6 +1646,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Div": {"Big", "Int_Div"}, "Mod": {"Big", "Int_Mod"}, "Neg": {"Big", "Int_Neg"},
 		"Quo": {"Big", "Int_Quo"}, "Rem": {"Big", "Int_Rem"}, "GCD": {"Big", "Int_GCD"},
 		"Abs": {"Big", "Int_Abs"}, "Exp": {"Big", "Int_Exp"}, "Set": {"Big", "Int_Set"}, "FillBytes": {"Big", "Int_FillBytes"},
+		"ModSqrt": {"Big", "Int_ModSqrt"}, "Rand": {"Big", "Int_Rand"},
 		"Cmp": {"Big", "Int_Cmp"}, "Sign": {"Big", "Int_Sign"}, "Int64": {"Big", "Int_Int64"},
 		"String": {"Big", "Int_String"}, "SetString": {"Big", "Int_SetString"},
 		"SetInt64": {"Big", "Int_SetInt64"}, "SetUint64": {"Big", "Int_SetUint64"},
