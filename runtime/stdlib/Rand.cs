@@ -235,9 +235,38 @@ public sealed class GoRand
         return v % n;
     }
 
-    private int Int31() => (int)(src.Int63() >> 32);
+    public int Int31() => (int)(src.Int63() >> 32);
 
-    private int Int31n(int n)
+    // rngSource is a Source64, so Rand.Uint64 returns src.Uint64() directly.
+    public ulong Uint64() => src.Uint64();
+
+    public float Float32()
+    {
+        float f;
+        do { f = (float)Float64(); } while (f == 1);
+        return f;
+    }
+
+    // Rand.Read keeps a 7-bytes-per-Int63 carry across calls (the top bit is dropped).
+    private long readVal;
+    private sbyte readPos;
+    public object?[] Read(GoSlice p)
+    {
+        long val = readVal; sbyte pos = readPos;
+        int n;
+        for (n = 0; n < p.Len; n++)
+        {
+            if (pos == 0) { val = src.Int63(); pos = 7; }
+            p.Data![p.Off + n] = (int)(byte)val;
+            val >>= 8; pos--;
+        }
+        readPos = pos; readVal = val;
+        return new object?[] { (long)n, null };
+    }
+
+    public void Seed(long seed) { src.Seed(seed); readPos = 0; }
+
+    public int Int31n(int n)
     {
         if (n <= 0) throw new GoPanicException(GoString.FromDotNetString("invalid argument to Int31n"));
         if ((n & (n - 1)) == 0) return Int31() & (n - 1);
@@ -273,7 +302,7 @@ public sealed class GoRand
         return new GoSlice { Data = m, Off = 0, Len = (int)n, Cap = (int)n };
     }
 
-    private uint Uint32() => (uint)((ulong)src.Int63() >> 31);
+    public uint Uint32() => (uint)((ulong)src.Int63() >> 31);
 
     // int31n is Go's Lemire-style bounded sampler used ONLY by Shuffle (distinct from the
     // rejection-based Int31n the Intn/Int31n methods use); reproduced exactly for parity.
@@ -330,16 +359,13 @@ public static class Rand
     public static long Intn(long n) => Global.Intn(n);
     public static GoSlice Perm(long n) => Global.Perm(n);
     public static void Shuffle(long n, GoClosure swap) => Global.Shuffle(n, swap);
-    public static void Seed(long seed) { }
-    public static ulong Uint64() => ((ulong)Global.Int63() << 1) | ((ulong)Global.Int63() & 1);
-    public static uint Uint32() => (uint)Global.Int63();
-    public static long Int31() => Global.Int63() >> 32;
-    // rand.Read(p) (n, err): fill p with pseudo-random bytes.
-    public static object?[] Read(GoSlice p)
-    {
-        for (int i = 0; i < p.Len; i++) p.Data![p.Off + i] = (int)(byte)Global.Int63();
-        return new object?[] { (long)p.Len, null };
-    }
+    public static void Seed(long seed) => Global.Seed(seed);
+    public static ulong Uint64() => Global.Uint64();
+    public static uint Uint32() => Global.Uint32();
+    public static int Int31() => Global.Int31();
+    public static int Int31n(int n) => Global.Int31n(n);
+    public static float Float32() => Global.Float32();
+    public static object?[] Read(GoSlice p) => Global.Read(p);
 
     // *rand.Rand method shims (receiver as first arg).
     public static long Rand_Int63(object r) => ((GoRand)r).Int63();
@@ -349,4 +375,11 @@ public static class Rand
     public static double Rand_Float64(object r) => ((GoRand)r).Float64();
     public static GoSlice Rand_Perm(object r, long n) => ((GoRand)r).Perm(n);
     public static void Rand_Shuffle(object r, long n, GoClosure swap) => ((GoRand)r).Shuffle(n, swap);
+    public static ulong Rand_Uint64(object r) => ((GoRand)r).Uint64();
+    public static uint Rand_Uint32(object r) => ((GoRand)r).Uint32();
+    public static int Rand_Int31(object r) => ((GoRand)r).Int31();
+    public static int Rand_Int31n(object r, int n) => ((GoRand)r).Int31n(n);
+    public static float Rand_Float32(object r) => ((GoRand)r).Float32();
+    public static object?[] Rand_Read(object r, GoSlice p) => ((GoRand)r).Read(p);
+    public static void Rand_Seed(object r, long seed) => ((GoRand)r).Seed(seed);
 }
