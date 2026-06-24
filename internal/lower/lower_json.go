@@ -2,6 +2,7 @@ package lower
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 	"strconv"
 	"strings"
@@ -26,19 +27,34 @@ func (l *funcLowerer) errorsAsCall(e *ast.CallExpr) goir.Type {
 		Params: []goir.Type{goir.TObject, goir.TObject, goir.TString}, Ret: goir.TBool,
 	}
 	l.exprCoerced(e.Args[0], goir.TObject) // err
-	l.expr(e.Args[1])                      // *target (a GoPtr)
+	// The target must be an aliasing pointer (the local's cell) so the matched error is
+	// written back. For a &local target, emit the cell directly — addrOf's "&shim value is
+	// itself" shortcut would otherwise pass a shim-struct *value* (not a write-back cell),
+	// so errors.As could never assign through it.
+	emitted := false
+	if u, ok := unparen(e.Args[1]).(*ast.UnaryExpr); ok && u.Op == token.AND {
+		emitted = l.emitAddr(u.X)
+	}
+	if !emitted {
+		l.expr(e.Args[1]) // already a *target pointer value
+	}
 	l.emit(goir.Op{Code: goir.OpStrConst, Str: desc})
 	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
 	return goir.TBool
 }
 
-// errorMatchName returns the CLR type name the errors.As shim compares chain
-// errors against: the named struct behind a *T or T target element type.
+// errorMatchName returns the type name the errors.As shim compares chain errors against:
+// the goclr-generated CLR struct name for a user error, or — for a shim error struct
+// (csv.ParseError, os.PathError, …) whose runtime value is a C# [GoShim] class — its Go
+// type name, which the runtime resolves through ShimTypes.IsStrict.
 func (l *funcLowerer) errorMatchName(t types.Type) string {
 	if p, ok := t.Underlying().(*types.Pointer); ok {
 		t = p.Elem()
 	}
 	if named, ok := t.(*types.Named); ok {
+		if obj := named.Obj(); obj.Pkg() != nil && opaqueShimTypes[obj.Pkg().Path()+"."+obj.Name()] {
+			return obj.Pkg().Path() + "." + obj.Name()
+		}
 		if _, isStruct := named.Underlying().(*types.Struct); isStruct {
 			return l.structFor(named).Name
 		}

@@ -35,10 +35,14 @@ func (c *lowerCtx) analyzeAddrTaken(body ast.Node) map[types.Object]bool {
 		}
 		if id, ok := e.(*ast.Ident); ok {
 			if v, ok := pkg.TypesInfo.Uses[id].(*types.Var); ok {
-				// Opaque value-type shims are already reference handles; taking
-				// their address does not require a cell.
-				if t, ok := c.goType(v.Type()); ok && t.Shim != "" {
-					return
+				// A variable that directly HOLDS an opaque value-type shim is already a
+				// reference handle, so &it needs no cell. But a variable of *shim type (a
+				// pointer to a shim, e.g. an errors.As `var target *os.PathError`) still needs
+				// a cell so &target can be assigned through.
+				if _, isPtr := v.Type().Underlying().(*types.Pointer); !isPtr {
+					if t, ok := c.goType(v.Type()); ok && t.Shim != "" {
+						return
+					}
 				}
 				set[v] = true
 			}

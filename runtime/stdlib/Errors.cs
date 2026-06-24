@@ -92,9 +92,13 @@ public static class Errors
         string want = typeName.ToDotNetString();
         while (err != null)
         {
-            // A pointer-receiver error is a GoPtr around the concrete struct.
+            // A pointer-receiver error is a GoPtr around the concrete struct. Match the target
+            // type by the goclr-generated struct's CLR name or, for a shim error struct
+            // (os.PathError, csv.ParseError, …), by its Go type name via the [GoShim] registry
+            // (`want` carries the Go name then).
             object? concrete = err is GoPtr gp ? gp.Value : err;
-            if (want.Length != 0 && concrete != null && concrete.GetType().Name == want)
+            if (want.Length != 0 && concrete != null &&
+                (concrete.GetType().Name == want || ShimTypes.IsStrict(concrete, want)))
             {
                 tp.Value = err;
                 return true;
