@@ -542,14 +542,38 @@ public static class Http
         };
     }
 
-    // http.FileServer(fs) / http.StripPrefix(prefix, h): the returned handler's
-    // ServeHTTP is a net/http internal type with no lowered body under goclr, so the
-    // handler value is opaque. gin's Static* routes resolve files via its own fs.Open.
+    // http.FileServer(fs): the returned handler's ServeHTTP is a net/http internal type
+    // with no lowered body under goclr, so the handler value is opaque. gin's Static*
+    // routes resolve files via its own fs.Open.
     public static object FileServer(object? fs) => new GoFileServer { Fs = fs };
+
+    // http.StripPrefix(prefix, h): a Handler that removes prefix from the request URL path
+    // and dispatches to h with the rewritten request, or replies 404 if the path lacks the
+    // prefix. Mirrors net/http.StripPrefix (the RawPath leg is moot — the shim URL has none).
+    // A FileServer handler keeps the legacy behaviour (records the prefix on the opaque value)
+    // so gin's static routes still resolve.
     public static object StripPrefix(GoString prefix, object? h)
     {
         if (h is GoFileServer fsv) { fsv.StripPrefix = prefix.ToDotNetString(); return fsv; }
-        return h ?? new GoFileServer();
+        string pfx = prefix.ToDotNetString();
+        if (pfx.Length == 0) return h!;
+        return new GoClosure { Id = -1, Native = a =>
+        {
+            var w = a![0];
+            var r = a.Length > 1 ? a[1] : null;
+            var req = r as GoRequest;
+            string path = req?.Url.Path ?? "";
+            string p = path.StartsWith(pfx, System.StringComparison.Ordinal) ? path.Substring(pfx.Length) : path;
+            if (p.Length < path.Length && req != null)
+            {
+                var u = req.Url;
+                var u2 = new GoUrl { Scheme = u.Scheme, Host = u.Host, Path = p, RawQuery = u.RawQuery, Fragment = u.Fragment, Opaque = u.Opaque, User = u.User };
+                var r2 = new GoRequest { Method = req.Method, Url = u2, Body = req.Body, Host = req.Host, RemoteAddr = req.RemoteAddr, Form = req.Form, PostForm = req.PostForm, Header = req.Header, RawBody = req.RawBody };
+                ServeHTTPDyn(h, w, r2);
+            }
+            else NotFound(w!, r);
+            return null;
+        } };
     }
 
     // http.Serve(l, handler): serve over a net.Listener (best-effort, not used by goclr's
