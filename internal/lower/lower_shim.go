@@ -675,6 +675,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"encoding/csv.ErrFieldCount":     {"Csv", "ErrFieldCount"},
 	"encoding/csv.ErrTrailingComma":  {"Csv", "ErrTrailingComma"},
 	"net/mail.ErrHeaderNotPresent":   {"Mail", "ErrHeaderNotPresent"},
+	"errors.ErrUnsupported":          {"Errors", "ErrUnsupported"},
 	"encoding/asn1.NullBytes":        {"Asn1", "NullBytes"},
 	"mime/multipart.ErrMessageTooLarge": {"Multipart", "ErrMessageTooLarge"},
 	"bufio.ErrInvalidUnreadByte":     {"Bufio", "ErrInvalidUnreadByte"},

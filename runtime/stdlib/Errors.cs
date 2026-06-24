@@ -8,6 +8,11 @@ public static class Errors
 {
     public static object New(GoString text) => new GoError(text);
 
+    // errors.ErrUnsupported: the sentinel for "not supported by this implementation",
+    // returned/wrapped by stdlib operations and tested with errors.Is.
+    public static readonly GoError ErrUnsupportedSentinel = new(GoString.FromDotNetString("unsupported operation"));
+    public static object ErrUnsupported() => ErrUnsupportedSentinel;
+
     /// <summary>The error produced by errors.Join: holds the joined errors and reports
     /// their messages newline-separated. It exposes the list (Go's Unwrap() []error) so
     /// errors.Is/As can descend into every joined error.</summary>
