@@ -15,8 +15,39 @@ public sealed class GoDirEntry
 
 /// <summary>Shim for io/fs.FileMode methods (the type is a uint32; constants resolve
 /// from source). Only the mask/predicate methods are modeled.</summary>
+/// <summary>io/fs.PathError (== os.PathError): an Op/Path/Err triple whose Error() reads
+/// "op path: err", with Unwrap()/Timeout() following the wrapped error.</summary>
+[GoShim("io/fs.PathError")]
+[GoShim("os.PathError")]
+public sealed class GoPathError : IGoError, IGoWrapped
+{
+    public string Op = "", Path = "";
+    public object? Err;
+    public GoString Error() => GoString.FromDotNetString(Op + " " + Path + ": " + ErrStr(Err));
+    public object? GoUnwrapped() => Err;
+    internal static string ErrStr(object? e) =>
+        e is IGoError g ? g.Error().ToDotNetString()
+        : e != null && Bridge.HasMethod(e, "Error") && Bridge.CallMethod(e, "Error") is GoString gs ? gs.ToDotNetString() : "";
+}
+
 public static class Fs
 {
+    // io/fs.PathError struct + methods (5-step shim value type).
+    public static object PathErrorZero() => new GoPathError();
+    public static GoString PathError_Op(object e) => GoString.FromDotNetString(((GoPathError)e).Op);
+    public static GoString PathError_Path(object e) => GoString.FromDotNetString(((GoPathError)e).Path);
+    public static object? PathError_Err(object e) => ((GoPathError)e).Err;
+    public static void PathError_SetOp(object e, GoString v) => ((GoPathError)e).Op = v.ToDotNetString();
+    public static void PathError_SetPath(object e, GoString v) => ((GoPathError)e).Path = v.ToDotNetString();
+    public static void PathError_SetErr(object e, object? v) => ((GoPathError)e).Err = v;
+    public static GoString PathError_Error(object e) => ((GoPathError)e).Error();
+    public static object? PathError_Unwrap(object e) => ((GoPathError)e).Err;
+    public static bool PathError_Timeout(object e)
+    {
+        var err = ((GoPathError)e).Err;
+        return err != null && Bridge.HasMethod(err, "Timeout") && Bridge.CallMethod(err, "Timeout") is bool b && b;
+    }
+
     // fs.SkipDir / fs.SkipAll: the sentinel errors a WalkDirFunc returns to skip a directory
     // or stop the walk (filepath.SkipDir/SkipAll alias these).
     public static readonly GoError SkipDirSentinel = new(GoString.FromDotNetString("skip this directory"));

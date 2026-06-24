@@ -468,6 +468,8 @@ var opaqueShimTypes = map[string]bool{
 	"crypto/sha3.SHA3":               true,
 	"io/fs.FileInfo":                 true,
 	"io/fs.DirEntry":                 true,
+	"io/fs.PathError":                true,
+	"os.PathError":                   true,
 	"runtime.Frame":                  true,
 	"runtime.Frames":                 true,
 	"time.Time":                      true,
@@ -902,6 +904,8 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"net/textproto.Error": {"Code": {"Textproto", "Error_Code"}, "Msg": {"Textproto", "Error_Msg"}},
 	"flag.Flag": {"Name": {"Flag", "Flag_Name"}, "Usage": {"Flag", "Flag_Usage"}, "DefValue": {"Flag", "Flag_DefValue"}, "Value": {"Flag", "Flag_Value"}},
 	"net/mail.Message": {"Header": {"Mail", "Message_Header"}, "Body": {"Mail", "Message_Body"}},
+	"io/fs.PathError": {"Op": {"Fs", "PathError_Op"}, "Path": {"Fs", "PathError_Path"}, "Err": {"Fs", "PathError_Err"}},
+	"os.PathError": {"Op": {"Fs", "PathError_Op"}, "Path": {"Fs", "PathError_Path"}, "Err": {"Fs", "PathError_Err"}},
 	"text/scanner.Position": {"Filename": {"GoToken", "Position_Filename"}, "Offset": {"GoToken", "Position_Offset"}, "Line": {"GoToken", "Position_Line"}, "Column": {"GoToken", "Position_Column"}},
 	"text/scanner.Scanner": {"Position": {"Scanner", "Scanner_Position"}, "Filename": {"Scanner", "Scanner_Filename"}, "Line": {"Scanner", "Scanner_PLine"}, "Column": {"Scanner", "Scanner_PColumn"}, "Offset": {"Scanner", "Scanner_POffset"}, "Mode": {"Scanner", "Scanner_Mode"}, "ErrorCount": {"Scanner", "Scanner_ErrorCount"}},
 	"encoding/asn1.StructuralError": {"Msg": {"Asn1", "StructuralError_Msg"}},
@@ -1066,6 +1070,8 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"go/token.Position": {"Filename": {"GoToken", "Position_SetFilename"}, "Offset": {"GoToken", "Position_SetOffset"}, "Line": {"GoToken", "Position_SetLine"}, "Column": {"GoToken", "Position_SetColumn"}},
 	"encoding/csv.ParseError": {"StartLine": {"Csv", "ParseError_SetStartLine"}, "Line": {"Csv", "ParseError_SetLine"}, "Column": {"Csv", "ParseError_SetColumn"}, "Err": {"Csv", "ParseError_SetErr"}},
 	"net/textproto.Error": {"Code": {"Textproto", "Error_SetCode"}, "Msg": {"Textproto", "Error_SetMsg"}},
+	"io/fs.PathError": {"Op": {"Fs", "PathError_SetOp"}, "Path": {"Fs", "PathError_SetPath"}, "Err": {"Fs", "PathError_SetErr"}},
+	"os.PathError": {"Op": {"Fs", "PathError_SetOp"}, "Path": {"Fs", "PathError_SetPath"}, "Err": {"Fs", "PathError_SetErr"}},
 	"text/scanner.Position": {"Filename": {"GoToken", "Position_SetFilename"}, "Offset": {"GoToken", "Position_SetOffset"}, "Line": {"GoToken", "Position_SetLine"}, "Column": {"GoToken", "Position_SetColumn"}},
 	"text/scanner.Scanner": {"Filename": {"Scanner", "Scanner_SetFilename"}, "Mode": {"Scanner", "Scanner_SetMode"}},
 	"encoding/asn1.StructuralError": {"Msg": {"Asn1", "StructuralError_SetMsg"}},
@@ -1168,6 +1174,8 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"go/token.Position":               {"GoToken", "PositionZero"},
 	"encoding/csv.ParseError":          {"Csv", "ParseErrorZero"},
 	"net/textproto.Error":              {"Textproto", "Error_Zero"},
+	"io/fs.PathError":                  {"Fs", "PathErrorZero"},
+	"os.PathError":                     {"Fs", "PathErrorZero"},
 	"text/scanner.Position":            {"GoToken", "PositionZero"},
 	"text/scanner.Scanner":             {"Scanner", "NewScannerZero"},
 	"go/token.FileSet":                {"GoToken", "FileSetZero"},
@@ -1766,6 +1774,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"net/mail.Header": {
 		"Get": {"Mail", "Header_Get"}, "AddressList": {"Mail", "Header_AddressList"},
+	},
+	"io/fs.PathError": {
+		"Error": {"Fs", "PathError_Error"}, "Unwrap": {"Fs", "PathError_Unwrap"}, "Timeout": {"Fs", "PathError_Timeout"},
+	},
+	"os.PathError": {
+		"Error": {"Fs", "PathError_Error"}, "Unwrap": {"Fs", "PathError_Unwrap"}, "Timeout": {"Fs", "PathError_Timeout"},
 	},
 	"crypto/x509.PublicKeyAlgorithm": {
 		"String": {"Crypto509", "PublicKeyAlgorithm_String"},
