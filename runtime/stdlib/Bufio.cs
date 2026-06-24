@@ -17,6 +17,8 @@ public sealed class GoBufReader
     public object? R;                                          // underlying reader
     public System.Collections.Generic.List<byte> Buf = new();  // bytes read from R, not yet consumed
     public int Pos;                                            // read cursor into Buf
+    public int Size = 4096;                                    // logical buffer size (bufio default 4096)
+    public int LastRuneSize = -1;                              // size of the rune from the last ReadRune, else -1
 }
 
 /// <summary>A bufio.ReadWriter pairing a Reader and a Writer.</summary>
@@ -39,12 +41,26 @@ public static class Bufio
     public static object ErrBufferFull() => ErrBufferFullSentinel;
     public static readonly GoError ErrNegativeCountSentinel = new(GoString.FromDotNetString("bufio: negative count"));
     public static object ErrNegativeCount() => ErrNegativeCountSentinel;
+    public static readonly GoError ErrInvalidUnreadByteSentinel = new(GoString.FromDotNetString("bufio: invalid use of UnreadByte"));
+    public static object ErrInvalidUnreadByte() => ErrInvalidUnreadByteSentinel;
+    public static readonly GoError ErrInvalidUnreadRuneSentinel = new(GoString.FromDotNetString("bufio: invalid use of UnreadRune"));
+    public static object ErrInvalidUnreadRune() => ErrInvalidUnreadRuneSentinel;
+    public static readonly GoError ErrTooLongSentinel = new(GoString.FromDotNetString("bufio.Scanner: token too long"));
+    public static object ErrTooLong() => ErrTooLongSentinel;
+    public static readonly GoError ErrNegativeAdvanceSentinel = new(GoString.FromDotNetString("bufio.Scanner: SplitFunc returns negative advance count"));
+    public static object ErrNegativeAdvance() => ErrNegativeAdvanceSentinel;
+    public static readonly GoError ErrAdvanceTooFarSentinel = new(GoString.FromDotNetString("bufio.Scanner: SplitFunc returns advance count beyond input"));
+    public static object ErrAdvanceTooFar() => ErrAdvanceTooFarSentinel;
+    public static readonly GoError ErrBadReadCountSentinel = new(GoString.FromDotNetString("bufio.Scanner: Read returned impossible count"));
+    public static object ErrBadReadCount() => ErrBadReadCountSentinel;
+    public static readonly GoError ErrFinalTokenSentinel = new(GoString.FromDotNetString("final token"));
+    public static object ErrFinalToken() => ErrFinalTokenSentinel;
 
     public static object NewScanner(object? r) => new GoScanner { Data = Readers.Drain(r) };
 
     // bufio.NewReader / NewReaderSize: buffered reader over an underlying reader.
     public static object NewReader(object? r) => new GoBufReader { R = r };
-    public static object NewReaderSize(object? r, long size) => new GoBufReader { R = r };
+    public static object NewReaderSize(object? r, long size) => new GoBufReader { R = r, Size = size < 16 ? 16 : (int)size };
 
     private const int FillBlock = 4096; // bufio's default buffer size
     private static int Avail(GoBufReader b) => b.Buf.Count - b.Pos;
@@ -105,7 +121,7 @@ public static class Bufio
     public static object? Reader_UnreadByte(object br)
     {
         var b = (GoBufReader)br;
-        if (b.Pos == 0) return new GoError(GoString.FromDotNetString("bufio: invalid use of UnreadByte"));
+        if (b.Pos == 0) return ErrInvalidUnreadByteSentinel;
         b.Pos--;
         return null;
     }
@@ -131,8 +147,103 @@ public static class Bufio
         b.Pos += got;
         return new object?[] { (long)got, got < want ? (e ?? Io.EOFSentinel) : null };
     }
-    public static void Reader_Reset(object br, object? r) { var b = (GoBufReader)br; b.R = r; b.Buf.Clear(); b.Pos = 0; }
+    public static void Reader_Reset(object br, object? r) { var b = (GoBufReader)br; b.R = r; b.Buf.Clear(); b.Pos = 0; b.LastRuneSize = -1; }
     public static long Reader_Buffered(object br) => Avail((GoBufReader)br);
+
+    // bufio.Reader.Size() int: the logical buffer size.
+    public static long Reader_Size(object br) => ((GoBufReader)br).Size;
+
+    // bufio.Reader.ReadRune() (r rune, size int, err error): decode one UTF-8 rune.
+    public static object?[] Reader_ReadRune(object br)
+    {
+        var b = (GoBufReader)br;
+        b.LastRuneSize = -1;
+        var e = Fill(b, 1);
+        if (Avail(b) == 0) return new object?[] { 0, 0L, e ?? Io.EOFSentinel };
+        // Ensure up to a full 4-byte sequence is buffered (best effort at EOF).
+        Fill(b, 4);
+        int avail = Avail(b);
+        int take = avail < 4 ? avail : 4;
+        var data = new object?[take];
+        for (int i = 0; i < take; i++) data[i] = (int)b.Buf[b.Pos + i];
+        var rs = Utf8.DecodeRune(new GoSlice { Data = data, Off = 0, Len = take, Cap = take });
+        int size = (int)System.Convert.ToInt64(rs[1] ?? 0L);
+        if (size == 0) size = 1; // empty handled above; guard
+        b.Pos += size;
+        b.LastRuneSize = size;
+        return new object?[] { (int)System.Convert.ToInt64(rs[0] ?? 0L), (long)size, null };
+    }
+
+    // bufio.Reader.UnreadRune() error: undo the rune from the most recent ReadRune.
+    public static object? Reader_UnreadRune(object br)
+    {
+        var b = (GoBufReader)br;
+        if (b.LastRuneSize < 0) return ErrInvalidUnreadRuneSentinel;
+        b.Pos -= b.LastRuneSize;
+        b.LastRuneSize = -1;
+        return null;
+    }
+
+    // bufio.Reader.ReadSlice(delim) ([]byte, error): read up to and including delim. With an
+    // unbounded backing buffer ErrBufferFull never triggers; EOF before delim yields io.EOF.
+    public static object?[] Reader_ReadSlice(object br, int delim)
+    {
+        var b = (GoBufReader)br;
+        b.LastRuneSize = -1;
+        var (bytes, err) = ReadUntil(b, (byte)delim);
+        var data = new object?[bytes.Length];
+        for (int i = 0; i < bytes.Length; i++) data[i] = (int)bytes[i];
+        return new object?[] { new GoSlice { Data = data, Off = 0, Len = bytes.Length, Cap = bytes.Length }, err };
+    }
+
+    // bufio.Reader.ReadLine() (line []byte, isPrefix bool, err error): a low-level line read.
+    // Strips a trailing \n and a preceding \r. isPrefix is always false (unbounded buffer).
+    public static object?[] Reader_ReadLine(object br)
+    {
+        var b = (GoBufReader)br;
+        b.LastRuneSize = -1;
+        var (bytes, err) = ReadUntil(b, (byte)'\n');
+        int n = bytes.Length;
+        if (err != null && n == 0) return new object?[] { EmptyByteSlice(), false, err };
+        // Go's ReadLine drops a trailing \n (and a \r before it); a bare line at EOF keeps its bytes.
+        if (n > 0 && bytes[n - 1] == (byte)'\n')
+        {
+            n--;
+            if (n > 0 && bytes[n - 1] == (byte)'\r') n--;
+            err = null; // a full line was read
+        }
+        var data = new object?[n];
+        for (int i = 0; i < n; i++) data[i] = (int)bytes[i];
+        return new object?[] { new GoSlice { Data = data, Off = 0, Len = n, Cap = n }, false, err };
+    }
+
+    // bufio.Reader.WriteTo(w) (n int64, err error): drain everything to w.
+    public static object?[] Reader_WriteTo(object br, object? w)
+    {
+        var b = (GoBufReader)br;
+        long total = 0;
+        // Flush whatever is buffered, then keep reading the underlying reader to exhaustion.
+        while (true)
+        {
+            int avail = Avail(b);
+            if (avail > 0)
+            {
+                var chunk = new byte[avail];
+                for (int i = 0; i < avail; i++) chunk[i] = (byte)b.Buf[b.Pos + i];
+                b.Pos += avail;
+                Compress.WriteRaw(w, chunk);
+                total += avail;
+            }
+            var e = Fill(b, 1);
+            if (Avail(b) == 0)
+            {
+                if (e != null && !ReferenceEquals(e, Io.EOFSentinel)) return new object?[] { total, e };
+                return new object?[] { total, null };
+            }
+        }
+    }
+
+    private static GoSlice EmptyByteSlice() => new() { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
 
     // bufio.Reader.ReadString(delim) (string, error) / ReadBytes(delim) ([]byte, error):
     // read up to and including the first delim. On EOF before delim, returns the data
@@ -194,6 +305,40 @@ public static class Bufio
         return null;
     }
     public static void Writer_Reset(object bw, object? w) { var b = (GoBufWriter)bw; b.W = w; b.Buf.Clear(); }
+
+    // bufio.Writer.Size() int: the buffer size.
+    public static long Writer_Size(object bw) => ((GoBufWriter)bw).Size;
+
+    // bufio.Writer.WriteRune(r) (size int, err error): encode r as UTF-8 and buffer it.
+    public static object?[] Writer_WriteRune(object bw, int r)
+    {
+        var b = (GoBufWriter)bw;
+        var rune = new System.Text.Rune(r >= 0 && (r < 0xD800 || (r > 0xDFFF && r <= 0x10FFFF)) ? r : 0xFFFD);
+        System.Span<byte> tmp = stackalloc byte[4];
+        int n = rune.EncodeToUtf8(tmp);
+        for (int i = 0; i < n; i++) b.Buf.Add(tmp[i]);
+        return new object?[] { (long)n, null };
+    }
+
+    // bufio.Writer.AvailableBuffer() []byte: an empty slice with spare capacity (Go returns
+    // b.buf[b.n:][:0]). Callers append to it then pass it to Write; an empty slice suffices.
+    public static GoSlice Writer_AvailableBuffer(object bw)
+    {
+        int cap = (int)Writer_Available(bw);
+        return new GoSlice { Data = new object?[cap], Off = 0, Len = 0, Cap = cap };
+    }
+
+    // bufio.Writer.ReadFrom(r) (n int64, err error): copy everything from r into the buffer.
+    public static object?[] Writer_ReadFrom(object bw, object? r)
+    {
+        var b = (GoBufWriter)bw;
+        var bytes = Readers.Drain(r);
+        b.Buf.AddRange(bytes);
+        return new object?[] { (long)bytes.Length, null };
+    }
+
+    // bufio.NewReadWriter(r, w) *ReadWriter.
+    public static object NewReadWriter(object? r, object? w) => new GoBufReadWriter { R = r!, W = w! };
 
     // Scanner.Split(bufio.ScanLines|ScanWords|ScanRunes|ScanBytes): the SplitFunc value
     // lowers to a closure returning its mode marker (a long); invoke it to set the mode.

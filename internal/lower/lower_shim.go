@@ -208,6 +208,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		// SplitFunc values: used as a value passed to Scanner.Split, each lowers to a
 		// closure returning the split mode marker (see Scanner_Split).
 		"ScanLines": {"Bufio", "ScanLinesMarker"}, "ScanWords": {"Bufio", "ScanWordsMarker"}, "ScanRunes": {"Bufio", "ScanRunesMarker"}, "ScanBytes": {"Bufio", "ScanBytesMarker"},
+		"NewReadWriter": {"Bufio", "NewReadWriter"},
 	},
 	"io/fs": {
 		"Stat": {"Fs", "Stat"}, "Sub": {"Fs", "Sub"}, "ValidPath": {"Fs", "ValidPath"}, "ReadDir": {"Fs", "ReadDir"},
@@ -567,6 +568,13 @@ var shimVarRegistry = map[string]shimFunc{
 	"hash/crc32.IEEETable":           {"Hashes", "Crc32IEEETable"},
 	"bufio.ErrBufferFull":            {"Bufio", "ErrBufferFull"},
 	"bufio.ErrNegativeCount":         {"Bufio", "ErrNegativeCount"},
+	"bufio.ErrInvalidUnreadByte":     {"Bufio", "ErrInvalidUnreadByte"},
+	"bufio.ErrInvalidUnreadRune":     {"Bufio", "ErrInvalidUnreadRune"},
+	"bufio.ErrTooLong":               {"Bufio", "ErrTooLong"},
+	"bufio.ErrNegativeAdvance":       {"Bufio", "ErrNegativeAdvance"},
+	"bufio.ErrAdvanceTooFar":         {"Bufio", "ErrAdvanceTooFar"},
+	"bufio.ErrBadReadCount":          {"Bufio", "ErrBadReadCount"},
+	"bufio.ErrFinalToken":            {"Bufio", "ErrFinalToken"},
 	"net.DefaultResolver":            {"Net", "DefaultResolver"},
 	"syscall.ForkLock":               {"Syscall", "ForkLock"},
 	"compress/gzip.ErrChecksum":      {"Compress", "GzipErrChecksum"},
@@ -1251,6 +1259,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"bufio.Reader": {
 		"Read": {"Bufio", "Reader_Read"}, "ReadByte": {"Bufio", "Reader_ReadByte"}, "UnreadByte": {"Bufio", "Reader_UnreadByte"}, "Peek": {"Bufio", "Reader_Peek"}, "Discard": {"Bufio", "Reader_Discard"}, "Reset": {"Bufio", "Reader_Reset"}, "Buffered": {"Bufio", "Reader_Buffered"},
 		"ReadString": {"Bufio", "Reader_ReadString"}, "ReadBytes": {"Bufio", "Reader_ReadBytes"},
+		"Size": {"Bufio", "Reader_Size"}, "ReadRune": {"Bufio", "Reader_ReadRune"}, "UnreadRune": {"Bufio", "Reader_UnreadRune"},
+		"ReadSlice": {"Bufio", "Reader_ReadSlice"}, "ReadLine": {"Bufio", "Reader_ReadLine"}, "WriteTo": {"Bufio", "Reader_WriteTo"},
 	},
 	"bufio.ReadWriter": {
 		"Flush": {"Bufio", "RW_Flush"}, "Write": {"Bufio", "Writer_Write"}, "Read": {"Bufio", "RW_Read"},
@@ -1258,6 +1268,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"bufio.Writer": {
 		"Available": {"Bufio", "Writer_Available"}, "Buffered": {"Bufio", "Writer_Buffered"}, "Flush": {"Bufio", "Writer_Flush"},
 		"Write": {"Bufio", "Writer_Write"}, "WriteByte": {"Bufio", "Writer_WriteByte"}, "WriteString": {"Bufio", "Writer_WriteString"}, "Reset": {"Bufio", "Writer_Reset"},
+		"Size": {"Bufio", "Writer_Size"}, "WriteRune": {"Bufio", "Writer_WriteRune"}, "AvailableBuffer": {"Bufio", "Writer_AvailableBuffer"}, "ReadFrom": {"Bufio", "Writer_ReadFrom"},
 	},
 	"time.Ticker": {
 		"Stop": {"Time", "Ticker_Stop"}, "Reset": {"Time", "Ticker_Reset"},
