@@ -10,7 +10,12 @@ public sealed class GoPosition { public string Filename = ""; public long Offset
 /// <summary>A go/token.File: a file in a FileSet, with its base Pos, size and line-offset
 /// table (ported from src/go/token/position.go; the line-info adjustment path is omitted).</summary>
 [GoShim("go/token.File")]
-public sealed class GoTokenFile { public string Name = ""; public long Base; public long Size; public System.Collections.Generic.List<int> Lines = new() { 0 }; }
+public sealed class GoTokenFile
+{
+    public string Name = ""; public long Base; public long Size;
+    public System.Collections.Generic.List<int> Lines = new() { 0 };
+    public System.Collections.Generic.List<(int Offset, string Filename, int Line, int Column)> Infos = new();
+}
 
 /// <summary>A go/token.FileSet: assigns disjoint Pos ranges to files.</summary>
 [GoShim("go/token.FileSet")]
@@ -45,7 +50,7 @@ public static class GoToken
     public static object? FileSet_File(object so, long p) => p != 0 ? FileFor((GoTokenFileSet)so, p) : null;
     public static object FileSet_PositionFor(object so, long p, bool adjusted)
     {
-        if (p != 0) { var f = FileFor((GoTokenFileSet)so, p); if (f != null) return Position(f, p); }
+        if (p != 0) { var f = FileFor((GoTokenFileSet)so, p); if (f != null) return Position(f, p, adjusted); }
         return new GoPosition();
     }
     public static object FileSet_Position(object so, long p) => FileSet_PositionFor(so, p, true);
@@ -66,7 +71,7 @@ public static class GoToken
     public static object File_Position(object fo, long p) => File_PositionFor(fo, p, true);
     public static object File_PositionFor(object fo, long p, bool adjusted)
     {
-        if (p != 0) return Position((GoTokenFile)fo, p);
+        if (p != 0) return Position((GoTokenFile)fo, p, adjusted);
         return new GoPosition();
     }
     public static long File_LineStart(object fo, long line)
@@ -90,6 +95,13 @@ public static class GoToken
         return true;
     }
 
+    public static void File_AddLineInfo(object fo, long offset, GoString filename, long line) => File_AddLineColumnInfo(fo, offset, filename, line, 1);
+    public static void File_AddLineColumnInfo(object fo, long offset, GoString filename, long line, long column)
+    {
+        var f = (GoTokenFile)fo;
+        if ((f.Infos.Count == 0 || f.Infos[^1].Offset < offset) && offset < f.Size)
+            f.Infos.Add(((int)offset, filename.ToDotNetString(), (int)line, (int)column));
+    }
     public static long File_End(object fo) { var f = (GoTokenFile)fo; return f.Base + f.Size; }
     public static GoSlice File_Lines(object fo)
     {
@@ -138,12 +150,38 @@ public static class GoToken
         while (i < j) { int h = (int)((uint)(i + j) >> 1); if (a[h] <= x) i = h + 1; else j = h; }
         return i - 1;
     }
-    private static GoPosition Position(GoTokenFile f, long p)
+    private static int SearchLineInfos(System.Collections.Generic.List<(int Offset, string, int, int)> a, long x)
+    {
+        // largest index with Offset <= x, or -1.
+        int lo = 0, hi = a.Count;
+        while (lo < hi) { int h = (int)((uint)(lo + hi) >> 1); if (a[h].Offset <= x) lo = h + 1; else hi = h; }
+        return lo - 1;
+    }
+    private static GoPosition Position(GoTokenFile f, long p, bool adjusted)
     {
         long offset = FixOffset(f, p - f.Base);
         var pos = new GoPosition { Offset = offset, Filename = f.Name };
+        long line = 0, column = 0;
         int i = SearchInts(f.Lines, offset);
-        if (i >= 0) { pos.Line = i + 1; pos.Column = offset - f.Lines[i] + 1; }
+        if (i >= 0) { line = i + 1; column = offset - f.Lines[i] + 1; }
+        if (adjusted && f.Infos.Count > 0)
+        {
+            int j = SearchLineInfos(f.Infos, offset);
+            if (j >= 0)
+            {
+                var alt = f.Infos[j];
+                pos.Filename = alt.Filename;
+                int k = SearchInts(f.Lines, alt.Offset);
+                if (k >= 0)
+                {
+                    long d = line - (k + 1);
+                    line = alt.Line + d;
+                    if (alt.Column == 0) column = 0;
+                    else if (d == 0) column = alt.Column + (offset - alt.Offset);
+                }
+            }
+        }
+        pos.Line = line; pos.Column = column;
         return pos;
     }
 
