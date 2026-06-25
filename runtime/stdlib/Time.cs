@@ -388,7 +388,7 @@ public static class Time
         }
         void ReadFrac()
         {
-            if (vi < val.Length && val[vi] == '.')
+            if (vi < val.Length && (val[vi] == '.' || val[vi] == ','))
             {
                 vi++;
                 int s = vi;
@@ -425,8 +425,15 @@ public static class Time
                     hasPM = true;
                     if (vi + 2 <= val.Length) { pm = val.Substring(vi, 2).ToUpperInvariant() == "PM"; vi += 2; }
                 }
-                else if (Tok(".000000000") || Tok(".000000") || Tok(".000") ||
-                         Tok(".999999999") || Tok(".999999") || Tok(".999")) ReadFrac();
+                else if (li < lay.Length && (lay[li] == '.' || lay[li] == ',') &&
+                         li + 1 < lay.Length && (lay[li + 1] == '0' || lay[li + 1] == '9'))
+                {
+                    // fractional-second layout token: separator + run of '0'/'9' (any width).
+                    char kind = lay[li + 1];
+                    li++;
+                    while (li < lay.Length && lay[li] == kind) li++;
+                    ReadFrac();
+                }
                 else if (Tok("Z07:00") || Tok("Z0700") || Tok("Z07")) SkipZone();
                 else if (Tok("-07:00") || Tok("-0700") || Tok("-07")) SkipZone();
                 else if (Tok("MST")) { while (vi < val.Length && char.IsLetter(val[vi])) vi++; }
@@ -488,9 +495,26 @@ public static class Time
             else if (M("05")) { sb.Append(dt.Second.ToString("D2", inv)); }
             else if (M("PM")) { sb.Append(dt.Hour < 12 ? "AM" : "PM"); }
             else if (M("pm")) { sb.Append(dt.Hour < 12 ? "am" : "pm"); }
-            else if (M(".999999999")) { if (nanos != 0) sb.Append('.').Append(nanos.ToString("D9", inv).TrimEnd('0')); }
-            else if (M(".000000000")) { sb.Append('.').Append(nanos.ToString("D9", inv)); }
-            else if (M(".000")) { sb.Append('.').Append((nanos / 1000000).ToString("D3", inv)); }
+            else if ((layout[i] == '.' || layout[i] == ',') && i + 1 < layout.Length && (layout[i + 1] == '0' || layout[i + 1] == '9'))
+            {
+                // Fractional seconds: separator ('.' or ',') followed by a run of '0' or '9'.
+                // '0' → fixed width (keep trailing zeros); '9' → trim trailing zeros (omit
+                // separator entirely when the result is empty). Matches Go's stdFracSecond.
+                char sep = layout[i];
+                char kind = layout[i + 1];
+                int j = i + 1;
+                while (j < layout.Length && layout[j] == kind) j++;
+                int n = j - i - 1;
+                i = j;
+                string nine = nanos.ToString("D9", inv);
+                string frac = n <= 9 ? nine.Substring(0, n) : nine + new string('0', n - 9);
+                if (kind == '9')
+                {
+                    frac = frac.TrimEnd('0');
+                    if (frac.Length > 0) sb.Append(sep).Append(frac);
+                }
+                else { sb.Append(sep).Append(frac); }
+            }
             else if (M("Z07:00")) { sb.Append('Z'); }
             else if (M("Z0700")) { sb.Append('Z'); }
             else if (M("-07:00")) { sb.Append("+00:00"); }

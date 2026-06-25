@@ -149,6 +149,11 @@ special-case expansions (e.g. `İ` U+0130 → `i` + combining dot) are not appli
 `time.Time` operates in UTC. Go's `time.Now()`/`time.Unix()` use the local zone;
 for cross-runtime-deterministic output use `.UTC()` and `time.Date(..., time.UTC)`.
 
+`Format`/`Parse` accept fractional-second layout tokens of **any** width — a `.`
+or `,` separator followed by a run of `0`s (fixed width, trailing zeros kept) or
+`9`s (trailing zeros trimmed, separator dropped when empty) — not just the canonical
+`.000`/`.000000000`/`.999999999` forms (`.9`, `.99`, `.000000`, `05,000`, … all work).
+
 ## Fixed-size arrays — value semantics edge
 
 `[N]T` fixed-size arrays are supported (slice-backed). They carry Go value
