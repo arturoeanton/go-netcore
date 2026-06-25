@@ -1,8 +1,9 @@
-// goclr-safe overlay of the iter package: keeps the Seq/Seq2 iterator function
-// types (used by maps/slices range-over-func helpers) and replaces Pull/Pull2 with
-// stubs, dropping the runtime coroutine intrinsics (newcoro/coroswitch, which are
-// linkname assembly with no Go body) that goclr cannot lower. Range-over-func uses
-// the Seq types directly and does not need Pull.
+// goclr-safe overlay of the iter package: keeps the Seq/Seq2 iterator function types
+// (used by maps/slices range-over-func helpers) and implements Pull/Pull2 with a
+// goroutine + channel handshake instead of the runtime coroutine intrinsics
+// (newcoro/coroswitch, linkname assembly with no Go body) that goclr cannot lower.
+// Range-over-func uses the Seq types directly; Pull turns a push iterator into a
+// pull pair, driving the producer one value per next() call.
 package iter
 
 // Seq is an iterator over sequences of individual values.
@@ -11,12 +12,91 @@ type Seq[V any] func(yield func(V) bool)
 // Seq2 is an iterator over sequences of pairs of values, most commonly key-value.
 type Seq2[K, V any] func(yield func(K, V) bool)
 
-// Pull is unsupported under goclr (it requires runtime coroutines).
+// Pull converts the push-style iterator seq into a pull-style pair of functions:
+// next yields successive values, and stop ends iteration early. The producer runs in
+// a goroutine and hands one value to the consumer per resume, so only one value is in
+// flight at a time (matching the coroutine semantics). next/stop are not safe for
+// concurrent use, as in the standard library.
 func Pull[V any](seq Seq[V]) (next func() (V, bool), stop func()) {
-	panic("iter.Pull is not supported under goclr")
+	valueCh := make(chan V)
+	resumeCh := make(chan bool)
+	done := false
+
+	go func() {
+		if !<-resumeCh { // first next()/stop(): proceed, or stop before starting
+			return
+		}
+		seq(func(v V) bool {
+			valueCh <- v      // deliver the value to the waiting consumer
+			return <-resumeCh // park until the next pull; false means stop
+		})
+		close(valueCh) // the sequence is exhausted
+	}()
+
+	next = func() (V, bool) {
+		var zero V
+		if done {
+			return zero, false
+		}
+		resumeCh <- true // ask the producer to advance
+		v, ok := <-valueCh
+		if !ok {
+			done = true
+			return zero, false
+		}
+		return v, true
+	}
+	stop = func() {
+		if done {
+			return
+		}
+		done = true
+		resumeCh <- false // unpark the producer and have yield return false
+	}
+	return next, stop
 }
 
-// Pull2 is unsupported under goclr (it requires runtime coroutines).
+// Pull2 is Pull for a Seq2 (key/value pairs).
 func Pull2[K, V any](seq Seq2[K, V]) (next func() (K, V, bool), stop func()) {
-	panic("iter.Pull2 is not supported under goclr")
+	type pair struct {
+		k K
+		v V
+	}
+	valueCh := make(chan pair)
+	resumeCh := make(chan bool)
+	done := false
+
+	go func() {
+		if !<-resumeCh {
+			return
+		}
+		seq(func(k K, v V) bool {
+			valueCh <- pair{k, v}
+			return <-resumeCh
+		})
+		close(valueCh)
+	}()
+
+	next = func() (K, V, bool) {
+		var zk K
+		var zv V
+		if done {
+			return zk, zv, false
+		}
+		resumeCh <- true
+		p, ok := <-valueCh
+		if !ok {
+			done = true
+			return zk, zv, false
+		}
+		return p.k, p.v, true
+	}
+	stop = func() {
+		if done {
+			return
+		}
+		done = true
+		resumeCh <- false
+	}
+	return next, stop
 }

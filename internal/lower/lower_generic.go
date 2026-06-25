@@ -73,10 +73,107 @@ func typeListString(tl *types.TypeList) string {
 // type-parameter substitution before resolving. With no substitution in effect
 // it is a straight pass-through, so non-generic lowering is unaffected.
 func (l *funcLowerer) goType(t types.Type) (goir.Type, bool) {
-	if l.typeSubst != nil {
-		t = substType(t, l.typeSubst)
+	if l.typeSubst == nil {
+		return l.lowerCtx.goType(t)
+	}
+	t = substType(t, l.typeSubst)
+	// A non-generic named struct can still reference the enclosing function's type
+	// parameters in its fields (a local `type pair struct{ k K; v V }`). substType leaves
+	// it unchanged (no type args), and lowerCtx.structFor erases the type-param fields to
+	// object — but the monomorphized body stores/loads them as the concrete type,
+	// corrupting memory. Monomorphize such a struct per instantiation, and recurse through
+	// composite types so the same struct reached via []pair / *pair / map[K]pair / chan
+	// pair resolves to the SAME monomorphized TypeDef (not the shared, erased one).
+	if named, ok := t.(*types.Named); ok {
+		if ta := named.TypeArgs(); ta == nil || ta.Len() == 0 {
+			if _, isStruct := named.Underlying().(*types.Struct); isStruct {
+				if mono, ok := l.structForLocalMono(named); ok {
+					return mono, true
+				}
+			}
+		}
+	}
+	switch u := t.(type) {
+	case *types.Slice:
+		et, ok := l.goType(u.Elem())
+		if !ok {
+			return goir.Type{}, false
+		}
+		return goir.SliceType(et), true
+	case *types.Array:
+		et, ok := l.goType(u.Elem())
+		if !ok {
+			return goir.Type{}, false
+		}
+		at := goir.SliceType(et)
+		at.Array = true
+		at.ArrayLen = int(u.Len())
+		return at, true
+	case *types.Pointer:
+		et, ok := l.goType(u.Elem())
+		if !ok {
+			return goir.Type{}, false
+		}
+		return goir.PtrType(et), true
+	case *types.Map:
+		kt, ok1 := l.goType(u.Key())
+		vt, ok2 := l.goType(u.Elem())
+		if !ok1 || !ok2 {
+			return goir.Type{}, false
+		}
+		return goir.MapType(kt, vt), true
+	case *types.Chan:
+		et, ok := l.goType(u.Elem())
+		if !ok {
+			return goir.Type{}, false
+		}
+		return goir.ChanType(et), true
 	}
 	return l.lowerCtx.goType(t)
+}
+
+// structForLocalMono monomorphizes a non-generic named struct whose field types change
+// under the active type-parameter substitution (a local helper type declared inside a
+// generic function). Each instantiation gets its own TypeDef, keyed by the concrete
+// field-type signature. Returns (_, false) when no field depends on a substituted
+// parameter, so the caller falls back to the shared struct.
+func (l *funcLowerer) structForLocalMono(named *types.Named) (goir.Type, bool) {
+	st := named.Underlying().(*types.Struct)
+	subFields := make([]types.Type, st.NumFields())
+	changed := false
+	for i := 0; i < st.NumFields(); i++ {
+		ft := substType(st.Field(i).Type(), l.typeSubst)
+		subFields[i] = ft
+		if ft != st.Field(i).Type() {
+			changed = true
+		}
+	}
+	if !changed {
+		return goir.Type{}, false
+	}
+	var sig strings.Builder
+	for i, ft := range subFields {
+		if i > 0 {
+			sig.WriteByte(',')
+		}
+		sig.WriteString(types.TypeString(ft, unqualified))
+	}
+	name := mangleMono(l.prefixForPkg(named.Obj().Pkg()) + named.Obj().Name() + "[" + sig.String() + "]")
+	if s, ok := l.structByName[name]; ok {
+		return goir.StructType(s), true
+	}
+	s := &goir.Struct{Name: name, GoName: named.Obj().Name(), Id: int(l.nextTypeId())}
+	l.structByName[name] = s // register before fields to tolerate self-reference
+	l.structOrder = append(l.structOrder, s)
+	for i := 0; i < st.NumFields(); i++ {
+		f := st.Field(i)
+		ft, ok := l.goType(subFields[i])
+		if !ok {
+			ft = goir.TVoid
+		}
+		s.Fields = append(s.Fields, goir.Field{Name: f.Name(), Type: ft, Tag: st.Tag(i)})
+	}
+	return goir.StructType(s), true
 }
 
 // fieldParamType (on funcLowerer) mirrors lowerCtx.fieldParamType but routes
