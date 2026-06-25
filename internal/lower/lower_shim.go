@@ -228,6 +228,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"fmt": {
 		"Sprint": {"Fmt", "Sprint"}, "Sprintln": {"Fmt", "Sprintln"}, "Sprintf": {"Fmt", "Sprintf"},
 		"Sscanf": {"Scan", "Sscanf"}, "Sscan": {"Scan", "Sscan"}, "Sscanln": {"Scan", "Sscanln"},
+		"Fscanf": {"Scan", "Fscanf"}, "Fscan": {"Scan", "Fscan"}, "Fscanln": {"Scan", "Fscanln"},
 		"Print": {"Fmt", "Print"}, "Println": {"Fmt", "Println"}, "Printf": {"Fmt", "Printf"},
 		"Errorf": {"Fmt", "Errorf"},
 		"Fprint": {"Fmt", "Fprint"}, "Fprintln": {"Fmt", "Fprintln"}, "Fprintf": {"Fmt", "Fprintf"},
