@@ -698,6 +698,8 @@ public static class Fmt
     // than the erased "[]interface {}".
     private static string SliceSyntax(GoSlice sl, string typeName)
     {
+        // A nil slice renders as `[]T(nil)`, distinct from an empty `[]T{}` (Go's %#v).
+        if (sl.Data == null) return typeName + "(nil)";
         string elemName = SliceElemName(typeName);
         var sb = new StringBuilder(typeName).Append('{');
         for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(", "); sb.Append(GoSyntaxElem(sl.Data![sl.Off + i], elemName)); }
@@ -706,6 +708,8 @@ public static class Fmt
 
     private static string MapSyntax(GoMap m, string typeName)
     {
+        // A nil map renders as `map[K]V(nil)`, distinct from an empty `map[K]V{}`.
+        if (m.Data == null) return typeName + "(nil)";
         var (keyName, valName) = MapKVNames(typeName);
         var sb = new StringBuilder(typeName).Append('{');
         var keys = new System.Collections.Generic.List<(string s, object? k)>();

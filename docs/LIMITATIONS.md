@@ -54,6 +54,15 @@ one; these don't yet):
   struct are correct.
 - **`%v` of a nil map** prints `<nil>` instead of `map[]` (a nil map boxes to a
   null reference, indistinguishable from other nils). Nil slices are correct (`[]`).
+  Relatedly, `%#v` of a **nil map field inside a struct** prints `<nil>` instead of
+  `map[K]V(nil)` for the same reason — the field holds a raw null with no type. A
+  nil map/slice at top level, and a nil slice field, render correctly (`T(nil)`).
+- **`%v`/`%+v` of a nested non-nil pointer-to-struct field** prints `&{…}` (the
+  dereferenced content) instead of Go's `0x…` address. Go only expands a pointer to
+  `&{…}` at the top level; deeper pointer fields print their address. Since the
+  address is non-deterministic in both runtimes this can't be made byte-exact, and
+  goclr's content form is more useful; nil pointer fields and top-level pointers are
+  correct.
 - **`json.Marshal` of a custom `json.Marshaler`** (a type with its own
   `MarshalJSON`, including `json.RawMessage`) is not honored: the runtime marshals
   the underlying value structurally (a `Temp float64` emits the number, a
