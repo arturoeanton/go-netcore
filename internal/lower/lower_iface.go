@@ -526,13 +526,96 @@ func (l *funcLowerer) exprCoerced(e ast.Expr, target goir.Type) {
 		return
 	}
 	// Copying an array value (assignment, argument, return, field/element store)
-	// duplicates its backing storage — arrays have value semantics, unlike slices.
-	if target.Array {
+	// duplicates its backing storage — arrays have value semantics, unlike slices —
+	// as does copying a struct that holds array fields.
+	l.emitValueCopy(target)
+}
+
+// structContainsArray reports whether copying a value of type t must deep-copy storage:
+// t is an array, or a struct that (recursively) holds an array field. Slices/maps/
+// pointers are reference types, so a struct of only those copies shallowly like Go.
+func structContainsArray(t goir.Type) bool {
+	if t.Array {
+		return true
+	}
+	if t.Kind == goir.KStruct && t.Struct != nil {
+		for _, f := range t.Struct.Fields {
+			if structContainsArray(f.Type) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// emitValueCopy duplicates the value on top of the stack when a Go value copy requires
+// deep storage duplication: a bare array (ArrayClone) or a struct holding array fields
+// (clone each such field, recursing into nested structs). Everything else copies
+// shallowly (CLR value copy for structs, reference share for slices/maps/pointers).
+func (l *funcLowerer) emitValueCopy(t goir.Type) {
+	if t.Array {
+		// ArrayClone duplicates the backing but shallow-copies elements. When the element
+		// type itself needs deep duplication (array-of-array, array-of-struct-with-array),
+		// clone each element too so the copy never aliases the original.
+		if t.Elem != nil && structContainsArray(*t.Elem) {
+			l.emitArrayDeepCopy(t)
+			return
+		}
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
 			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ArrayClone",
-			Params: []goir.Type{target}, Ret: target,
+			Params: []goir.Type{t}, Ret: t,
 		}})
+		return
 	}
+	if t.Kind == goir.KStruct && t.Struct != nil && structContainsArray(t) {
+		l.emitStructDeepCopy(t)
+	}
+}
+
+// emitArrayDeepCopy clones an array (on the stack) whose element type itself needs deep
+// duplication: clone the backing, then replace each element with a deep copy.
+func (l *funcLowerer) emitArrayDeepCopy(t goir.Type) {
+	elem := *t.Elem
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ArrayClone",
+		Params: []goir.Type{t}, Ret: t,
+	}})
+	dst := l.addLocal(nil, t)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: dst})
+	for i := 0; i < t.ArrayLen; i++ {
+		// dst[i] = deepcopy(dst[i])
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: dst})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(i)})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: dst})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(i)})
+		l.emit(goir.Op{Code: goir.OpSliceGet})
+		l.emitUnbox(elem)
+		l.emitValueCopy(elem)
+		l.emitBox(elem)
+		l.emit(goir.Op{Code: goir.OpSliceSet})
+	}
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: dst})
+}
+
+// emitStructDeepCopy takes a struct value of type t on the stack and leaves a copy whose
+// array fields (and nested structs holding arrays) have been duplicated, so later
+// mutation of the copy does not alias the original. Fields with no array storage keep
+// the plain CLR value copy already made when the struct was loaded.
+func (l *funcLowerer) emitStructDeepCopy(t goir.Type) {
+	tmp := l.addLocal(nil, t)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+	for i, f := range t.Struct.Fields {
+		if !structContainsArray(f.Type) {
+			continue
+		}
+		// tmp.field = deepcopy(tmp.field)
+		l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp}) // address for the store
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emit(goir.Op{Code: goir.OpLdFld, Struct: t.Struct, Field: i})
+		l.emitValueCopy(f.Type)
+		l.emit(goir.Op{Code: goir.OpStFld, Struct: t.Struct, Field: i})
+	}
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 }
 
 // pointerBoxID returns the pointee type id a boxed pointer should carry: a struct's

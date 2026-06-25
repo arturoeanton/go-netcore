@@ -173,10 +173,10 @@ order encountered:
    does `unbox.any compact.Tag` on a boxed `language.Tag` → `InvalidCastException`.
    Fix: the struct→struct / *struct→*struct conversion must copy/reinterpret fields
    (or re-box) when source and target share a layout but differ in CLR type.
-2. **Struct value-semantics for fixed-array fields on copy.** Returning a struct by
-   value should clone its fixed-array field; goclr keeps the backing shared (a slice
-   field aliasing the array still observes the original after the copy). Edge case,
-   surfaced by the scanner repro (conformance 358 covers the in-function path).
+2. ~~**Struct value-semantics for fixed-array fields on copy.**~~ Fixed: copying a
+   struct now deep-copies its array fields (and nested-struct/array-of-struct fields)
+   via a compiler-emitted field-by-field copy at every value-copy site; slice/map/
+   pointer fields stay shared. Conformance 590 covers it.
 
 These are the next x/text-init items before the JS evaluator itself is exercised.
 

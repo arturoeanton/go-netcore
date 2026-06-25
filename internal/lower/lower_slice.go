@@ -51,13 +51,9 @@ func (l *funcLowerer) emitBoxedElem(v ast.Expr) {
 	}
 	l.expr(v)
 	t := l.exprType(v)
-	// Storing an array value into a container, argument, or tuple copies it.
-	if t.Array {
-		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ArrayClone",
-			Params: []goir.Type{t}, Ret: t,
-		}})
-	}
+	// Storing an array value (or a struct holding array fields) into a container,
+	// argument, or tuple copies its backing storage.
+	l.emitValueCopy(t)
 	l.emitBox(t)
 }
 

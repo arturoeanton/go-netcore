@@ -134,11 +134,12 @@ semantics: copying an array — on assignment (`y := x`), argument passing (name
 functions and closures), return, and storing into a container — duplicates its
 backing storage; slicing an array (`a[:]`) shares it, as in Go.
 
-The one residual case is an array that is a **field of a struct** which is then
-copied by value: `b := a` where `a` has an `[N]T` field, followed by mutating that
-field through `b`, still aliases `a`'s array. A correct fix needs a compiler-emitted
-deep copy (the runtime cannot distinguish an array-backed `GoSlice` from a real
-slice). Workaround: copy the array field explicitly, or hold it behind a pointer.
+Copying a **struct that holds an array field** (directly or through nested structs)
+now deep-copies those array fields too, so mutating the copy no longer aliases the
+original. The compiler emits the deep copy field-by-field using the static type
+(arrays of structs and arrays of arrays recurse element-wise); slice/map/pointer
+fields stay shared, as in Go. This applies at every value-copy site arrays already
+covered (assignment, argument, return, container store, range binding).
 
 ## Stdlib items still deferred
 
