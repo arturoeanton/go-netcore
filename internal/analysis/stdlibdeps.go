@@ -62,6 +62,7 @@ var stdlibOverlay = map[string]OverlayStatus{
 	"container/heap":  OverlayFull,
 	"slices":          OverlayPartial,
 	"cmp":             OverlayFull,
+	"maps":            OverlayPartial,
 	// builtin pseudo-packages and always-available primitives
 	"unsafe": OverlayPartial,
 }

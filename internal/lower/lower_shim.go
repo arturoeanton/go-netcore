@@ -342,6 +342,11 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"cmp": {
 		"Compare": {"Cmp", "Compare"}, "Less": {"Cmp", "Less"}, "Or": {"Cmp", "Or"},
 	},
+	// maps: the non-iterator functions only (Keys/Values/All return iter.Seq, unsupported).
+	"maps": {
+		"Clone": {"Maps", "Clone"}, "Copy": {"Maps", "Copy"}, "Equal": {"Maps", "Equal"},
+		"EqualFunc": {"Maps", "EqualFunc"}, "DeleteFunc": {"Maps", "DeleteFunc"},
+	},
 	"time": {
 		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},
 		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "UnixMilli": {"Time", "UnixMilli"}, "UnixMicro": {"Time", "UnixMicro"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"}, "Until": {"Time", "Until"},
