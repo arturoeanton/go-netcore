@@ -66,6 +66,11 @@ one; these don't yet):
   spelling `[]uint8` (Go uses `[]byte` at top level but `[]uint8` for a struct field —
   goclr uses `[]byte` in both). Element values and length are exact. Minor cosmetic
   divergence on the struct-field path only.
+- **`%q` of a `[]byte` *nested inside* a slice** (e.g. a `[][]byte` from
+  `regexp.FindAllSubmatch`) prints each inner `[]byte` rune-style (`['a' '1']`) instead
+  of Go's double-quoted string form (`"a1"`). The top-level `%q` of a `[]byte` is exact;
+  only the nested-element path misses the byte-slice→string special case. Use `%v` (exact)
+  or `%s` for nested byte slices.
 - **`%v` of a hand-built `net.Addr`** (`&net.UDPAddr{IP, Port}`) has no precomputed
   string (the shared `GoNetAddr` shim only fills it from parsing), so it prints empty;
   one from `ParseCIDR`, `ResolveReference`, or a connection's `LocalAddr`/`RemoteAddr`
