@@ -258,12 +258,26 @@ public static class Fmt
             sp.Verb = f[i];
             if (sp.Verb == '%') { sb.Append('%'); continue; }
             object? arg = ai < args.Length ? args[ai++] : MissingArg;
-            sb.Append(Pad(FormatVerb(arg, sp), sp));
+            sb.Append(FmtElem(arg, sp));
         }
         return sb.ToString();
     }
 
     private static readonly object MissingArg = new();
+
+    // FormatVerb with the width/precision applied at the right level: a numeric verb
+    // recursing into a slice/map/struct pads each ELEMENT (Go: %03d of []int{5,42} is
+    // "[005 042]", not the whole composite), so the pad is skipped at the composite level
+    // and applied inside the recursion. Scalars and the non-recursing verbs pad as before.
+    private static string FmtElem(object? v, Spec sp) =>
+        RecursesPerElement(v, sp.Verb) ? FormatVerb(v, sp) : Pad(FormatVerb(v, sp), sp);
+
+    private static bool RecursesPerElement(object? v, char verb)
+    {
+        if (verb is not ('d' or 'b' or 'o' or 'c' or 'U' or 'f' or 'F' or 'e' or 'E' or 'g' or 'G' or 't'))
+            return false; // only numeric verbs recurse element-wise with no byte/string ambiguity
+        return v is GoSlice || v is GoMap || IsStructVal(v) || (v is GoPtr p && IsStructVal(p.Value));
+    }
 
     // Pad a formatted core string to the spec width (space- or zero-justified).
     private static string Pad(string core, Spec sp)
@@ -845,7 +859,7 @@ public static class Fmt
     {
         if (s.Data == null) return "[]";
         var sb = new StringBuilder("[");
-        for (int i = 0; i < s.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(FormatVerb(s.Data[s.Off + i], sp)); }
+        for (int i = 0; i < s.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(FmtElem(s.Data[s.Off + i], sp)); }
         return sb.Append(']').ToString();
     }
 
@@ -863,7 +877,7 @@ public static class Fmt
             object? fv = fields[i].GetValue(v);
             if (fv == null && fields[i].FieldType == typeof(GoMap)) fv = NilMapValue;
             fv = RetagField(t.Name, fields[i].Name, fv);
-            sb.Append(FormatVerb(fv, sp));
+            sb.Append(FmtElem(fv, sp));
         }
         return sb.Append('}').ToString();
     }
@@ -876,7 +890,7 @@ public static class Fmt
         keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
         var sb = new StringBuilder("map[");
         for (int i = 0; i < keys.Count; i++)
-        { if (i > 0) sb.Append(' '); sb.Append(FormatVerb(keys[i].k, sp)).Append(':').Append(FormatVerb(m.Data[keys[i].k!], sp)); }
+        { if (i > 0) sb.Append(' '); sb.Append(FmtElem(keys[i].k, sp)).Append(':').Append(FmtElem(m.Data[keys[i].k!], sp)); }
         return sb.Append(']').ToString();
     }
 

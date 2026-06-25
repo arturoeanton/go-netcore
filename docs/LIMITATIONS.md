@@ -46,10 +46,11 @@ one; these don't yet):
   are exact.
 - **`%T` of a slice/map** prints `[]interface {}` / `map[string]interface {}`
   rather than the precise element types.
-- **A width/precision flag does not propagate to each element** when a verb recurses
-  into a slice/map/struct: `%03d` of `[]int{5,42}` prints `[5 42]`, not Go's
-  `[005 042]`. The verb and its sign flag recurse correctly; only the pad width is
-  applied to the whole composite rather than per element.
+- **A width flag on a non-numeric recursing verb is not per-element.** Numeric verbs
+  (`%03d`, `%6.2f`, `%04b`, …) now pad each element of a recursed slice/map/struct like
+  Go (`[005 042]`); the residual is `%s`/`%q`/`%x` width and the bad-verb operand pad of
+  a string map key (`%03d` of `map[string]int` → goclr `%!d(string=a)` vs Go
+  `%!d(string=00a)`) — both rare.
 - **`%T`/`%#v` of an anonymous struct** prints the synthesized name
   (`main.__anonN`) instead of Go's structural form (`struct { X int; Y string }`).
   The field types can't be recovered byte-exactly from runtime values (`int` and
