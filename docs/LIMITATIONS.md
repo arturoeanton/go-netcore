@@ -81,6 +81,10 @@ one; these don't yet):
   address is non-deterministic in both runtimes this can't be made byte-exact, and
   goclr's content form is more useful; nil pointer fields and top-level pointers are
   correct.
+- **`json.Marshal` string escaping** matches Go byte-for-byte: `\b \f \n \r \t`
+  short forms (`\u00XX` for other controls), `<`/`>`/`&` → `<`/`>`/
+  `&` under the default HTML-escaping (off via `Encoder.SetEscapeHTML(false)`),
+  and U+2028/U+2029 always escaped (they break JavaScript) regardless of that flag.
 - **`json.Number` and `json.RawMessage`** are supported as struct fields and at the
   top level, both directions: `Unmarshal` keeps a `Number`'s raw numeric literal and
   captures a `RawMessage`'s value bytes verbatim; `Marshal` emits a `Number` unquoted

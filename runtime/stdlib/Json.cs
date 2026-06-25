@@ -128,11 +128,17 @@ public static class Json
                 case '\n': sb.Append("\\n"); break;
                 case '\t': sb.Append("\\t"); break;
                 case '\r': sb.Append("\\r"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
                 case '<': sb.Append(_noEscapeHTML ? "<" : "\\u003c"); break;
                 case '>': sb.Append(_noEscapeHTML ? ">" : "\\u003e"); break;
                 case '&': sb.Append(_noEscapeHTML ? "&" : "\\u0026"); break;
                 default:
                     if (c < 0x20) sb.Append("\\u").Append(((int)c).ToString("x4"));
+                    // U+2028/U+2029 are valid JSON but break JavaScript, so Go always
+                    // escapes them regardless of SetEscapeHTML.
+                    else if (c == '\u2028') sb.Append("\\u2028");
+                    else if (c == '\u2029') sb.Append("\\u2029");
                     else sb.Append(c);
                     break;
             }
