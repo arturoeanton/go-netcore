@@ -72,7 +72,25 @@ public static class Regexp
 
     // Go's regexp/syntax (RE2) differs from .NET's engine in a few spellings; translate the
     // common ones so the .NET Regex accepts a Go pattern. The original is kept for String().
-    private static string Translate(string p) => p.Replace("(?P<", "(?<").Replace("(?P=", "\\k<");
+    private static string Translate(string p) => TranslatePosix(p.Replace("(?P<", "(?<").Replace("(?P=", "\\k<"));
+
+    // POSIX character classes ([[:digit:]], [[:alpha:]], …) are valid in RE2 but unknown to
+    // .NET's engine; expand each to the equivalent ASCII ranges inside the bracket. Negated
+    // forms ([:^digit:]) are rare and left untranslated.
+    private static readonly System.Collections.Generic.Dictionary<string, string> _posixClasses = new()
+    {
+        ["[:alpha:]"] = "a-zA-Z", ["[:digit:]"] = "0-9", ["[:alnum:]"] = "a-zA-Z0-9",
+        ["[:upper:]"] = "A-Z", ["[:lower:]"] = "a-z", ["[:space:]"] = @" \t\n\r\f\x0B",
+        ["[:blank:]"] = @" \t", ["[:xdigit:]"] = "0-9A-Fa-f", ["[:word:]"] = "0-9A-Za-z_",
+        ["[:punct:]"] = @"!-/:-@[-`{-~",
+        ["[:cntrl:]"] = @"\x00-\x1f\x7f", ["[:graph:]"] = @"\x21-\x7e", ["[:print:]"] = @"\x20-\x7e",
+    };
+    private static string TranslatePosix(string p)
+    {
+        if (!p.Contains("[:")) return p;
+        foreach (var kv in _posixClasses) p = p.Replace(kv.Key, kv.Value);
+        return p;
+    }
 
     public static object?[] Compile(GoString pattern)
     {
