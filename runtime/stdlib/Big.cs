@@ -211,6 +211,20 @@ public static class Big
         catch { return new object?[] { null, false }; }
     }
 
+    // Sign + lowercase magnitude digits of a *big.Int in base b (2..36), so fmt's integer
+    // verbs (%d/%b/%o/%x/%X) can format an arbitrary-precision value beyond long's range.
+    public static (bool neg, string digits) IntFmtParts(object z, int b)
+    {
+        var v = V(z);
+        bool neg = v.Sign < 0;
+        var m = BigInteger.Abs(v);
+        if (b == 10) return (neg, m.ToString());
+        if (m.IsZero) return (neg, "0");
+        const string digs = "0123456789abcdefghijklmnopqrstuvwxyz";
+        var sb = new System.Text.StringBuilder();
+        while (m > 0) { sb.Insert(0, digs[(int)(m % b)]); m /= b; }
+        return (neg, sb.ToString());
+    }
     public static object NewInt(long x) => new GoBigInt { V = x };
     public static object IntZero() => new GoBigInt { V = 0 };
     private static BigInteger V(object o) => ((GoBigInt)o).V;

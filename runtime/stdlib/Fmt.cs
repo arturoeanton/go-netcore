@@ -475,10 +475,11 @@ public static class Fmt
 
     private static string IntVerb(object? v, Spec sp, int baseN, bool hash)
     {
-        if (!IsIntegral(v)) return BadVerb(sp.Verb, v);
         bool upper = baseN < 0; int b = System.Math.Abs(baseN);
         string digits; bool neg = false;
-        if (v is ulong u) digits = ToBase(u, b);
+        if (v is GoBigInt) { var parts = Big.IntFmtParts(v, b); neg = parts.neg; digits = parts.digits; } // *big.Int (arbitrary precision)
+        else if (!IsIntegral(v)) return BadVerb(sp.Verb, v);
+        else if (v is ulong u) digits = ToBase(u, b);
         else { long l = ToLong(v); neg = l < 0; digits = ToBase(neg ? (ulong)(-l) : (ulong)l, b); }
         if (upper) digits = digits.ToUpperInvariant();
         string prefix = "";
