@@ -132,18 +132,9 @@ public static class Bytes
         return n;
     }
 
-    public static GoSlice ToUpper(GoSlice s)
-    {
-        var b = B(s);
-        for (int i = 0; i < b.Length; i++) if (b[i] >= (byte)'a' && b[i] <= (byte)'z') b[i] -= 32;
-        return S(b);
-    }
-    public static GoSlice ToLower(GoSlice s)
-    {
-        var b = B(s);
-        for (int i = 0; i < b.Length; i++) if (b[i] >= (byte)'A' && b[i] <= (byte)'Z') b[i] += 32;
-        return S(b);
-    }
+    // Like Go, map every rune (not just ASCII) through the same case logic as strings.
+    public static GoSlice ToUpper(GoSlice s) => BytesOf(Strings.ToUpper(GS(s)));
+    public static GoSlice ToLower(GoSlice s) => BytesOf(Strings.ToLower(GS(s)));
     public static GoSlice TrimSpace(GoSlice s)
     {
         var str = System.Text.Encoding.UTF8.GetString(B(s)).Trim();

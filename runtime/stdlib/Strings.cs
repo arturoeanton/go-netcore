@@ -27,8 +27,33 @@ public static class Strings
         return -1;
     }
 
-    public static GoString ToUpper(GoString s) => GoString.FromDotNetString(s.ToDotNetString().ToUpperInvariant());
-    public static GoString ToLower(GoString s) => GoString.FromDotNetString(s.ToDotNetString().ToLowerInvariant());
+    // Go applies unicode.ToUpper/ToLower per rune (simple, locale-independent mapping):
+    // ToLower("İ") is "i" and ToUpper("ß") stays "ß". .NET's string-level
+    // ToUpperInvariant/ToLowerInvariant differ for a few chars (İ stays İ), so map per rune.
+    public static GoString ToUpper(GoString s) => MapRunes(s, GoUpper);
+    public static GoString ToLower(GoString s) => MapRunes(s, GoLower);
+
+    private static GoString MapRunes(GoString s, System.Func<int, int> f)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var rune in s.ToDotNetString().EnumerateRunes()) sb.Append(System.Char.ConvertFromUtf32(f(rune.Value)));
+        return GoString.FromDotNetString(sb.ToString());
+    }
+
+    // .NET's invariant case mapping lacks a few entries that Go's simple mapping has
+    // (the Turkish dotted/dotless I, long s, Kelvin/Angstrom signs); override those.
+    private static int GoLower(int r) => r switch { 0x130 => 0x69, 0x212A => 0x6B, 0x212B => 0xE5, _ => Unicode.ToLower(r) };
+    private static int GoUpper(int r) => r switch { 0x131 => 0x49, 0x17F => 0x53, _ => Unicode.ToUpper(r) };
+    // Title case differs from upper for the Dž/Lj/Nj/Dz digraphs (their middle, titlecase
+    // form); everything else titlecases like uppercase.
+    private static int GoTitle(int r) => r switch
+    {
+        0x1C4 or 0x1C5 or 0x1C6 => 0x1C5,
+        0x1C7 or 0x1C8 or 0x1C9 => 0x1C8,
+        0x1CA or 0x1CB or 0x1CC => 0x1CB,
+        0x1F1 or 0x1F2 or 0x1F3 => 0x1F2,
+        _ => GoUpper(r),
+    };
     public static GoString Title(GoString s) => GoString.FromDotNetString(System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(s.ToDotNetString()));
 
     public static bool Contains(GoString s, GoString sub) => IndexBytes(s.Bytes, sub.Bytes) >= 0;
@@ -174,7 +199,7 @@ public static class Strings
         return -1;
     }
 
-    public static GoString ToTitle(GoString s) => GoString.FromDotNetString(s.ToDotNetString().ToUpperInvariant());
+    public static GoString ToTitle(GoString s) => MapRunes(s, GoTitle);
 
     public static GoSlice SplitAfter(GoString s, GoString sep)
     {
