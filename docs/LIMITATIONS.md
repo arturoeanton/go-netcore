@@ -164,6 +164,14 @@ ASCII and the common Latin/Greek/Cyrillic letters but not the few multi-codepoin
 Unicode fold orbits (e.g. `K` U+212A KELVIN SIGN ↔ `k`, `ſ` long-s ↔ `s`, `Å` U+212B
 ↔ `å`). Go folds these via `unicode.SimpleFold`'s orbit table; goclr does not.
 
+## math transcendental last-ULP
+
+The `math` package maps the transcendental functions (`Log`, `Log10`, `Sin`, …) onto
+the platform's `System.Math`, which can differ from Go's own implementations by the
+last ULP for some inputs (e.g. `math.Log(0.01)`). Functions built on them — including
+`math.Lgamma` (a faithful port of Go's algorithm, otherwise byte-exact) — inherit that
+last-ULP edge on the affected inputs; the value is correct to ~1 ULP.
+
 ## regexp POSIX leftmost-longest
 
 `regexp.CompilePOSIX`/`MustCompilePOSIX` compile and match, but use the default

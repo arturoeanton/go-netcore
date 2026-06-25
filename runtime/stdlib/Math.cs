@@ -242,7 +242,9 @@ public static class Math
     {
         const double Ymin = 1.461632144968362245;
         const double Two52 = 1L << 52, Two58 = 1L << 58;
-        const double Tiny = 1.0 / (1L << 70);
+        // 2^-70. NOTE: 1L<<70 would wrap (C# masks the shift count to 6), giving 1/64 — that
+        // made every |x|<0.015625 take the -Log(x) shortcut and skip the polynomial correction.
+        const double Tiny = 1.0 / 1180591620717411303424.0;
         const double Tc = 1.46163214496836224576e+00, Tf = -1.21486290535849611461e-01, Tt = -3.63867699703950536541e-18;
         long sign = 1;
         if (double.IsNaN(x)) return new object?[] { x, sign };
@@ -309,10 +311,11 @@ public static class Math
                     }
                 default:
                     {
-                        double p1 = y * Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, _lgamU[5], _lgamU[4]), _lgamU[3]), _lgamU[2]), _lgamU[1]), _lgamU[0]);
-                        double p2 = Fma(y, Fma(y, Fma(y, Fma(y, _lgamV[5], _lgamV[4]), _lgamV[3]), _lgamV[2]), _lgamV[1]);
-                        p2 = Fma(y, p2, 1);
-                        lgamma += Fma(-0.5, y, p1 / p2);
+                        // Go's lgamma case 2 uses plain multiply-adds (no FMA), so mirror that
+                        // exactly to stay byte-exact for tiny x (e.g. 0.01, 0.18).
+                        double p1 = _lgamU[0] + y * (_lgamU[1] + y * (_lgamU[2] + y * (_lgamU[3] + y * (_lgamU[4] + y * _lgamU[5]))));
+                        double p2 = 1 + y * (_lgamV[1] + y * (_lgamV[2] + y * (_lgamV[3] + y * (_lgamV[4] + y * _lgamV[5]))));
+                        lgamma += -0.5 * y + y * p1 / p2;
                         break;
                     }
             }
