@@ -1,7 +1,14 @@
 # Typed-box keystone (M3) — design note
 
-Status: **designed, not yet implemented.** This is the foundation for tasks 76
-(typed box), 77 (deep reflect), and 78 (precise interface dispatch).
+Status: **implemented.** This note is the original design for the typed box — the
+foundation for the typed box, deep reflect, and precise interface dispatch — kept as
+the rationale behind what shipped. The keystone is now in place (`GoNamed{TypeId,
+Value}`): named non-struct types carry their identity through interfaces, so Stringer/
+`%T`/interface dispatch and reflect work for representation-sharing types. For the
+current behavior and the remaining edges see [LIMITATIONS.md](LIMITATIONS.md)
+("Stringer/Error of named types — the typed box") and [REFLECT.md](REFLECT.md); for
+how it carried goja from "compiles partway" to "evaluates JavaScript" see
+[GAPS.md](GAPS.md) and [GOJA-STRATEGY.md](GOJA-STRATEGY.md).
 
 ## Problem
 
@@ -61,14 +68,15 @@ representation. The IR at the box site does not even know it was `Money`.
   but is a fmt-specific special case, not the real per-value identity the rest of
   M3 (reflect, precise dispatch) needs. Rejected as a non-foundational hack.
 
-## Increment plan
+## Increment plan (as carried out)
 
 1. `goir.Type.NamedId/NamedName` + `goType` population + registry + extend
    `collectStringers` to named non-struct types. (No behavior change yet.)
 2. `GoNamed` runtime + `emitBox` wrap + make `Fmt` recognize `GoNamed`.
 3. Make unbox / isinst-dispatch / assert / type-switch / `==` unwrap. Land with 2.
-4. `%T` precision + `reflect.TypeOf().Name()/Kind()` off the registry (task 77).
-5. itable-based precise interface dispatch (task 78).
+4. `%T` precision + `reflect.TypeOf().Name()/Kind()` off the registry (deep reflect).
+5. itable-based precise interface dispatch (the residual, see LIMITATIONS — two
+   representation-sharing named-slice/named-map implementers of one interface).
 
-Guard every step with the full conformance suite (`tests/conformance`, 139
+Each step was guarded with the full conformance suite (`tests/conformance`, now 418
 fixtures) **and** the validation apps (`tests/validation/*`).

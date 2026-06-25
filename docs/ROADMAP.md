@@ -81,7 +81,7 @@ Legend: ✅ done · 🟡 partial · 🚧 not started
 | M3 | CI conformance matrix (per-fixture pass/skip/fail in the job summary) | ✅ |
 | M3 | stable compatibility report — `goclr analyze --html` / `--json` (package-by-package, summary counts + stdlib coverage) | ✅ |
 
-**199 conformance fixtures pass byte-for-byte vs `go run`** (200 total, one skipped).
+**418 conformance fixtures pass byte-for-byte vs `go run`.**
 Recent tags: `0.0.21.goja-compiles-loads-jits` → `0.0.24.goja-loops-arrays-objects`,
 `0.0.27.goja-json-array-callbacks` (goja JSON + array callbacks),
 `0.0.28.reflect-type-descriptors` → `0.0.29.reflect-complete` (reflect descriptors),

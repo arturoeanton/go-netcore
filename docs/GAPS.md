@@ -72,7 +72,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Time (Duration + time.Time/Format), Console/GoFunc/struct value helpers | 🟡 | M | ✅ |
 | select runtime, ASCII fast-path, intern pool | 🚧 | M | 🟡 |
 
-## 4. Stdlib overlay (C# shim mechanism live; 199 conformance fixtures byte-exact; P0/P1/P2/P3/P4 hardened, typed-box + goja + Gin + Echo running)
+## 4. Stdlib overlay (C# shim mechanism live; 418 conformance fixtures byte-exact; P0/P1/P2/P3/P4 hardened, typed-box + goja + Gin + Echo running)
 
 | Package(s) | State | Effort | MVP? |
 |---|---|---|---|
@@ -118,7 +118,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Item | State | Effort | MVP? |
 |---|---|---|---|
 | Conformance runner (go vs goclr: combined stdout/stderr + exit) | ✅ | S | ✅ |
-| 199 conformance fixtures (000–400), all byte-exact vs `go run` (200 total, 1 skipped) | ✅ | M | ✅ |
+| 418 conformance fixtures, all byte-exact vs `go run` | ✅ | M | ✅ |
 | Backend unit tests (emit PE/determinism/fat-header, lower, linker) | ✅ | S | ✅ |
 | Echo integration tests | 🚧 | M | ✅ |
 | goja integration tests | 🚧 | M | ✅ |
