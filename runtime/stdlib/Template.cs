@@ -646,6 +646,7 @@ public static class Template
             case "println": return Fmt.Sprintln(SliceOf(args));
             case "len": return (long)Len(args[0]);
             case "index": return Index(args);
+            case "slice": return Slice(args);
             case "and": { object? r = args.Count > 0 ? args[0] : null; foreach (var x in args) { r = x; if (!IsTrue(x)) break; } return r; }
             case "or": { object? r = args.Count > 0 ? args[0] : null; foreach (var x in args) { r = x; if (IsTrue(x)) break; } return r; }
             case "not": return !IsTrue(args[0]);
@@ -670,6 +671,35 @@ public static class Template
     {
         v = Deref(v);
         return v switch { GoString g => g.Len, GoSlice s => s.Len, GoMap m => (int)GoMaps.Len(m), _ => 0 };
+    }
+
+    // The template `slice` builtin: slice item [lo [hi [cap]]] — like item[lo:hi:cap].
+    // Strings slice by byte (as in Go); slices share the backing array. Out-of-range
+    // bounds end execution with an error, matching text/template.
+    static object? Slice(List<object?> a)
+    {
+        object? v = Deref(a[0]);
+        int n = a.Count - 1;
+        if (v is GoString g)
+        {
+            var b = g.Bytes;
+            int lo = n >= 1 ? (int)ToL(a[1]) : 0;
+            int hi = n >= 2 ? (int)ToL(a[2]) : b.Length;
+            if (lo < 0 || hi < lo || hi > b.Length) throw new System.Exception("slice bounds out of range");
+            var sub = new byte[hi - lo];
+            System.Array.Copy(b, lo, sub, 0, hi - lo);
+            return GoString.FromBytesOwned(sub);
+        }
+        if (v is GoSlice s)
+        {
+            int lo = n >= 1 ? (int)ToL(a[1]) : 0;
+            int hi = n >= 2 ? (int)ToL(a[2]) : s.Len;
+            if (lo < 0 || hi < lo || hi > s.Cap) throw new System.Exception("slice bounds out of range");
+            var res = new GoSlice { Data = s.Data, Off = s.Off + lo, Len = hi - lo, Cap = s.Cap - lo };
+            if (n >= 3) res.Cap = (int)ToL(a[3]) - lo;
+            return res;
+        }
+        return v;
     }
 
     static object? Index(List<object?> a)
