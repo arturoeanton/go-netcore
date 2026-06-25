@@ -1115,7 +1115,12 @@ public sealed class GoHTTP2Config { public readonly GoFieldBag F = new(); }
 public sealed class GoHttpProtocols { public bool H1, H2, UH2; }
 public sealed class GoTlsConn { }
 public sealed class GoTlsConnState { public readonly GoFieldBag F = new(); }
-public sealed class GoServeMux { }
+public sealed class GoServeMux
+{
+    // Registered routes: pattern -> handler (a GoClosure from HandleFunc, or an
+    // http.Handler value from Handle). Longest matching pattern wins, like Go.
+    public readonly System.Collections.Generic.List<(string pat, object? h)> Routes = new();
+}
 
 public static class HttpTypes
 {
@@ -1336,8 +1341,25 @@ public static class HttpTypes
     private static readonly GoServeMux _defaultMux = new();
     public static object DefaultServeMux() => _defaultMux;
     public static object NewServeMux() => new GoServeMux();
-    public static void Mux_Handle(object m, GoString pat, object? h) { }
-    public static void Mux_HandleFunc(object m, GoString pat, object? h) { }
-    public static void Mux_ServeHTTP(object m, object? w, object? r) { }
+    public static void Mux_Handle(object m, GoString pat, object? h)
+    { var mux = (GoServeMux)m; lock (mux.Routes) mux.Routes.Add((pat.ToDotNetString(), h)); }
+    public static void Mux_HandleFunc(object m, GoString pat, GoClosure h)
+    { var mux = (GoServeMux)m; lock (mux.Routes) mux.Routes.Add((pat.ToDotNetString(), h)); }
+    public static void Mux_ServeHTTP(object m, object? w, object? r)
+    {
+        var mux = (GoServeMux)m;
+        string path = r is GoRequest req ? req.Url.Path : "/";
+        object? best = null; int bestLen = -1;
+        lock (mux.Routes)
+            foreach (var (pat, h) in mux.Routes)
+                if (MuxMatches(pat, path) && pat.Length > bestLen) { best = h; bestLen = pat.Length; }
+        if (best != null) Http.ServeHTTPDyn(best, w, r);
+        else Http.NotFound(w!, r);
+    }
     public static object?[] Mux_Handler(object m, object? r) => new object?[] { null, GoString.FromDotNetString("") };
+
+    // Go's ServeMux match: a pattern ending in "/" matches its subtree; any other pattern
+    // matches only the exact path. (Host-prefixed patterns are not supported.)
+    private static bool MuxMatches(string pat, string path) =>
+        pat.EndsWith("/") ? (path == pat || path.StartsWith(pat)) : path == pat;
 }
