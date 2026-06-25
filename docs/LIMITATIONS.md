@@ -410,6 +410,10 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   `big.NewFloat(float64)` case (which stores the exact float64). `big.Int` and
   `big.Rat` are exact, including `fmt`'s `%d/%b/%o/%x/%X` integer verbs on a
   `*big.Int` (arbitrary precision, with the #/+/space/width/zero-pad flags).
+- `html.UnescapeString` is byte-exact: the full HTML5 named-reference table
+  (with/without-semicolon), decimal/hex numeric references, and the
+  Windows-1252 / U+FFFD fix-ups. `net/url.URL.Path` is **not** percent-decoded
+  yet (it keeps the raw escaped form; `RawPath` is unmodeled) — pending.
 - Goroutine scheduling order is the .NET thread pool's, not Go's scheduler — keep
   concurrent test output order-independent (as Go's map-range convention already
   requires).
