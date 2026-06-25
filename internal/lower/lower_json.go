@@ -168,6 +168,17 @@ func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string 
 				b.WriteByte(',')
 			}
 			first = false
+			// An embedded (anonymous) struct field with no explicit json name has its
+			// fields promoted into the parent object (Go's flattening). Mark it so the
+			// decoder decodes the SAME object into the embedded value.
+			if isEmbeddedStructField(f, u.Tag(i)) {
+				b.WriteString(`{"embed":true,"c":`)
+				b.WriteString(strconv.Quote(f.Name()))
+				b.WriteString(`,"t":`)
+				b.WriteString(l.jsonDescriptor(f.Type(), seen))
+				b.WriteByte('}')
+				continue
+			}
 			b.WriteString(`{"j":`)
 			b.WriteString(strconv.Quote(key))
 			b.WriteString(`,"c":`)
@@ -187,6 +198,23 @@ func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string 
 
 // jsonFieldKey returns the JSON object key for a struct field and whether the
 // field is skipped (`json:"-"`).
+// isEmbeddedStructField reports whether f is an anonymous struct (or *struct) field
+// with no explicit json name — Go promotes its fields into the parent JSON object.
+func isEmbeddedStructField(f *types.Var, tag string) bool {
+	if !f.Anonymous() {
+		return false
+	}
+	if jt, ok := structTagLookup(tag, "json"); ok && strings.Split(jt, ",")[0] != "" {
+		return false // an explicit json name (or "-") makes it a regular/skipped field
+	}
+	et := f.Type()
+	if pt, ok := et.Underlying().(*types.Pointer); ok {
+		et = pt.Elem()
+	}
+	_, isStruct := et.Underlying().(*types.Struct)
+	return isStruct
+}
+
 func jsonFieldKey(name, tag string) (string, bool) {
 	jt, ok := structTagLookup(tag, "json")
 	if !ok {

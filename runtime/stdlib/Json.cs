@@ -373,11 +373,18 @@ public static class Json
         foreach (var p in j.EnumerateObject()) members[p.Name] = p.Value;
         foreach (var fd in desc.GetProperty("f").EnumerateArray())
         {
-            string jkey = fd.GetProperty("j").GetString() ?? "";
-            if (!members.TryGetValue(jkey, out var jv)) continue;
             string cfield = fd.GetProperty("c").GetString() ?? "";
             var fi = t.GetField(cfield);
             if (fi == null) continue;
+            // An embedded (anonymous) struct: Go promotes its fields, so decode the SAME
+            // object into it (its own descriptor matches its keys against this object).
+            if (fd.TryGetProperty("embed", out var em) && em.GetBoolean())
+            {
+                fi.SetValue(inst, Coerce(Decode(j, fd.GetProperty("t")), fi.FieldType));
+                continue;
+            }
+            string jkey = fd.GetProperty("j").GetString() ?? "";
+            if (!members.TryGetValue(jkey, out var jv)) continue;
             object? val = Decode(jv, fd.GetProperty("t"));
             fi.SetValue(inst, Coerce(val, fi.FieldType));
         }
