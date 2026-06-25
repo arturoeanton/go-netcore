@@ -281,6 +281,14 @@ func namedOf(t types.Type) *types.Named {
 // st.Push where st is Stack[int]) to a monomorphized method, instantiating and
 // queuing its body on first use.
 func (l *funcLowerer) instantiateMethod(fn *types.Func, seln *types.Selection) (*goir.Method, bool) {
+	return l.instantiateMethodFor(fn, namedOf(seln.Recv()))
+}
+
+// instantiateMethodFor monomorphizes the method fn of the instantiated generic type
+// recvNamed (e.g. Pair[string,int].String), queuing its body. Shared by the direct
+// method-call path (via a selection) and interface dispatch (which has only the
+// receiver type).
+func (l *funcLowerer) instantiateMethodFor(fn *types.Func, recvNamed *types.Named) (*goir.Method, bool) {
 	orig := fn.Origin()
 	decl := l.genericMethodDecls[orig]
 	declPkg := l.genericMethodPkg[orig]
@@ -294,7 +302,6 @@ func (l *funcLowerer) instantiateMethod(fn *types.Func, seln *types.Selection) (
 	if declPkg == nil {
 		declPkg = l.pkg
 	}
-	recvNamed := namedOf(seln.Recv())
 	if recvNamed == nil || recvNamed.TypeArgs() == nil {
 		return nil, false
 	}

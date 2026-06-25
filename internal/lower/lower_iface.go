@@ -55,6 +55,33 @@ func (c *lowerCtx) implementers(iface *types.Interface) []ifaceImpl {
 			}
 		}
 	}
+	// Instantiated generic types (e.g. Pair[string,int]) are not declared in any
+	// package scope — they are created on demand and recorded in structReg as they are
+	// used. Include any whose instantiation satisfies the interface, sorted for a
+	// deterministic dispatch order.
+	var insts []*types.Named
+	for named := range c.structReg {
+		if named.TypeArgs() == nil || named.TypeArgs().Len() == 0 || seen[named] {
+			continue
+		}
+		if _, isIface := named.Underlying().(*types.Interface); isIface {
+			continue
+		}
+		insts = append(insts, named)
+	}
+	sort.Slice(insts, func(i, j int) bool {
+		return types.TypeString(insts[i], nil) < types.TypeString(insts[j], nil)
+	})
+	for _, named := range insts {
+		switch {
+		case types.Implements(named, iface):
+			seen[named] = true
+			out = append(out, ifaceImpl{named: named})
+		case types.Implements(types.NewPointer(named), iface):
+			seen[named] = true
+			out = append(out, ifaceImpl{named: named, viaPtr: true})
+		}
+	}
 	return out
 }
 
@@ -169,6 +196,14 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		fn, _ := obj.(*types.Func)
 		if fn != nil {
 			callees[i] = l.byFunc[fn]
+			// The method of an instantiated generic type (Pair[string,int].String) is not
+			// in byFunc — it is monomorphized on demand. Instantiate it so the dispatch
+			// calls the concrete method rather than panicking as "unsupported".
+			if callees[i] == nil && impl.named.TypeArgs() != nil && impl.named.TypeArgs().Len() > 0 {
+				if m, ok := l.instantiateMethodFor(fn, impl.named); ok {
+					callees[i] = m
+				}
+			}
 			// A promoted method (idxPath longer than the method itself) reached through
 			// embedded value fields: record the field chain so the case body navigates
 			// to the embedded receiver before calling.

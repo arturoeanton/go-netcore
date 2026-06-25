@@ -40,6 +40,15 @@ func (c *lowerCtx) collectStringers() {
 			continue
 		}
 		m := c.byFunc[fn]
+		// An instantiated generic type's String()/Error() is monomorphized on demand,
+		// so it is not in byFunc — instantiate it here so fmt can format the value via
+		// its method (the drainMonoTodo pass after collectStringers lowers the body).
+		if m == nil && named.TypeArgs() != nil && named.TypeArgs().Len() > 0 {
+			cl := &funcLowerer{lowerCtx: c, ok: true}
+			if mm, ok2 := cl.instantiateMethodFor(fn, named); ok2 {
+				m = mm
+			}
+		}
 		if m == nil || len(m.Params) == 0 {
 			continue
 		}
