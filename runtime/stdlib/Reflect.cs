@@ -16,7 +16,7 @@ public sealed class GoReflectType { public object? Sample; public GoTypeDesc? De
 /// Setter writes a new boxed value back into the underlying storage (the GoPtr cell,
 /// threading through parent structs as needed).</summary>
 [GoShim("reflect.Value")]
-public sealed class GoReflectValue { public object? V; public System.Action<object?>? Setter; public GoTypeDesc? Desc; }
+public sealed class GoReflectValue { public object? V; public System.Action<object?>? Setter; public GoTypeDesc? Desc; public bool RO; /* obtained from an unexported field: not interface-able or settable */ }
 
 /// <summary>Shim for a subset of Go's <c>reflect</c> package (the read path used
 /// by fmt and encoding/json).</summary>
@@ -180,7 +180,12 @@ public static class Reflect
     private static GoTypeDesc? VDesc(object? v) => (v as GoReflectValue)?.Desc;
     public static ulong Value_Kind(object? v) { var d = VDesc(v); return d != null ? (ulong)d.Kind : KindOf(RVal(v)); }
     public static object Value_Type(object? v) => new GoReflectType { Sample = RVal(v), Desc = VDesc(v) };
-    public static object? Value_Interface(object? v) => RVal(v);
+    public static object? Value_Interface(object? v)
+    {
+        if (v is GoReflectValue rv && rv.RO)
+            throw new GoPanicException(GoString.FromDotNetString("reflect.Value.Interface: cannot return value obtained from unexported field or method"));
+        return RVal(v);
+    }
     public static long Value_Int(object? v) => Convert.ToInt64(RVal(v) ?? 0L);
     public static ulong Value_Uint(object? v) => Convert.ToUInt64(RVal(v) ?? (ulong)0);
     public static double Value_Float(object? v) => Convert.ToDouble(RVal(v) ?? 0.0);
@@ -270,8 +275,11 @@ public static class Reflect
         var obj = parent.V!;
         var f = Fields(obj)![(int)i];
         GoTypeDesc? fd = parent.Desc != null && (int)i < parent.Desc.Fields.Count ? TypeReg.ById(parent.Desc.Fields[(int)i].TypeId) : null;
-        var fv = new GoReflectValue { V = f.GetValue(obj), Desc = fd };
-        if (parent.Setter != null)
+        // An unexported field (lower-case name) is read-only in Go: it can't be Set, nor
+        // returned via Interface(); the flag propagates from the parent too.
+        bool exported = IsExportedName(f.Name);
+        var fv = new GoReflectValue { V = f.GetValue(obj), Desc = fd, RO = parent.RO || !exported };
+        if (parent.Setter != null && exported && !parent.RO)
             fv.Setter = nv => { f.SetValue(obj, Coerce(nv, f.FieldType)); parent.Setter(obj); };
         return fv;
     }
@@ -792,7 +800,7 @@ public static class Reflect
         return x == null ? 0 : (ulong)(uint)System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(x);
     }
     public static long Value_NumMethod(object? v) => 0;
-    public static bool Value_CanInterface(object? v) => true;
+    public static bool Value_CanInterface(object? v) => !(v is GoReflectValue rv && rv.RO);
     // FieldByIndex walks a multi-level field path ([]int). The sample model tracks
     // a single level; navigate as far as the live value allows.
     public static object Value_FieldByIndex(object? v, GoSlice index)
