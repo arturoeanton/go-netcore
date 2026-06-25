@@ -57,11 +57,14 @@ public static partial class Strconv
 
     private static GoSlice AppendStr(GoSlice dst, string s)
     {
+        // UTF-8 encode: a non-ASCII rune (e.g. 世 in AppendQuoteRune) spans multiple bytes;
+        // truncating each char to a byte would corrupt it. ASCII output is byte-identical.
+        var by = System.Text.Encoding.UTF8.GetBytes(s);
         int n = dst.Len;
-        var d = new object?[n + s.Length];
+        var d = new object?[n + by.Length];
         for (int k = 0; k < n; k++) d[k] = dst.Data![dst.Off + k];
-        for (int k = 0; k < s.Length; k++) d[n + k] = (int)(byte)s[k];
-        return new GoSlice { Data = d, Off = 0, Len = n + s.Length, Cap = n + s.Length };
+        for (int k = 0; k < by.Length; k++) d[n + k] = (int)by[k];
+        return new GoSlice { Data = d, Off = 0, Len = n + by.Length, Cap = n + by.Length };
     }
     public static GoSlice AppendUint(GoSlice dst, ulong i, long b) => AppendStr(dst, ToBaseU(i, (int)b));
     public static GoSlice AppendBool(GoSlice dst, bool v) => AppendStr(dst, v ? "true" : "false");
