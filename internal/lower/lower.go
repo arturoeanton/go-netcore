@@ -252,6 +252,15 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		return nil, false
 	}
 
+	// A few stdlib named types are only ever received as interface{} (json.Delim and
+	// json.Number from Decoder.Token), so a program never references them by name and
+	// they get no identity id — leaving their %T/%v wrong and the runtime typed box
+	// unminted. Force their registration when their package is in the import closure.
+	for _, name := range []string{"encoding/json.Delim", "encoding/json.Number"} {
+		if named := c.lookupNamedType(name); named != nil {
+			c.namedIdentity(named)
+		}
+	}
 	// Generate String()/Error() dispatch closures for fmt (after all methods are
 	// shelled, so byFunc is populated; before buildInit emits their registration).
 	c.collectStringers()

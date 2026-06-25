@@ -49,6 +49,9 @@ public static class Fmt
                 case "time.Duration": s = Time.Duration_String(System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
                 case "time.Month": s = Time.Month_String(System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
                 case "time.Weekday": s = Time.Weekday_String(System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
+                // json.Delim is a rune whose String() is the single character (its shim
+                // method has no lowered body, so no stringer closure is registered).
+                case "json.Delim": s = Json.Delim_String((int)System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
             }
         }
         GoClosure? fn = null;
