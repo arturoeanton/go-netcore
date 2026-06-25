@@ -448,7 +448,15 @@ func (l *funcLowerer) appendCall(e *ast.CallExpr) goir.Type {
 	}
 	l.expr(e.Args[0])
 	for _, a := range e.Args[1:] {
-		l.emitBoxedElem(a)
+		// append(s, nil) where the element is a value type (the nil-able value type is a
+		// slice: append([][]T, nil)) must box the element's zero value, not a raw null —
+		// the backing array cell is unboxed back to the GoSlice value type on read (e.g.
+		// &s[i] then *p = append(*p, …)), which NREs on a null. Mirrors emitBoxedElemInto.
+		if st.Elem != nil && isNilIdent(a) && (isValueType(*st.Elem) || st.Elem.Kind == goir.KMap) {
+			l.emitBoxedZero(*st.Elem)
+		} else {
+			l.emitBoxedElem(a)
+		}
 		l.emit(goir.Op{Code: goir.OpSliceAppend})
 	}
 	return st

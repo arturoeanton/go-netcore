@@ -65,7 +65,11 @@ func locateDLL(name, envVar, csprojRel string) (string, error) {
 	}
 	projDir := filepath.Dir(csproj)
 	dllName := name + ".dll"
-	if dll := newestNamedDLL(filepath.Join(projDir, "bin"), dllName); dll != "" {
+	// Use a cached build only when it is up to date with the runtime sources. After a
+	// `git pull`, the bin/ DLL predates the changed .cs files, and a compiled program
+	// that references a newly added runtime method would fail at load with
+	// MissingMethodException; rebuild instead of silently using the stale assembly.
+	if dll := newestNamedDLL(filepath.Join(projDir, "bin"), dllName); dll != "" && !runtimeSourceNewer(dll, projDir) {
 		return dll, nil
 	}
 	cmd := exec.Command("dotnet", "build", "-c", "Release", "-v", "q", "--nologo", csproj)
@@ -76,6 +80,40 @@ func locateDLL(name, envVar, csprojRel string) (string, error) {
 		return dll, nil
 	}
 	return "", fmt.Errorf("%s not found after build under %s/bin", dllName, projDir)
+}
+
+// runtimeSourceNewer reports whether any C#/project source under the runtime tree is
+// newer than the built DLL — i.e. the cached build is stale. projDir is the assembly's
+// project directory (e.g. runtime/stdlib); its parent (runtime/) also holds the
+// referenced GoCLR.Runtime project, so the whole tree is scanned. Errors are treated as
+// "stale" so a rebuild is attempted rather than risking a MissingMethod load failure.
+func runtimeSourceNewer(dll, projDir string) bool {
+	di, err := os.Stat(dll)
+	if err != nil {
+		return true
+	}
+	dllMod := di.ModTime()
+	root := filepath.Dir(projDir) // .../runtime — covers stdlib + dotnet/Runtime
+	newer := false
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if base := filepath.Base(path); base == "bin" || base == "obj" {
+				return filepath.SkipDir // skip build output (and the DLL itself)
+			}
+			return nil
+		}
+		if ext := filepath.Ext(path); ext == ".cs" || ext == ".csproj" {
+			if info.ModTime().After(dllMod) {
+				newer = true
+				return filepath.SkipAll
+			}
+		}
+		return nil
+	})
+	return newer
 }
 
 // findUp walks up from the cwd looking for a relative path, returning its
