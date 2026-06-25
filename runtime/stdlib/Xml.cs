@@ -208,6 +208,22 @@ public static partial class Xml
         }
     }
 
+    // Writes a field whose xml name may be a nested-element path ("a>b>c"): the leading
+    // segments are wrapper elements (Go's `xml:"tags>tag"` -> <tags><tag>…). openPath tracks
+    // the wrappers currently open so consecutive fields sharing a prefix reuse them
+    // (server>host + server>port -> one <server>), closing/opening only where they diverge.
+    private static void WriteField(StringBuilder sb, object? val, string fname, List<string> openPath)
+    {
+        var segs = fname.Split('>');
+        int nWrap = segs.Length - 1; // wrappers are all but the leaf element
+        int common = 0;
+        while (common < nWrap && common < openPath.Count && openPath[common] == segs[common]) common++;
+        for (int i = openPath.Count - 1; i >= common; i--) sb.Append("</").Append(openPath[i]).Append('>');
+        if (common < openPath.Count) openPath.RemoveRange(common, openPath.Count - common);
+        for (int i = common; i < nWrap; i++) { sb.Append('<').Append(segs[i]).Append('>'); openPath.Add(segs[i]); }
+        WriteValue(sb, val, segs[nWrap]);
+    }
+
     private static void WriteMap(StringBuilder sb, GoMap m, string elem)
     {
         sb.Append('<').Append(elem).Append('>');
@@ -233,6 +249,10 @@ public static partial class Xml
         // Gather attribute fields first.
         var attrs = new StringBuilder();
         var body = new StringBuilder();
+        // Open wrapper elements for nested-path tags ("a>b>c"); consecutive fields sharing
+        // a path prefix reuse the same open wrappers (Go merges server>host + server>port
+        // into one <server>), so track the currently-open path and only open/close on change.
+        var openPath = new List<string>();
         foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.Instance))
         {
             if (f.Name.Length == 0 || !char.IsUpper(f.Name[0])) continue;
@@ -258,8 +278,10 @@ public static partial class Xml
             if (omitempty && IsEmpty(val)) continue;
             if (attr) { attrs.Append(' ').Append(fname).Append("=\"").Append(Escape(Scalar(val))).Append('"'); continue; }
             if (chardata || innerxml) { body.Append(chardata ? Escape(Scalar(val)) : Scalar(val)); continue; }
-            WriteValue(body, val, fname);
+            WriteField(body, val, fname, openPath);
         }
+        // Close any wrappers still open after the last path field.
+        for (int i = openPath.Count - 1; i >= 0; i--) body.Append("</").Append(openPath[i]).Append('>');
         sb.Append('<').Append(name).Append(attrs).Append('>').Append(body).Append("</").Append(name).Append('>');
     }
 
