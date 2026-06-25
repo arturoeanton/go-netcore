@@ -157,6 +157,10 @@ public static class Fmt
         {
             case null: Out(s); return n;
             case IGoWriter gw: gw.GoWrite(Encoding.UTF8.GetBytes(s)); return n;
+            // A bufio.Writer buffers; Fprint* must append to its buffer (NOT punch through to
+            // the underlying sink) so its bytes stay ordered against WriteString/Byte/Rune and
+            // only reach the sink on Flush — like Go's fmt.Fprintf(bufio.NewWriter(w), …).
+            case GoBufWriter bw: bw.Buf.AddRange(Encoding.UTF8.GetBytes(s)); return n;
             case GoStringBuilder sb: sb.SB.Append(s); return n;
             case GoBuffer buf: foreach (byte b in Encoding.UTF8.GetBytes(s)) buf.B.Add(b); return n;
             case GoFile f when f.Wr != null: { var b = Encoding.UTF8.GetBytes(s); f.Wr.Write(b, 0, b.Length); return n; }

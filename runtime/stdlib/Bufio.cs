@@ -308,6 +308,11 @@ public static class Bufio
     }
     public static void Writer_Reset(object bw, object? w) { var b = (GoBufWriter)bw; b.W = w; b.Buf.Clear(); }
 
+    /// <summary>Flush w to its sink if (and only if) it is a bufio.Writer; a no-op for a
+    /// plain sink. Used by shims (net/textproto) that wrap a *bufio.Writer and, like Go,
+    /// must flush it after writing so buffered bytes actually reach the underlying writer.</summary>
+    public static void FlushIfBuffered(object? w) { if (w is GoBufWriter) Writer_Flush(w); }
+
     // bufio.Writer.Size() int: the buffer size.
     public static long Writer_Size(object bw) => ((GoBufWriter)bw).Size;
 

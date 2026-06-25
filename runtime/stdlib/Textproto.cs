@@ -347,6 +347,7 @@ public static class Textproto
         var w = (GoTextprotoWriter)wo;
         string s = Fmt.Sprintf(format, args).ToDotNetString();
         Compress.WriteRaw(w.W, System.Text.Encoding.UTF8.GetBytes(s + "\r\n"));
+        Bufio.FlushIfBuffered(w.W); // Go's PrintfLine flushes the underlying *bufio.Writer
         return null;
     }
 
@@ -383,6 +384,7 @@ public static class Textproto
         var d = (GoTextprotoDotWriter)dwo;
         string tail = d.State switch { 2 => "\n", 0 => "", _ => "\r\n" };
         Compress.WriteRaw(d.W, System.Text.Encoding.ASCII.GetBytes(tail + ".\r\n"));
+        Bufio.FlushIfBuffered(d.W); // Go's dotWriter.Close flushes the underlying *bufio.Writer
         return null;
     }
 
