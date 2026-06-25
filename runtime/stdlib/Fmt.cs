@@ -161,6 +161,8 @@ public static class Fmt
             // the underlying sink) so its bytes stay ordered against WriteString/Byte/Rune and
             // only reach the sink on Flush — like Go's fmt.Fprintf(bufio.NewWriter(w), …).
             case GoBufWriter bw: bw.Buf.AddRange(Encoding.UTF8.GetBytes(s)); return n;
+            // A bufio.ReadWriter embeds the *Writer; Fprint* buffers through it, like Go.
+            case GoBufReadWriter rw when rw.W is GoBufWriter rww: rww.Buf.AddRange(Encoding.UTF8.GetBytes(s)); return n;
             case GoStringBuilder sb: sb.SB.Append(s); return n;
             case GoBuffer buf: foreach (byte b in Encoding.UTF8.GetBytes(s)) buf.B.Add(b); return n;
             case GoFile f when f.Wr != null: { var b = Encoding.UTF8.GetBytes(s); f.Wr.Write(b, 0, b.Length); return n; }

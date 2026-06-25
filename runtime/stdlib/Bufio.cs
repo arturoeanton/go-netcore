@@ -103,7 +103,7 @@ public static class Bufio
 
     public static object?[] Reader_Read(object br, GoSlice p)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         if (p.Len == 0) return new object?[] { 0L, null };
         // Serve from the buffer if anything is left; otherwise read one chunk into it.
         if (Avail(b) == 0) { var e = Fill(b, 1); if (Avail(b) == 0) return new object?[] { 0L, e }; }
@@ -114,7 +114,7 @@ public static class Bufio
     }
     public static object?[] Reader_ReadByte(object br)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         var e = Fill(b, 1);
         if (Avail(b) == 0) return new object?[] { 0, e ?? Io.EOFSentinel };
         return new object?[] { (int)b.Buf[b.Pos++], null };
@@ -122,7 +122,7 @@ public static class Bufio
     // bufio.Reader.UnreadByte: step the cursor back so the next ReadByte returns the last byte.
     public static object? Reader_UnreadByte(object br)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         if (b.Pos == 0) return ErrInvalidUnreadByteSentinel;
         b.Pos--;
         return null;
@@ -130,7 +130,7 @@ public static class Bufio
     // bufio.Reader.Peek(n) ([]byte, error): return the next n bytes without consuming them.
     public static object?[] Reader_Peek(object br, long n)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         int want = (int)n;
         var e = Fill(b, want);
         int got = System.Math.Min(want, Avail(b));
@@ -142,23 +142,23 @@ public static class Bufio
     // bufio.Reader.Discard(n) (int, error): skip the next n bytes.
     public static object?[] Reader_Discard(object br, long n)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         int want = (int)n;
         var e = Fill(b, want);
         int got = System.Math.Min(want, Avail(b));
         b.Pos += got;
         return new object?[] { (long)got, got < want ? (e ?? Io.EOFSentinel) : null };
     }
-    public static void Reader_Reset(object br, object? r) { var b = (GoBufReader)br; b.R = r; b.Buf.Clear(); b.Pos = 0; b.LastRuneSize = -1; }
-    public static long Reader_Buffered(object br) => Avail((GoBufReader)br);
+    public static void Reader_Reset(object br, object? r) { var b = AsReader(br); b.R = r; b.Buf.Clear(); b.Pos = 0; b.LastRuneSize = -1; }
+    public static long Reader_Buffered(object br) => Avail(AsReader(br));
 
     // bufio.Reader.Size() int: the logical buffer size.
-    public static long Reader_Size(object br) => ((GoBufReader)br).Size;
+    public static long Reader_Size(object br) => (AsReader(br)).Size;
 
     // bufio.Reader.ReadRune() (r rune, size int, err error): decode one UTF-8 rune.
     public static object?[] Reader_ReadRune(object br)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         b.LastRuneSize = -1;
         var e = Fill(b, 1);
         if (Avail(b) == 0) return new object?[] { 0, 0L, e ?? Io.EOFSentinel };
@@ -179,7 +179,7 @@ public static class Bufio
     // bufio.Reader.UnreadRune() error: undo the rune from the most recent ReadRune.
     public static object? Reader_UnreadRune(object br)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         if (b.LastRuneSize < 0) return ErrInvalidUnreadRuneSentinel;
         b.Pos -= b.LastRuneSize;
         b.LastRuneSize = -1;
@@ -190,7 +190,7 @@ public static class Bufio
     // unbounded backing buffer ErrBufferFull never triggers; EOF before delim yields io.EOF.
     public static object?[] Reader_ReadSlice(object br, int delim)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         b.LastRuneSize = -1;
         var (bytes, err) = ReadUntil(b, (byte)delim);
         var data = new object?[bytes.Length];
@@ -202,7 +202,7 @@ public static class Bufio
     // Strips a trailing \n and a preceding \r. isPrefix is always false (unbounded buffer).
     public static object?[] Reader_ReadLine(object br)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         b.LastRuneSize = -1;
         var (bytes, err) = ReadUntil(b, (byte)'\n');
         int n = bytes.Length;
@@ -222,7 +222,7 @@ public static class Bufio
     // bufio.Reader.WriteTo(w) (n int64, err error): drain everything to w.
     public static object?[] Reader_WriteTo(object br, object? w)
     {
-        var b = (GoBufReader)br;
+        var b = AsReader(br);
         long total = 0;
         // Flush whatever is buffered, then keep reading the underlying reader to exhaustion.
         while (true)
@@ -252,12 +252,12 @@ public static class Bufio
     // read so far with io.EOF (matching Go).
     public static object?[] Reader_ReadString(object br, int delim)
     {
-        var (bytes, err) = ReadUntil((GoBufReader)br, (byte)delim);
+        var (bytes, err) = ReadUntil(AsReader(br), (byte)delim);
         return new object?[] { GoString.FromBytesOwned(bytes), err };
     }
     public static object?[] Reader_ReadBytes(object br, int delim)
     {
-        var (bytes, err) = ReadUntil((GoBufReader)br, (byte)delim);
+        var (bytes, err) = ReadUntil(AsReader(br), (byte)delim);
         var data = new object?[bytes.Length];
         for (int i = 0; i < bytes.Length; i++) data[i] = (int)bytes[i];
         return new object?[] { new GoSlice { Data = data, Off = 0, Len = bytes.Length, Cap = bytes.Length }, err };
@@ -274,6 +274,11 @@ public static class Bufio
         }
     }
 
+    // A bufio.ReadWriter promotes the embedded *Reader / *Writer methods, so a Reader_*/
+    // Writer_* shim may receive the ReadWriter as its receiver — unwrap to the embedded part.
+    private static GoBufWriter AsWriter(object o) => o is GoBufReadWriter rw ? (GoBufWriter)rw.W : (GoBufWriter)o;
+    private static GoBufReader AsReader(object o) => o is GoBufReadWriter rw ? (GoBufReader)rw.R : (GoBufReader)o;
+
     // bufio.ReadWriter (a Reader+Writer pair; h2c prior-knowledge path, dead under goclr).
     public static object RW_Reader(object rw) => ((GoBufReadWriter)rw).R;
     public static object RW_Writer(object rw) => ((GoBufReadWriter)rw).W;
@@ -284,29 +289,29 @@ public static class Bufio
     public static object NewWriter(object? w) => new GoBufWriter { W = w };
     public static object NewWriterSize(object? w, long size) => new GoBufWriter { W = w, Size = size > 0 ? (int)size : 4096 };
 
-    public static long Writer_Available(object bw) { var b = (GoBufWriter)bw; return b.Size - b.Buf.Count; }
-    public static long Writer_Buffered(object bw) => ((GoBufWriter)bw).Buf.Count;
+    public static long Writer_Available(object bw) { var b = AsWriter(bw); return b.Size - b.Buf.Count; }
+    public static long Writer_Buffered(object bw) => (AsWriter(bw)).Buf.Count;
     public static object?[] Writer_Write(object bw, GoSlice p)
     {
-        var b = (GoBufWriter)bw;
+        var b = AsWriter(bw);
         for (int i = 0; i < p.Len; i++) b.Buf.Add((byte)System.Convert.ToInt64(p.Data![p.Off + i]));
         return new object?[] { (long)p.Len, null };
     }
-    public static object? Writer_WriteByte(object bw, int c) { ((GoBufWriter)bw).Buf.Add((byte)c); return null; }
+    public static object? Writer_WriteByte(object bw, int c) { (AsWriter(bw)).Buf.Add((byte)c); return null; }
     public static object?[] Writer_WriteString(object bw, GoString s)
     {
-        var b = (GoBufWriter)bw;
+        var b = AsWriter(bw);
         var by = s.Bytes;
         b.Buf.AddRange(by);
         return new object?[] { (long)by.Length, null };
     }
     public static object? Writer_Flush(object bw)
     {
-        var b = (GoBufWriter)bw;
+        var b = AsWriter(bw);
         if (b.Buf.Count > 0) { Compress.WriteRaw(b.W, b.Buf.ToArray()); b.Buf.Clear(); }
         return null;
     }
-    public static void Writer_Reset(object bw, object? w) { var b = (GoBufWriter)bw; b.W = w; b.Buf.Clear(); }
+    public static void Writer_Reset(object bw, object? w) { var b = AsWriter(bw); b.W = w; b.Buf.Clear(); }
 
     /// <summary>Flush w to its sink if (and only if) it is a bufio.Writer; a no-op for a
     /// plain sink. Used by shims (net/textproto) that wrap a *bufio.Writer and, like Go,
@@ -314,12 +319,12 @@ public static class Bufio
     public static void FlushIfBuffered(object? w) { if (w is GoBufWriter) Writer_Flush(w); }
 
     // bufio.Writer.Size() int: the buffer size.
-    public static long Writer_Size(object bw) => ((GoBufWriter)bw).Size;
+    public static long Writer_Size(object bw) => (AsWriter(bw)).Size;
 
     // bufio.Writer.WriteRune(r) (size int, err error): encode r as UTF-8 and buffer it.
     public static object?[] Writer_WriteRune(object bw, int r)
     {
-        var b = (GoBufWriter)bw;
+        var b = AsWriter(bw);
         var rune = new System.Text.Rune(r >= 0 && (r < 0xD800 || (r > 0xDFFF && r <= 0x10FFFF)) ? r : 0xFFFD);
         System.Span<byte> tmp = stackalloc byte[4];
         int n = rune.EncodeToUtf8(tmp);
@@ -338,7 +343,7 @@ public static class Bufio
     // bufio.Writer.ReadFrom(r) (n int64, err error): copy everything from r into the buffer.
     public static object?[] Writer_ReadFrom(object bw, object? r)
     {
-        var b = (GoBufWriter)bw;
+        var b = AsWriter(bw);
         var bytes = Readers.Drain(r);
         b.Buf.AddRange(bytes);
         return new object?[] { (long)bytes.Length, null };
