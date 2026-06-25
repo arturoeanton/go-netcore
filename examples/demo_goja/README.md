@@ -38,8 +38,10 @@ var n = 6, f = 1; while (n > 1) { f...   => 720
 
 goja **compiles** (a ~15 MB IL assembly), **loads and JITs cleanly**, runs full
 package init, and **evaluates a large JavaScript subset**: arithmetic, strings and
-string methods (`toUpperCase`, `slice`), `Math`, objects and property access,
-function calls/closures, and `for`/`while` loops. Some advanced paths — array
-callbacks (`map`/`reduce`), `JSON.stringify` — are still being completed; see
-`../../GAPS.md`. Getting a dependency this heavy to run exercises a very large
-surface of the compiler and runtime, so most lighter libraries work.
+string methods (`toUpperCase`, `slice`, `split`, `join`), `Math`, objects and
+property access (`Object.keys`), function calls/closures, `for`/`while` loops,
+array callbacks (`filter`/`map`/`sort`), and `JSON.stringify`/`JSON.parse` — all
+exercised by [`main.go`](main.go) and byte-exact against upstream goja. Getting a
+dependency this heavy to run exercises a very large surface of the compiler and
+runtime, so most lighter libraries work. See [`../../docs/GAPS.md`](../../docs/GAPS.md)
+for remaining edges.
