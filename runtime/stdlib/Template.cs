@@ -13,8 +13,10 @@ public sealed class GoTemplate
     public string Name = "";
     public List<Template.Node>? Root;
     public bool Html; // html/template escapes interpolated values
-    public readonly Dictionary<string, GoTemplate> Set = new();
-    public readonly Dictionary<string, GoClosure> Funcs = new();
+    // Templates created via (*Template).New share one namespace (Go's `common`): a template
+    // parsed into an associated template must be visible from its siblings. Clone copies it.
+    public Dictionary<string, GoTemplate> Set = new();
+    public Dictionary<string, GoClosure> Funcs = new();
 }
 
 /// <summary>html/template.Error: an escaping error (code + location + description). Error()
@@ -118,10 +120,9 @@ public static class Template
     public static object Tmpl_New(object t, GoString name)
     {
         var p = (GoTemplate)t;
-        var c = new GoTemplate { Name = name.ToDotNetString(), Html = p.Html };
-        foreach (var kv in p.Set) c.Set[kv.Key] = kv.Value;
-        foreach (var kv in p.Funcs) c.Funcs[kv.Key] = kv.Value;
-        return c;
+        // Share the namespace and func map (Go's New associates the new template with t):
+        // a later Parse into either is visible from both.
+        return new GoTemplate { Name = name.ToDotNetString(), Html = p.Html, Set = p.Set, Funcs = p.Funcs };
     }
     public static object Tmpl_Delims(object t, GoString left, GoString right) => t; // only default {{ }} supported
     public static object Tmpl_Funcs(object t, GoMap funcMap)
@@ -636,7 +637,13 @@ public static class Template
     {
         if (st.Tmpl.Funcs.TryGetValue(name, out var fn))
         {
-            var r = GoRuntime.InvokeArgs(fn, args.ToArray());
+            // A custom func receives the underlying values, like Go's reflect-based call:
+            // unwrap the typed box an interface-typed argument carries (e.g. a []string read
+            // from a map[string]any is a GoNamed wrapping the GoSlice), so a func parameter
+            // like []string casts correctly instead of failing on the GoNamed.
+            var passed = new object?[args.Count];
+            for (int i = 0; i < args.Count; i++) passed[i] = Rt.Unwrap(args[i] is Tagged tg ? tg.V : args[i]);
+            var r = GoRuntime.InvokeArgs(fn, passed);
             return r is object?[] tup && tup.Length > 0 ? tup[0] : r; // (value, error) -> value
         }
         switch (name)
