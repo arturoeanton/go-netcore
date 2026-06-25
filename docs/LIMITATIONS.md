@@ -76,12 +76,19 @@ one; these don't yet):
   address is non-deterministic in both runtimes this can't be made byte-exact, and
   goclr's content form is more useful; nil pointer fields and top-level pointers are
   correct.
-- **`json.Marshal` of a custom `json.Marshaler`** (a type with its own
-  `MarshalJSON`, including `json.RawMessage`) is not honored: the runtime marshals
-  the underlying value structurally (a `Temp float64` emits the number, a
-  `RawMessage` emits a byte array) because a named scalar/slice loses its identity
-  once stored as a struct field or slice element. Honoring it needs the marshaled
-  type's static descriptor threaded into `Marshal` (as `Unmarshal` already does).
+- **`json.Number` and `json.RawMessage`** are supported as struct fields and at the
+  top level, both directions: `Unmarshal` keeps a `Number`'s raw numeric literal and
+  captures a `RawMessage`'s value bytes verbatim; `Marshal` emits a `Number` unquoted
+  and a `RawMessage` verbatim (struct fields resolve their identity through the field
+  type registry; a top-level/`GoNamed`-boxed value through its type id). **Edge still
+  deferred:** re-marshaling a `[]json.Number` or `map[string]json.RawMessage` (the
+  elements lose their named identity once stored in a type-erased container, so they
+  emit as a quoted string / byte array). Reading *into* such containers is correct.
+- **`json.Marshal` of a user `json.Marshaler`** (a type with its own custom
+  `MarshalJSON`) is not honored: the runtime marshals the underlying value
+  structurally (a `Temp float64` emits the number) because the named type loses its
+  identity once stored as a struct field or slice element. Honoring it needs the
+  marshaled type's static descriptor threaded into `Marshal` (as `Unmarshal` does).
 
 ## Stringer/Error of named types — the typed box (largely implemented)
 

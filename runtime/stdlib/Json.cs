@@ -88,7 +88,14 @@ public static class Json
             case ulong u: sb.Append(u.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
             case double d: WriteNumber(sb, d); break;
             case GoString gs: WriteString(sb, gs.ToDotNetString()); break;
-            case GoNamed n: Write(sb, n.Value); break; // typed box: marshal the underlying value
+            case GoNamed n: // typed box: special-case json's named types, else marshal underlying
+            {
+                string tn = Rt.NamedTypeName(n.TypeId);
+                if (tn == "json.Number") { WriteRawNumber(sb, n.Value); break; }
+                if (tn == "json.RawMessage") { WriteRawMessage(sb, n.Value); break; }
+                Write(sb, n.Value);
+                break;
+            }
             case GoPtr p: Write(sb, GoPtrs.Get(p)); break;
             // A nil slice/map (zero value: null backing) marshals as null, not []/{}.
             case GoSlice s when s.Data == null: sb.Append("null"); break;
@@ -197,8 +204,36 @@ public static class Json
             if (omitempty && IsEmpty(val)) continue;
             if (!first) sb.Append(',');
             first = false;
-            WriteString(sb, name); sb.Append(':'); Write(sb, val);
+            WriteString(sb, name); sb.Append(':');
+            // encoding/json's special named field types marshal specially: Number emits its
+            // raw numeric text unquoted; RawMessage emits its bytes verbatim as JSON.
+            long ftid = Rt.FieldTypeId(t.Name, f.Name);
+            string ftn = ftid != 0 ? Rt.NamedTypeName(ftid) : "";
+            if (ftn == "json.Number") { WriteRawNumber(sb, val); }
+            else if (ftn == "json.RawMessage") { WriteRawMessage(sb, val); }
+            else Write(sb, val);
         }
+    }
+
+    // json.Number marshals as the raw numeric literal (no quotes). An empty Number is
+    // invalid JSON in Go (it errors); we emit 0 to stay valid rather than corrupt output.
+    private static void WriteRawNumber(StringBuilder sb, object? val)
+    {
+        string s = val switch
+        {
+            GoString g => g.ToDotNetString(),
+            GoNamed n when n.Value is GoString g2 => g2.ToDotNetString(),
+            _ => "",
+        };
+        sb.Append(s.Length == 0 ? "0" : s);
+    }
+
+    // json.RawMessage marshals its bytes verbatim; a nil/empty RawMessage marshals as null.
+    private static void WriteRawMessage(StringBuilder sb, object? val)
+    {
+        if (val is GoNamed n) val = n.Value;
+        if (val is GoSlice s && s.Data != null && s.Len > 0) sb.Append(SliceToString(s));
+        else sb.Append("null");
     }
 
     private static bool IsGoStruct(System.Type t) =>
@@ -324,9 +359,20 @@ public static class Json
     private static object? Decode(JsonElement j, JsonElement desc)
     {
         string k = desc.GetProperty("k").GetString() ?? "any";
-        if (j.ValueKind == JsonValueKind.Null) return DefaultFor(k);
+        // json.RawMessage captures the raw bytes of any value, including a literal null.
+        if (j.ValueKind == JsonValueKind.Null && k != "raw") return DefaultFor(k);
         switch (k)
         {
+            // json.Number: keep the source numeric literal as a string (named string type).
+            case "number": return GoString.FromDotNetString(j.GetRawText());
+            // json.RawMessage: store the value's raw JSON bytes verbatim (named []byte type).
+            case "raw":
+            {
+                var rb = Encoding.UTF8.GetBytes(j.GetRawText());
+                var rd = new object?[rb.Length];
+                for (int i = 0; i < rb.Length; i++) rd[i] = (int)rb[i];
+                return new GoSlice { Data = rd, Off = 0, Len = rb.Length, Cap = rb.Length };
+            }
             case "bool": return j.GetBoolean();
             case "int": return j.TryGetInt64(out long li) ? li : (long)j.GetDouble();
             case "uint": return j.TryGetUInt64(out ulong ui) ? ui : (ulong)j.GetDouble();

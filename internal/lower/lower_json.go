@@ -112,6 +112,19 @@ func (l *funcLowerer) jsonDecoderDecode(e *ast.CallExpr, sel *ast.SelectorExpr) 
 // jsonDescriptor builds the compact JSON type descriptor consumed by the C#
 // json decoder. seen guards against recursive struct types.
 func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string {
+	// encoding/json's special named types: Number (raw numeric text kept as a string)
+	// and RawMessage (the value's raw bytes verbatim). They must not be decoded as a
+	// plain string / []byte, so flag them before falling through to the underlying type.
+	if named, ok := t.(*types.Named); ok {
+		if obj := named.Obj(); obj.Pkg() != nil && obj.Pkg().Path() == "encoding/json" {
+			switch obj.Name() {
+			case "Number":
+				return `{"k":"number"}`
+			case "RawMessage":
+				return `{"k":"raw"}`
+			}
+		}
+	}
 	switch u := t.Underlying().(type) {
 	case *types.Basic:
 		switch {
