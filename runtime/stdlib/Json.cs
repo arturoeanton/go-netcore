@@ -391,6 +391,10 @@ public static class Json
         return inst;
     }
 
+    // True while decoding through a json.Decoder that called UseNumber(), so an interface{}
+    // number is kept as json.Number. Thread-static: a concurrent goroutine decode is isolated.
+    [System.ThreadStatic] private static bool _useNumber;
+
     // Generic decode for interface{} targets — mirrors Go's default mapping.
     private static object? DecodeAny(JsonElement j)
     {
@@ -398,7 +402,11 @@ public static class Json
         {
             case JsonValueKind.True: return true;
             case JsonValueKind.False: return false;
-            case JsonValueKind.Number: return j.GetDouble();
+            case JsonValueKind.Number:
+                // Under a Decoder with UseNumber, an interface{} number keeps its source text
+                // as a json.Number (a named string) rather than collapsing to float64.
+                return _useNumber ? Rt.MakeNamedByName("json.Number", GoString.FromDotNetString(j.GetRawText()))
+                                  : j.GetDouble();
             case JsonValueKind.String: return GoString.FromDotNetString(j.GetString() ?? "");
             case JsonValueKind.Array:
             {
@@ -623,7 +631,9 @@ public static class Json
             if (d == "{\"k\":\"any\"}") d = TargetDescriptor(target);
             using var doc = JsonDocument.Parse(raw);
             using var ddoc = JsonDocument.Parse(d);
-            SetPtr(target, Decode(doc.RootElement, ddoc.RootElement));
+            _useNumber = ((GoJsonDecoder)dec).UseNumber;
+            try { SetPtr(target, Decode(doc.RootElement, ddoc.RootElement)); }
+            finally { _useNumber = false; }
             return null;
         }
         catch (System.Exception e) { return new GoError(GoString.FromDotNetString(e.Message)); }
