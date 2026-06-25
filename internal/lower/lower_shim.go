@@ -535,6 +535,7 @@ var opaqueShimTypes = map[string]bool{
 	"net/netip.Prefix":               true,
 	"flag.FlagSet":                   true,
 	"flag.Flag":                      true,
+	"flag.Value":                     true,
 	"mime.WordDecoder":               true,
 	"index/suffixarray.Index":         true,
 	"mime/quotedprintable.Writer":     true,
@@ -1994,6 +1995,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"math/big.Accuracy":   {"String": {"Big", "Accuracy_String"}},
 	"math/big.RoundingMode": {"String": {"Big", "RoundingMode_String"}},
+	"flag.Value":            {"String": {"Flag", "Value_String"}, "Set": {"Flag", "Value_Set"}},
 	"flag.FlagSet": {
 		"Bool": {"Flag", "FS_Bool"}, "Int": {"Flag", "FS_Int"}, "Int64": {"Flag", "FS_Int64"}, "Uint": {"Flag", "FS_Uint"},
 		"Uint64": {"Flag", "FS_Uint64"}, "Float64": {"Flag", "FS_Float64"}, "String": {"Flag", "FS_String"}, "Duration": {"Flag", "FS_Duration"},

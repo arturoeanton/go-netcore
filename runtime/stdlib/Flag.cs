@@ -7,6 +7,11 @@ using GoCLR.Runtime;
 [GoShim("flag.Flag")]
 public sealed class GoFlag { public string Name = "", Usage = "", DefValue = ""; public GoPtr Ptr = new(); public int Kind; public object? Callback; }
 
+/// <summary>The flag.Value of a built-in flag: String() formats the cell's current value
+/// and Set(s) parses into it. A custom (Var) flag.Value is the user's own object instead.</summary>
+[GoShim("flag.Value")]
+public sealed class GoFlagValue { public GoFlag F = null!; }
+
 /// <summary>A flag.FlagSet. Kind: 0=bool 1=int 2=int64 3=uint 4=uint64 5=float64 6=string 7=duration.</summary>
 [GoShim("flag.FlagSet")]
 public sealed class GoFlagSet
@@ -37,7 +42,26 @@ public static class Flag
     public static GoString Flag_Name(object f) => GoString.FromDotNetString(((GoFlag)f).Name);
     public static GoString Flag_Usage(object f) => GoString.FromDotNetString(((GoFlag)f).Usage);
     public static GoString Flag_DefValue(object f) => GoString.FromDotNetString(((GoFlag)f).DefValue);
-    public static object? Flag_Value(object f) => ((GoFlag)f).Ptr; // the flag.Value (a *cell)
+    // (*Flag).Value: a custom (Var) flag returns the user's own flag.Value; a built-in flag
+    // returns a wrapper whose String()/Set() read and write the cell.
+    public static object? Flag_Value(object f)
+    {
+        var fl = (GoFlag)f;
+        return fl.Kind == 9 ? fl.Callback : new GoFlagValue { F = fl };
+    }
+
+    // flag.Value.String() / .Set(s) for a built-in flag.
+    public static GoString Value_String(object v)
+    {
+        var fl = ((GoFlagValue)v).F;
+        return GoString.FromDotNetString(DefStr(fl.Kind, fl.Ptr.Value));
+    }
+    public static object? Value_Set(object v, GoString s)
+    {
+        var fl = ((GoFlagValue)v).F;
+        string? err = SetValue(fl, s.ToDotNetString());
+        return err == null ? null : new GoError(GoString.FromDotNetString(err));
+    }
 
     // flag.Lookup / (*FlagSet).Lookup(name) *flag.Flag, or nil.
     public static object? FS_Lookup(object fs, GoString name) => FS(fs).Formal.TryGetValue(name.ToDotNetString(), out var fl) ? fl : null;
