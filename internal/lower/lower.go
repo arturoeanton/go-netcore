@@ -280,6 +280,9 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 			c.namedIdentity(named)
 		}
 	}
+	// Mint the identity id of every struct field's type before collectStringers, so a
+	// Stringer/Error type used only as a struct field still gets a dispatch closure.
+	c.registerFieldIdentities()
 	// Generate String()/Error() dispatch closures for fmt (after all methods are
 	// shelled, so byFunc is populated; before buildInit emits their registration).
 	c.collectStringers()

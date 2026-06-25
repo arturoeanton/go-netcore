@@ -187,6 +187,22 @@ type fieldType struct {
 // identityFields scans every lowered struct for fields whose type has runtime identity,
 // recording the field's type id so fmt can re-tag the bare field value (e.g. a Suit field
 // stored as a plain int prints "Hearts", a []int field prints []int{...} under %#v).
+// registerFieldIdentities mints the identity id of every struct field's type up front
+// (before collectStringers) so a Stringer/Error type used *only* as a struct field still
+// gets its fmt dispatch closure registered — otherwise its id is not in namedIds until
+// identityFields() runs, which is after collectStringers.
+func (c *lowerCtx) registerFieldIdentities() {
+	for named := range c.structReg {
+		st, ok := named.Underlying().(*types.Struct)
+		if !ok {
+			continue
+		}
+		for i := 0; i < st.NumFields(); i++ {
+			c.typeTagFor(st.Field(i).Type())
+		}
+	}
+}
+
 func (c *lowerCtx) identityFields() []fieldType {
 	var out []fieldType
 	for named, s := range c.structReg {
