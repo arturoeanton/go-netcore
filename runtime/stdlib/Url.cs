@@ -5,7 +5,7 @@ using GoCLR.Runtime;
 
 /// <summary>A *url.URL handle (parsed components).</summary>
 [GoShim("net/url.URL")]
-public sealed class GoUrl { public string Scheme = "", Host = "", Path = "", RawPath = "", RawQuery = "", Fragment = "", Opaque = ""; public GoUserinfo? User; }
+public sealed class GoUrl { public string Scheme = "", Host = "", Path = "", RawPath = "", RawQuery = "", Fragment = "", RawFragment = "", Opaque = ""; public GoUserinfo? User; }
 
 /// <summary>url.Userinfo: the username (and optional password) of a URL's authority.</summary>
 public sealed class GoUserinfo { public string Username = ""; public string Password = ""; public bool HasPassword; }
@@ -22,11 +22,13 @@ public static class Url
 {
     public static object?[] Parse(GoString raw)
     {
-        string s = raw.ToDotNetString();
-        string original = s;
+        string original = raw.ToDotNetString();
+        string s = original;
         var u = new GoUrl();
+        string frag = null!;
         int hash = s.IndexOf('#');
-        if (hash >= 0) { u.Fragment = s.Substring(hash + 1); s = s.Substring(0, hash); }
+        if (hash >= 0) { frag = s.Substring(hash + 1); s = s.Substring(0, hash); }
+        string beforeFrag = s; // path errors report the URL without its fragment (Go's `u`)
         int q = s.IndexOf('?');
         if (q >= 0) { u.RawQuery = s.Substring(q + 1); s = s.Substring(0, q); }
         int scheme = s.IndexOf("://", System.StringComparison.Ordinal);
@@ -39,14 +41,15 @@ public static class Url
             int at = authority.IndexOf('@');
             if (at >= 0) { u.User = ParseUserinfo(authority.Substring(0, at)); authority = authority.Substring(at + 1); }
             u.Host = authority;
-            if (SetPath(u, slash < 0 ? "" : rest.Substring(slash)) is GoError pe) return new object?[] { u, ParseErr(original, pe) };
+            if (SetPath(u, slash < 0 ? "" : rest.Substring(slash)) is GoError pe) return new object?[] { u, ParseErr(beforeFrag, pe) };
         }
         else if (s.Contains(":") && !s.StartsWith("/"))
         {
             int c = s.IndexOf(':');
             u.Scheme = s.Substring(0, c); u.Opaque = s.Substring(c + 1);
         }
-        else if (SetPath(u, s) is GoError pe2) return new object?[] { u, ParseErr(original, pe2) };
+        else if (SetPath(u, s) is GoError pe2) return new object?[] { u, ParseErr(beforeFrag, pe2) };
+        if (frag != null && SetFragment(u, frag) is GoError fe) return new object?[] { u, ParseErr(original, fe) };
         return new object?[] { u, null };
     }
 
@@ -109,12 +112,12 @@ public static class Url
         var sb = new System.Text.StringBuilder();
         foreach (var k in keys)
         {
-            string ek = Escape(k.ToDotNetString(), false);
+            string ek = EscapeMode(k.ToDotNetString(), EncQuery);
             if (d[k] is GoSlice s)
                 for (int i = 0; i < s.Len; i++)
                 {
                     if (sb.Length > 0) sb.Append('&');
-                    sb.Append(ek).Append('=').Append(Escape(((GoString)s.Data![s.Off + i]!).ToDotNetString(), false));
+                    sb.Append(ek).Append('=').Append(EscapeMode(((GoString)s.Data![s.Off + i]!).ToDotNetString(), EncQuery));
                 }
         }
         return GoString.FromDotNetString(sb.ToString());
@@ -133,7 +136,7 @@ public static class Url
     // Go's (*URL).EscapedPath: the raw encoding if it round-trips to Path, else the default.
     private static string EscapedPath(GoUrl u)
     {
-        if (u.RawPath.Length > 0)
+        if (u.RawPath.Length > 0 && ValidEncoded(u.RawPath, EncPath))
         {
             var r = Unescape(u.RawPath, false);
             if (r[1] == null && ((GoString)r[0]!).ToDotNetString() == u.Path) return u.RawPath;
@@ -141,19 +144,22 @@ public static class Url
         if (u.Path == "*") return "*";
         return EscapePath(u.Path);
     }
-    // escape(s, encodePath): keep unreserved and the path-reserved set ($ & + , / : ; = @);
-    // escape '?' and everything else. (url.PathEscape uses encodePathSegment — see Escape.)
-    private static string EscapePath(string s)
+    private static string EscapePath(string s) => EscapeMode(s, EncPath);
+    // Go's validEncoded: whether RawPath/RawFragment is a valid encoding (so it can be used
+    // verbatim). A literal char that should be escaped (e.g. a space) makes it invalid.
+    private static bool ValidEncoded(string s, int mode)
     {
-        var sb = new StringBuilder();
-        foreach (byte b in Encoding.UTF8.GetBytes(s))
+        foreach (char c in s)
         {
-            char c = (char)b;
-            if (Unreserved(c) || c == '$' || c == '&' || c == '+' || c == ',' || c == '/' ||
-                c == ':' || c == ';' || c == '=' || c == '@') sb.Append(c);
-            else sb.Append('%').Append(b.ToString("X2"));
+            switch (c)
+            {
+                case '!': case '$': case '&': case '\'': case '(': case ')': case '*':
+                case '+': case ',': case ';': case '=': case ':': case '@':
+                case '[': case ']': case '%': break;
+                default: if (ShouldEscape(c, mode)) return false; break;
+            }
         }
-        return sb.ToString();
+        return true;
     }
 
     // (*url.URL).RequestURI(): the (escaped) path or opaque, plus the raw query.
@@ -192,7 +198,7 @@ public static class Url
     public static GoString Userinfo_String(object ui)
     {
         var u = (GoUserinfo)ui;
-        return GoString.FromDotNetString(u.HasPassword ? Escape(u.Username, true) + ":" + Escape(u.Password, true) : Escape(u.Username, true));
+        return GoString.FromDotNetString(u.HasPassword ? EscapeMode(u.Username, EncUserPw) + ":" + EscapeMode(u.Password, EncUserPw) : EscapeMode(u.Username, EncUserPw));
     }
 
     // ResolveReference resolves a URI reference relative to a base URL (RFC 3986,
@@ -261,7 +267,7 @@ public static class Url
     public static object URL_Clone(object uo)
     {
         var u = (GoUrl)uo;
-        return new GoUrl { Scheme = u.Scheme, Host = u.Host, Path = u.Path, RawPath = u.RawPath, RawQuery = u.RawQuery, Fragment = u.Fragment, Opaque = u.Opaque, User = u.User };
+        return new GoUrl { Scheme = u.Scheme, Host = u.Host, Path = u.Path, RawPath = u.RawPath, RawQuery = u.RawQuery, Fragment = u.Fragment, RawFragment = u.RawFragment, Opaque = u.Opaque, User = u.User };
     }
 
     // Zero value of url.URL, so a &url.URL{...} composite literal has a real backing object
@@ -286,7 +292,25 @@ public static class Url
         return (h, "");
     }
     public static GoString URL_EscapedPath(object u) => GoString.FromDotNetString(EscapedPath((GoUrl)u));
-    public static GoString URL_EscapedFragment(object u) => GoString.FromDotNetString(Escape(((GoUrl)u).Fragment, true));
+    public static GoString URL_EscapedFragment(object u) => GoString.FromDotNetString(EscapedFragment((GoUrl)u));
+    // Go's setFragment: decode into Fragment, keep the raw form when non-default (RawFragment).
+    private static GoError? SetFragment(GoUrl u, string f)
+    {
+        var r = Unescape(f, false);
+        if (r[1] != null) return (GoError?)r[1];
+        u.Fragment = ((GoString)r[0]!).ToDotNetString();
+        u.RawFragment = EscapeMode(u.Fragment, EncFragment) == f ? "" : f;
+        return null;
+    }
+    private static string EscapedFragment(GoUrl u)
+    {
+        if (u.RawFragment.Length > 0 && ValidEncoded(u.RawFragment, EncFragment))
+        {
+            var r = Unescape(u.RawFragment, false);
+            if (r[1] == null && ((GoString)r[0]!).ToDotNetString() == u.Fragment) return u.RawFragment;
+        }
+        return EscapeMode(u.Fragment, EncFragment);
+    }
     // (*URL).Redacted: String() with any password replaced by "xxxxx".
     public static GoString URL_Redacted(object uo)
     {
@@ -323,7 +347,7 @@ public static class Url
         var r = Parse(GoString.FromBytes(SliceBytes(data)));
         if (r[1] != null) return r[1];
         var src = (GoUrl)r[0]!; var u = (GoUrl)uo;
-        u.Scheme = src.Scheme; u.Host = src.Host; u.Path = src.Path; u.RawPath = src.RawPath; u.RawQuery = src.RawQuery; u.Fragment = src.Fragment; u.Opaque = src.Opaque; u.User = src.User;
+        u.Scheme = src.Scheme; u.Host = src.Host; u.Path = src.Path; u.RawPath = src.RawPath; u.RawQuery = src.RawQuery; u.Fragment = src.Fragment; u.RawFragment = src.RawFragment; u.Opaque = src.Opaque; u.User = src.User;
         return null;
     }
     private static byte[] SliceBytes(GoSlice s) { var b = new byte[s.Len]; for (int i = 0; i < s.Len; i++) b[i] = (byte)System.Convert.ToInt64(s.Data![s.Off + i]); return b; }
@@ -399,7 +423,7 @@ public static class Url
             sb.Append(u.Host).Append(EscapedPath(u));
         }
         if (u.RawQuery.Length > 0) sb.Append('?').Append(u.RawQuery);
-        if (u.Fragment.Length > 0) sb.Append('#').Append(u.Fragment);
+        if (u.Fragment.Length > 0 || u.RawFragment.Length > 0) sb.Append('#').Append(EscapedFragment(u));
         return GoString.FromDotNetString(sb.ToString());
     }
 
@@ -411,8 +435,8 @@ public static class Url
     public static GoString EscapeError_Error(GoString s) => GoString.FromDotNetString("invalid URL escape " + Strconv.Quote(s).ToDotNetString());
     public static GoString InvalidHostError_Error(GoString s) => GoString.FromDotNetString("invalid character " + Strconv.Quote(s).ToDotNetString() + " in host name");
 
-    public static GoString QueryEscape(GoString s) => GoString.FromDotNetString(Escape(s.ToDotNetString(), false));
-    public static GoString PathEscape(GoString s) => GoString.FromDotNetString(Escape(s.ToDotNetString(), true));
+    public static GoString QueryEscape(GoString s) => GoString.FromDotNetString(EscapeMode(s.ToDotNetString(), EncQuery));
+    public static GoString PathEscape(GoString s) => GoString.FromDotNetString(EscapeMode(s.ToDotNetString(), EncPathSeg));
 
     public static object?[] QueryUnescape(GoString s) => Unescape(s.ToDotNetString(), true);
     public static object?[] PathUnescape(GoString s) => Unescape(s.ToDotNetString(), false);
@@ -430,15 +454,36 @@ public static class Url
         (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
         c == '-' || c == '_' || c == '.' || c == '~';
 
-    private static string Escape(string s, bool path)
+    // Go's url encoding modes (escape/shouldEscape). Each governs which of the reserved
+    // characters $ & + , / : ; = ? @ stay unescaped in that part of a URL.
+    private const int EncPath = 1, EncPathSeg = 2, EncQuery = 3, EncFragment = 4, EncUserPw = 5;
+    private static bool ShouldEscape(char c, int mode)
+    {
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) return false;
+        if (c == '-' || c == '_' || c == '.' || c == '~') return false;
+        switch (c)
+        {
+            case '$': case '&': case '+': case ',': case '/': case ':': case ';': case '=': case '?': case '@':
+                switch (mode)
+                {
+                    case EncPath: return c == '?';
+                    case EncPathSeg: return c == '/' || c == ';' || c == ',' || c == '?';
+                    case EncQuery: return true;
+                    case EncFragment: return false;
+                    case EncUserPw: return c == '@' || c == '/' || c == '?' || c == ':';
+                }
+                break;
+        }
+        return true; // everything else (space, '#', controls, '<', '>', ...) escapes
+    }
+    private static string EscapeMode(string s, int mode)
     {
         var sb = new StringBuilder();
         foreach (byte b in Encoding.UTF8.GetBytes(s))
         {
             char c = (char)b;
-            if (Unreserved(c)) sb.Append(c);
-            else if (!path && c == ' ') sb.Append('+');
-            else if (path && (c == '$' || c == '&' || c == '+' || c == ',' || c == '/' || c == ':' || c == ';' || c == '=' || c == '?' || c == '@')) sb.Append('%').Append(b.ToString("X2"));
+            if (!ShouldEscape(c, mode)) sb.Append(c);
+            else if (c == ' ' && mode == EncQuery) sb.Append('+');
             else sb.Append('%').Append(b.ToString("X2"));
         }
         return sb.ToString();

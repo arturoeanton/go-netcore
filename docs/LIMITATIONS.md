@@ -415,7 +415,10 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   Windows-1252 / U+FFFD fix-ups. `net/url.URL.Path` is percent-decoded like Go,
   with the raw encoding preserved in `RawPath`; `EscapedPath`/`String`/
   `RequestURI` reproduce it, and a malformed `%XX` yields the matching
-  `parse "<raw>": invalid URL escape "%xx"` error.
+  `parse "<raw>": invalid URL escape "%xx"` error. Each escape mode follows
+  Go's reserved-character rules: `PathEscape` (keeps `$&+:=@`), `QueryEscape`
+  (escapes all, space→`+`), the fragment (`RawFragment`, keeps all reserved),
+  and userinfo (escapes `@/?:`); `String()` escapes the fragment.
 - Goroutine scheduling order is the .NET thread pool's, not Go's scheduler — keep
   concurrent test output order-independent (as Go's map-range convention already
   requires).
