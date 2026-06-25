@@ -67,18 +67,7 @@ public static class Url
     public static GoMap URL_Query(object u)
     {
         var m = GoMaps.Make();
-        string q = ((GoUrl)u).RawQuery;
-        if (!string.IsNullOrEmpty(q))
-            foreach (var pair in q.Split('&'))
-            {
-                if (pair.Length == 0) continue;
-                int eq = pair.IndexOf('=');
-                string k = System.Uri.UnescapeDataString((eq < 0 ? pair : pair.Substring(0, eq)).Replace('+', ' '));
-                string v = eq < 0 ? "" : System.Uri.UnescapeDataString(pair.Substring(eq + 1).Replace('+', ' '));
-                var key = GoString.FromDotNetString(k);
-                GoSlice vals = m.Data!.TryGetValue(key, out var ex) && ex is GoSlice sl ? sl : new GoSlice { Data = new object?[0], Off = 0, Len = 0, Cap = 0 };
-                m.Data[key] = GoSlices.AppendOne(vals, GoString.FromDotNetString(v));
-            }
+        ParseQueryInto(m, ((GoUrl)u).RawQuery); // Go's Query() == ParseQuery, ignoring the error
         return m;
     }
 
@@ -393,21 +382,31 @@ public static class Url
     public static object?[] ParseQuery(GoString query)
     {
         var m = GoMaps.Make();
-        ParseQueryInto(m, query.ToDotNetString());
-        return new object?[] { m, null };
+        return new object?[] { m, ParseQueryInto(m, query.ToDotNetString()) };
     }
-    private static void ParseQueryInto(GoMap m, string q)
+    // Go's parseQuery: split on '&', record the first error (bad %XX or a ';' separator) but
+    // keep parsing the remaining valid pairs into m.
+    private static GoError? ParseQueryInto(GoMap m, string q)
     {
-        foreach (var pair in q.Split('&'))
+        GoError? err = null;
+        while (q.Length > 0)
         {
+            int amp = q.IndexOf('&');
+            string pair;
+            if (amp < 0) { pair = q; q = ""; }
+            else { pair = q.Substring(0, amp); q = q.Substring(amp + 1); }
+            if (pair.Contains(';')) { err ??= new GoError(GoString.FromDotNetString("invalid semicolon separator in query")); continue; }
             if (pair.Length == 0) continue;
             int eq = pair.IndexOf('=');
             string k = eq < 0 ? pair : pair.Substring(0, eq);
             string v = eq < 0 ? "" : pair.Substring(eq + 1);
-            var ku = Unescape(k, true); var vu = Unescape(v, true);
-            if (ku[1] != null || vu[1] != null) continue;
+            var ku = Unescape(k, true);
+            if (ku[1] != null) { err ??= (GoError)ku[1]!; continue; }
+            var vu = Unescape(v, true);
+            if (vu[1] != null) { err ??= (GoError)vu[1]!; continue; }
             Values_Add(m, (GoString)ku[0]!, (GoString)vu[0]!);
         }
+        return err;
     }
 
     public static GoString URL_String(object uo)

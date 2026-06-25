@@ -419,6 +419,8 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   Go's reserved-character rules: `PathEscape` (keeps `$&+:=@`), `QueryEscape`
   (escapes all, space→`+`), the fragment (`RawFragment`, keeps all reserved),
   and userinfo (escapes `@/?:`); `String()` escapes the fragment.
+  `ParseQuery` records the first error (bad `%XX` or a `;` separator) but still
+  parses the remaining valid pairs; `Query()` discards the error like Go.
 - Goroutine scheduling order is the .NET thread pool's, not Go's scheduler — keep
   concurrent test output order-independent (as Go's map-range convention already
   requires).
