@@ -524,12 +524,18 @@ public static class Template
         }
     }
 
+    // Build the context to execute sub's body in root's namespace: root holds any overrides
+    // (a clone's {{define "body"}} replacing a base {{block "body"}}), so its entries WIN over
+    // sub's own. A fresh context is returned so neither root nor sub is mutated.
     static GoTemplate MergeSet(GoTemplate root, GoTemplate sub)
     {
-        foreach (var kv in root.Set) if (!sub.Set.ContainsKey(kv.Key)) sub.Set[kv.Key] = kv.Value;
-        foreach (var kv in root.Funcs) if (!sub.Funcs.ContainsKey(kv.Key)) sub.Funcs[kv.Key] = kv.Value;
-        sub.Html = root.Html;
-        return sub;
+        var set = new Dictionary<string, GoTemplate>();
+        foreach (var kv in sub.Set) set[kv.Key] = kv.Value;
+        foreach (var kv in root.Set) set[kv.Key] = kv.Value; // root overrides win
+        var funcs = new Dictionary<string, GoClosure>();
+        foreach (var kv in sub.Funcs) funcs[kv.Key] = kv.Value;
+        foreach (var kv in root.Funcs) funcs[kv.Key] = kv.Value;
+        return new GoTemplate { Name = sub.Name, Root = sub.Root, Html = root.Html, Set = set, Funcs = funcs };
     }
 
     static void ExecRange(ExecState st, RangeNode r, object? dot)
