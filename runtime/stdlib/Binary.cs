@@ -325,11 +325,16 @@ public static class Binary
             case 'g': val = System.BitConverter.ToDouble(Take(buf, big, ref bi, 8)); break;
             case '{':
             {
-                var fields = cur!.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                // Decode into a FRESH instance (read field shapes from cur), not by mutating cur
+                // in place — the elements of a [N]struct array may all alias one instance, so
+                // in-place mutation would make every slot show the last-decoded value.
+                var t = cur!.GetType();
+                var inst = System.Activator.CreateInstance(t)!;
+                var fields = t.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
                 int fi = 0;
-                while (d[pos] != '}') { var nv = DeserVal(buf, big, ref bi, fields[fi].GetValue(cur), d, ref pos); fields[fi].SetValue(cur, nv); fi++; }
+                while (d[pos] != '}') { var nv = DeserVal(buf, big, ref bi, fields[fi].GetValue(cur), d, ref pos); fields[fi].SetValue(inst, nv); fi++; }
                 pos++;
-                return cur;
+                return inst;
             }
             case '[': case '<':
             {
@@ -339,9 +344,12 @@ public static class Binary
                 if (array) { int comma = d.IndexOf(',', pos); n = int.Parse(d.Substring(pos, comma - pos)); pos = comma + 1; }
                 else n = sl.Len;
                 int elemStart = pos;
-                for (int k = 0; k < n; k++) { pos = elemStart; sl.Data![sl.Off + k] = DeserVal(buf, big, ref bi, sl.Data[sl.Off + k], d, ref pos); }
+                // Decode into FRESH backing — elements (and nested arrays) may alias one another,
+                // so writing back into the shared backing would make every slot show the last value.
+                var data = new object?[n];
+                for (int k = 0; k < n; k++) { pos = elemStart; data[k] = DeserVal(buf, big, ref bi, sl.Data![sl.Off + k], d, ref pos); }
                 pos = elemStart; SkipDesc(d, ref pos); pos++;
-                return cur;
+                return new GoSlice { Data = data, Off = 0, Len = n, Cap = n };
             }
             default: return cur;
         }
