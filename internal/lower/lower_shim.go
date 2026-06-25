@@ -1138,6 +1138,7 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 		"Path": {"Url", "URL_SetPath"}, "Scheme": {"Url", "URL_SetScheme"},
 		"Host": {"Url", "URL_SetHost"}, "RawQuery": {"Url", "URL_SetRawQuery"},
 		"Fragment": {"Url", "URL_SetFragment"}, "User": {"Url", "URL_SetUser"},
+		"Opaque": {"Url", "URL_SetOpaque"},
 	},
 }
 
@@ -1205,6 +1206,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"net/http.Server":                {"HttpTypes", "NewServer"},
 	"net/http.Cookie":                {"Http", "NewCookie"},
 	"net/mail.Address":               {"Mail", "NewAddress"},
+	"net/url.URL":                    {"Url", "URL_Zero"},
 	"go/token.Position":               {"GoToken", "PositionZero"},
 	"encoding/csv.ParseError":          {"Csv", "ParseErrorZero"},
 	"net/textproto.Error":              {"Textproto", "Error_Zero"},

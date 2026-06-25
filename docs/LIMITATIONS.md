@@ -145,6 +145,14 @@ wrapped in a native closure (`Closures.FromShim`) that invokes the shim by refle
 Variadic shim function values (`sp := fmt.Sprintf; sp("%d", 1)`) pack their trailing
 arguments into the shim's slice parameter. Fixture 406_shim_func_value.
 
+## regexp POSIX leftmost-longest
+
+`regexp.CompilePOSIX`/`MustCompilePOSIX` compile and match, but use the default
+leftmost-**first** semantics rather than POSIX leftmost-**longest** (the underlying
+.NET engine is leftmost-first). For most patterns the result is identical; it differs
+only where an earlier alternative is a prefix of a later one — `a|ab` on `"ab"`
+matches `"a"` here, `"ab"` under Go's POSIX mode. `(*Regexp).Longest()` is a no-op.
+
 ## Unicode special-casing
 
 `strings.ToUpper`/`ToLower` use simple 1:1 case mapping; the handful of Unicode

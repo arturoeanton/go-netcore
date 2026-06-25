@@ -226,11 +226,15 @@ public static class Url
         return new GoUrl { Scheme = u.Scheme, Host = u.Host, Path = u.Path, RawQuery = u.RawQuery, Fragment = u.Fragment, Opaque = u.Opaque, User = u.User };
     }
 
+    // Zero value of url.URL, so a &url.URL{...} composite literal has a real backing object
+    // for its field setters to write into instead of a null receiver.
+    public static object URL_Zero() => new GoUrl();
     public static void URL_SetPath(object u, GoString v) => ((GoUrl)u).Path = v.ToDotNetString();
     public static void URL_SetScheme(object u, GoString v) => ((GoUrl)u).Scheme = v.ToDotNetString();
     public static void URL_SetHost(object u, GoString v) => ((GoUrl)u).Host = v.ToDotNetString();
     public static void URL_SetRawQuery(object u, GoString v) => ((GoUrl)u).RawQuery = v.ToDotNetString();
     public static void URL_SetFragment(object u, GoString v) => ((GoUrl)u).Fragment = v.ToDotNetString();
+    public static void URL_SetOpaque(object u, GoString v) => ((GoUrl)u).Opaque = v.ToDotNetString();
 
     public static bool URL_IsAbs(object u) => ((GoUrl)u).Scheme.Length > 0;
     // (*URL).Hostname / Port split Host into host and port (Host may be "[ipv6]:port").
