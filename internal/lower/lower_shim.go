@@ -324,6 +324,20 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"SearchStrings": {"Sort", "SearchStrings"}, "SearchFloat64s": {"Sort", "SearchFloat64s"},
 		"Search": {"Sort", "Search"}, "Slice": {"Sort", "Slice"}, "SliceStable": {"Sort", "SliceStable"}, "SliceIsSorted": {"Sort", "SliceIsSorted"},
 	},
+	// slices: the functions returning a concrete type (bool/int/index+found/void). Functions
+	// returning a type parameter (Max/Min/Clone/Compact/Concat) are deferred — the backend
+	// does not yet unbox a shim's generic-typed return.
+	"slices": {
+		"Sort": {"Slices", "Sort"}, "SortFunc": {"Slices", "SortFunc"}, "SortStableFunc": {"Slices", "SortStableFunc"},
+		"Contains": {"Slices", "Contains"}, "ContainsFunc": {"Slices", "ContainsFunc"},
+		"Index": {"Slices", "Index"}, "IndexFunc": {"Slices", "IndexFunc"},
+		"Equal": {"Slices", "Equal"}, "EqualFunc": {"Slices", "EqualFunc"},
+		"Reverse": {"Slices", "Reverse"}, "IsSorted": {"Slices", "IsSorted"}, "IsSortedFunc": {"Slices", "IsSortedFunc"},
+		"BinarySearch": {"Slices", "BinarySearch"}, "BinarySearchFunc": {"Slices", "BinarySearchFunc"},
+	},
+	"cmp": {
+		"Compare": {"Cmp", "Compare"}, "Less": {"Cmp", "Less"},
+	},
 	"time": {
 		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},
 		"Now": {"Time", "Now"}, "Unix": {"Time", "Unix"}, "UnixMilli": {"Time", "UnixMilli"}, "UnixMicro": {"Time", "UnixMicro"}, "Date": {"Time", "Date"}, "Since": {"Time", "Since"}, "Until": {"Time", "Until"},
