@@ -116,12 +116,9 @@ So the same value-receiver type dispatches whether stored as a value or as `&v`.
   Out of scope: `testing/fstest.MapFS` is unlowered stdlib, so its methods can't be bridged.
 - `(*http.Server).Serve`: optional — drive `CallMethod(l, "Accept")` in a loop and speak
   HTTP/1.1 on the conn (removes the `Bound`-port-release bridge); larger, do last.
-- `(*http.Server).Serve`: optional — drive `CallMethod(l, "Accept")` in a loop and speak
-  HTTP/1.1 on the conn (removes the `Bound`-port-release bridge); larger, do last.
 
 ## Guardrails
 - Extend the Stage-A shim-signature validator (`shim_signatures_test.go`) with a check
   that every `bridgeInterfaces` entry resolves and that `Heap.cs` etc. only reach user
   methods via `CallMethod` (no name-only dispatch).
 - Conformance + the gin/echo demos stay green at every slice.
-```
