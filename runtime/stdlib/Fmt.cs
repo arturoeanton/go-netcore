@@ -775,7 +775,9 @@ public static class Fmt
             case bool b: return b ? "true" : "false";
             case GoTime: return Time.Time_GoString(v).ToDotNetString(); // GoStringer
             case GoString gs: return GoQuote(gs);
-            case long or int or ulong or uint: return Format(v, 'v', false, false);
+            case ulong ul: return "0x" + ul.ToString("x", Inv); // Go's %#v renders unsigned ints in hex
+            case uint ui: return "0x" + ui.ToString("x", Inv);
+            case long or int: return Format(v, 'v', false, false);
             case double d: return FormatFloatV(d);
             case GoPtr p: return "&" + FormatGoSyntax(p.Value);
             // A typed box carries the precise composite type, so %#v can spell its real
@@ -784,6 +786,8 @@ public static class Fmt
             case GoNamed nm:
             {
                 string nmName = Rt.NamedTypeName(nm.TypeId);
+                // A nil typed pointer wrapped for its type identity: Go's %#v is "(*int)(nil)".
+                if (nm.Value == null) return nmName.Length > 0 ? "(" + nmName + ")(nil)" : "<nil>";
                 if (nmName.Length == 0) return FormatGoSyntax(nm.Value);
                 return nm.Value switch
                 {
@@ -798,7 +802,10 @@ public static class Fmt
             {
                 var t = v.GetType();
                 var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
-                var sb = new StringBuilder("main." + t.Name + "{");
+                // An anonymous/generic struct has a registered reflect display name
+                // ("struct { A int; B string }"); a plain named struct is "main.T".
+                string disp = Rt.StructDisplay(t.Name);
+                var sb = new StringBuilder((disp.Length > 0 ? disp : "main." + t.Name) + "{");
                 for (int i = 0; i < fields.Length; i++)
                 {
                     if (i > 0) sb.Append(", ");
@@ -851,6 +858,8 @@ public static class Fmt
     {
         if (v is GoSlice sl && typeName.Length > 0 && typeName[0] == '[') return SliceSyntax(sl, typeName);
         if (v is GoMap m && typeName.StartsWith("map[", System.StringComparison.Ordinal)) return MapSyntax(m, typeName);
+        // []byte / [N]byte elements render as hex bytes (Go's %#v: []byte{0x68, 0x69}).
+        if ((typeName == "byte" || typeName == "uint8") && IsIntegral(v)) return "0x" + ((ulong)(ToLong(v) & 0xff)).ToString("x", Inv);
         return FormatGoSyntax(v);
     }
 

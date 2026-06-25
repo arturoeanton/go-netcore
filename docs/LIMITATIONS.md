@@ -123,6 +123,11 @@ Remaining edges (documented, not silent):
   representation (only method-bearing named types get an identity tag so far). A
   composite over a named interface element (`[]error`, `map[error]int`) now names
   it correctly; only the empty interface erases to `interface {}` (as in Go).
+- `%#v` (Go-syntax) is byte-exact: unsigned ints in hex (`0x5`), `[]byte`
+  elements as hex bytes, a nil typed pointer as `(*int)(nil)`, and an anonymous
+  struct by its reflect spelling (`struct { A int; B string }`) for both `%#v`
+  and `%T`. (`%#v` of a `uint8`/`byte` *scalar* still prints decimal — it shares
+  the int32 runtime representation.)
 - `%v` of a **nil map** prints `<nil>` instead of `map[]`.
 
 ## Uncaught panic output format

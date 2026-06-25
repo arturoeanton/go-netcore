@@ -13,6 +13,7 @@ import (
 	"go/token"
 	"go/types"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/arturoeanton/go-netcore/internal/diagnostics"
@@ -1015,13 +1016,31 @@ func (c *lowerCtx) structFor(named *types.Named) *goir.Struct {
 
 // structForAnon registers an anonymous struct type, keyed by its structural
 // string so that identical anonymous structs map to one TypeDef.
+// anonStructDisplay renders an anonymous struct in Go's reflect/%T spelling
+// ("struct { A int; B string }", "struct {}" when empty), so %T and %#v name it like Go
+// rather than the internal __anonNN type.
+func anonStructDisplay(st *types.Struct) string {
+	if st.NumFields() == 0 {
+		return "struct {}"
+	}
+	parts := make([]string, st.NumFields())
+	for i := 0; i < st.NumFields(); i++ {
+		f := st.Field(i)
+		parts[i] = f.Name() + " " + typeDescStr(f.Type())
+		if tag := st.Tag(i); tag != "" {
+			parts[i] += " " + strconv.Quote(tag)
+		}
+	}
+	return "struct { " + strings.Join(parts, "; ") + " }"
+}
+
 func (c *lowerCtx) structForAnon(st *types.Struct) *goir.Struct {
 	key := types.TypeString(st, nil)
 	if s, ok := c.anonStructReg[key]; ok {
 		return s
 	}
 	id := int(c.nextTypeId())
-	s := &goir.Struct{Name: "__anon" + itoa(id), GoName: key, Id: id}
+	s := &goir.Struct{Name: "__anon" + itoa(id), GoName: key, Id: id, Display: anonStructDisplay(st)}
 	c.anonStructReg[key] = s
 	c.anonStructs = append(c.anonStructs, anonStructInfo{name: s.Name, st: st})
 	c.structOrder = append(c.structOrder, s)
