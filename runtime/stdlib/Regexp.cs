@@ -6,7 +6,58 @@ using GoCLR.Runtime;
 /// <summary>A *regexp.Regexp handle wrapping a .NET Regex. (.NET uses a
 /// backtracking engine vs Go's RE2; common patterns match, some edges differ.)</summary>
 [GoShim("regexp.Regexp")]
-public sealed class GoRegexp { public Regex Re = null!; public string Orig = ""; }
+public sealed class GoRegexp
+{
+    public Regex Re = null!;
+    public string Orig = "";
+    private int[]? _map;     // Go group index -> .NET group number
+    private string[]? _names; // Go group index -> name ("" when unnamed); index 0 = ""
+    // Go numbers capturing groups left-to-right by opening paren; .NET numbers unnamed
+    // groups first then named. For patterns mixing the two the orders differ, so map
+    // every Go index onto the matching .NET group. Built lazily from the original pattern.
+    public int[] Map { get { Build(); return _map!; } }
+    public string[] Names { get { Build(); return _names!; } }
+    private void Build()
+    {
+        if (_map != null) return;
+        var names = new System.Collections.Generic.List<string>();
+        string p = Orig; bool inClass = false;
+        for (int i = 0; i < p.Length; i++)
+        {
+            char c = p[i];
+            if (c == '\\') { i++; continue; }
+            if (inClass) { if (c == ']') inClass = false; continue; }
+            if (c == '[') { inClass = true; continue; }
+            if (c != '(') continue;
+            if (i + 1 < p.Length && p[i + 1] == '?')
+            {
+                int k = i + 2;
+                if (k + 1 < p.Length && p[k] == 'P' && p[k + 1] == '<')
+                { int s = k + 2, e = p.IndexOf('>', s); if (e > 0) names.Add(p.Substring(s, e - s)); }
+                else if (k < p.Length && p[k] == '<' && k + 1 < p.Length && p[k + 1] != '=' && p[k + 1] != '!')
+                { int s = k + 1, e = p.IndexOf('>', s); if (e > 0) names.Add(p.Substring(s, e - s)); }
+                else if (k < p.Length && p[k] == '\'')
+                { int s = k + 1, e = p.IndexOf('\'', s); if (e > 0) names.Add(p.Substring(s, e - s)); }
+                // else (?:  (?=  (?!  (?i)  (?i:  (?<=  (?<!  (?P=name)  -> non-capturing
+            }
+            else names.Add(""); // plain unnamed capturing group
+        }
+        var map = new int[names.Count + 1];
+        var nm = new string[names.Count + 1];
+        map[0] = 0; nm[0] = "";
+        int unnamed = 0;
+        for (int gi = 1; gi <= names.Count; gi++)
+        {
+            string name = names[gi - 1];
+            nm[gi] = name;
+            map[gi] = name.Length == 0 ? ++unnamed : Re.GroupNumberFromName(name);
+        }
+        _names = nm; _map = map;
+    }
+    public Group G(Match m, int goIndex) => m.Groups[Map[goIndex]];
+    public int Count => Map.Length;
+    public int GoIndexOfName(string name) { var ns = Names; for (int i = 0; i < ns.Length; i++) if (ns[i] == name) return i; return -1; }
+}
 
 /// <summary>Shim for a subset of Go's <c>regexp</c> package.</summary>
 public static class Regexp
@@ -50,14 +101,15 @@ public static class Regexp
     public static GoSlice Re_FindAllStringSubmatchIndex(object r, GoString gs, long n)
     {
         var str = gs.ToDotNetString();
+        var gx = (GoRegexp)r;
         var rows = new System.Collections.Generic.List<object?>();
-        foreach (Match m in ((GoRegexp)r).Re.Matches(str))
+        foreach (Match m in gx.Re.Matches(str))
         {
             if (n >= 0 && rows.Count >= n) break;
             var idxs = new System.Collections.Generic.List<object?>();
-            for (int g = 0; g < m.Groups.Count; g++)
+            for (int g = 0; g < gx.Count; g++)
             {
-                var grp = m.Groups[g];
+                var grp = gx.G(m, g);
                 if (grp.Success)
                 {
                     int start = System.Text.Encoding.UTF8.GetByteCount(str.Substring(0, grp.Index));
@@ -76,12 +128,13 @@ public static class Regexp
     public static GoSlice Re_FindStringSubmatchIndex(object r, GoString gs)
     {
         var str = gs.ToDotNetString();
-        var m = ((GoRegexp)r).Re.Match(str);
+        var gx = (GoRegexp)r;
+        var m = gx.Re.Match(str);
         if (!m.Success) return new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 };
         var idxs = new System.Collections.Generic.List<object?>();
-        for (int g = 0; g < m.Groups.Count; g++)
+        for (int g = 0; g < gx.Count; g++)
         {
-            var grp = m.Groups[g];
+            var grp = gx.G(m, g);
             if (grp.Success)
             {
                 int start = System.Text.Encoding.UTF8.GetByteCount(str.Substring(0, grp.Index));
@@ -97,15 +150,10 @@ public static class Regexp
     // when the group is unnamed (matching Go's ordering for purely numbered groups).
     public static GoSlice Re_SubexpNames(object r)
     {
-        var re = ((GoRegexp)r).Re;
-        var nums = re.GetGroupNumbers();
-        var names = new object?[nums.Length];
-        for (int i = 0; i < nums.Length; i++)
-        {
-            string nm = re.GroupNameFromNumber(nums[i]);
-            // .NET names an unnamed group with its number; Go reports "".
-            names[i] = GoString.FromDotNetString(nm == nums[i].ToString(System.Globalization.CultureInfo.InvariantCulture) ? "" : nm);
-        }
+        var gx = (GoRegexp)r;
+        var src = gx.Names; // Go order, index 0 = "" (whole match)
+        var names = new object?[src.Length];
+        for (int i = 0; i < src.Length; i++) names[i] = GoString.FromDotNetString(src[i]);
         return new GoSlice { Data = names, Off = 0, Len = names.Length, Cap = names.Length };
     }
 
@@ -119,12 +167,13 @@ public static class Regexp
     {
         var bytes = Readers.Drain(reader);
         string str = System.Text.Encoding.UTF8.GetString(bytes);
-        var m = ((GoRegexp)r).Re.Match(str);
+        var gx = (GoRegexp)r;
+        var m = gx.Re.Match(str);
         if (!m.Success) return new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 };
         var idxs = new System.Collections.Generic.List<object?>();
-        for (int g = 0; g < m.Groups.Count; g++)
+        for (int g = 0; g < gx.Count; g++)
         {
-            var grp = m.Groups[g];
+            var grp = gx.G(m, g);
             // Rune offsets: count code points up to the UTF-16 index.
             if (grp.Success)
             {
@@ -159,10 +208,11 @@ public static class Regexp
     }
     public static GoSlice Re_FindStringSubmatch(object r, GoString s)
     {
-        var m = ((GoRegexp)r).Re.Match(s.ToDotNetString());
+        var gx = (GoRegexp)r;
+        var m = gx.Re.Match(s.ToDotNetString());
         if (!m.Success) return default;
         var items = new System.Collections.Generic.List<string>();
-        for (int i = 0; i < m.Groups.Count; i++) items.Add(m.Groups[i].Success ? m.Groups[i].Value : "");
+        for (int i = 0; i < gx.Count; i++) { var grp = gx.G(m, i); items.Add(grp.Success ? grp.Value : ""); }
         return StrSlice(items);
     }
     public static GoSlice Re_FindAllString(object r, GoString s, long n)
@@ -175,20 +225,45 @@ public static class Regexp
     // whole match), up to n matches (n < 0 = all). nil if there are no matches.
     public static GoSlice Re_FindAllStringSubmatch(object r, GoString s, long n)
     {
+        var gx = (GoRegexp)r;
         var rows = new System.Collections.Generic.List<object?>();
-        foreach (Match m in ((GoRegexp)r).Re.Matches(s.ToDotNetString()))
+        foreach (Match m in gx.Re.Matches(s.ToDotNetString()))
         {
             if (n >= 0 && rows.Count >= n) break;
             var groups = new System.Collections.Generic.List<string>();
-            for (int i = 0; i < m.Groups.Count; i++) groups.Add(m.Groups[i].Success ? m.Groups[i].Value : "");
+            for (int i = 0; i < gx.Count; i++) { var grp = gx.G(m, i); groups.Add(grp.Success ? grp.Value : ""); }
             rows.Add(StrSlice(groups));
         }
         return rows.Count == 0 ? default : new GoSlice { Data = rows.ToArray(), Off = 0, Len = rows.Count, Cap = rows.Count };
     }
     public static GoString Re_ReplaceAllString(object r, GoString s, GoString repl)
     {
-        // Go uses $1 / ${name}; .NET uses the same — translate Go's $name to ${name} loosely.
-        return GoString.FromDotNetString(((GoRegexp)r).Re.Replace(s.ToDotNetString(), repl.ToDotNetString()));
+        var gx = (GoRegexp)r; string template = repl.ToDotNetString();
+        return GoString.FromDotNetString(gx.Re.Replace(s.ToDotNetString(), (Match m) => ExpandRepl(gx, m, template)));
+    }
+    // Go's replacement $-expansion: $name / ${name} / $N, $$ -> $. Group references use Go's
+    // left-to-right numbering and named groups; an unknown/failed group expands to empty.
+    private static string ExpandRepl(GoRegexp gx, Match m, string template)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < template.Length; i++)
+        {
+            if (template[i] != '$') { sb.Append(template[i]); continue; }
+            if (i + 1 < template.Length && template[i + 1] == '$') { sb.Append('$'); i++; continue; }
+            int j = i + 1; bool braced = j < template.Length && template[j] == '{'; if (braced) j++;
+            int start = j;
+            while (j < template.Length && (char.IsLetterOrDigit(template[j]) || template[j] == '_')) j++;
+            string name = template.Substring(start, j - start);
+            if (braced && j < template.Length && template[j] == '}') j++;
+            i = j - 1;
+            if (name.Length == 0) continue; // lone '$' with no valid name: Go drops it
+            Group? grp = null;
+            if (int.TryParse(name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var num))
+            { if (num >= 0 && num < gx.Map.Length) grp = gx.G(m, num); }
+            else { int gi = gx.GoIndexOfName(name); if (gi >= 0) grp = gx.G(m, gi); }
+            if (grp != null && grp.Success) sb.Append(grp.Value);
+        }
+        return sb.ToString();
     }
     // ReplaceAllStringFunc(s, repl): replace each match with the result of calling repl on
     // the matched text (repl is a func(string) string -> a GoClosure).
@@ -219,25 +294,25 @@ public static class Regexp
     private static GoSlice IntSlice(System.Collections.Generic.List<long> xs) { var d = new object?[xs.Count]; for (int i = 0; i < xs.Count; i++) d[i] = xs[i]; return new GoSlice { Data = d, Off = 0, Len = xs.Count, Cap = xs.Count }; }
     private static GoSlice SlicesOf(System.Collections.Generic.List<GoSlice> ss) { var d = new object?[ss.Count]; for (int i = 0; i < ss.Count; i++) d[i] = ss[i]; return new GoSlice { Data = d, Off = 0, Len = ss.Count, Cap = ss.Count }; }
     private static GoSlice MatchIndex(Match m, string s) { var idx = new System.Collections.Generic.List<long> { BOff(s, m.Index), BOff(s, m.Index + m.Length) }; return IntSlice(idx); }
-    private static GoSlice SubmatchBytes(Match m, string s) { var g = new System.Collections.Generic.List<GoSlice>(); for (int i = 0; i < m.Groups.Count; i++) g.Add(m.Groups[i].Success ? ByteSliceOf(m.Groups[i].Value) : default); return SlicesOf(g); }
-    private static GoSlice SubmatchIndex(Match m, string s) { var idx = new System.Collections.Generic.List<long>(); for (int i = 0; i < m.Groups.Count; i++) { var grp = m.Groups[i]; if (grp.Success) { idx.Add(BOff(s, grp.Index)); idx.Add(BOff(s, grp.Index + grp.Length)); } else { idx.Add(-1); idx.Add(-1); } } return IntSlice(idx); }
+    private static GoSlice SubmatchBytes(GoRegexp gx, Match m, string s) { var g = new System.Collections.Generic.List<GoSlice>(); for (int i = 0; i < gx.Count; i++) { var grp = gx.G(m, i); g.Add(grp.Success ? ByteSliceOf(grp.Value) : default); } return SlicesOf(g); }
+    private static GoSlice SubmatchIndex(GoRegexp gx, Match m, string s) { var idx = new System.Collections.Generic.List<long>(); for (int i = 0; i < gx.Count; i++) { var grp = gx.G(m, i); if (grp.Success) { idx.Add(BOff(s, grp.Index)); idx.Add(BOff(s, grp.Index + grp.Length)); } else { idx.Add(-1); idx.Add(-1); } } return IntSlice(idx); }
 
     public static GoSlice Re_Find(object r, GoSlice b) { string s = Str(b); var m = Re(r).Match(s); return m.Success ? ByteSliceOf(m.Value) : default; }
     public static GoSlice Re_FindIndex(object r, GoSlice b) { string s = Str(b); var m = Re(r).Match(s); return m.Success ? MatchIndex(m, s) : default; }
     public static GoSlice Re_FindStringIndexAll(object r, GoString gs, long n) { string s = gs.ToDotNetString(); var outp = new System.Collections.Generic.List<GoSlice>(); foreach (Match m in Re(r).Matches(s)) { if (n >= 0 && outp.Count >= n) break; outp.Add(MatchIndex(m, s)); } return outp.Count == 0 ? default : SlicesOf(outp); }
     public static GoSlice Re_FindAll(object r, GoSlice b, long n) { string s = Str(b); var outp = new System.Collections.Generic.List<GoSlice>(); foreach (Match m in Re(r).Matches(s)) { if (n >= 0 && outp.Count >= n) break; outp.Add(ByteSliceOf(m.Value)); } return outp.Count == 0 ? default : SlicesOf(outp); }
     public static GoSlice Re_FindAllIndex(object r, GoSlice b, long n) { string s = Str(b); var outp = new System.Collections.Generic.List<GoSlice>(); foreach (Match m in Re(r).Matches(s)) { if (n >= 0 && outp.Count >= n) break; outp.Add(MatchIndex(m, s)); } return outp.Count == 0 ? default : SlicesOf(outp); }
-    public static GoSlice Re_FindSubmatch(object r, GoSlice b) { string s = Str(b); var m = Re(r).Match(s); return m.Success ? SubmatchBytes(m, s) : default; }
-    public static GoSlice Re_FindSubmatchIndex(object r, GoSlice b) { string s = Str(b); var m = Re(r).Match(s); return m.Success ? SubmatchIndex(m, s) : default; }
-    public static GoSlice Re_FindAllSubmatch(object r, GoSlice b, long n) { string s = Str(b); var outp = new System.Collections.Generic.List<GoSlice>(); foreach (Match m in Re(r).Matches(s)) { if (n >= 0 && outp.Count >= n) break; outp.Add(SubmatchBytes(m, s)); } return outp.Count == 0 ? default : SlicesOf(outp); }
-    public static GoSlice Re_FindAllSubmatchIndex(object r, GoSlice b, long n) { string s = Str(b); var outp = new System.Collections.Generic.List<GoSlice>(); foreach (Match m in Re(r).Matches(s)) { if (n >= 0 && outp.Count >= n) break; outp.Add(SubmatchIndex(m, s)); } return outp.Count == 0 ? default : SlicesOf(outp); }
+    public static GoSlice Re_FindSubmatch(object r, GoSlice b) { var gx = (GoRegexp)r; string s = Str(b); var m = gx.Re.Match(s); return m.Success ? SubmatchBytes(gx, m, s) : default; }
+    public static GoSlice Re_FindSubmatchIndex(object r, GoSlice b) { var gx = (GoRegexp)r; string s = Str(b); var m = gx.Re.Match(s); return m.Success ? SubmatchIndex(gx, m, s) : default; }
+    public static GoSlice Re_FindAllSubmatch(object r, GoSlice b, long n) { var gx = (GoRegexp)r; string s = Str(b); var outp = new System.Collections.Generic.List<GoSlice>(); foreach (Match m in gx.Re.Matches(s)) { if (n >= 0 && outp.Count >= n) break; outp.Add(SubmatchBytes(gx, m, s)); } return outp.Count == 0 ? default : SlicesOf(outp); }
+    public static GoSlice Re_FindAllSubmatchIndex(object r, GoSlice b, long n) { var gx = (GoRegexp)r; string s = Str(b); var outp = new System.Collections.Generic.List<GoSlice>(); foreach (Match m in gx.Re.Matches(s)) { if (n >= 0 && outp.Count >= n) break; outp.Add(SubmatchIndex(gx, m, s)); } return outp.Count == 0 ? default : SlicesOf(outp); }
 
     public static GoSlice Re_ReplaceAll(object r, GoSlice src, GoSlice repl) => ByteSliceOf(Re_ReplaceAllString(r, GoString.FromBytes(Bytes(src)), GoString.FromBytes(Bytes(repl))).ToDotNetString());
     public static GoSlice Re_ReplaceAllLiteral(object r, GoSlice src, GoSlice repl) => ByteSliceOf(Re_ReplaceAllLiteralString(r, GoString.FromBytes(Bytes(src)), GoString.FromBytes(Bytes(repl))).ToDotNetString());
     public static GoSlice Re_ReplaceAllFunc(object r, GoSlice src, GoClosure f)
         => ByteSliceOf(Re(r).Replace(Str(src), (Match m) => GoString.FromBytes(Bytes((GoSlice)GoRuntime.InvokeArgs(f, ByteSliceOf(m.Value))!)).ToDotNetString()));
 
-    public static long Re_SubexpIndex(object r, GoString name) { int n = Re(r).GroupNumberFromName(name.ToDotNetString()); return n; }
+    public static long Re_SubexpIndex(object r, GoString name) => ((GoRegexp)r).GoIndexOfName(name.ToDotNetString());
     public static object?[] Re_LiteralPrefix(object r) => new object?[] { GoString.FromDotNetString(""), false }; // conservative: no literal prefix asserted
     public static void Re_Longest(object r) { } // leftmost-longest mode (.NET is leftmost-first; accepted)
     public static object Re_Copy(object r) { var g = (GoRegexp)r; return new GoRegexp { Re = g.Re, Orig = g.Orig }; }
@@ -268,7 +343,8 @@ public static class Regexp
             string name = template.Substring(start, j - start);
             if (braced && j < template.Length && template[j] == '}') j++;
             i = j - 1;
-            int gi = int.TryParse(name, out var num) ? num : Re(r).GroupNumberFromName(name);
+            if (name.Length == 0) continue;
+            int gi = int.TryParse(name, out var num) ? num : ((GoRegexp)r).GoIndexOfName(name);
             if (gi >= 0 && 2 * gi + 1 < match.Len)
             {
                 long lo = System.Convert.ToInt64(match.Data![match.Off + 2 * gi]), hi = System.Convert.ToInt64(match.Data![match.Off + 2 * gi + 1]);

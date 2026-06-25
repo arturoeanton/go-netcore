@@ -82,7 +82,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | encoding/json — Marshal + Unmarshal (descriptor-driven write-path) | ✅ | L | ✅ |
 | net/http client + server (HttpListener) ✅ | ✅ | XL | ✅ |
 | net/url (escapes + Parse) ✅; mime, mime/multipart 🚧 | 🟡 | M | ✅ |
-| regexp (.NET Regex; common RE2 patterns) | 🟡 | L | ✅ |
+| regexp (.NET Regex; common RE2 patterns; named-group submatch order + `$name`/`$N` replace mapped to Go's left-to-right numbering) | 🟡 | L | ✅ |
 | unicode/utf8 ✅; utf16 | 🟡 | S | ✅ |
 | reflect (read-path + settable write-path: Set*/Field/New) | ✅ | L | ✅ |
 | time (Duration + time.Time/Format) ✅; runtime/log/slog 🚧 | 🟡 | M | ✅ |
