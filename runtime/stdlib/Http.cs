@@ -61,7 +61,7 @@ public sealed class GoCookie
 public sealed class GoHttpClient { public long TimeoutNanos; }
 
 /// <summary>An *http.Request handle (server side).</summary>
-public sealed class GoRequest { public string Method = ""; public GoUrl Url = new(); public GoReader Body = new(); public string Host = ""; public string RemoteAddr = ""; public GoMap? Form; public GoMap? PostForm; public GoMap? Header; public byte[] RawBody = System.Array.Empty<byte>(); public readonly GoFieldBag Extra = new(); }
+public sealed class GoRequest { public string Method = ""; public GoUrl Url = new(); public GoReader Body = new(); public string Host = ""; public string RemoteAddr = ""; public GoMap? Form; public GoMap? PostForm; public GoMap? Header; public byte[] RawBody = System.Array.Empty<byte>(); public readonly GoFieldBag Extra = new(); public System.Collections.Generic.Dictionary<string, string>? PathValues; }
 
 /// <summary>Shim for Go's <c>net/http</c> client (over a pooled HttpClient).
 /// Server-side and streaming bodies are out of scope; the body is read eagerly.</summary>
@@ -381,6 +381,14 @@ public static class Http
     public static long Req_ProtoMajor(object r) => 1;
     public static long Req_ProtoMinor(object r) => 1;
     public static GoString Req_RequestURI(object r) => Url.URL_RequestURI(((GoRequest)r).Url);
+
+    // (*Request).PathValue(name): the value captured by a {name} wildcard in the matched
+    // ServeMux pattern, or "" if none (Go 1.22 routing).
+    public static GoString Req_PathValue(object r, GoString name)
+    {
+        var pv = ((GoRequest)r).PathValues;
+        return GoString.FromDotNetString(pv != null && pv.TryGetValue(name.ToDotNetString(), out var v) ? v : "");
+    }
     // (*http.Request).WithContext/Clone: goclr has no request context, so return self.
     public static object Req_WithContext(object r, object? ctx) => r;
     public static object Req_Clone(object r, object? ctx) => r;
@@ -1348,18 +1356,86 @@ public static class HttpTypes
     public static void Mux_ServeHTTP(object m, object? w, object? r)
     {
         var mux = (GoServeMux)m;
-        string path = r is GoRequest req ? req.Url.Path : "/";
-        object? best = null; int bestLen = -1;
+        var req = r as GoRequest;
+        string method = req?.Method ?? "GET";
+        string path = req?.Url.Path ?? "/";
+
+        object? best = null; int bestScore = int.MinValue;
+        System.Collections.Generic.Dictionary<string, string>? bestVals = null;
+        var allowed = new System.Collections.Generic.SortedSet<string>();
+
         lock (mux.Routes)
             foreach (var (pat, h) in mux.Routes)
-                if (MuxMatches(pat, path) && pat.Length > bestLen) { best = h; bestLen = pat.Length; }
-        if (best != null) Http.ServeHTTPDyn(best, w, r);
+            {
+                var rt = ParsePattern(pat);
+                if (!PathMatches(rt, path, out var vals, out int score)) continue;
+                if (rt.method.Length > 0 && rt.method != method) { allowed.Add(rt.method); continue; }
+                // A method-specific route outranks a method-agnostic one; among equals the
+                // most literal (fewest wildcards) wins, matching Go's specificity order.
+                int s = score + (rt.method.Length > 0 ? 1 << 20 : 0);
+                if (s > bestScore) { bestScore = s; best = h; bestVals = vals; }
+            }
+
+        if (best != null)
+        {
+            if (req != null) req.PathValues = bestVals;
+            Http.ServeHTTPDyn(best, w, r);
+        }
+        else if (allowed.Count > 0)
+            Http.Error(w!, GoString.FromDotNetString("Method Not Allowed"), 405);
         else Http.NotFound(w!, r);
     }
     public static object?[] Mux_Handler(object m, object? r) => new object?[] { null, GoString.FromDotNetString("") };
 
-    // Go's ServeMux match: a pattern ending in "/" matches its subtree; any other pattern
-    // matches only the exact path. (Host-prefixed patterns are not supported.)
-    private static bool MuxMatches(string pat, string path) =>
-        pat.EndsWith("/") ? (path == pat || path.StartsWith(pat)) : path == pat;
+    // A parsed ServeMux pattern: optional leading "METHOD ", path segments (a "{name}" or
+    // "{name...}" segment is a wildcard), and whether it is a subtree (ends with "/").
+    private struct MuxPat { public string method; public string[] segs; public bool subtree; public bool multi; public string multiName; }
+
+    private static MuxPat ParsePattern(string pat)
+    {
+        var p = new MuxPat { method = "", multiName = "" };
+        int sp = pat.IndexOf(' ');
+        if (sp >= 0) { p.method = pat.Substring(0, sp).Trim(); pat = pat.Substring(sp + 1).Trim(); }
+        p.subtree = pat.EndsWith("/");
+        var segs = pat.Split('/', System.StringSplitOptions.RemoveEmptyEntries);
+        if (segs.Length > 0)
+        {
+            string last = segs[segs.Length - 1];
+            if (last.StartsWith("{") && last.EndsWith("...}")) { p.multi = true; p.multiName = last.Substring(1, last.Length - 5); }
+        }
+        p.segs = segs;
+        return p;
+    }
+
+    private static bool PathMatches(MuxPat p, string reqPath, out System.Collections.Generic.Dictionary<string, string> vals, out int score)
+    {
+        vals = new(); score = 0;
+        var r = reqPath.Split('/', System.StringSplitOptions.RemoveEmptyEntries);
+        if (p.multi)
+        {
+            int fixedN = p.segs.Length - 1;
+            if (r.Length < fixedN) return false;
+            for (int i = 0; i < fixedN; i++) if (!MatchSeg(p.segs[i], r[i], vals, ref score)) return false;
+            vals[p.multiName] = string.Join("/", r, fixedN, r.Length - fixedN);
+            return true;
+        }
+        if (p.subtree)
+        {
+            if (r.Length < p.segs.Length) return false;
+            for (int i = 0; i < p.segs.Length; i++) if (!MatchSeg(p.segs[i], r[i], vals, ref score)) return false;
+            return true;
+        }
+        if (r.Length != p.segs.Length) return false;
+        for (int i = 0; i < p.segs.Length; i++) if (!MatchSeg(p.segs[i], r[i], vals, ref score)) return false;
+        return true;
+    }
+
+    private static bool MatchSeg(string pseg, string rseg, System.Collections.Generic.Dictionary<string, string> vals, ref int score)
+    {
+        if (pseg.Length >= 2 && pseg[0] == '{' && pseg[pseg.Length - 1] == '}')
+        { vals[pseg.Substring(1, pseg.Length - 2)] = rseg; return true; }
+        if (pseg != rseg) return false;
+        score++; // a literal segment match is more specific than a wildcard
+        return true;
+    }
 }
