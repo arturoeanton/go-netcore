@@ -61,6 +61,13 @@ one; these don't yet):
   spelling `[]uint8` (Go uses `[]byte` at top level but `[]uint8` for a struct field —
   goclr uses `[]byte` in both). Element values and length are exact. Minor cosmetic
   divergence on the struct-field path only.
+- **`%v`/`%s` of a `net.IP`/`net.HardwareAddr`** prints the raw byte slice
+  (`[192 168 1 1]`) instead of the dotted/colon form — these are named `[]byte` types
+  returned bare, so the value carries no identity for fmt to find `String()`. Call
+  `.String()` explicitly, or print a `*net.IPNet`/`net.Addr`/`netip.Addr` (which are
+  shim objects whose `String()` fmt does dispatch). A net.Addr built by hand
+  (`&net.UDPAddr{IP, Port}`) likewise has no precomputed string; one from `ParseCIDR`,
+  a connection's `LocalAddr`/`RemoteAddr`, etc. prints correctly.
 - **`%v`/`%+v` of a nested non-nil pointer-to-struct field** prints `&{…}` (the
   dereferenced content) instead of Go's `0x…` address. Go only expands a pointer to
   `&{…}` at the top level; deeper pointer fields print their address. Since the

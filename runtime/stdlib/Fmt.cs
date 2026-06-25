@@ -38,6 +38,10 @@ public static class Fmt
         if (v is GoNetipAddr) { s = Netip.Addr_String(v).ToDotNetString(); return true; }
         if (v is GoNetipAddrPort) { s = Netip.AddrPort_String(v).ToDotNetString(); return true; }
         if (v is GoNetipPrefix) { s = Netip.Prefix_String(v).ToDotNetString(); return true; }
+        // net.TCPAddr/UDPAddr/IPNet (and other net.Addr shims) carry their String() in .Str.
+        if (v is GoNetAddr nad) { s = nad.Str; return true; }
+        // *url.URL prints via its String() (the shim object, not its struct fields).
+        if (v is GoUrl gu) { s = Url.URL_String(gu).ToDotNetString(); return true; }
         if (v is GoNamed kn && Rt.NamedTypeName(kn.TypeId) == "reflect.Kind")
         { s = GoKind.Name((int)System.Convert.ToInt64(kn.Value ?? 0L)); return true; }
         // Shim named scalar types whose String() is a runtime shim (not a lowered Go
