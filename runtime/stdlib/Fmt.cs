@@ -375,6 +375,20 @@ public static class Fmt
         return k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "";
     }
 
+    // Go orders map keys by their type's natural order: integers/floats numerically (not
+    // lexically, so 2 < 10), bool false<true, everything else by its string form.
+    private static int MapKeyCompare(object? a, object? b)
+    {
+        if (a is GoNamed na) a = na.Value;
+        if (b is GoNamed nb) b = nb.Value;
+        if (a is long or int or short or sbyte or byte or ushort or uint)
+            return System.Convert.ToInt64(a).CompareTo(System.Convert.ToInt64(b));
+        if (a is ulong ua && b is ulong ub) return ua.CompareTo(ub);
+        if (a is double or float) return System.Convert.ToDouble(a).CompareTo(System.Convert.ToDouble(b));
+        if (a is bool ba && b is bool bb) return ba.CompareTo(bb);
+        return string.CompareOrdinal(MapKeySortStr(a), MapKeySortStr(b));
+    }
+
     private static string FormatVerb(object? v, Spec sp)
     {
         if (ReferenceEquals(v, MissingArg)) return "%!" + sp.Verb + "(MISSING)";
@@ -551,7 +565,7 @@ public static class Fmt
             if (qm.Data == null) return "map[]";
             var keys = new System.Collections.Generic.List<(string s, object? k)>();
             foreach (var k in qm.Data.Keys) keys.Add((MapKeySortStr(k), k));
-            keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
+            keys.Sort((a, b) => MapKeyCompare(a.k, b.k));
             var sb = new StringBuilder("map[");
             for (int i = 0; i < keys.Count; i++)
             { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(keys[i].k)).Append(':').Append(QuoteVerb(qm.Data[keys[i].k!])); }
@@ -823,7 +837,7 @@ public static class Fmt
         var sb = new StringBuilder(typeName).Append('{');
         var keys = new System.Collections.Generic.List<(string s, object? k)>();
         if (m.Data != null) foreach (var k in m.Data.Keys) keys.Add((MapKeySortStr(k), k));
-        keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
+        keys.Sort((a, b) => MapKeyCompare(a.k, b.k));
         for (int i = 0; i < keys.Count; i++) { if (i > 0) sb.Append(", "); sb.Append(GoSyntaxElem(keys[i].k, keyName)).Append(':').Append(GoSyntaxElem(m.Data![keys[i].k!], valName)); }
         return sb.Append('}').ToString();
     }
@@ -934,7 +948,7 @@ public static class Fmt
         if (m.Data == null) return "map[]";
         var keys = new System.Collections.Generic.List<(string s, object? k)>();
         foreach (var k in m.Data.Keys) keys.Add((MapKeySortStr(k), k));
-        keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
+        keys.Sort((a, b) => MapKeyCompare(a.k, b.k));
         var sb = new StringBuilder("map[");
         for (int i = 0; i < keys.Count; i++)
         { if (i > 0) sb.Append(' '); sb.Append(FmtElem(keys[i].k, sp)).Append(':').Append(FmtElem(m.Data[keys[i].k!], sp)); }
@@ -945,7 +959,7 @@ public static class Fmt
     {
         var keys = new System.Collections.Generic.List<(string s, object? k)>();
         foreach (var k in m.Data.Keys) keys.Add((MapKeySortStr(k), k));
-        keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
+        keys.Sort((a, b) => MapKeyCompare(a.k, b.k));
         var sb = new StringBuilder("map[");
         for (int i = 0; i < keys.Count; i++)
         { if (i > 0) sb.Append(' '); sb.Append(Format(keys[i].k, 'v', plus, hash)).Append(':').Append(Format(m.Data[keys[i].k!], 'v', plus, hash)); }
