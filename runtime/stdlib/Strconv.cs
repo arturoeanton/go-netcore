@@ -406,18 +406,21 @@ public static partial class Strconv
     {
         val = 0; rangeErr = false;
         bool underscoreOk = false;
+        bool prefixStripped = false; // a stripped 0x/0o/0b base prefix counts as a digit for a following '_'
         if (b == 0)
         {
             underscoreOk = true;
-            if (s.Length >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) { b = 16; s = s.Substring(2); }
-            else if (s.Length >= 2 && s[0] == '0' && (s[1] == 'o' || s[1] == 'O')) { b = 8; s = s.Substring(2); }
-            else if (s.Length >= 2 && s[0] == '0' && (s[1] == 'b' || s[1] == 'B')) { b = 2; s = s.Substring(2); }
+            if (s.Length >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) { b = 16; s = s.Substring(2); prefixStripped = true; }
+            else if (s.Length >= 2 && s[0] == '0' && (s[1] == 'o' || s[1] == 'O')) { b = 8; s = s.Substring(2); prefixStripped = true; }
+            else if (s.Length >= 2 && s[0] == '0' && (s[1] == 'b' || s[1] == 'B')) { b = 2; s = s.Substring(2); prefixStripped = true; }
             else if (s.Length >= 1 && s[0] == '0') { b = 8; }
             else b = 10;
         }
         if (b < 2 || b > 36) return false;
         bool any = false;
-        bool lastUnderscore = false, prevWasDigit = false;
+        // Go allows one underscore between the base prefix and the first digit (0x_FF), so the
+        // prefix is treated as the preceding digit for the very next character.
+        bool lastUnderscore = false, prevWasDigit = prefixStripped;
         foreach (char c in s)
         {
             if (c == '_')
@@ -450,16 +453,28 @@ public static partial class Strconv
         if (ls == "nan") return new object?[] { double.NaN, null };
         if (ls.StartsWith("0x"))
         {
-            if (TryParseHexFloat(t, out double hv)) return new object?[] { hv, null };
+            if (TryParseHexFloat(t, out double hv)) return FloatResult(hv, bitSize, s);
             return new object?[] { 0.0, NumError("ParseFloat", s, ErrSyntax) };
         }
         if (double.TryParse(t, NumberStyles.Float, Inv, out double v))
-        {
-            // overflow to ±Inf is ErrRange in Go (the input wasn't literally "inf")
-            if (double.IsInfinity(v)) return new object?[] { v, NumError("ParseFloat", s, ErrRange) };
-            return new object?[] { v, null };
-        }
+            return FloatResult(v, bitSize, s);
         return new object?[] { 0.0, NumError("ParseFloat", s, ErrSyntax) };
+    }
+
+    // Apply bitSize: with bitSize==32 the result is rounded to float32 precision (so the
+    // returned float64 reflects that rounding), and a value overflowing the float32/float64
+    // range — when the input wasn't literally "inf" — is ±Inf with ErrRange (as in Go).
+    private static object?[] FloatResult(double v, long bitSize, string s)
+    {
+        if (bitSize == 32)
+        {
+            float f = (float)v;
+            if (float.IsInfinity(f) && !double.IsInfinity(v))
+                return new object?[] { (double)f, NumError("ParseFloat", s, ErrRange) };
+            return new object?[] { (double)f, null };
+        }
+        if (double.IsInfinity(v)) return new object?[] { v, NumError("ParseFloat", s, ErrRange) };
+        return new object?[] { v, null };
     }
 
     // Parse a Go hexadecimal float literal: 0x<hex>[.<hex>]p<dec-exp>.
