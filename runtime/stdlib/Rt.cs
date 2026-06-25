@@ -294,15 +294,24 @@ public static class Rt
     /// <summary>append(s, other...) — append all of other's elements.</summary>
     public static GoSlice AppendSlice(GoSlice s, GoSlice other)
     {
-        for (int i = 0; i < other.Len; i++) s = GoSlices.AppendOne(s, other.Data![other.Off + i]);
-        return s;
+        int m = other.Len;
+        if (m == 0) return s;
+        // Snapshot first: other may alias s's backing array (append(s, s...)), and the
+        // bulk append below writes into s in place when the result fits in cap.
+        var add = new object?[m];
+        if (other.Data != null) System.Array.Copy(other.Data, other.Off, add, 0, m);
+        return GoSlices.AppendN(s, add, m);
     }
 
     /// <summary>append(b, str...) where b is []byte — append the string's bytes.</summary>
     public static GoSlice AppendString(GoSlice s, GoString str)
     {
-        foreach (byte b in str.Bytes) s = GoSlices.AppendOne(s, (int)b);
-        return s;
+        var bytes = str.Bytes;
+        int m = bytes.Length;
+        if (m == 0) return s;
+        var add = new object?[m];
+        for (int i = 0; i < m; i++) add[i] = (int)bytes[i];
+        return GoSlices.AppendN(s, add, m);
     }
 
     /// <summary>s[low:high] for a string — the byte subrange (Go slices strings by

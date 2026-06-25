@@ -99,6 +99,33 @@ public static class GoSlices
         return new GoSlice { Data = data, Off = 0, Len = need, Cap = newCap };
     }
 
+    /// <summary>append(s, add[0..m]...) as a single operation. The added elements must
+    /// already be snapshotted by the caller (they may alias s's backing array). Like Go,
+    /// the total length is computed up front: it reallocates once when it exceeds cap and
+    /// never writes into the original backing array element-by-element. Appending the
+    /// elements one at a time (via AppendOne) is wrong — the first element can fall inside
+    /// the spare capacity and clobber a slot still aliased by another sub-slice, before a
+    /// later element forces the reallocation.</summary>
+    public static GoSlice AppendN(GoSlice s, object?[] add, int m)
+    {
+        if (m == 0) return s;
+        int need = s.Len + m;
+        if (s.Data != null && need <= s.Cap)
+        {
+            for (int i = 0; i < m; i++) s.Data[s.Off + s.Len + i] = add[i];
+            return new GoSlice { Data = s.Data, Off = s.Off, Len = need, Cap = s.Cap };
+        }
+        int newCap = s.Cap == 0 ? need : s.Cap;
+        while (newCap < need) newCap = newCap < 1024 ? newCap * 2 : newCap + newCap / 4;
+        var data = new object?[newCap];
+        if (s.Data != null) System.Array.Copy(s.Data, s.Off, data, 0, s.Len);
+        for (int i = 0; i < m; i++) data[s.Len + i] = add[i];
+        // Zero the grown capacity region [need, newCap), like AppendOne/Make.
+        object? zero = ZeroLike(add[m - 1]);
+        if (zero != null) { for (int i = need; i < newCap; i++) data[i] = zero; }
+        return new GoSlice { Data = data, Off = 0, Len = need, Cap = newCap };
+    }
+
     /// <summary>s[lo:hi].</summary>
     public static GoSlice Slice(GoSlice s, long lo, long hi)
     {

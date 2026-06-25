@@ -446,13 +446,52 @@ func (l *funcLowerer) appendCall(e *ast.CallExpr) goir.Type {
 		}})
 		return st
 	}
+	// nilBoxed reports whether append(s, nil) must box the element's zero value rather
+	// than a raw null: the element is a nil-able value type (append([][]T, nil)) whose
+	// backing cell is unboxed back to the value type on read (e.g. &s[i] then *p = …),
+	// which would NRE on a null. Mirrors emitBoxedElemInto.
+	nilBoxed := func(a ast.Expr) bool {
+		return st.Elem != nil && isNilIdent(a) && (isValueType(*st.Elem) || st.Elem.Kind == goir.KMap)
+	}
+	elems := e.Args[1:]
+	if len(elems) >= 2 {
+		// Multiple element args: build a snapshot slice of the elements, then a single
+		// bulk append. Appending one at a time is wrong — the first element can land in
+		// the spare capacity and clobber a slot still aliased by another sub-slice (e.g.
+		// append(s[:2], a, b) with cap(s) > 2) before a later element forces the
+		// reallocation that Go does up front. AppendSlice computes the length once.
+		l.expr(e.Args[0]) // evaluate the receiver first (Go's evaluation order)
+		sloc := l.addLocal(nil, st)
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: sloc})
+		elem := *st.Elem
+		n := int64(len(elems))
+		tmp := l.addLocal(nil, st)
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: n})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: n})
+		l.emitBoxedZero(elem)
+		l.emit(goir.Op{Code: goir.OpSliceMake})
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+		for i, a := range elems {
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(i)})
+			if nilBoxed(a) {
+				l.emitBoxedZero(elem)
+			} else {
+				l.emitBoxedElemInto(a, elem)
+			}
+			l.emit(goir.Op{Code: goir.OpSliceSet})
+		}
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: sloc})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "AppendSlice",
+			Params: []goir.Type{st, st}, Ret: st,
+		}})
+		return st
+	}
 	l.expr(e.Args[0])
-	for _, a := range e.Args[1:] {
-		// append(s, nil) where the element is a value type (the nil-able value type is a
-		// slice: append([][]T, nil)) must box the element's zero value, not a raw null —
-		// the backing array cell is unboxed back to the GoSlice value type on read (e.g.
-		// &s[i] then *p = append(*p, …)), which NREs on a null. Mirrors emitBoxedElemInto.
-		if st.Elem != nil && isNilIdent(a) && (isValueType(*st.Elem) || st.Elem.Kind == goir.KMap) {
+	for _, a := range elems {
+		if nilBoxed(a) {
 			l.emitBoxedZero(*st.Elem)
 		} else {
 			l.emitBoxedElem(a)
