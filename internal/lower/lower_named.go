@@ -289,17 +289,22 @@ func isHTMLSafeType(t types.Type) bool {
 }
 
 // compositeHasInterfaceElem reports whether t is a slice/array/map whose element
-// (or, for a map, key or value) type is an interface — the case whose erased
-// runtime representation already matches Go's %T, so no typed box is needed.
+// (or, for a map, key or value) type is the EMPTY interface — the case whose erased
+// runtime representation already matches Go's %T ("[]interface {}"), so no typed box is
+// needed. A *named* interface element (error, io.Reader) still needs a tag so %T spells
+// the composite by name ("[]error"), not "[]interface {}".
 func compositeHasInterfaceElem(t types.Type) bool {
-	isIface := func(e types.Type) bool { _, ok := e.Underlying().(*types.Interface); return ok }
+	isEmptyIface := func(e types.Type) bool {
+		i, ok := e.Underlying().(*types.Interface)
+		return ok && i.Empty()
+	}
 	switch u := t.Underlying().(type) {
 	case *types.Slice:
-		return isIface(u.Elem())
+		return isEmptyIface(u.Elem())
 	case *types.Array:
-		return isIface(u.Elem())
+		return isEmptyIface(u.Elem())
 	case *types.Map:
-		return isIface(u.Key()) || isIface(u.Elem())
+		return isEmptyIface(u.Key()) || isEmptyIface(u.Elem())
 	}
 	return false
 }

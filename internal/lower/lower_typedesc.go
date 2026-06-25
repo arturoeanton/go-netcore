@@ -3,11 +3,17 @@ package lower
 import (
 	"go/ast"
 	"go/types"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
 )
+
+// types.TypeString renders the empty interface as the alias "any"; Go's reflect/%T always
+// spells it "interface {}". Rewrite whole-word "any" occurrences (only the alias appears as a
+// standalone token in a type string; identifiers like "Company"/"many" don't match).
+var anyAliasRe = regexp.MustCompile(`\bany\b`)
 
 // Runtime type descriptors. Each Go type observed at a reflect.TypeOf / ValueOf site
 // — and, recursively, its element/key/field types — is given a stable id and a
@@ -174,7 +180,8 @@ func typeDescStr(t types.Type) string {
 	if s, ok := reflectGenericName(t); ok {
 		return s
 	}
-	return types.TypeString(t, func(p *types.Package) string { return p.Name() })
+	s := types.TypeString(t, func(p *types.Package) string { return p.Name() })
+	return anyAliasRe.ReplaceAllString(s, "interface {}")
 }
 
 // reflectGenericName renders a type that contains a generic instantiation the way Go

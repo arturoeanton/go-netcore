@@ -119,9 +119,10 @@ Remaining edges (documented, not silent):
   **slice/map element** (`[]Money`, `Reading.Temp`, `struct{ S Stringy }{…}`)
   dispatches its `String()` under `%v`/`%+v` — fmt re-tags via the field-type /
   composite-element registry, including a Stringer type used *only* as a field.
-- `%T`/`%#v` of a **method-less** named type, and of a slice/map element type,
-  still print the underlying representation (only method-bearing named types get an
-  identity tag so far).
+- `%T`/`%#v` of a **method-less** named *scalar* type still prints the underlying
+  representation (only method-bearing named types get an identity tag so far). A
+  composite over a named interface element (`[]error`, `map[error]int`) now names
+  it correctly; only the empty interface erases to `interface {}` (as in Go).
 - `%v` of a **nil map** prints `<nil>` instead of `map[]`.
 
 ## Uncaught panic output format
