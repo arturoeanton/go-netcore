@@ -5,7 +5,7 @@ using GoCLR.Runtime;
 
 /// <summary>A *url.URL handle (parsed components).</summary>
 [GoShim("net/url.URL")]
-public sealed class GoUrl { public string Scheme = "", Host = "", Path = "", RawQuery = "", Fragment = "", Opaque = ""; public GoUserinfo? User; }
+public sealed class GoUrl { public string Scheme = "", Host = "", Path = "", RawPath = "", RawQuery = "", Fragment = "", Opaque = ""; public GoUserinfo? User; }
 
 /// <summary>url.Userinfo: the username (and optional password) of a URL's authority.</summary>
 public sealed class GoUserinfo { public string Username = ""; public string Password = ""; public bool HasPassword; }
@@ -23,6 +23,7 @@ public static class Url
     public static object?[] Parse(GoString raw)
     {
         string s = raw.ToDotNetString();
+        string original = s;
         var u = new GoUrl();
         int hash = s.IndexOf('#');
         if (hash >= 0) { u.Fragment = s.Substring(hash + 1); s = s.Substring(0, hash); }
@@ -35,17 +36,17 @@ public static class Url
             string rest = s.Substring(scheme + 3);
             int slash = rest.IndexOf('/');
             string authority = slash < 0 ? rest : rest.Substring(0, slash);
-            u.Path = slash < 0 ? "" : rest.Substring(slash);
             int at = authority.IndexOf('@');
             if (at >= 0) { u.User = ParseUserinfo(authority.Substring(0, at)); authority = authority.Substring(at + 1); }
             u.Host = authority;
+            if (SetPath(u, slash < 0 ? "" : rest.Substring(slash)) is GoError pe) return new object?[] { u, ParseErr(original, pe) };
         }
         else if (s.Contains(":") && !s.StartsWith("/"))
         {
             int c = s.IndexOf(':');
             u.Scheme = s.Substring(0, c); u.Opaque = s.Substring(c + 1);
         }
-        else u.Path = s;
+        else if (SetPath(u, s) is GoError pe2) return new object?[] { u, ParseErr(original, pe2) };
         return new object?[] { u, null };
     }
 
@@ -119,11 +120,48 @@ public static class Url
         return GoString.FromDotNetString(sb.ToString());
     }
 
-    // (*url.URL).RequestURI(): the path (or opaque) plus the raw query.
+    // Go's (*URL).setPath: store the decoded path in Path, and keep the raw form in RawPath
+    // only when it is a non-default encoding of Path (so EscapedPath can reproduce it exactly).
+    private static GoError? SetPath(GoUrl u, string p)
+    {
+        var r = Unescape(p, false); // encodePath: '+' is literal, only %XX decodes
+        if (r[1] != null) return (GoError?)r[1];
+        u.Path = ((GoString)r[0]!).ToDotNetString();
+        u.RawPath = EscapePath(u.Path) == p ? "" : p;
+        return null;
+    }
+    // Go's (*URL).EscapedPath: the raw encoding if it round-trips to Path, else the default.
+    private static string EscapedPath(GoUrl u)
+    {
+        if (u.RawPath.Length > 0)
+        {
+            var r = Unescape(u.RawPath, false);
+            if (r[1] == null && ((GoString)r[0]!).ToDotNetString() == u.Path) return u.RawPath;
+        }
+        if (u.Path == "*") return "*";
+        return EscapePath(u.Path);
+    }
+    // escape(s, encodePath): keep unreserved and the path-reserved set ($ & + , / : ; = @);
+    // escape '?' and everything else. (url.PathEscape uses encodePathSegment — see Escape.)
+    private static string EscapePath(string s)
+    {
+        var sb = new StringBuilder();
+        foreach (byte b in Encoding.UTF8.GetBytes(s))
+        {
+            char c = (char)b;
+            if (Unreserved(c) || c == '$' || c == '&' || c == '+' || c == ',' || c == '/' ||
+                c == ':' || c == ';' || c == '=' || c == '@') sb.Append(c);
+            else sb.Append('%').Append(b.ToString("X2"));
+        }
+        return sb.ToString();
+    }
+
+    // (*url.URL).RequestURI(): the (escaped) path or opaque, plus the raw query.
     public static GoString URL_RequestURI(object uo)
     {
         var u = (GoUrl)uo;
-        string r = u.Opaque.Length > 0 ? u.Opaque : (u.Path.Length > 0 ? u.Path : "/");
+        string r = u.Opaque.Length > 0 ? u.Opaque : EscapedPath(u);
+        if (u.Opaque.Length == 0 && r.Length == 0) r = "/";
         if (u.RawQuery.Length > 0) r += "?" + u.RawQuery;
         return GoString.FromDotNetString(r);
     }
@@ -223,7 +261,7 @@ public static class Url
     public static object URL_Clone(object uo)
     {
         var u = (GoUrl)uo;
-        return new GoUrl { Scheme = u.Scheme, Host = u.Host, Path = u.Path, RawQuery = u.RawQuery, Fragment = u.Fragment, Opaque = u.Opaque, User = u.User };
+        return new GoUrl { Scheme = u.Scheme, Host = u.Host, Path = u.Path, RawPath = u.RawPath, RawQuery = u.RawQuery, Fragment = u.Fragment, Opaque = u.Opaque, User = u.User };
     }
 
     // Zero value of url.URL, so a &url.URL{...} composite literal has a real backing object
@@ -247,13 +285,7 @@ public static class Url
         if (colon > bracket && colon >= 0) return (h.Substring(0, colon), h.Substring(colon + 1));
         return (h, "");
     }
-    public static GoString URL_EscapedPath(object u)
-    {
-        // The whole path keeps its '/' separators; only each segment is escaped.
-        var parts = ((GoUrl)u).Path.Split('/');
-        for (int i = 0; i < parts.Length; i++) parts[i] = Escape(parts[i], true);
-        return GoString.FromDotNetString(string.Join("/", parts));
-    }
+    public static GoString URL_EscapedPath(object u) => GoString.FromDotNetString(EscapedPath((GoUrl)u));
     public static GoString URL_EscapedFragment(object u) => GoString.FromDotNetString(Escape(((GoUrl)u).Fragment, true));
     // (*URL).Redacted: String() with any password replaced by "xxxxx".
     public static GoString URL_Redacted(object uo)
@@ -291,7 +323,7 @@ public static class Url
         var r = Parse(GoString.FromBytes(SliceBytes(data)));
         if (r[1] != null) return r[1];
         var src = (GoUrl)r[0]!; var u = (GoUrl)uo;
-        u.Scheme = src.Scheme; u.Host = src.Host; u.Path = src.Path; u.RawQuery = src.RawQuery; u.Fragment = src.Fragment; u.Opaque = src.Opaque; u.User = src.User;
+        u.Scheme = src.Scheme; u.Host = src.Host; u.Path = src.Path; u.RawPath = src.RawPath; u.RawQuery = src.RawQuery; u.Fragment = src.Fragment; u.Opaque = src.Opaque; u.User = src.User;
         return null;
     }
     private static byte[] SliceBytes(GoSlice s) { var b = new byte[s.Len]; for (int i = 0; i < s.Len; i++) b[i] = (byte)System.Convert.ToInt64(s.Data![s.Off + i]); return b; }
@@ -364,7 +396,7 @@ public static class Url
         {
             if (u.Host.Length > 0 || u.Scheme.Length > 0) sb.Append("//");
             if (u.User != null) sb.Append(Userinfo_String(u.User).ToDotNetString()).Append('@');
-            sb.Append(u.Host).Append(u.Path);
+            sb.Append(u.Host).Append(EscapedPath(u));
         }
         if (u.RawQuery.Length > 0) sb.Append('?').Append(u.RawQuery);
         if (u.Fragment.Length > 0) sb.Append('#').Append(u.Fragment);
@@ -384,6 +416,15 @@ public static class Url
 
     public static object?[] QueryUnescape(GoString s) => Unescape(s.ToDotNetString(), true);
     public static object?[] PathUnescape(GoString s) => Unescape(s.ToDotNetString(), false);
+
+    // url.Error wrapper for a Parse failure: Error() reads `parse "<raw>": <inner>`.
+    private static GoUrlError ParseErr(string raw, object? inner) => new GoUrlError { Op = "parse", Url = raw, Err = inner };
+    private static bool IsHex(char c) => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    private static int HexVal(char c) => c <= '9' ? c - '0' : (c <= 'F' ? c - 'A' + 10 : c - 'a' + 10);
+    // The error url.unescape returns for a malformed %XX (Go's EscapeError); String() format
+    // matches EscapeError_Error so a wrapping url.Error reads `... invalid URL escape "%xx"`.
+    private static GoError EscapeErr(string bad) =>
+        new GoError(GoString.FromDotNetString("invalid URL escape " + Strconv.Quote(GoString.FromDotNetString(bad)).ToDotNetString()));
 
     private static bool Unreserved(char c) =>
         (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
@@ -411,9 +452,9 @@ public static class Url
             char c = s[i];
             if (c == '%')
             {
-                if (i + 2 >= s.Length) return new object?[] { GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString("invalid URL escape")) };
-                try { bytes.Add(System.Convert.ToByte(s.Substring(i + 1, 2), 16)); i += 2; }
-                catch { return new object?[] { GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString("invalid URL escape")) }; }
+                if (i + 2 >= s.Length || !IsHex(s[i + 1]) || !IsHex(s[i + 2]))
+                    return new object?[] { GoString.FromDotNetString(""), EscapeErr(s.Substring(i, System.Math.Min(3, s.Length - i))) };
+                bytes.Add((byte)((HexVal(s[i + 1]) << 4) | HexVal(s[i + 2]))); i += 2;
             }
             else if (query && c == '+') bytes.Add((byte)' ');
             else bytes.Add((byte)c);
