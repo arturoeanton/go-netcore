@@ -1298,7 +1298,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"runtime.Frames": {"Next": {"Goruntime", "Frames_Next"}},
 	"mime.WordEncoder": {"Encode": {"Mime", "WordEncoder_Encode"}},
 	"mime.WordDecoder": {"Decode": {"Mime", "WordDecoder_Decode"}, "DecodeHeader": {"Mime", "WordDecoder_DecodeHeader"}},
-	"index/suffixarray.Index": {"Bytes": {"Suffixarray", "Index_Bytes"}, "FindAllIndex": {"Suffixarray", "Index_FindAllIndex"}},
+	"index/suffixarray.Index": {"Bytes": {"Suffixarray", "Index_Bytes"}, "FindAllIndex": {"Suffixarray", "Index_FindAllIndex"}, "Lookup": {"Suffixarray", "Lookup"}},
 	"mime/quotedprintable.Writer": {"Write": {"QuotedPrintable", "QPWriter_Write"}, "Close": {"QuotedPrintable", "QPWriter_Close"}},
 	"mime/quotedprintable.Reader": {"Read": {"QuotedPrintable", "QPReader_Read"}},
 	"go/token.Token": {"String": {"GoToken", "Token_String"}, "IsLiteral": {"GoToken", "Token_IsLiteral"}, "IsOperator": {"GoToken", "Token_IsOperator"}, "IsKeyword": {"GoToken", "Token_IsKeyword"}, "Precedence": {"GoToken", "Token_Precedence"}},

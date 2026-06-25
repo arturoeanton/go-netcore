@@ -23,4 +23,35 @@ public static class Suffixarray
     // array is not materialized.
     public static GoSlice Index_FindAllIndex(object x, object r, long n) =>
         Regexp.Re_FindAllIndex(r, ((GoSuffixIndex)x).Data, n);
+
+    // (*Index).Lookup(s, n) []int: byte offsets where s occurs in the data, at most n
+    // (all for n < 0). Go returns them in an unspecified (suffix-array) order; this
+    // returns them in ascending positional order — for n < 0 the SET is exact (sort to
+    // compare byte-for-byte), and an empty s or n == 0 yields nil, matching Go.
+    public static GoSlice Lookup(object x, GoSlice s, long n)
+    {
+        if (n == 0 || s.Len == 0) return new GoSlice { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
+        var hay = Bytes(((GoSuffixIndex)x).Data);
+        var needle = Bytes(s);
+        var offs = new System.Collections.Generic.List<object?>();
+        for (int i = 0; i + needle.Length <= hay.Length; i++)
+        {
+            bool hit = true;
+            for (int j = 0; j < needle.Length; j++)
+                if (hay[i + j] != needle[j]) { hit = false; break; }
+            if (hit)
+            {
+                offs.Add((long)i);
+                if (n > 0 && offs.Count >= (int)n) break;
+            }
+        }
+        return new GoSlice { Data = offs.ToArray(), Off = 0, Len = offs.Count, Cap = offs.Count };
+    }
+
+    private static byte[] Bytes(GoSlice s)
+    {
+        var b = new byte[s.Len];
+        for (int i = 0; i < s.Len; i++) b[i] = (byte)System.Convert.ToInt64(s.Data![s.Off + i]);
+        return b;
+    }
 }

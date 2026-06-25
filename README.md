@@ -89,7 +89,7 @@ for the tracked gaps, [REFLECT](docs/REFLECT.md) for the reflect design, and the
 | **Large-program emitter** — 4-byte metadata heap indices (`HeapSizes=0x07`), `InitLocals`, fat-method headers — required once heaps/method tables exceed the small-program limits (goja) | ✅ |
 | **M2.5 overlay** — multi-package, globals/`init`, C# shim/extern mechanism, stdlib source overlays (`unicode`/`sort`/`slices`) | ✅ |
 | **P0 stdlib** (hardened) — fmt/strconv/strings/bytes/unicode/utf8/sort/math/errors/reflect(r+w)/encoding-json(M+U+streaming)/time/sync/math-rand/context/io/os | ✅ byte-exact |
-| **P1 stdlib** — net/http client+server, net TCP (+ParseIP/ParseMAC/ParseCIDR), crypto (sha/sha3/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio/io, log, math/big, container/list, container/heap, container/ring, text/tabwriter, os/exec, mime, net/mail, net/textproto, io/fs | ✅ |
+| **P1 stdlib** — net/http client+server, net TCP (+ParseIP/ParseMAC/ParseCIDR), crypto (sha/sha3/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio/io, log, math/big, container/list, container/heap, container/ring, text/tabwriter, index/suffixarray, os/exec, mime, net/mail, net/textproto, io/fs | ✅ |
 | **P2 stdlib** — encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM, crypto/sha3 (+SHAKE) | ✅ |
 | **P3 stdlib** — net/http server (HttpListener) + net/http/httptest + net/http/cookiejar, net UDP (UDPConn/UDPAddr), log/slog (text+JSON), os/signal (real SIGINT/TERM delivery), `database/sql` + `database/sql/driver` | ✅ |
 | **database/sql + a pure-Go SQLite engine** — `go-r2-sqlite` (zero-cgo, ~14k LOC) compiled through goclr; CREATE/INSERT/SELECT with INTEGER/REAL/TEXT scanned into Go types | ✅ |
