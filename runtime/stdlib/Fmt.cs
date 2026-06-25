@@ -507,6 +507,9 @@ public static class Fmt
         // A []byte (e.g. a nested element of [][]byte) quotes as its string, like Go.
         if (v is GoNamed bnm && bnm.Value is GoSlice bbs && IsByteTag(Rt.NamedTypeName(bnm.TypeId)))
             return GoQuote(GoString.FromBytesOwned(SliceToBytes(bbs)));
+        // Unwrap any other typed box (a nested []string/[]int element of a [][]T carries
+        // its identity as a GoNamed) so the slice/scalar branches below can recurse.
+        if (v is GoNamed nmv) v = nmv.Value;
         if (v is GoString gq) return GoQuote(gq);
         if (IsIntegral(v)) return Strconv.QuoteRune((int)ToLong(v)).ToDotNetString();
         // %q over a slice quotes each element.
@@ -514,6 +517,18 @@ public static class Fmt
         {
             var sb = new StringBuilder("[");
             for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(sl.Data![sl.Off + i])); }
+            return sb.Append(']').ToString();
+        }
+        // %q over a map quotes each key and value, keys sorted (like %v).
+        if (v is GoMap qm)
+        {
+            if (qm.Data == null) return "map[]";
+            var keys = new System.Collections.Generic.List<(string s, object? k)>();
+            foreach (var k in qm.Data.Keys) keys.Add((MapKeySortStr(k), k));
+            keys.Sort((a, b) => string.CompareOrdinal(a.s, b.s));
+            var sb = new StringBuilder("map[");
+            for (int i = 0; i < keys.Count; i++)
+            { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(keys[i].k)).Append(':').Append(QuoteVerb(qm.Data[keys[i].k!])); }
             return sb.Append(']').ToString();
         }
         // %q over a struct quotes each field.
@@ -839,7 +854,11 @@ public static class Fmt
     // [N]byte array (sha512.Sum512 returns [64]byte, etc.).
     private static bool IsByteSliceName(string? name)
     {
-        if (name == null || name == "[]uint8" || name == "[]byte") return true;
+        // A real []byte is always typed-boxed as "[]uint8"; an untagged slice (null name)
+        // is NOT a byte slice (e.g. a bare []interface {} or an element-erased slice), so
+        // %x/%q must recurse element-wise rather than treat it as raw bytes.
+        if (name == null) return false;
+        if (name == "[]uint8" || name == "[]byte") return true;
         if (name.Length > 3 && name[0] == '[')
         {
             int i = 1;
