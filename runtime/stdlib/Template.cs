@@ -900,6 +900,10 @@ public static class Template
         if (v == null) return " null ";
         if (v is bool b) return b ? " true " : " false ";
         if (IsNum(v)) return " " + Render(v, false) + " ";
+        // A composite (map/slice/struct) becomes its JSON encoding (Go's JS value escaper
+        // marshals it; json already \u-escapes <, >, & so the result is script-safe).
+        var jm = Json.Marshal(v);
+        if (jm[1] == null && jm[0] is GoSlice js) return BytesToStr(js);
         return JsValEscape(Render(v, false));
     }
 
