@@ -260,7 +260,9 @@ public static partial class Strconv
             cur = tail;
             runes++;
         }
-        if (q == '\'' && runes != 1) return new object?[] { GoString.FromDotNetString(""), ErrSyntaxErr };
+        // A single-quoted literal holds at most one rune; Go accepts the empty form '' (-> "")
+        // but rejects two or more characters.
+        if (q == '\'' && runes > 1) return new object?[] { GoString.FromDotNetString(""), ErrSyntaxErr };
         return new object?[] { GoString.FromDotNetString(sb.ToString()), null };
     }
     // QuotedPrefix returns the quoted string (including delimiters) at the start of s.
