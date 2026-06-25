@@ -611,6 +611,13 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 			return l.concreteMethodCall(e, sel, concrete, fn.Name())
 		}
 	}
+	// In a monomorphized generic, a receiver of interface type may be an instantiation
+	// that mentions the function's type params (c Container[T]); substitute them so the
+	// interface is concrete (Container[int]) and implementer enumeration finds the
+	// matching types — otherwise the dispatch has no case and nil-derefs.
+	if l.typeSubst != nil {
+		recvT = substType(recvT, l.typeSubst)
+	}
 	// Interface method call: dispatch on the dynamic type.
 	if iface, ok := recvT.Underlying().(*types.Interface); ok {
 		return l.interfaceDispatch(e, func() { l.expr(sel.X) }, fn, iface)

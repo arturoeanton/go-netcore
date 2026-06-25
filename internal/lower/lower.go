@@ -237,6 +237,25 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 		return nil, false
 	}
 
+	// Pre-register instantiated generic struct types (List[int], Pair[string,int], …)
+	// before lowering bodies. Interface-dispatch implementer enumeration reads structReg,
+	// so a generic type used only as a generic-interface argument — Fill(c Container[int])
+	// where the concrete *List[int] is registered in a later-lowered function — would
+	// otherwise have no dispatch case and nil-deref. TypesInfo.Instances records every
+	// instantiation in the source regardless of lowering order.
+	for _, p := range pkgs {
+		c.pkg = p
+		for _, inst := range p.TypesInfo.Instances {
+			named, ok := inst.Type.(*types.Named)
+			if !ok {
+				continue
+			}
+			if _, isStruct := named.Underlying().(*types.Struct); isStruct {
+				c.structFor(named)
+			}
+		}
+	}
+
 	// Body pass.
 	for _, t := range todo {
 		c.pkg = t.pkg
