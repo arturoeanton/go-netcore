@@ -889,7 +889,7 @@ public sealed class GoJsonDecoder
     public object? DecodeValue()
     {
         if (_pos >= _toks.Count) throw new System.Exception("EOF");
-        int start = _pos == 0 ? 0 : _ends[_pos - 1];
+        int start = SkipSeparators(_pos == 0 ? 0 : _ends[_pos - 1]);
         var reader = new Utf8JsonReader(new System.ReadOnlySpan<byte>(_raw, start, _raw.Length - start), isFinalBlock: true, state: default);
         using var doc = JsonDocument.ParseValue(ref reader);
         // Advance the token cursor past the consumed value.
@@ -903,12 +903,21 @@ public sealed class GoJsonDecoder
     public string NextRawValue()
     {
         if (_pos >= _toks.Count) throw new System.Exception("EOF");
-        int start = _pos == 0 ? 0 : _ends[_pos - 1];
+        int start = SkipSeparators(_pos == 0 ? 0 : _ends[_pos - 1]);
         var reader = new Utf8JsonReader(new System.ReadOnlySpan<byte>(_raw, start, _raw.Length - start), isFinalBlock: true, state: default);
         using var doc = JsonDocument.ParseValue(ref reader);
         long consumedEnd = start + reader.BytesConsumed;
         while (_pos < _ends.Count && _ends[_pos] <= consumedEnd) _pos++;
         return System.Text.Encoding.UTF8.GetString(_raw, start, (int)reader.BytesConsumed);
+    }
+
+    // Advance past whitespace and any structural separator (',' between elements, ':' between
+    // a key and its value) so DecodeValue/NextRawValue start at the next value — important when
+    // Token() has consumed the opening '[' / a key and Decode() resumes mid-container.
+    private int SkipSeparators(int start)
+    {
+        while (start < _raw.Length && (IsJsonWs(_raw[start]) || _raw[start] == (byte)',' || _raw[start] == (byte)':')) start++;
+        return start;
     }
 
     private static object? DecodeElement(JsonElement j)
