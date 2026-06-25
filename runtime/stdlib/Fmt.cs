@@ -56,6 +56,11 @@ public static class Fmt
                 // json.Delim is a rune whose String() is the single character (its shim
                 // method has no lowered body, so no stringer closure is registered).
                 case "json.Delim": s = Json.Delim_String((int)System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
+                // net.IP/IPMask/HardwareAddr are named []byte whose String() is a shim; the
+                // typed box carries the GoSlice, so format it via the matching shim method.
+                case "net.IP" when tnm.Value is GoSlice ipv: s = Net.IP_String(ipv).ToDotNetString(); return true;
+                case "net.IPMask" when tnm.Value is GoSlice mv: s = Net.IPMask_String(mv).ToDotNetString(); return true;
+                case "net.HardwareAddr" when tnm.Value is GoSlice hv: s = Net.HardwareAddr_String(hv).ToDotNetString(); return true;
             }
         }
         GoClosure? fn = null;
@@ -437,6 +442,15 @@ public static class Fmt
 
     private static string StrVerb(object? v, Spec sp)
     {
+        // A String()/Error() method governs %s (like %v), ahead of the []byte-as-string
+        // fallback below — so net.IP (a named []byte with String()) prints "10.0.0.1",
+        // not its raw bytes. The Println/Sprint path checks this in Format; the printf
+        // path reaches StrVerb directly, so check here too.
+        if (TryStringer(v, out var ss))
+        {
+            if (sp.Prec >= 0 && ss.Length > sp.Prec) ss = ss.Substring(0, sp.Prec);
+            return ss;
+        }
         // %s applies to strings, errors, and composites; a bare number/bool/char
         // is a bad verb in Go (it has no string form).
         if (IsIntegral(v) || IsFloaty(v) || v is bool) return BadVerb('s', v);
