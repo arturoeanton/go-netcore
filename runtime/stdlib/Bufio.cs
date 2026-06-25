@@ -7,8 +7,10 @@ public sealed class GoScanner
 {
     public byte[] Data = System.Array.Empty<byte>();
     public int Pos;
-    public int Mode; // 0 = lines, 1 = words, 2 = runes
+    public int Mode; // 0 = lines, 1 = words, 2 = runes, 3 = bytes, -1 = custom SplitFunc
     public byte[] Cur = System.Array.Empty<byte>();
+    public GoClosure? Split; // a user SplitFunc when Mode == -1
+    public int Empties;      // consecutive empty tokens at EOF without progress
 }
 
 /// <summary>A bufio.Reader over an underlying runtime reader.</summary>
@@ -344,7 +346,19 @@ public static class Bufio
     // lowers to a closure returning its mode marker (a long); invoke it to set the mode.
     public static void Scanner_Split(object s, GoClosure split)
     {
-        ((GoScanner)s).Mode = (int)System.Convert.ToInt64(GoRuntime.Invoke(split) ?? 0L);
+        var sc = (GoScanner)s;
+        // A built-in split (ScanLines/Words/Runes/Bytes) lowers to a 0-arg marker closure
+        // returning its mode; a user SplitFunc takes (data, atEOF) and indexes both, so
+        // invoking it with no args throws. Use that to tell them apart.
+        try
+        {
+            var r = GoRuntime.Invoke(split);
+            if (r is long lng) { sc.Mode = (int)lng; sc.Split = null; return; }
+            if (r is int it) { sc.Mode = it; sc.Split = null; return; }
+        }
+        catch (System.IndexOutOfRangeException) { /* a custom SplitFunc: needs (data, atEOF) */ }
+        sc.Split = split;
+        sc.Mode = -1;
     }
     // Scanner.Buffer(buf, max): the scanner reads a fully-drained in-memory buffer, so
     // there is nothing to size — a no-op that keeps the call site working.
@@ -357,6 +371,7 @@ public static class Bufio
     public static bool Scanner_Scan(object so)
     {
         var s = (GoScanner)so;
+        if (s.Mode == -1) return ScanCustom(s); // user SplitFunc
         if (s.Mode == 1) // words: skip leading spaces, take until space
         {
             while (s.Pos < s.Data.Length && IsSpace(s.Data[s.Pos])) s.Pos++;
@@ -407,4 +422,45 @@ public static class Bufio
 
     private static bool IsSpace(byte b) => b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\f' || b == '\v';
     private static byte[] Sub(byte[] b, int from, int to) { var r = new byte[to - from]; System.Array.Copy(b, from, r, 0, to - from); return r; }
+
+    // Runs Go's bufio.Scanner protocol for a user SplitFunc: all input is already buffered,
+    // so atEOF is always true; call split(data[Pos:], true) -> (advance, token, err), advance
+    // the cursor, and yield the token. A nil token with advance>0 means "skip and continue";
+    // advance==0 with no token ends the scan.
+    private static bool ScanCustom(GoScanner s)
+    {
+        while (true)
+        {
+            int n = s.Data.Length - s.Pos;
+            var d = new object?[n];
+            for (int i = 0; i < n; i++) d[i] = (int)s.Data[s.Pos + i];
+            var data = new GoSlice { Data = d, Off = 0, Len = n, Cap = n };
+            if (GoRuntime.InvokeArgs(s.Split!, data, true) is not object?[] res || res.Length == 0) return false;
+            long advance = System.Convert.ToInt64(res[0] ?? 0L);
+            object? token = res.Length > 1 ? res[1] : null;
+            object? err = res.Length > 2 ? res[2] : null;
+            if (advance < 0 || advance > n) return false; // SplitFunc protocol violation
+            s.Pos += (int)advance;
+            if (token is GoSlice ts && ts.Data != null)
+            {
+                // A non-nil token that does not advance the input (always at EOF here) is
+                // only allowed a bounded number of times, like Go, else a buggy SplitFunc
+                // would loop forever.
+                if (advance > 0) s.Empties = 0;
+                else if (++s.Empties > 100)
+                    throw new GoPanicException(GoString.FromDotNetString("bufio.Scan: too many empty tokens without progressing"));
+                s.Cur = SliceBytes(ts);
+                return true;
+            }
+            if (err != null) return false;
+            if (advance == 0) return false; // no token and no progress at EOF: done
+        }
+    }
+
+    private static byte[] SliceBytes(GoSlice s)
+    {
+        var r = new byte[s.Len];
+        for (int i = 0; i < s.Len; i++) r[i] = (byte)System.Convert.ToInt64(s.Data![s.Off + i]);
+        return r;
+    }
 }
