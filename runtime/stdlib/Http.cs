@@ -224,8 +224,134 @@ public static class Http
         510 => "Not Extended", 511 => "Network Authentication Required",
         _ => "",
     });
-    // http.DetectContentType(data): best-effort content sniff.
-    public static GoString DetectContentType(GoSlice data) => GoString.FromDotNetString("application/octet-stream");
+    // http.DetectContentType(data): a faithful port of net/http's sniff.go — consider the
+    // first 512 bytes, run the ordered signature table, else fall back to text/binary.
+    public static GoString DetectContentType(GoSlice data)
+    {
+        int n = (int)System.Math.Min(data.Len, 512);
+        var d = new byte[n];
+        for (int i = 0; i < n; i++) d[i] = (byte)System.Convert.ToInt64(data.Data![data.Off + i]);
+        int fnws = 0;
+        while (fnws < d.Length && IsSniffWS(d[fnws])) fnws++;
+        return GoString.FromDotNetString(Sniff(d, fnws));
+    }
+
+    static bool IsSniffWS(byte b) => b == (byte)'\t' || b == (byte)'\n' || b == 0x0c || b == (byte)'\r' || b == (byte)' ';
+
+    static readonly string[] HtmlSigs =
+    {
+        "<!DOCTYPE HTML", "<HTML", "<HEAD", "<SCRIPT", "<IFRAME", "<H1", "<DIV", "<FONT",
+        "<TABLE", "<A", "<STYLE", "<TITLE", "<B", "<BODY", "<BR", "<P", "<!--",
+    };
+
+    static string Sniff(byte[] d, int fnws)
+    {
+        foreach (var h in HtmlSigs) if (HtmlMatch(d, fnws, h)) return "text/html; charset=utf-8";
+        if (Masked(d, fnws, true, new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }, Bytes("<?xml"))) return "text/xml; charset=utf-8";
+        if (Prefix(d, Bytes("%PDF-"))) return "application/pdf";
+        if (Prefix(d, Bytes("%!PS-Adobe-"))) return "application/postscript";
+        // UTF BOMs.
+        if (Masked(d, fnws, false, new byte[] { 0xFF, 0xFF, 0x00, 0x00 }, new byte[] { 0xFE, 0xFF, 0x00, 0x00 })) return "text/plain; charset=utf-16be";
+        if (Masked(d, fnws, false, new byte[] { 0xFF, 0xFF, 0x00, 0x00 }, new byte[] { 0xFF, 0xFE, 0x00, 0x00 })) return "text/plain; charset=utf-16le";
+        if (Masked(d, fnws, false, new byte[] { 0xFF, 0xFF, 0xFF, 0x00 }, new byte[] { 0xEF, 0xBB, 0xBF, 0x00 })) return "text/plain; charset=utf-8";
+        // Image types (order per WHATWG mimesniff).
+        if (Prefix(d, new byte[] { 0x00, 0x00, 0x01, 0x00 })) return "image/x-icon";
+        if (Prefix(d, new byte[] { 0x00, 0x00, 0x02, 0x00 })) return "image/x-icon";
+        if (Prefix(d, Bytes("BM"))) return "image/bmp";
+        if (Prefix(d, Bytes("GIF87a"))) return "image/gif";
+        if (Prefix(d, Bytes("GIF89a"))) return "image/gif";
+        if (Masked(d, fnws, false,
+            new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
+            Bytes("RIFF\0\0\0\0WEBPVP"))) return "image/webp";
+        if (Prefix(d, new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })) return "image/png";
+        if (Prefix(d, new byte[] { 0xFF, 0xD8, 0xFF })) return "image/jpeg";
+        // Audio and video types.
+        if (Masked(d, fnws, false, new byte[] { 0xFF, 0xFF, 0xFF, 0xFF }, Bytes(".snd"))) return "audio/basic";
+        if (Masked(d, fnws, false,
+            new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF },
+            Bytes("FORM\0\0\0\0AIFF"))) return "audio/aiff";
+        if (Masked(d, fnws, false, new byte[] { 0xFF, 0xFF, 0xFF }, Bytes("ID3"))) return "audio/mpeg";
+        if (Masked(d, fnws, false, new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }, Bytes("OggS\0"))) return "application/ogg";
+        if (Masked(d, fnws, false, new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }, new byte[] { 0x4D, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06 })) return "audio/midi";
+        if (Masked(d, fnws, false,
+            new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF },
+            Bytes("RIFF\0\0\0\0AVI "))) return "video/avi";
+        if (Masked(d, fnws, false,
+            new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF },
+            Bytes("RIFF\0\0\0\0WAVE"))) return "audio/wave";
+        if (Mp4Match(d)) return "video/mp4";
+        if (Prefix(d, new byte[] { 0x1A, 0x45, 0xDF, 0xA3 })) return "video/webm";
+        // Archive types.
+        if (Prefix(d, new byte[] { 0x1F, 0x8B, 0x08 })) return "application/x-gzip";
+        if (Prefix(d, new byte[] { 0x50, 0x4B, 0x03, 0x04 })) return "application/zip";
+        if (Prefix(d, new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00 })) return "application/x-rar-compressed";
+        if (Prefix(d, new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00 })) return "application/x-rar-compressed";
+        if (Prefix(d, new byte[] { 0x00, 0x61, 0x73, 0x6D })) return "application/wasm";
+        // Text: section 5 step 4 — no binary control bytes.
+        if (TextMatch(d, fnws)) return "text/plain; charset=utf-8";
+        return "application/octet-stream";
+    }
+
+    static byte[] Bytes(string s)
+    {
+        var b = new byte[s.Length];
+        for (int i = 0; i < s.Length; i++) b[i] = (byte)s[i];
+        return b;
+    }
+
+    static bool Prefix(byte[] d, byte[] sig)
+    {
+        if (d.Length < sig.Length) return false;
+        for (int i = 0; i < sig.Length; i++) if (d[i] != sig[i]) return false;
+        return true;
+    }
+
+    static bool HtmlMatch(byte[] data, int fnws, string sig)
+    {
+        // case-insensitive prefix from firstNonWS, then a tag-terminating byte (' ' or '>').
+        if (data.Length - fnws < sig.Length + 1) return false;
+        for (int i = 0; i < sig.Length; i++)
+        {
+            byte b = (byte)sig[i];
+            byte db = data[fnws + i];
+            if (b >= 'A' && b <= 'Z') db = (byte)(db & 0xDF);
+            if (b != db) return false;
+        }
+        byte t = data[fnws + sig.Length];
+        return t == (byte)' ' || t == (byte)'>';
+    }
+
+    static bool Masked(byte[] data, int fnws, bool skipWS, byte[] mask, byte[] pat)
+    {
+        var d = skipWS ? data.AsSpan(fnws) : data.AsSpan();
+        if (d.Length < pat.Length) return false;
+        for (int i = 0; i < pat.Length; i++) if ((d[i] & mask[i]) != pat[i]) return false;
+        return true;
+    }
+
+    static bool Mp4Match(byte[] d)
+    {
+        if (d.Length < 12) return false;
+        int boxSize = (d[0] << 24) | (d[1] << 16) | (d[2] << 8) | d[3];
+        if (d.Length < boxSize || boxSize % 4 != 0) return false;
+        if (!(d[4] == 'f' && d[5] == 't' && d[6] == 'y' && d[7] == 'p')) return false;
+        for (int st = 8; st < boxSize; st += 4)
+        {
+            if (st == 12) continue; // minor version number
+            if (st + 3 <= d.Length && d[st] == 'm' && d[st + 1] == 'p' && d[st + 2] == '4') return true;
+        }
+        return false;
+    }
+
+    static bool TextMatch(byte[] data, int fnws)
+    {
+        for (int i = fnws; i < data.Length; i++)
+        {
+            byte b = data[i];
+            if (b <= 0x08 || b == 0x0B || (b >= 0x0E && b <= 0x1A) || (b >= 0x1C && b <= 0x1F)) return false;
+        }
+        return true;
+    }
 
     // ---- server (over System.Net.HttpListener) ----------------------------
 
