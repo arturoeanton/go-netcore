@@ -285,6 +285,33 @@ func (l *funcLowerer) funcValue(fn *types.Func) (goir.Type, bool) {
 	if m == nil {
 		return goir.TFunc, false
 	}
+	return l.funcValueFor(m)
+}
+
+// genericFuncValue lowers a generic function instantiation used as a value (not called):
+// Fn[T] / pkg.Fn[T] — e.g. cmp.Compare[int] passed to slices.SortFunc. It monomorphizes
+// the function and wraps it in a GoClosure, exactly like funcValue for a plain function.
+// Returns false when e is not such an instantiation (real indexing falls through), or it
+// is a shimmed stdlib generic (rare; left to the existing path).
+func (l *funcLowerer) genericFuncValue(e ast.Expr) bool {
+	id, fn, ok := l.explicitGenericFun(e)
+	if !ok {
+		return false
+	}
+	if _, isShim := l.shimExtern(fn); isShim {
+		return false
+	}
+	callee, ok := l.genericCallee(id)
+	if !ok {
+		return false
+	}
+	_, ok = l.funcValueFor(callee)
+	return ok
+}
+
+// funcValueFor wraps an already-resolved method m in a GoClosure whose lifted body
+// unboxes the call args, invokes m, and boxes the result.
+func (l *funcLowerer) funcValueFor(m *goir.Method) (goir.Type, bool) {
 	l.needsInvoker = true
 	l.invokeMethod()
 

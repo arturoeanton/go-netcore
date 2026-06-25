@@ -45,7 +45,7 @@ Effort: S <1wk · M 1–2wk · L 3–6wk · XL >6wk (single engineer).
 | Defer/panic/recover (CIL exception-handling clauses, LIFO defers) | ✅ | M | ✅ |
 | Goroutines lowering | ✅ | S | ✅ |
 | Channels + select lowering | ✅ | M | 🟡 |
-| Generics: same- AND cross-package instantiation + explicit type args (Fn[T]) | ✅ | L | ✅ |
+| Generics: same- AND cross-package instantiation + explicit type args (Fn[T]), incl. an instantiation used as a value (cmp.Compare[int] passed to slices.SortFunc) | ✅ | L | ✅ |
 | Embedded-struct promotion (field + method, value/pointer embeds, multi-level) | ✅ | M | ✅ |
 | Go 1.22 per-iteration loop variables (for + range, closure capture) | ✅ | M | ✅ |
 | Multi-result function values (closures) + f(g()) multi-result spread | ✅ | M | ✅ |

@@ -47,6 +47,18 @@ func (l *funcLowerer) expr(e ast.Expr) {
 	if l.shimFuncValue(e) {
 		return
 	}
+	// A generic function instantiation used as a value (cmp.Compare[int], Map[K,V]) ->
+	// monomorphize and wrap in a closure (not array/map indexing).
+	if _, isIndex := e.(*ast.IndexExpr); isIndex {
+		if l.genericFuncValue(e) {
+			return
+		}
+	}
+	if _, isIndexList := e.(*ast.IndexListExpr); isIndexList {
+		if l.genericFuncValue(e) {
+			return
+		}
+	}
 	switch e := e.(type) {
 	case *ast.Ident:
 		if e.Name == "nil" {
