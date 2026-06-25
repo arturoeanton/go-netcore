@@ -347,9 +347,49 @@ public static partial class Strconv
             'E' => GoFtoa.FormatE(f, p, 'E'),
             'g' => p < 0 ? GoFtoa.Shortest(f) : GoFtoa.FormatG(f, p),
             'G' => p < 0 ? GoFtoa.Shortest(f).ToUpperInvariant() : GoFtoa.FormatG(f, p).ToUpperInvariant(),
+            'b' => FormatB(f, (int)bitSize),
             _ => GoFtoa.Shortest(f),
         };
         return GoString.FromDotNetString(s);
+    }
+
+    // strconv 'b' format: the exact value as mantissa × 2^exp, printed "dddp±ddd" (no
+    // rounding). The mantissa is the full significand as an integer (implicit bit added for
+    // normals) and exp = unbiasedExp - mantbits. NaN/±Inf print like every other format.
+    private static string FormatB(double f, int bitSize)
+    {
+        if (double.IsNaN(f)) return "NaN";
+        if (double.IsPositiveInfinity(f)) return "+Inf";
+        if (double.IsNegativeInfinity(f)) return "-Inf";
+        bool neg;
+        ulong mant;
+        int exp;
+        if (bitSize == 32)
+        {
+            uint bits = (uint)BitConverter.SingleToInt32Bits((float)f);
+            neg = (bits >> 31) != 0;
+            uint m = bits & ((1u << 23) - 1);
+            int be = (int)((bits >> 23) & 0xFF);
+            if (be == 0) { exp = 1 - 127; mant = m; }
+            else { mant = m | (1u << 23); exp = be - 127; }
+            exp -= 23;
+        }
+        else
+        {
+            ulong bits = (ulong)BitConverter.DoubleToInt64Bits(f);
+            neg = (bits >> 63) != 0;
+            ulong m = bits & (((ulong)1 << 52) - 1);
+            int be = (int)((bits >> 52) & 0x7FF);
+            if (be == 0) { exp = 1 - 1023; mant = m; }
+            else { mant = m | ((ulong)1 << 52); exp = be - 1023; }
+            exp -= 52;
+        }
+        var sb = new System.Text.StringBuilder();
+        if (neg) sb.Append('-');
+        sb.Append(mant.ToString(Inv)).Append('p');
+        if (exp >= 0) sb.Append('+');
+        sb.Append(exp.ToString(Inv));
+        return sb.ToString();
     }
 
     public static object?[] Atoi(GoString s)

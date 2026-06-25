@@ -401,6 +401,8 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   rule; Title uses Go's `isSeparator`, so `_` is not a word boundary).
 - `math/bits` int8/int16 are typed as int32 at the boundary; the `bits.*8/*16`
   helpers mask correctly but very unusual signedness edges may differ.
+- `strconv.FormatFloat` supports `f/e/E/g/G/b` byte-exactly; the `x`/`X`
+  hexadecimal-float verbs are the only remaining unimplemented format.
 - Goroutine scheduling order is the .NET thread pool's, not Go's scheduler — keep
   concurrent test output order-independent (as Go's map-range convention already
   requires).
