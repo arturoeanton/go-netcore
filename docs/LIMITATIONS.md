@@ -48,6 +48,12 @@ one; these don't yet):
   rather than the precise element types.
 - **`%v` of a nil map** prints `<nil>` instead of `map[]` (a nil map boxes to a
   null reference, indistinguishable from other nils). Nil slices are correct (`[]`).
+- **`json.Marshal` of a custom `json.Marshaler`** (a type with its own
+  `MarshalJSON`, including `json.RawMessage`) is not honored: the runtime marshals
+  the underlying value structurally (a `Temp float64` emits the number, a
+  `RawMessage` emits a byte array) because a named scalar/slice loses its identity
+  once stored as a struct field or slice element. Honoring it needs the marshaled
+  type's static descriptor threaded into `Marshal` (as `Unmarshal` already does).
 
 ## Stringer/Error of named types — the typed box (largely implemented)
 
@@ -297,14 +303,6 @@ Not yet supported (documented, not silent): benchmarks (`Benchmark*`), fuzzing
 `-flags` (`-run`/`-v`/`-count`/…) — `goclr test` runs all tests with verbose-style output.
 Log lines carry no `file:line:` prefix (goclr lacks per-call caller metadata), and
 durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
-
-## `text/tabwriter`
-
-`text/tabwriter` compiles from source so packages that import it (e.g. gofiber's assert
-helper) lower, but a real **runtime** use can still crash (a `NullReferenceException` in the
-elastic-tabstop machinery — an internal struct-field initialization not yet correct under
-goclr). It is dead code in the programs that currently pull it in; a program that actually
-formats output through a `tabwriter.Writer` should not rely on it yet.
 
 ## Misc
 

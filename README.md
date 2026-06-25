@@ -84,10 +84,12 @@ for the tracked gaps, [REFLECT](docs/REFLECT.md) for the reflect design, and the
 | .NET runtime core (GoString, slices, maps, pointers, interfaces, defer/panic, goroutines, channels, closures) | ✅ runs on `net8.0`+ |
 | **M1 + M2 language** (control flow, funcs/methods, structs, slices, maps, pointers, multi-return, interfaces, defer/panic/recover, closures, generics, goroutines/channels/select, complex) | ✅ closed |
 | **Language hardening** — embedded-struct field/method promotion (value + pointer embeds, incl. pointer-receiver methods promoted from a value field), per-iteration loop vars, cross-package generics, fixed arrays (incl. as struct fields) + keyed literals, `&slice[i]`, `&s.field`, identical-layout struct conversion (`type A B`), typed-box across slices/interfaces | ✅ |
+| **Generics depth** — generic types/methods satisfy interfaces (`fmt.Stringer`/`error` dispatch + implicit fmt), local helper types inside generic functions monomorphized correctly, `%T`/`reflect.Type.String()` of instantiations named like Go (`main.Pair[string,int]`) | ✅ |
+| **Range-over-func (Go 1.23/1.24 iterators)** — `for v := range seq` over `iter.Seq`/`iter.Seq2` (break/continue), `iter.Pull`/`Pull2`, and direct consumption of `slices.All/Values/Backward/Sorted/Chunk`, `maps.Keys/Values/All`, `strings`/`bytes` `Lines`/`SplitSeq`/`FieldsSeq` | ✅ |
 | **Large-program emitter** — 4-byte metadata heap indices (`HeapSizes=0x07`), `InitLocals`, fat-method headers — required once heaps/method tables exceed the small-program limits (goja) | ✅ |
 | **M2.5 overlay** — multi-package, globals/`init`, C# shim/extern mechanism, stdlib source overlays (`unicode`/`sort`/`slices`) | ✅ |
 | **P0 stdlib** (hardened) — fmt/strconv/strings/bytes/unicode/utf8/sort/math/errors/reflect(r+w)/encoding-json(M+U+streaming)/time/sync/math-rand/context/io/os | ✅ byte-exact |
-| **P1 stdlib** — net/http client+server, net TCP (+ParseIP/ParseMAC/ParseCIDR), crypto (sha/sha3/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio/io, log, math/big, container/list, os/exec, mime, net/mail, net/textproto, io/fs | ✅ |
+| **P1 stdlib** — net/http client+server, net TCP (+ParseIP/ParseMAC/ParseCIDR), crypto (sha/sha3/md5/hmac/rand/subtle), regexp, path/filepath, net/url, bufio/io, log, math/big, container/list, container/heap, container/ring, text/tabwriter, os/exec, mime, net/mail, net/textproto, io/fs | ✅ |
 | **P2 stdlib** — encoding (csv/hex/base64/base32/binary), compress (gzip/zlib/flate), crypto/aes-GCM, crypto/sha3 (+SHAKE) | ✅ |
 | **P3 stdlib** — net/http server (HttpListener) + net/http/httptest + net/http/cookiejar, net UDP (UDPConn/UDPAddr), log/slog (text+JSON), os/signal (real SIGINT/TERM delivery), `database/sql` + `database/sql/driver` | ✅ |
 | **database/sql + a pure-Go SQLite engine** — `go-r2-sqlite` (zero-cgo, ~14k LOC) compiled through goclr; CREATE/INSERT/SELECT with INTEGER/REAL/TEXT scanned into Go types | ✅ |
@@ -112,11 +114,22 @@ go build -o bin/goclr ./cmd/goclr
 bin/goclr doctor                          # verify Go + .NET environment
 bin/goclr run ./tests/conformance/015_fib # fib(0..9), matches `go run`
 go test ./tests/conformance/              # all conformance fixtures vs `go run`
+bash scripts/validate_demos.sh            # smoke-test every examples/ demo (servers + run-once)
 ```
 
 The first `build`/`run` compiles the `GoCLR.Runtime` and `GoCLR.Stdlib` C# projects
-under `runtime/` automatically (cached afterwards). To point at prebuilt copies,
-set `GOCLR_RUNTIME_DLL` / `GOCLR_STDLIB_DLL`.
+under `runtime/` automatically (cached afterwards). The cache is rebuilt whenever a
+runtime `.cs`/`.csproj` is newer than the built `.dll`, so after a `git pull` that
+changes the runtime, the next `build`/`run` recompiles it for you. To rebuild the
+runtime by hand:
+
+```bash
+dotnet build runtime/stdlib/GoCLR.Stdlib.csproj -c Release   # rebuilds Stdlib + Runtime
+```
+
+The runtime `.dll`s are gitignored (built per machine), so a fresh clone builds
+them on first use. To point at prebuilt copies, set `GOCLR_RUNTIME_DLL` /
+`GOCLR_STDLIB_DLL`.
 
 ### Running a program that uses vendored dependencies (e.g. the goja demo)
 
