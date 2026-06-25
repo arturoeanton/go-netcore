@@ -6,19 +6,26 @@ using GoCLR.Runtime;
 /// <summary>Shim for Go's <c>unicode/utf8</c> package.</summary>
 public static class Utf8
 {
-    public static long RuneCountInString(GoString s)
-    {
-        long n = 0;
-        foreach (var _ in s.ToDotNetString().EnumerateRunes()) n++;
-        return n;
-    }
+    public static long RuneCountInString(GoString s) => RuneCountBytes(s.Bytes);
 
     public static long RuneCount(GoSlice b)
     {
         var bytes = new byte[b.Len];
         for (int i = 0; i < b.Len; i++) bytes[i] = System.Convert.ToByte(b.Data[b.Off + i]);
+        return RuneCountBytes(bytes);
+    }
+
+    // Counts runes the way Go does: each invalid byte counts as one rune (RuneError),
+    // matching DecodeRune's 1-byte advance, not the .NET string's merged replacement.
+    private static long RuneCountBytes(byte[] p)
+    {
         long n = 0;
-        foreach (var _ in Encoding.UTF8.GetString(bytes).EnumerateRunes()) n++;
+        for (int i = 0; i < p.Length;)
+        {
+            var (_, size) = DecodeRuneBytes(p, i, p.Length - i);
+            i += size < 1 ? 1 : size;
+            n++;
+        }
         return n;
     }
 
@@ -63,38 +70,81 @@ public static class Utf8
         return Rt.AppendSlice(p, new GoSlice { Data = add, Off = 0, Len = bytes.Length, Cap = bytes.Length });
     }
 
+    // Decode the first rune from p[off..off+len) using Go's exact UTF-8 rules: an invalid
+    // leading/continuation byte, truncated, overlong, surrogate, or out-of-range sequence
+    // yields (RuneError, 1) — never the .NET string round-trip, which mangles invalid bytes.
+    private static (int r, int size) DecodeRuneBytes(byte[] p, int off, int len)
+    {
+        if (len < 1) return (0xFFFD, 0);
+        byte p0 = p[off];
+        if (p0 < 0x80) return (p0, 1); // ASCII
+        int sz, mask, lo = 0x80, hi = 0xBF;
+        if (p0 < 0xC2) return (0xFFFD, 1);          // continuation byte, or 0xC0/0xC1 overlong
+        else if (p0 < 0xE0) { sz = 2; mask = 0x1F; }
+        else if (p0 < 0xF0)
+        {
+            sz = 3; mask = 0x0F;
+            if (p0 == 0xE0) lo = 0xA0;              // guard overlong
+            else if (p0 == 0xED) hi = 0x9F;         // guard surrogates
+        }
+        else if (p0 < 0xF5)
+        {
+            sz = 4; mask = 0x07;
+            if (p0 == 0xF0) lo = 0x90;
+            else if (p0 == 0xF4) hi = 0x8F;
+        }
+        else return (0xFFFD, 1);                     // 0xF5..0xFF invalid
+        if (len < sz) return (0xFFFD, 1);
+        byte b1 = p[off + 1];
+        if (b1 < lo || b1 > hi) return (0xFFFD, 1);
+        int r = (p0 & mask) << 6 | (b1 & 0x3F);
+        if (sz == 2) return (r, 2);
+        byte b2 = p[off + 2];
+        if (b2 < 0x80 || b2 > 0xBF) return (0xFFFD, 1);
+        r = r << 6 | (b2 & 0x3F);
+        if (sz == 3) return (r, 3);
+        byte b3 = p[off + 3];
+        if (b3 < 0x80 || b3 > 0xBF) return (0xFFFD, 1);
+        return (r << 6 | (b3 & 0x3F), 4);
+    }
+
     public static object?[] DecodeRuneInString(GoString s)
     {
-        var str = s.ToDotNetString();
-        if (str.Length == 0) return new object?[] { (int)0xFFFD, 0L };
-        var e = str.EnumerateRunes().GetEnumerator();
-        e.MoveNext();
-        var r = e.Current;
-        return new object?[] { r.Value, (long)r.Utf8SequenceLength };
+        var b = s.Bytes;
+        var (r, size) = DecodeRuneBytes(b, 0, b.Length);
+        return new object?[] { r, (long)size };
     }
 
     public static object?[] DecodeRune(GoSlice b)
     {
         var bytes = new byte[b.Len];
         for (int i = 0; i < b.Len; i++) bytes[i] = (byte)System.Convert.ToInt64(b.Data[b.Off + i]);
-        return DecodeRuneInString(GoString.FromBytes(bytes));
+        var (r, size) = DecodeRuneBytes(bytes, 0, bytes.Length);
+        return new object?[] { r, (long)size };
     }
 
-    public static object?[] DecodeLastRuneInString(GoString s)
-    {
-        var str = s.ToDotNetString();
-        bool any = false;
-        System.Text.Rune last = default;
-        foreach (var r in str.EnumerateRunes()) { last = r; any = true; }
-        if (!any) return new object?[] { (int)0xFFFD, 0L };
-        return new object?[] { last.Value, (long)last.Utf8SequenceLength };
-    }
-
+    public static object?[] DecodeLastRuneInString(GoString s) => DecodeLastRuneBytes(s.Bytes);
     public static object?[] DecodeLastRune(GoSlice b)
     {
         var bytes = new byte[b.Len];
         for (int i = 0; i < b.Len; i++) bytes[i] = (byte)System.Convert.ToInt64(b.Data[b.Off + i]);
-        return DecodeLastRuneInString(GoString.FromBytes(bytes));
+        return DecodeLastRuneBytes(bytes);
+    }
+
+    // Go's DecodeLastRune: scan back to the rune start (at most 4 bytes), decode, and
+    // require it to end exactly at the input's end (else the trailing bytes are invalid).
+    private static object?[] DecodeLastRuneBytes(byte[] p)
+    {
+        int end = p.Length;
+        if (end == 0) return new object?[] { 0xFFFD, 0L };
+        int start = end - 1;
+        if (p[start] < 0x80) return new object?[] { (int)p[start], 1L }; // ASCII
+        int lim = end - 4; if (lim < 0) lim = 0;
+        for (start--; start >= lim; start--) if ((p[start] & 0xC0) != 0x80) break; // a non-continuation byte
+        if (start < 0) start = 0;
+        var (r, size) = DecodeRuneBytes(p, start, end - start);
+        if (start + size != end) return new object?[] { 0xFFFD, 1L };
+        return new object?[] { r, (long)size };
     }
 
     private static int RuneByteLen(byte b0)
