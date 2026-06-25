@@ -11,6 +11,7 @@ public sealed class GoCsvReader
     public char Comment;                  // 0 = none
     public bool LazyQuotes;
     public bool TrimLeadingSpace;
+    public bool ReuseRecord;              // accepted; Read() always returns a fresh slice here
     public long FieldsPerRecord;          // 0 = set from first record, <0 = no check, >0 = required
     public System.Collections.Generic.List<System.Collections.Generic.List<string>>? Rows;
     public int RowIdx;
@@ -56,6 +57,9 @@ public static class Csv
     public static void Reader_SetLazyQuotes(object r, bool v) => ((GoCsvReader)r).LazyQuotes = v;
     public static void Reader_SetTrimLeadingSpace(object r, bool v) => ((GoCsvReader)r).TrimLeadingSpace = v;
     public static void Reader_SetFieldsPerRecord(object r, long v) => ((GoCsvReader)r).FieldsPerRecord = v;
+    // ReuseRecord lets Go reuse the returned slice across Read calls (a perf hint); this
+    // reader returns a fresh slice each call, so the flag is accepted but has no effect.
+    public static void Reader_SetReuseRecord(object r, bool v) => ((GoCsvReader)r).ReuseRecord = v;
     public static int Reader_Comma(object r) => ((GoCsvReader)r).Comma;
     public static long Reader_FieldsPerRecord(object r) => ((GoCsvReader)r).FieldsPerRecord;
     public static void Writer_SetComma(object w, int v) => ((GoCsvWriter)w).Comma = (char)v;
@@ -297,7 +301,14 @@ public static class Csv
             rowStart = false;
             if (inQuotes)
             {
-                if (c == '"') { if (i + 1 < s.Length && s[i + 1] == '"') { field.Append('"'); i++; } else inQuotes = false; }
+                if (c == '"')
+                {
+                    if (i + 1 < s.Length && s[i + 1] == '"') { field.Append('"'); i++; } // doubled "" -> literal "
+                    // LazyQuotes: a " inside a quoted field that is NOT followed by a delimiter
+                    // (comma/newline) or EOF is a literal quote; stay in the quoted field.
+                    else if (lazy && i + 1 < s.Length && s[i + 1] != comma && s[i + 1] != '\n' && s[i + 1] != '\r') field.Append('"');
+                    else inQuotes = false;
+                }
                 else field.Append(c);
                 continue;
             }
