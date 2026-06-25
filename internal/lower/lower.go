@@ -28,6 +28,7 @@ type lowerCtx struct {
 	byFunc        map[*types.Func]*goir.Method // methods, by *types.Func
 	structReg     map[*types.Named]*goir.Struct
 	anonStructReg map[string]*goir.Struct // anonymous structs, keyed by structural string
+	anonStructs   []anonStructInfo        // anon structs with their Go type, for field-identity registration
 	structByName  map[string]*goir.Struct // dedup by emitted name (distinct *Named for one instantiation)
 	structOrder   []*goir.Struct
 	bag           *diagnostics.Bag
@@ -1022,6 +1023,7 @@ func (c *lowerCtx) structForAnon(st *types.Struct) *goir.Struct {
 	id := int(c.nextTypeId())
 	s := &goir.Struct{Name: "__anon" + itoa(id), GoName: key, Id: id}
 	c.anonStructReg[key] = s
+	c.anonStructs = append(c.anonStructs, anonStructInfo{name: s.Name, st: st})
 	c.structOrder = append(c.structOrder, s)
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)

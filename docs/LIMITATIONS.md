@@ -115,12 +115,10 @@ named slices both satisfying `sort.Interface` dispatch to their own methods — 
 representation collapse that blocked goja is resolved).
 
 Remaining edges (documented, not silent):
-- A named Stringer/Error value as a **named-struct field** or a **slice/map
-  element** (`[]Money`, `Reading.Temp`) now dispatches its `String()` under
-  `%v`/`%+v` (fmt re-tags via the field-type / composite-element registry — this
-  includes a Stringer type used *only* as a struct field). The remaining gap is a
-  Stringer field of an **anonymous** struct type (`struct{ S Stringy }{…}`), which
-  has no registered field-type entry and still prints the underlying value.
+- A named Stringer/Error value as a **struct field** (named or anonymous) or a
+  **slice/map element** (`[]Money`, `Reading.Temp`, `struct{ S Stringy }{…}`)
+  dispatches its `String()` under `%v`/`%+v` — fmt re-tags via the field-type /
+  composite-element registry, including a Stringer type used *only* as a field.
 - `%T`/`%#v` of a **method-less** named type, and of a slice/map element type,
   still print the underlying representation (only method-bearing named types get an
   identity tag so far).

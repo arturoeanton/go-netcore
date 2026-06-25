@@ -191,6 +191,13 @@ type fieldType struct {
 // (before collectStringers) so a Stringer/Error type used *only* as a struct field still
 // gets its fmt dispatch closure registered — otherwise its id is not in namedIds until
 // identityFields() runs, which is after collectStringers.
+// anonStructInfo pairs an anonymous struct's emitted CLR name with its Go type so its
+// field identities can be registered like a named struct's.
+type anonStructInfo struct {
+	name string
+	st   *types.Struct
+}
+
 func (c *lowerCtx) registerFieldIdentities() {
 	for named := range c.structReg {
 		st, ok := named.Underlying().(*types.Struct)
@@ -199,6 +206,11 @@ func (c *lowerCtx) registerFieldIdentities() {
 		}
 		for i := 0; i < st.NumFields(); i++ {
 			c.typeTagFor(st.Field(i).Type())
+		}
+	}
+	for _, a := range c.anonStructs {
+		for i := 0; i < a.st.NumFields(); i++ {
+			c.typeTagFor(a.st.Field(i).Type())
 		}
 	}
 }
@@ -214,6 +226,14 @@ func (c *lowerCtx) identityFields() []fieldType {
 			f := st.Field(i)
 			if id, ok := c.typeTagFor(f.Type()); ok {
 				out = append(out, fieldType{s.Name, f.Name(), id})
+			}
+		}
+	}
+	for _, a := range c.anonStructs {
+		for i := 0; i < a.st.NumFields(); i++ {
+			f := a.st.Field(i)
+			if id, ok := c.typeTagFor(f.Type()); ok {
+				out = append(out, fieldType{a.name, f.Name(), id})
 			}
 		}
 	}
