@@ -409,8 +409,11 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   parameter — the backend unboxes a generic shim's boxed result to the call's
   instantiated type. Covers `Sort`/`SortFunc`/`SortStableFunc`, `Contains(Func)`,
   `Index(Func)`, `Max`/`Min`/`MaxFunc`/`MinFunc`, `Equal(Func)`, `Reverse`,
-  `IsSorted(Func)`, `BinarySearch(Func)`, `Clone`/`Compact(Func)`/`Concat`, and
-  `cmp.Compare`/`Less`/`Or`. `maps` (iterator-based) is still unsupported.
+  `IsSorted(Func)`, `BinarySearch(Func)`, `Clone`/`Compact(Func)`/`Concat`,
+  `Insert`/`Delete`/`Replace`/`DeleteFunc`/`Repeat`, `Compare(Func)`, and
+  `cmp.Compare`/`Less`/`Or`. The iterator-based functions (`slices.Sorted`,
+  `Collect`, `All`, `Values`, and the `maps` package) need `iter.Seq` and are
+  not yet supported.
 - `strconv.FormatFloat` supports all verbs byte-exactly (`f/e/E/g/G/b/x/X`),
   including hexadecimal-float `0x1.…p±dd` with shortest and fixed precision;
   `fmt`'s `%x`/`%X` of a float routes through the same path.

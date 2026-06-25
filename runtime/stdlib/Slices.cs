@@ -189,4 +189,67 @@ public static class Slices
         }
         return new GoSlice { Data = outp.ToArray(), Off = 0, Len = outp.Count, Cap = outp.Count };
     }
+    private static GoSlice FromList(System.Collections.Generic.List<object?> l) =>
+        new GoSlice { Data = l.ToArray(), Off = 0, Len = l.Count, Cap = l.Count };
+
+    // Insert(s, i, vals...) -> s[:i] + vals + s[i:].
+    public static object Insert(object slice, long i, GoSlice vals)
+    {
+        var s = S(slice); int idx = (int)i;
+        var outp = new System.Collections.Generic.List<object?>(s.Len + vals.Len);
+        for (int k = 0; k < idx; k++) outp.Add(At(s, k));
+        for (int k = 0; k < vals.Len; k++) outp.Add(vals.Data![vals.Off + k]);
+        for (int k = idx; k < s.Len; k++) outp.Add(At(s, k));
+        return FromList(outp);
+    }
+    // Delete(s, i, j) -> s[:i] + s[j:].
+    public static object Delete(object slice, long i, long j)
+    {
+        var s = S(slice); int a = (int)i, b = (int)j;
+        var outp = new System.Collections.Generic.List<object?>(s.Len - (b - a));
+        for (int k = 0; k < a; k++) outp.Add(At(s, k));
+        for (int k = b; k < s.Len; k++) outp.Add(At(s, k));
+        return FromList(outp);
+    }
+    // Replace(s, i, j, vals...) -> s[:i] + vals + s[j:].
+    public static object Replace(object slice, long i, long j, GoSlice vals)
+    {
+        var s = S(slice); int a = (int)i, b = (int)j;
+        var outp = new System.Collections.Generic.List<object?>();
+        for (int k = 0; k < a; k++) outp.Add(At(s, k));
+        for (int k = 0; k < vals.Len; k++) outp.Add(vals.Data![vals.Off + k]);
+        for (int k = b; k < s.Len; k++) outp.Add(At(s, k));
+        return FromList(outp);
+    }
+    // DeleteFunc(s, del) -> the elements for which del returns false, in order.
+    public static object DeleteFunc(object slice, GoClosure del)
+    {
+        var s = S(slice);
+        var outp = new System.Collections.Generic.List<object?>();
+        for (int k = 0; k < s.Len; k++) if (!(bool)GoRuntime.InvokeArgs(del, At(s, k))!) outp.Add(At(s, k));
+        return FromList(outp);
+    }
+    // Repeat(s, count) -> s concatenated count times.
+    public static object Repeat(object slice, long count)
+    {
+        var s = S(slice);
+        var outp = new System.Collections.Generic.List<object?>(s.Len * (int)count);
+        for (long c = 0; c < count; c++) for (int k = 0; k < s.Len; k++) outp.Add(At(s, k));
+        return FromList(outp);
+    }
+    // Compare(s1, s2): lexicographic by element; the shorter slice is smaller if it is a prefix.
+    public static long Compare(object a, object b)
+    {
+        var x = S(a); var y = S(b);
+        int n = x.Len < y.Len ? x.Len : y.Len;
+        for (int i = 0; i < n; i++) { int c = OrderedCompare(At(x, i), At(y, i)); if (c != 0) return c < 0 ? -1 : 1; }
+        return x.Len == y.Len ? 0 : (x.Len < y.Len ? -1 : 1);
+    }
+    public static long CompareFunc(object a, object b, GoClosure cmp)
+    {
+        var x = S(a); var y = S(b);
+        int n = x.Len < y.Len ? x.Len : y.Len;
+        for (int i = 0; i < n; i++) { long c = System.Convert.ToInt64(GoRuntime.InvokeArgs(cmp, At(x, i), At(y, i))); if (c != 0) return c < 0 ? -1 : 1; }
+        return x.Len == y.Len ? 0 : (x.Len < y.Len ? -1 : 1);
+    }
 }

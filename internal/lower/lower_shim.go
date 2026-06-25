@@ -336,6 +336,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Reverse": {"Slices", "Reverse"}, "IsSorted": {"Slices", "IsSorted"}, "IsSortedFunc": {"Slices", "IsSortedFunc"},
 		"BinarySearch": {"Slices", "BinarySearch"}, "BinarySearchFunc": {"Slices", "BinarySearchFunc"},
 		"Clone": {"Slices", "Clone"}, "Compact": {"Slices", "Compact"}, "CompactFunc": {"Slices", "CompactFunc"}, "Concat": {"Slices", "Concat"},
+		"Insert": {"Slices", "Insert"}, "Delete": {"Slices", "Delete"}, "Replace": {"Slices", "Replace"}, "DeleteFunc": {"Slices", "DeleteFunc"},
+		"Repeat": {"Slices", "Repeat"}, "Compare": {"Slices", "Compare"}, "CompareFunc": {"Slices", "CompareFunc"},
 	},
 	"cmp": {
 		"Compare": {"Cmp", "Compare"}, "Less": {"Cmp", "Less"}, "Or": {"Cmp", "Or"},
