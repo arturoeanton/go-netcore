@@ -395,8 +395,10 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
 
 ## Misc
 
-- `strings.NewReplacer`, `strings.EqualFold` full-Unicode folding, and
-  `unicode.SimpleFold` are not implemented.
+- `strings.EqualFold` full-Unicode folding and `unicode.SimpleFold` are not
+  implemented (ASCII/common folds only). `strings.NewReplacer` and `strings.Title`
+  are byte-exact (Replacer matches on UTF-8 bytes with Go's priority + empty-key
+  rule; Title uses Go's `isSeparator`, so `_` is not a word boundary).
 - `math/bits` int8/int16 are typed as int32 at the boundary; the `bits.*8/*16`
   helpers mask correctly but very unusual signedness edges may differ.
 - Goroutine scheduling order is the .NET thread pool's, not Go's scheduler — keep

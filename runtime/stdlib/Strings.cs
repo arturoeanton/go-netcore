@@ -54,7 +54,35 @@ public static class Strings
         0x1F1 or 0x1F2 or 0x1F3 => 0x1F2,
         _ => GoUpper(r),
     };
-    public static GoString Title(GoString s) => GoString.FromDotNetString(System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(s.ToDotNetString()));
+    // strings.Title: titlecase the first rune of each word, where a word starts after a
+    // separator. NOT .NET ToTitleCase (which treats '_' as a separator and lowercases the
+    // tail of all-caps words). Go's isSeparator: ASCII letters/digits/'_' are never
+    // separators; otherwise non-letter/non-digit runes that are spaces are separators.
+    private static bool IsSeparator(int r)
+    {
+        if (r <= 0x7F)
+        {
+            if (r >= '0' && r <= '9') return false;
+            if (r >= 'a' && r <= 'z') return false;
+            if (r >= 'A' && r <= 'Z') return false;
+            if (r == '_') return false;
+            return true;
+        }
+        if (Unicode.IsLetter(r) || Unicode.IsDigit(r)) return false;
+        return Unicode.IsSpace(r);
+    }
+    public static GoString Title(GoString s)
+    {
+        var sb = new System.Text.StringBuilder();
+        int prev = ' '; // a separator, so the first rune titlecases
+        foreach (var rune in s.ToDotNetString().EnumerateRunes())
+        {
+            int r = rune.Value;
+            sb.Append(System.Char.ConvertFromUtf32(IsSeparator(prev) ? GoTitle(r) : r));
+            prev = r;
+        }
+        return GoString.FromDotNetString(sb.ToString());
+    }
 
     public static bool Contains(GoString s, GoString sub) => IndexBytes(s.Bytes, sub.Bytes) >= 0;
     public static bool HasPrefix(GoString s, GoString p) => s.ToDotNetString().StartsWith(p.ToDotNetString(), StringComparison.Ordinal);
@@ -417,40 +445,66 @@ public static class Strings
     public static object NewReplacer(GoSlice pairs)
     {
         int n = pairs.Len / 2;
-        var rep = new GoReplacer { Old = new string[n], New = new string[n] };
+        var rep = new GoReplacer { Old = new string[n], New = new string[n], OldB = new byte[n][], NewB = new byte[n][] };
         for (int i = 0; i < n; i++)
         {
-            rep.Old[i] = ((GoString)pairs.Data![pairs.Off + 2 * i]!).ToDotNetString();
-            rep.New[i] = ((GoString)pairs.Data![pairs.Off + 2 * i + 1]!).ToDotNetString();
+            var oldS = (GoString)pairs.Data![pairs.Off + 2 * i]!;
+            var newS = (GoString)pairs.Data![pairs.Off + 2 * i + 1]!;
+            rep.Old[i] = oldS.ToDotNetString();
+            rep.New[i] = newS.ToDotNetString();
+            rep.OldB[i] = oldS.ToBytes();
+            rep.NewB[i] = newS.ToBytes();
         }
         return rep;
     }
 
-    // (*Replacer).Replace — single non-overlapping pass; at each position the old
-    // strings are tried in argument order and the first match wins (Go semantics).
+    // (*Replacer).Replace — single non-overlapping pass. At each position the old strings
+    // are tried in argument order and the first (highest-priority) match wins, exactly like
+    // Go's genericReplacer trie (earlier-added keys have higher priority). An empty old
+    // string matches at every position with zero width; Go avoids matching it twice in a row
+    // via prevMatchEmpty, so NewReplacer("","X","a","b").Replace("aa") == "XbXbX".
     public static GoString Replacer_Replace(object r, GoString s)
     {
         var rep = (GoReplacer)r;
-        string str = s.ToDotNetString();
-        var sb = new System.Text.StringBuilder();
-        int i = 0;
-        while (i < str.Length)
+        byte[] str = s.Bytes; // operate on UTF-8 bytes: Go advances/inserts per byte, so an
+                              // empty key inserts its replacement between the bytes of a rune.
+        var outp = new System.Collections.Generic.List<byte>(str.Length + 8);
+        int i = 0, last = 0;
+        bool prevMatchEmpty = false;
+        while (i <= str.Length)
         {
-            int match = -1;
-            for (int k = 0; k < rep.Old.Length; k++)
+            int match = -1, keylen = 0;
+            for (int k = 0; k < rep.OldB.Length; k++)
             {
-                int len = rep.Old[k].Length;
-                if (len > 0 && i + len <= str.Length &&
-                    string.CompareOrdinal(str, i, rep.Old[k], 0, len) == 0)
+                int len = rep.OldB[k].Length;
+                if (len == 0)
                 {
-                    match = k;
-                    break;
+                    if (prevMatchEmpty) continue; // don't match the empty key twice in a row
+                    match = k; keylen = 0; break;
+                }
+                if (i + len <= str.Length && MatchBytesAt(str, i, rep.OldB[k]))
+                {
+                    match = k; keylen = len; break;
                 }
             }
-            if (match >= 0) { sb.Append(rep.New[match]); i += rep.Old[match].Length; }
-            else { sb.Append(str[i]); i++; }
+            prevMatchEmpty = match >= 0 && keylen == 0;
+            if (match >= 0)
+            {
+                for (int b = last; b < i; b++) outp.Add(str[b]);
+                outp.AddRange(rep.NewB[match]);
+                i += keylen;
+                last = i;
+                continue;
+            }
+            i++;
         }
-        return GoString.FromDotNetString(sb.ToString());
+        for (int b = last; b < str.Length; b++) outp.Add(str[b]);
+        return GoString.FromBytesOwned(outp.ToArray());
+    }
+    private static bool MatchBytesAt(byte[] s, int i, byte[] pat)
+    {
+        for (int j = 0; j < pat.Length; j++) if (s[i + j] != pat[j]) return false;
+        return true;
     }
 
     // (*Replacer).WriteString(w io.Writer, s string) (n int, err error): replace, then
@@ -468,4 +522,7 @@ public sealed class GoReplacer
 {
     public string[] Old = System.Array.Empty<string>();
     public string[] New = System.Array.Empty<string>();
+    // UTF-8 byte forms of the pairs, so Replace matches/advances per byte like Go.
+    public byte[][] OldB = System.Array.Empty<byte[]>();
+    public byte[][] NewB = System.Array.Empty<byte[]>();
 }
