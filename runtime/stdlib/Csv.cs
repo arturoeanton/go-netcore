@@ -8,6 +8,10 @@ public sealed class GoCsvReader
     public string Data = "";
     public byte[]? Raw;
     public char Comma = ',';
+    public char Comment;                  // 0 = none
+    public bool LazyQuotes;
+    public bool TrimLeadingSpace;
+    public long FieldsPerRecord;          // 0 = set from first record, <0 = no check, >0 = required
     public System.Collections.Generic.List<System.Collections.Generic.List<string>>? Rows;
     public int RowIdx;
     public int Expect = -1;
@@ -16,7 +20,7 @@ public sealed class GoCsvReader
     public System.Collections.Generic.List<System.Collections.Generic.List<(int line, int col)>>? Positions;
     public System.Collections.Generic.List<long>? Offsets;
 }
-public sealed class GoCsvWriter { public object? W; public char Comma = ','; public System.Text.StringBuilder SB = new(); }
+public sealed class GoCsvWriter { public object? W; public char Comma = ','; public bool UseCRLF; public System.Text.StringBuilder SB = new(); }
 
 /// <summary>A csv.ParseError: a parse failure tagged with its record/error line and column.</summary>
 [GoShim("encoding/csv.ParseError")]
@@ -45,6 +49,17 @@ public static class Csv
         return new GoCsvReader { Raw = raw, Data = System.Text.Encoding.UTF8.GetString(raw) };
     }
     public static object NewWriter(object? w) => new GoCsvWriter { W = w };
+
+    // (*csv.Reader)/(*csv.Writer) configurable field setters. Comma/Comment are runes (int32).
+    public static void Reader_SetComma(object r, int v) => ((GoCsvReader)r).Comma = (char)v;
+    public static void Reader_SetComment(object r, int v) => ((GoCsvReader)r).Comment = (char)v;
+    public static void Reader_SetLazyQuotes(object r, bool v) => ((GoCsvReader)r).LazyQuotes = v;
+    public static void Reader_SetTrimLeadingSpace(object r, bool v) => ((GoCsvReader)r).TrimLeadingSpace = v;
+    public static void Reader_SetFieldsPerRecord(object r, long v) => ((GoCsvReader)r).FieldsPerRecord = v;
+    public static int Reader_Comma(object r) => ((GoCsvReader)r).Comma;
+    public static long Reader_FieldsPerRecord(object r) => ((GoCsvReader)r).FieldsPerRecord;
+    public static void Writer_SetComma(object w, int v) => ((GoCsvWriter)w).Comma = (char)v;
+    public static void Writer_SetUseCRLF(object w, bool v) => ((GoCsvWriter)w).UseCRLF = v;
 
     private static GoSlice Row(System.Collections.Generic.List<string> fields)
     {
@@ -81,12 +96,16 @@ public static class Csv
     public static object?[] Read(object ro)
     {
         var r = (GoCsvReader)ro;
-        r.Rows ??= ParseRows(r.Data, r.Comma);
+        r.Rows ??= ParseRows(r);
         if (r.RowIdx >= r.Rows.Count) return new object?[] { default(GoSlice), Io.EOFSentinel };
         var line = r.Rows[r.RowIdx++];
-        if (r.Expect < 0) r.Expect = line.Count;
-        else if (line.Count != r.Expect)
-            return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("record on line " + r.RowIdx + ": wrong number of fields")) };
+        if (r.FieldsPerRecord >= 0)
+        {
+            int want = r.FieldsPerRecord > 0 ? (int)r.FieldsPerRecord : r.Expect;
+            if (want < 0) { r.Expect = line.Count; want = line.Count; }
+            if (line.Count != want)
+                return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("record on line " + r.RowIdx + ": wrong number of fields")) };
+        }
         return new object?[] { Row(line), null };
     }
 
@@ -94,13 +113,16 @@ public static class Csv
     {
         var r = (GoCsvReader)ro;
         var rows = new System.Collections.Generic.List<object?>();
-        int expect = -1, lineNo = 0;
-        foreach (var line in ParseRows(r.Data, r.Comma))
+        int expect = r.FieldsPerRecord > 0 ? (int)r.FieldsPerRecord : -1, lineNo = 0;
+        foreach (var line in ParseRows(r))
         {
             lineNo++;
-            if (expect < 0) expect = line.Count; // Go enforces FieldsPerRecord
-            else if (line.Count != expect)
-                return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("record on line " + lineNo + ": wrong number of fields")) };
+            if (r.FieldsPerRecord >= 0)
+            {
+                if (expect < 0) expect = line.Count; // FieldsPerRecord==0: set from first record
+                else if (line.Count != expect)
+                    return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("record on line " + lineNo + ": wrong number of fields")) };
+            }
             rows.Add(Row(line));
         }
         var d = rows.ToArray();
@@ -253,29 +275,43 @@ public static class Csv
     }
 
     // RFC 4180-ish parser (quotes, embedded commas/newlines, doubled quotes).
-    private static System.Collections.Generic.List<System.Collections.Generic.List<string>> ParseRows(string s, char comma)
+    private static System.Collections.Generic.List<System.Collections.Generic.List<string>> ParseRows(GoCsvReader r)
+        => ParseRows(r.Data, r.Comma, r.Comment, r.TrimLeadingSpace, r.LazyQuotes);
+
+    private static System.Collections.Generic.List<System.Collections.Generic.List<string>> ParseRows(
+        string s, char comma, char comment, bool trim, bool lazy)
     {
         var rows = new System.Collections.Generic.List<System.Collections.Generic.List<string>>();
         var row = new System.Collections.Generic.List<string>();
         var field = new System.Text.StringBuilder();
-        bool inQuotes = false, any = false;
+        bool inQuotes = false, any = false, fieldStart = true, rowStart = true;
         for (int i = 0; i < s.Length; i++)
         {
             char c = s[i];
+            // A line beginning with the Comment character (no leading whitespace) is skipped.
+            if (rowStart && comment != '\0' && c == comment)
+            {
+                while (i < s.Length && s[i] != '\n') i++;
+                continue; // rowStart stays true for the next line
+            }
+            rowStart = false;
             if (inQuotes)
             {
                 if (c == '"') { if (i + 1 < s.Length && s[i + 1] == '"') { field.Append('"'); i++; } else inQuotes = false; }
                 else field.Append(c);
+                continue;
             }
-            else if (c == '"') { inQuotes = true; any = true; }
-            else if (c == comma) { row.Add(field.ToString()); field.Clear(); any = true; }
+            if (trim && fieldStart && c != comma && (c == ' ' || c == '\t')) continue; // skip leading space
+            if (c == '"' && fieldStart) { inQuotes = true; any = true; fieldStart = false; }
+            else if (c == '"') { field.Append('"'); any = true; fieldStart = false; } // bare quote: literal (lazy or degraded)
+            else if (c == comma) { row.Add(field.ToString()); field.Clear(); any = true; fieldStart = true; }
             else if (c == '\n' || c == '\r')
             {
                 if (c == '\r' && i + 1 < s.Length && s[i + 1] == '\n') i++;
                 if (any || field.Length > 0 || row.Count > 0) { row.Add(field.ToString()); rows.Add(row); }
-                row = new System.Collections.Generic.List<string>(); field.Clear(); any = false;
+                row = new System.Collections.Generic.List<string>(); field.Clear(); any = false; fieldStart = true; rowStart = true;
             }
-            else { field.Append(c); any = true; }
+            else { field.Append(c); any = true; fieldStart = false; }
         }
         if (any || field.Length > 0 || row.Count > 0) { row.Add(field.ToString()); rows.Add(row); }
         return rows;
@@ -292,7 +328,7 @@ public static class Csv
                 w.SB.Append('"').Append(f.Replace("\"", "\"\"")).Append('"');
             else w.SB.Append(f);
         }
-        w.SB.Append('\n');
+        w.SB.Append(w.UseCRLF ? "\r\n" : "\n");
         return null;
     }
     public static void Flush(object wo) { var w = (GoCsvWriter)wo; Fmt.WriteTo(w.W, w.SB.ToString()); w.SB.Clear(); }

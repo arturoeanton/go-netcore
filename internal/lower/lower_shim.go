@@ -1089,6 +1089,8 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	},
 	"go/token.Position": {"Filename": {"GoToken", "Position_SetFilename"}, "Offset": {"GoToken", "Position_SetOffset"}, "Line": {"GoToken", "Position_SetLine"}, "Column": {"GoToken", "Position_SetColumn"}},
 	"encoding/csv.ParseError": {"StartLine": {"Csv", "ParseError_SetStartLine"}, "Line": {"Csv", "ParseError_SetLine"}, "Column": {"Csv", "ParseError_SetColumn"}, "Err": {"Csv", "ParseError_SetErr"}},
+	"encoding/csv.Reader": {"Comma": {"Csv", "Reader_SetComma"}, "Comment": {"Csv", "Reader_SetComment"}, "LazyQuotes": {"Csv", "Reader_SetLazyQuotes"}, "TrimLeadingSpace": {"Csv", "Reader_SetTrimLeadingSpace"}, "FieldsPerRecord": {"Csv", "Reader_SetFieldsPerRecord"}},
+	"encoding/csv.Writer": {"Comma": {"Csv", "Writer_SetComma"}, "UseCRLF": {"Csv", "Writer_SetUseCRLF"}},
 	"net/textproto.Error": {"Code": {"Textproto", "Error_SetCode"}, "Msg": {"Textproto", "Error_SetMsg"}},
 	"io/fs.PathError": {"Op": {"Fs", "PathError_SetOp"}, "Path": {"Fs", "PathError_SetPath"}, "Err": {"Fs", "PathError_SetErr"}},
 	"os.PathError": {"Op": {"Fs", "PathError_SetOp"}, "Path": {"Fs", "PathError_SetPath"}, "Err": {"Fs", "PathError_SetErr"}},
