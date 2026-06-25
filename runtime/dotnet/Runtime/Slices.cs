@@ -49,7 +49,14 @@ public static class GoSlices
         double => 0.0,
         float => 0f,
         bool => false,
-        _ => null,
+        // A goclr struct element is a CLR value type extending System.ValueType: its
+        // default instance is the Go zero value (value-type fields like GoSlice/GoString
+        // default to their own zero, reference-typed fields to nil). Synthesize it so a
+        // grown []struct capacity region holds zero structs, not nulls — otherwise code
+        // that reslices into the capacity and takes &elem (e.g. fasthttp's allocArg)
+        // dereferences a null. Reference-typed elements keep null as their nil zero.
+        null => null,
+        _ => v.GetType().IsValueType ? System.Activator.CreateInstance(v.GetType()) : null,
     };
 
     public static long Len(GoSlice s) => s.Len;
