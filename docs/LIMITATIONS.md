@@ -46,6 +46,12 @@ one; these don't yet):
   are exact.
 - **`%T` of a slice/map** prints `[]interface {}` / `map[string]interface {}`
   rather than the precise element types.
+- **`%T`/`%#v` of an anonymous struct** prints the synthesized name
+  (`main.__anonN`) instead of Go's structural form (`struct { X int; Y string }`).
+  The field types can't be recovered byte-exactly from runtime values (`int` and
+  `int64` both box to a 64-bit integer), so this needs a compiler-side reflect
+  string built from the static field types — deferred. `%v`/`%+v` of an anonymous
+  struct are correct.
 - **`%v` of a nil map** prints `<nil>` instead of `map[]` (a nil map boxes to a
   null reference, indistinguishable from other nils). Nil slices are correct (`[]`).
 - **`json.Marshal` of a custom `json.Marshaler`** (a type with its own

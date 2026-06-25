@@ -366,7 +366,14 @@ public static class Fmt
             case 'E': return FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec, 'E'), verb);
             case 'g': return FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gf ? GoFtoa.Shortest(gf) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
             case 'G': return FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gF ? GoFtoa.Shortest(gF) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
-            case 'p': return v == null ? "<nil>" : "0x" + (System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(v) & 0xffffff).ToString("x", Inv);
+            case 'p':
+                if (v == null) return "<nil>";
+                // Go's %p accepts only pointer-like kinds (pointer/slice/map/chan/func);
+                // anything else is a bad verb, e.g. %!p(bool=true).
+                if (v is GoPtr || v is GoSlice || v is GoMap || v is GoClosure ||
+                    (v.GetType().IsGenericType && v.GetType().GetGenericTypeDefinition() == typeof(GoChan<>)))
+                    return "0x" + (System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(v) & 0xffffff).ToString("x", Inv);
+                return BadVerb(verb, v);
             case 'T': return GoTypeName(v);
             case 'w': // %w (Errorf) formats the wrapped error like %v
             case 'v': return sp.Hash ? FormatGoSyntax(v) : Format(v, 'v', sp.Plus, sp.Hash);
@@ -541,7 +548,9 @@ public static class Fmt
         double => "float64",
         float => "float32",
         GoString => "string",
-        IGoError => "*errors.errorString",
+        Errors.JoinError => "*errors.joinError",       // errors.Join
+        GoError ge when ge.Wrapped != null => "*fmt.wrapError", // fmt.Errorf with a single %w
+        IGoError => "*errors.errorString",             // errors.New / fmt.Errorf without %w
         GoComplex => "complex128",
         GoSlice => "[]interface {}",
         GoMap => "map[string]interface {}",
