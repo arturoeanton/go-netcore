@@ -54,9 +54,13 @@ one; these don't yet):
   struct are correct.
 - **`%v` of a nil map** prints `<nil>` instead of `map[]` (a nil map boxes to a
   null reference, indistinguishable from other nils). Nil slices are correct (`[]`).
-  Relatedly, `%#v` of a **nil map field inside a struct** prints `<nil>` instead of
-  `map[K]V(nil)` for the same reason — the field holds a raw null with no type. A
-  nil map/slice at top level, and a nil slice field, render correctly (`T(nil)`).
+  (`%#v` of a nil map field inside a struct renders correctly as `map[K]V(nil)` — its
+  static type name is recovered from the field-type registry even though the value is
+  a bare null.)
+- **`%#v` of a `[]byte` field** spells the type `[]byte` rather than Go's reflect
+  spelling `[]uint8` (Go uses `[]byte` at top level but `[]uint8` for a struct field —
+  goclr uses `[]byte` in both). Element values and length are exact. Minor cosmetic
+  divergence on the struct-field path only.
 - **`%v`/`%+v` of a nested non-nil pointer-to-struct field** prints `&{…}` (the
   dereferenced content) instead of Go's `0x…` address. Go only expands a pointer to
   `&{…}` at the top level; deeper pointer fields print their address. Since the

@@ -17,7 +17,8 @@ func main() {
 	fmt.Printf("%#v\n", []byte(nil))
 	fmt.Printf("%#v\n", []byte{})
 
-	// nil slice field inside a struct keeps its element type.
+	// nil slice/map fields inside a struct keep their element types.
+	fmt.Printf("%#v\n", S{})
 	fmt.Printf("%#v\n", S{L: []int{1}, M: map[string]int{"a": 1}})
 	fmt.Printf("%#v\n", S{L: []int{}, M: map[string]int{}})
 

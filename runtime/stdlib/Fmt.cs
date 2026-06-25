@@ -686,7 +686,20 @@ public static class Fmt
                 var t = v.GetType();
                 var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
                 var sb = new StringBuilder("main." + t.Name + "{");
-                for (int i = 0; i < fields.Length; i++) { if (i > 0) sb.Append(", "); sb.Append(fields[i].Name).Append(':').Append(FormatGoSyntax(RetagField(t.Name, fields[i].Name, fields[i].GetValue(v)))); }
+                for (int i = 0; i < fields.Length; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    var fv = fields[i].GetValue(v);
+                    sb.Append(fields[i].Name).Append(':');
+                    // A nil map field is a bare null with no value to re-tag, but its static
+                    // type name is registered — render map[K]V(nil) like Go rather than <nil>.
+                    if (fv is null)
+                    {
+                        string fn = Rt.NamedTypeName(Rt.FieldTypeId(t.Name, fields[i].Name));
+                        sb.Append(fn.StartsWith("map[", System.StringComparison.Ordinal) ? fn + "(nil)" : FormatGoSyntax(fv));
+                    }
+                    else sb.Append(FormatGoSyntax(RetagField(t.Name, fields[i].Name, fv)));
+                }
                 return sb.Append('}').ToString();
             }
         }
