@@ -223,7 +223,9 @@ public static class Template
     public static void ExecError_SetErr(object e, object? v) => ((GoExecError)e).Err = v;
     public static GoString ExecError_Error(object e) => ((GoExecError)e).Error();
     public static object? ExecError_Unwrap(object e) => ((GoExecError)e).Err;
-    public static object Tmpl_Lookup(object t, GoString name) => ((GoTemplate)t).Set.TryGetValue(name.ToDotNetString(), out var s) ? s : t;
+    // (*Template).Lookup returns the named template, or nil if it doesn't exist (Go), not the
+    // receiver — callers test the result against nil.
+    public static object? Tmpl_Lookup(object t, GoString name) => ((GoTemplate)t).Set.TryGetValue(name.ToDotNetString(), out var s) ? s : null;
     public static object Tmpl_Option(object t, GoSlice opts) => t;
 
     // Struct fields whose static type is an html/template trusted-string type, keyed
