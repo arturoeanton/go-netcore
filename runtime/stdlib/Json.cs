@@ -195,13 +195,13 @@ public static class Json
                 continue;
             }
             string name = f.Name;
-            bool omitempty = false;
+            bool omitempty = false, quoted = false;
             if (tag.Length > 0)
             {
                 var parts = tag.Split(',');
-                if (parts[0] == "-") continue;
+                if (parts.Length == 1 && parts[0] == "-") continue; // json:"-" skips; json:"-," keeps the field named "-"
                 if (parts[0].Length > 0) name = parts[0];
-                for (int i = 1; i < parts.Length; i++) if (parts[i] == "omitempty") omitempty = true;
+                for (int i = 1; i < parts.Length; i++) { if (parts[i] == "omitempty") omitempty = true; else if (parts[i] == "string") quoted = true; }
             }
             if (omitempty && IsEmpty(val)) continue;
             if (!first) sb.Append(',');
@@ -211,10 +211,30 @@ public static class Json
             // raw numeric text unquoted; RawMessage emits its bytes verbatim as JSON.
             long ftid = Rt.FieldTypeId(t.Name, f.Name);
             string ftn = ftid != 0 ? Rt.NamedTypeName(ftid) : "";
-            if (ftn == "json.Number") { WriteRawNumber(sb, val); }
+            // ,string: a scalar field is wrapped in a quoted JSON string ("port":"8080").
+            if (quoted && IsQuotableScalar(val)) { WriteQuotedScalar(sb, val); }
+            else if (ftn == "json.Number") { WriteRawNumber(sb, val); }
             else if (ftn == "json.RawMessage") { WriteRawMessage(sb, val); }
             else Write(sb, val);
         }
+    }
+
+    // The ,string option applies to bool / number / string scalar fields only (Go ignores it
+    // for other kinds). A GoNamed scalar (e.g. a named int) unwraps to its underlying value.
+    private static bool IsQuotableScalar(object? v) => v switch
+    {
+        bool or long or int or ulong or uint or double or float or GoString => true,
+        GoNamed n => IsQuotableScalar(n.Value),
+        _ => false,
+    };
+
+    // Render the value's normal JSON then wrap that text in a JSON string: int 8080 -> "8080",
+    // bool true -> "true", string "abc" -> "\"abc\"".
+    private static void WriteQuotedScalar(StringBuilder sb, object? val)
+    {
+        var inner = new StringBuilder();
+        Write(inner, val);
+        WriteString(sb, inner.ToString());
     }
 
     // json.Number marshals as the raw numeric literal (no quotes). An empty Number is
@@ -439,7 +459,16 @@ public static class Json
             }
             string jkey = fd.GetProperty("j").GetString() ?? "";
             if (!members.TryGetValue(jkey, out var jv)) continue;
-            object? val = Decode(jv, fd.GetProperty("t"));
+            var ft = fd.GetProperty("t");
+            object? val;
+            // ,string option ("q":true): the value is carried as a quoted JSON string whose
+            // content is the real JSON for the field (e.g. "9090" -> 9090, "true" -> true).
+            if (fd.TryGetProperty("q", out var qp) && qp.GetBoolean() && jv.ValueKind == JsonValueKind.String)
+            {
+                using var inner = JsonDocument.Parse(jv.GetString() ?? "null");
+                val = Decode(inner.RootElement, ft);
+            }
+            else { val = Decode(jv, ft); }
             fi.SetValue(inst, Coerce(val, fi.FieldType));
         }
         return inst;

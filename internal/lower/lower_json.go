@@ -201,6 +201,9 @@ func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string 
 			b.WriteString(strconv.Quote(f.Name()))
 			b.WriteString(`,"t":`)
 			b.WriteString(l.jsonDescriptor(f.Type(), seen))
+			if jsonStringOption(u.Tag(i)) {
+				b.WriteString(`,"q":true`) // ,string: value is carried as a quoted JSON string
+			}
 			b.WriteByte('}')
 		}
 		b.WriteString(`]}`)
@@ -229,6 +232,22 @@ func isEmbeddedStructField(f *types.Var, tag string) bool {
 	}
 	_, isStruct := et.Underlying().(*types.Struct)
 	return isStruct
+}
+
+// jsonStringOption reports whether a field's json tag carries the ",string" option
+// (the value is encoded as / decoded from a quoted JSON string).
+func jsonStringOption(tag string) bool {
+	jt, ok := structTagLookup(tag, "json")
+	if !ok {
+		return false
+	}
+	parts := strings.Split(jt, ",")
+	for _, p := range parts[1:] {
+		if p == "string" {
+			return true
+		}
+	}
+	return false
 }
 
 func jsonFieldKey(name, tag string) (string, bool) {
