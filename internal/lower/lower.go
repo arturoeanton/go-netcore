@@ -461,7 +461,14 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	// Collect (and tag — typeTagFor assigns ids) identity-bearing struct fields before the
 	// named-type registrations below are emitted, so any newly-assigned id is registered.
 	idFields := c.identityFields()
-	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.handlers) == 0 && len(c.bridges) == 0 && len(c.namedNames) == 0 && len(safe) == 0 && len(idFields) == 0 {
+	hasDisplay := false
+	for _, s := range c.structOrder {
+		if s.Display != "" {
+			hasDisplay = true
+			break
+		}
+	}
+	if len(c.varInits) == 0 && len(c.initFuncs) == 0 && len(tagged) == 0 && len(c.stringers) == 0 && len(c.handlers) == 0 && len(c.bridges) == 0 && len(c.namedNames) == 0 && len(safe) == 0 && len(idFields) == 0 && !hasDisplay {
 		return nil, true
 	}
 	// The package-var initializers and tag registrations are emitted into a series

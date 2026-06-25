@@ -3,6 +3,7 @@ package lower
 import (
 	"go/ast"
 	"go/types"
+	"sort"
 	"strings"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
@@ -162,7 +163,7 @@ func (l *funcLowerer) structForLocalMono(named *types.Named) (goir.Type, bool) {
 	if s, ok := l.structByName[name]; ok {
 		return goir.StructType(s), true
 	}
-	s := &goir.Struct{Name: name, GoName: named.Obj().Name(), Id: int(l.nextTypeId())}
+	s := &goir.Struct{Name: name, GoName: named.Obj().Name(), Display: l.localTypeDisplay(named), Id: int(l.nextTypeId())}
 	l.structByName[name] = s // register before fields to tolerate self-reference
 	l.structOrder = append(l.structOrder, s)
 	for i := 0; i < st.NumFields(); i++ {
@@ -174,6 +175,35 @@ func (l *funcLowerer) structForLocalMono(named *types.Named) (goir.Type, bool) {
 		s.Fields = append(s.Fields, goir.Field{Name: f.Name(), Type: ft, Tag: st.Tag(i)})
 	}
 	return goir.StructType(s), true
+}
+
+// localTypeDisplay builds the reflect/%T name of a local type declared inside a generic
+// function. Go names it with the enclosing function's type arguments, in declaration
+// order and including ones the type does not use ("main.box[string,int]"). The active
+// substitution's keys are exactly that function's type parameters, so order them by
+// their declaration index.
+func (l *funcLowerer) localTypeDisplay(named *types.Named) string {
+	base := named.Obj().Name()
+	if p := named.Obj().Pkg(); p != nil {
+		base = p.Name() + "." + base
+	}
+	type arg struct {
+		idx int
+		t   types.Type
+	}
+	var args []arg
+	for tp, ct := range l.typeSubst {
+		args = append(args, arg{tp.Index(), ct})
+	}
+	if len(args) == 0 {
+		return ""
+	}
+	sort.Slice(args, func(i, j int) bool { return args[i].idx < args[j].idx })
+	parts := make([]string, len(args))
+	for i, a := range args {
+		parts[i] = typeDescStr(a.t)
+	}
+	return base + "[" + strings.Join(parts, ",") + "]"
 }
 
 // fieldParamType (on funcLowerer) mirrors lowerCtx.fieldParamType but routes
