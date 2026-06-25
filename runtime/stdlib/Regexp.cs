@@ -296,11 +296,45 @@ public static class Regexp
         string lit = repl.ToDotNetString();
         return GoString.FromDotNetString(((GoRegexp)r).Re.Replace(s.ToDotNetString(), (Match m) => lit));
     }
-    public static GoSlice Re_Split(object r, GoString s, long n)
+    // Go's (*Regexp).Split — NOT .NET Regex.Split (whose n-limit and empty-match handling
+    // differ). With limit n the final element is the unsplit remainder, and an empty pattern
+    // (e.g. `\s*`) does not produce spurious empty fields.
+    public static GoSlice Re_Split(object r, GoString gs, long n)
     {
-        var parts = ((GoRegexp)r).Re.Split(s.ToDotNetString());
-        if (n >= 0 && parts.Length > n) { var trimmed = new string[n]; System.Array.Copy(parts, trimmed, (int)n); parts = trimmed; }
-        return StrSlice(parts);
+        if (n == 0) return default; // nil
+        string s = gs.ToDotNetString();
+        if (s.Length == 0) return StrSlice(new[] { "" }); // a non-empty pattern on "" -> [""]
+        var matches = GoMatchSpans(Re(r), s, n);
+        var outp = new System.Collections.Generic.List<string>();
+        int beg = 0, end = 0;
+        foreach (var (mstart, mlen) in matches)
+        {
+            if (n > 0 && outp.Count >= n - 1) break;
+            end = mstart;
+            if (mstart + mlen != 0) outp.Add(s.Substring(beg, end - beg)); // skip the leading empty match
+            beg = mstart + mlen;
+        }
+        if (end != s.Length) outp.Add(s.Substring(beg));
+        return StrSlice(outp.ToArray());
+    }
+
+    // Enumerate matches the way Go's regexp does: an empty match sitting exactly at the
+    // previous match's end is skipped, and search advances one position past an empty match.
+    private static System.Collections.Generic.List<(int start, int len)> GoMatchSpans(Regex re, string s, long n)
+    {
+        var outp = new System.Collections.Generic.List<(int, int)>();
+        int pos = 0, prevEnd = -1;
+        while (pos <= s.Length)
+        {
+            if (n >= 0 && outp.Count >= n) break;
+            var m = re.Match(s, pos);
+            if (!m.Success) break;
+            bool accept = !(m.Length == 0 && m.Index == prevEnd);
+            if (accept) outp.Add((m.Index, m.Length));
+            prevEnd = m.Index + m.Length;
+            pos = m.Length > 0 ? m.Index + m.Length : m.Index + 1;
+        }
+        return outp;
     }
 
     // ---- byte / index / submatch variants -------------------------------------------
