@@ -108,7 +108,8 @@ public static class Csv
             int want = r.FieldsPerRecord > 0 ? (int)r.FieldsPerRecord : r.Expect;
             if (want < 0) { r.Expect = line.Count; want = line.Count; }
             if (line.Count != want)
-                return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("record on line " + r.RowIdx + ": wrong number of fields")) };
+                // Go returns the parsed record ALONGSIDE the field-count error, not a nil record.
+                return new object?[] { Row(line), new GoError(GoString.FromDotNetString("record on line " + r.RowIdx + ": wrong number of fields")) };
         }
         return new object?[] { Row(line), null };
     }
