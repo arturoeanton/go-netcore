@@ -136,6 +136,18 @@ public static class GoSlices
         return new GoSlice { Data = s.Data, Off = s.Off + (int)lo, Len = (int)(hi - lo), Cap = s.Cap - (int)lo };
     }
 
+    /// <summary>s[lo:hi:max] — the full-slice expression. Same backing window as s[lo:hi]
+    /// but the capacity is capped at max-lo, so a later append past it reallocates instead
+    /// of writing into s's tail. Bounds are checked in Go's order (cap, then hi, then lo).</summary>
+    public static GoSlice Slice3(GoSlice s, long lo, long hi, long max)
+    {
+        if (max > s.Cap) throw Bounds($"[::{max}] with capacity {s.Cap}");
+        if (hi > max) throw Bounds($"[:{hi}:{max}]");
+        if (lo > hi) throw Bounds($"[{lo}:{hi}:]");
+        if (lo < 0) throw Bounds($"[{lo}::]");
+        return new GoSlice { Data = s.Data, Off = s.Off + (int)lo, Len = (int)(hi - lo), Cap = (int)(max - lo) };
+    }
+
     private static GoPanicException Bounds(string detail) =>
         new(GoString.FromDotNetString("runtime error: slice bounds out of range " + detail));
 

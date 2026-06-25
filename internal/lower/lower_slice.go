@@ -410,6 +410,16 @@ func (l *funcLowerer) sliceExpr(e *ast.SliceExpr) {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		l.emit(goir.Op{Code: goir.OpSliceLen})
 	}
+	if e.Max != nil {
+		// s[lo:hi:max] — the full-slice expression caps the result's capacity at max-lo,
+		// so a later append past it reallocates instead of writing into s's tail.
+		l.expr(e.Max)
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "Slice3",
+			Params: []goir.Type{sliceTy, goir.TInt64, goir.TInt64, goir.TInt64}, Ret: sliceTy,
+		}})
+		return
+	}
 	l.emit(goir.Op{Code: goir.OpSliceSlice})
 }
 

@@ -314,6 +314,9 @@ public static class Rt
         return GoSlices.AppendN(s, add, m);
     }
 
+    /// <summary>s[lo:hi:max] — the full-slice expression (caps the result's capacity).</summary>
+    public static GoSlice Slice3(GoSlice s, long lo, long hi, long max) => GoSlices.Slice3(s, lo, hi, max);
+
     /// <summary>s[low:high] for a string — the byte subrange (Go slices strings by
     /// byte offset). Panics out of range, like Go.</summary>
     public static GoString StrSlice(GoString s, long low, long high)
