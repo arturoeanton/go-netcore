@@ -88,6 +88,8 @@ public static class Json
             case ulong u: sb.Append(u.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
             case double d: WriteNumber(sb, d); break;
             case GoString gs: WriteString(sb, gs.ToDotNetString()); break;
+            // time.Time marshals as its RFC3339 string (Time.MarshalJSON), not the raw struct.
+            case GoTime gt: sb.Append(Time.JsonText(gt)); break;
             case GoNamed n: // typed box: special-case json's named types, else marshal underlying
             {
                 string tn = Rt.NamedTypeName(n.TypeId);
@@ -331,6 +333,10 @@ public static class Json
     private static void SetPtr(object? target, object? value)
     {
         if (target == null) throw new System.Exception("json: Unmarshal(nil)");
+        // time.Time is a value-type shim whose pointer IS the same GoTime object, so a
+        // top-level Unmarshal(&t) hands us the GoTime directly — copy the decoded fields into
+        // it in place (there is no GoPtr cell to write through).
+        if (target is GoTime tt && value is GoTime nv) { tt.N = nv.N; tt.IsZero = nv.IsZero; return; }
         // The non-generic GoPtr cell may alias a struct field (FSet) or slice element (Arr),
         // not just hold its own Value — write through GoPtrs.Set so the aliased storage is
         // updated. (Setting the unused Value field left e.g. &token.Header empty.)
@@ -363,6 +369,8 @@ public static class Json
         if (j.ValueKind == JsonValueKind.Null && k != "raw") return DefaultFor(k);
         switch (k)
         {
+            // time.Time: parse the RFC3339 JSON string into a GoTime (Time.UnmarshalJSON).
+            case "time": return Time.ParseRFC3339(j.GetString() ?? "");
             // json.Number: keep the source numeric literal as a string (named string type).
             case "number": return GoString.FromDotNetString(j.GetRawText());
             // json.RawMessage: store the value's raw JSON bytes verbatim (named []byte type).

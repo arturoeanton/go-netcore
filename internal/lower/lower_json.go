@@ -116,12 +116,15 @@ func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string 
 	// and RawMessage (the value's raw bytes verbatim). They must not be decoded as a
 	// plain string / []byte, so flag them before falling through to the underlying type.
 	if named, ok := t.(*types.Named); ok {
-		if obj := named.Obj(); obj.Pkg() != nil && obj.Pkg().Path() == "encoding/json" {
-			switch obj.Name() {
-			case "Number":
+		if obj := named.Obj(); obj.Pkg() != nil {
+			switch obj.Pkg().Path() + "." + obj.Name() {
+			case "encoding/json.Number":
 				return `{"k":"number"}`
-			case "RawMessage":
+			case "encoding/json.RawMessage":
 				return `{"k":"raw"}`
+			case "time.Time":
+				// time.Time decodes from its RFC3339 string via Time.UnmarshalJSON.
+				return `{"k":"time"}`
 			}
 		}
 	}

@@ -293,6 +293,15 @@ public static class Time
     public static object?[] Time_MarshalJSON(object t) =>
         new object?[] { BytesOf(System.Text.Encoding.UTF8.GetBytes("\"" + DoFormat((GoTime)t, RFC3339NanoLayout) + "\"")), null };
 
+    // Helpers for the json shim to treat a time.Time field/value like Go's Time.MarshalJSON /
+    // UnmarshalJSON (an RFC3339 quoted string) instead of the raw GoTime struct fields.
+    public static string JsonText(object t) => "\"" + DoFormat((GoTime)t, RFC3339NanoLayout) + "\"";
+    public static object ParseRFC3339(string s)
+    {
+        var r = Parse(GoString.FromDotNetString(RFC3339NanoLayout), GoString.FromDotNetString(s));
+        return r[1] == null ? r[0]! : TimeZero();
+    }
+
     // Binary marshaling — faithful port of Go's V1 layout (UTC ⇒ offsetMin = -1):
     // [version=1][sec int64 BE][nsec int32 BE][offsetMin int16 BE] = 15 bytes. GobEncode == MarshalBinary.
     private static byte[] MarshalBin(GoTime g)

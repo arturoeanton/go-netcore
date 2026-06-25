@@ -84,11 +84,15 @@ one; these don't yet):
   deferred:** re-marshaling a `[]json.Number` or `map[string]json.RawMessage` (the
   elements lose their named identity once stored in a type-erased container, so they
   emit as a quoted string / byte array). Reading *into* such containers is correct.
-- **`json.Marshal` of a user `json.Marshaler`** (a type with its own custom
-  `MarshalJSON`) is not honored: the runtime marshals the underlying value
-  structurally (a `Temp float64` emits the number) because the named type loses its
-  identity once stored as a struct field or slice element. Honoring it needs the
-  marshaled type's static descriptor threaded into `Marshal` (as `Unmarshal` does).
+- **`time.Time` in JSON** marshals/unmarshals as its RFC3339 string (Go's
+  `Time.MarshalJSON`/`UnmarshalJSON`) as a struct field, slice element, map value, or
+  top-level target — not the raw runtime struct.
+- **`json.Marshal` of a *user* `json.Marshaler`** (a type with its own custom
+  `MarshalJSON`, other than the built-ins special-cased above) is not honored: the
+  runtime marshals the underlying value structurally (a `Temp float64` emits the
+  number) because the named type loses its identity once stored as a struct field or
+  slice element. Honoring it needs the marshaled type's static descriptor threaded
+  into `Marshal` (as `Unmarshal` does).
 
 ## Stringer/Error of named types — the typed box (largely implemented)
 
@@ -144,6 +148,21 @@ values, or used as a shim method value (`w := b.WriteString`) all work — the r
 wrapped in a native closure (`Closures.FromShim`) that invokes the shim by reflection.
 Variadic shim function values (`sp := fmt.Sprintf; sp("%d", 1)`) pack their trailing
 arguments into the shim's slice parameter. Fixture 406_shim_func_value.
+
+## range-over-func with return / defer / labeled jump
+
+`for x := range seq` over an `iter.Seq`/`iter.Seq2` (Go 1.23 range-over-func) works,
+including `break` and `continue`. A **`return`, `defer`, or labeled `break`/`continue`/
+`goto` inside the loop body** is not yet lowered (it needs Go's state-machine rewrite
+that returns from the enclosing function through the yield protocol) and reports a
+clear error rather than miscompiling. `iter.Pull` is supported.
+
+## strings.EqualFold special folds
+
+`strings.EqualFold` uses .NET ordinal case-insensitive comparison, which matches Go for
+ASCII and the common Latin/Greek/Cyrillic letters but not the few multi-codepoint
+Unicode fold orbits (e.g. `K` U+212A KELVIN SIGN ↔ `k`, `ſ` long-s ↔ `s`, `Å` U+212B
+↔ `å`). Go folds these via `unicode.SimpleFold`'s orbit table; goclr does not.
 
 ## regexp POSIX leftmost-longest
 
