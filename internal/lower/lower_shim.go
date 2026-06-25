@@ -181,6 +181,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"hash/fnv":        {"New32": {"Hashes", "Fnv32"}, "New32a": {"Hashes", "Fnv32a"}, "New64": {"Hashes", "Fnv64"}, "New64a": {"Hashes", "Fnv64a"}, "New128": {"Hashes", "Fnv128"}, "New128a": {"Hashes", "Fnv128a"}},
 	"hash/crc64":      {"MakeTable": {"Hashes", "Crc64MakeTable"}, "New": {"Hashes", "Crc64New"}, "Checksum": {"Hashes", "Crc64Checksum"}, "Update": {"Hashes", "Crc64Update"}},
 	"index/suffixarray": {"New": {"Suffixarray", "New"}},
+	"encoding/ascii85":  {"Encode": {"Ascii85", "Encode"}, "Decode": {"Ascii85", "Decode"}, "MaxEncodedLen": {"Ascii85", "MaxEncodedLen"}},
 	"mime/quotedprintable": {"NewWriter": {"QuotedPrintable", "NewWriter"}, "NewReader": {"QuotedPrintable", "NewReader"}},
 	"go/token": {"IsKeyword": {"GoToken", "IsKeyword"}, "IsIdentifier": {"GoToken", "IsIdentifier"}, "IsExported": {"GoToken", "IsExported"}, "Lookup": {"GoToken", "Lookup"}, "NewFileSet": {"GoToken", "NewFileSet"}},
 	"text/scanner": {"TokenString": {"GoToken", "ScannerTokenString"}},
