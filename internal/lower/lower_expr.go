@@ -1024,6 +1024,14 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 		l.fail(e.Pos(), "conversion target type")
 		return goir.TVoid
 	}
+	// T(x) where T is an interface type (fmt.Stringer(c), error(e), any(v)): box x into
+	// the interface and tag it with x's dynamic-type identity — exactly an implicit
+	// assignment to the interface. Without this the value is left unboxed and the later
+	// method dispatch reads a bad type id.
+	if target.Kind == goir.KObject {
+		l.exprCoerced(e.Args[0], target)
+		return target
+	}
 	// T(nil) — e.g. []rune(nil), map[K]V(nil) — is the target's zero value. Handle
 	// before exprType(arg), which has no type for the untyped nil.
 	if isNilIdent(e.Args[0]) {
