@@ -360,14 +360,16 @@ public static class Fmt
         {
             if (v is GoSlice rsl) return RecurseSlice(rsl, sp);
             if (v is GoMap rmp) return RecurseMap(rmp, sp);
+            if (IsStructVal(v)) return RecurseStruct(v!, sp);
+            if (v is GoPtr rgp && IsStructVal(rgp.Value)) return "&" + RecurseStruct(rgp.Value!, sp);
         }
         switch (verb)
         {
             case 'd': return IntVerb(v, sp, 10, false);
             case 'b': return IntVerb(v, sp, 2, false);
             case 'o': return IntVerb(v, sp, 8, sp.Hash);
-            case 'x': return v is GoString gx ? HexStr(gx, false) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IntVerb(v, sp, 16, sp.Hash);
-            case 'X': return v is GoString gX ? HexStr(gX, true) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IntVerb(v, sp, -16, sp.Hash);
+            case 'x': return v is GoString gx ? HexStr(gx, false) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IntVerb(v, sp, 16, sp.Hash);
+            case 'X': return v is GoString gX ? HexStr(gX, true) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IntVerb(v, sp, -16, sp.Hash);
             case 't': return v is bool bb ? (bb ? "true" : "false") : BadVerb(verb, v);
             case 'c': return IsIntegral(v) ? char.ConvertFromUtf32((int)ToLong(v)) : BadVerb(verb, v);
             case 'U': return IsIntegral(v) ? UnicodeVerb(ToLong(v), sp.Hash) : BadVerb(verb, v);
@@ -451,6 +453,10 @@ public static class Fmt
             if (sp.Prec >= 0 && ss.Length > sp.Prec) ss = ss.Substring(0, sp.Prec);
             return ss;
         }
+        // %s of a struct with no String() formats each field with %s (Go recurses the verb);
+        // a pointer to such a struct prints &{...}.
+        if (IsStructVal(v)) return RecurseStruct(v!, sp);
+        if (v is GoPtr sgp && IsStructVal(sgp.Value)) return "&" + RecurseStruct(sgp.Value!, sp);
         // %s applies to strings, errors, and composites; a bare number/bool/char
         // is a bad verb in Go (it has no string form).
         if (IsIntegral(v) || IsFloaty(v) || v is bool) return BadVerb('s', v);
@@ -495,6 +501,16 @@ public static class Fmt
             var sb = new StringBuilder("[");
             for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(sl.Data![sl.Off + i])); }
             return sb.Append(']').ToString();
+        }
+        // %q over a struct quotes each field.
+        if (IsStructVal(v))
+        {
+            var t = v!.GetType();
+            var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            var sb = new StringBuilder("{");
+            for (int i = 0; i < fields.Length; i++)
+            { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(RetagField(t.Name, fields[i].Name, fields[i].GetValue(v)))); }
+            return sb.Append('}').ToString();
         }
         return BadVerb('q', v);
     }
@@ -831,6 +847,25 @@ public static class Fmt
         var sb = new StringBuilder("[");
         for (int i = 0; i < s.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(FormatVerb(s.Data[s.Off + i], sp)); }
         return sb.Append(']').ToString();
+    }
+
+    // A numeric/string verb applied to a struct formats each field with that same verb,
+    // like Go (%d of {1 "x"} -> "{1 %!d(string=x)}"). Field names are not shown (only %+v
+    // does that). The verb's Stringer dispatch, when applicable, is handled by the caller.
+    private static string RecurseStruct(object v, Spec sp)
+    {
+        var t = v.GetType();
+        var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
+        var sb = new StringBuilder("{");
+        for (int i = 0; i < fields.Length; i++)
+        {
+            if (i > 0) sb.Append(' ');
+            object? fv = fields[i].GetValue(v);
+            if (fv == null && fields[i].FieldType == typeof(GoMap)) fv = NilMapValue;
+            fv = RetagField(t.Name, fields[i].Name, fv);
+            sb.Append(FormatVerb(fv, sp));
+        }
+        return sb.Append('}').ToString();
     }
 
     private static string RecurseMap(GoMap m, Spec sp)

@@ -46,6 +46,10 @@ one; these don't yet):
   are exact.
 - **`%T` of a slice/map** prints `[]interface {}` / `map[string]interface {}`
   rather than the precise element types.
+- **A width/precision flag does not propagate to each element** when a verb recurses
+  into a slice/map/struct: `%03d` of `[]int{5,42}` prints `[5 42]`, not Go's
+  `[005 042]`. The verb and its sign flag recurse correctly; only the pad width is
+  applied to the whole composite rather than per element.
 - **`%T`/`%#v` of an anonymous struct** prints the synthesized name
   (`main.__anonN`) instead of Go's structural form (`struct { X int; Y string }`).
   The field types can't be recovered byte-exactly from runtime values (`int` and
