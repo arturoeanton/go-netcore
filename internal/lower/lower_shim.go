@@ -1288,6 +1288,7 @@ func isOpaqueShimType(named *types.Named) bool {
 var binaryMethods = map[string]shimFunc{
 	"Uint16": {"Binary", "Uint16"}, "Uint32": {"Binary", "Uint32"}, "Uint64": {"Binary", "Uint64"},
 	"PutUint16": {"Binary", "PutUint16"}, "PutUint32": {"Binary", "PutUint32"}, "PutUint64": {"Binary", "PutUint64"},
+	"AppendUint16": {"Binary", "AppendUint16"}, "AppendUint32": {"Binary", "AppendUint32"}, "AppendUint64": {"Binary", "AppendUint64"},
 }
 
 var shimMethodRegistry = map[string]map[string]shimFunc{

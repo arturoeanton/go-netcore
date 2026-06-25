@@ -261,4 +261,28 @@ public static class Binary
         var e = (GoByteOrder)o;
         for (int i = 0; i < 8; i++) Set(b, i, (byte)(v >> (e.Big ? (7 - i) * 8 : i * 8)));
     }
+
+    // binary.ByteOrder.AppendUint16/32/64 (Go 1.19 AppendByteOrder): append the value's
+    // bytes (in the order's endianness) to buf and return the grown slice.
+    public static GoSlice AppendUint16(object o, GoSlice buf, uint v)
+    {
+        bool big = ((GoByteOrder)o).Big;
+        var add = new System.Collections.Generic.List<byte>(2);
+        for (int i = 0; i < 2; i++) add.Add((byte)(v >> (big ? (1 - i) * 8 : i * 8)));
+        return AppendBytes(buf, add);
+    }
+    public static GoSlice AppendUint32(object o, GoSlice buf, uint v)
+    {
+        bool big = ((GoByteOrder)o).Big;
+        var add = new System.Collections.Generic.List<byte>(4);
+        for (int i = 0; i < 4; i++) add.Add((byte)(v >> (big ? (3 - i) * 8 : i * 8)));
+        return AppendBytes(buf, add);
+    }
+    public static GoSlice AppendUint64(object o, GoSlice buf, ulong v)
+    {
+        bool big = ((GoByteOrder)o).Big;
+        var add = new System.Collections.Generic.List<byte>(8);
+        for (int i = 0; i < 8; i++) add.Add((byte)(v >> (big ? (7 - i) * 8 : i * 8)));
+        return AppendBytes(buf, add);
+    }
 }
