@@ -95,7 +95,10 @@ func ChanType(elem Type) Type { return Type{Kind: KChan, Elem: &elem} }
 type Struct struct {
 	Name   string // emitted CLR type name
 	GoName string // original Go type name
-	Fields []Field
+	// Display is the reflect/%T display name ("main.Pair[string,int]") for a generic
+	// instantiation whose emitted Name is mangled; empty when Name already matches.
+	Display string
+	Fields  []Field
 	// TypeDefRow is the struct's TypeDef row, assigned by the emitter before
 	// signatures are built so type references can be encoded.
 	TypeDefRow int

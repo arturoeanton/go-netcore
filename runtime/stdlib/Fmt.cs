@@ -544,8 +544,17 @@ public static class Fmt
         GoMap => "map[string]interface {}",
         GoPtr p => PtrTypeName(p),
         GoNamed nm => NamedTypeNameOr(nm),
-        _ => "main." + v.GetType().Name,
+        _ => StructTypeName(v),
     };
+
+    // %T of a plain struct value: a generic instantiation has a registered reflect
+    // display name ("main.Pair[string,int]"); a non-generic struct's CLR name already
+    // matches its Go name, so "main." + the type name.
+    private static string StructTypeName(object v)
+    {
+        var d = Rt.StructDisplay(v.GetType().Name);
+        return d.Length > 0 ? d : "main." + v.GetType().Name;
+    }
 
     // The pointee type name of a GoPtr for %T: prefer the pointee's registered named/struct
     // identity (so *Color reports main.Color, not the underlying int), falling back to the

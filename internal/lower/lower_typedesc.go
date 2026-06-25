@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/types"
 	"sort"
+	"strings"
 
 	"github.com/arturoeanton/go-netcore/internal/goir"
 )
@@ -168,7 +169,55 @@ func reflectKind(t types.Type) int {
 // typeDescStr renders a type the way reflect.Type.String does: package-qualified by
 // name ("main.User"), with composites spelled out ("[]string", "map[string]int").
 func typeDescStr(t types.Type) string {
+	// Go reflect renders a generic instantiation with no space after commas in the
+	// type-argument list ("main.Pair[string,int]"); types.TypeString inserts ", ".
+	if s, ok := reflectGenericName(t); ok {
+		return s
+	}
 	return types.TypeString(t, func(p *types.Package) string { return p.Name() })
+}
+
+// reflectGenericName renders a type that contains a generic instantiation the way Go
+// reflect does — no space after commas inside the [...] type-argument list. Returns
+// ok=false for types with no generic instantiation, so the caller uses types.TypeString.
+func reflectGenericName(t types.Type) (string, bool) {
+	switch u := t.(type) {
+	case *types.Named:
+		ta := u.TypeArgs()
+		if ta == nil || ta.Len() == 0 {
+			return "", false
+		}
+		base := u.Obj().Name()
+		if p := u.Obj().Pkg(); p != nil {
+			base = p.Name() + "." + base
+		}
+		parts := make([]string, ta.Len())
+		for i := 0; i < ta.Len(); i++ {
+			parts[i] = typeDescStr(ta.At(i))
+		}
+		return base + "[" + strings.Join(parts, ",") + "]", true
+	case *types.Slice:
+		if s, ok := reflectGenericName(u.Elem()); ok {
+			return "[]" + s, true
+		}
+	case *types.Pointer:
+		if s, ok := reflectGenericName(u.Elem()); ok {
+			return "*" + s, true
+		}
+	case *types.Map:
+		ks, kok := reflectGenericName(u.Key())
+		vs, vok := reflectGenericName(u.Elem())
+		if kok || vok {
+			if !kok {
+				ks = typeDescStr(u.Key())
+			}
+			if !vok {
+				vs = typeDescStr(u.Elem())
+			}
+			return "map[" + ks + "]" + vs, true
+		}
+	}
+	return "", false
 }
 
 // descId returns the runtime descriptor id for t, building it and (recursively) its

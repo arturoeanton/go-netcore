@@ -35,6 +35,14 @@ public static class Rt
     /// <summary>Go display name ("pkg.Type") for a type id, or "" if unknown.</summary>
     public static string NamedTypeName(long id) => _namedNames.TryGetValue(id, out var n) ? n : "";
 
+    // Reflect/%T display name for a generic-instantiation struct, keyed by its mangled
+    // CLR type name ("Pair__string_int" -> "main.Pair[string,int]").
+    private static readonly System.Collections.Generic.Dictionary<string, string> _structDisplay = new();
+    public static void RegisterStructDisplay(GoString clrName, GoString display) =>
+        _structDisplay[clrName.ToDotNetString()] = display.ToDotNetString();
+    public static string StructDisplay(string clrName) =>
+        _structDisplay.TryGetValue(clrName, out var d) ? d : "";
+
     // Composite type id -> element/value type's identity id, for re-tagging the bare
     // elements of a []Stringer / map[K]Stringer when fmt formats them.
     private static readonly System.Collections.Generic.Dictionary<long, long> _compositeElem = new();

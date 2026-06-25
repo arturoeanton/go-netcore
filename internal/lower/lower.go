@@ -535,6 +535,21 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 		cl.emit(goir.Op{Code: goir.OpLdcI8, Int: ft.typeID})
 		cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: fieldTypeExt})
 	}
+	// Register the reflect/%T display name for each generic-instantiation struct, keyed
+	// by its mangled CLR name, so fmt names a value of it like Go ("main.Pair[string,int]"
+	// instead of the mangled "main.Pair__string_int").
+	displayExt := &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "RegisterStructDisplay",
+		Params: []goir.Type{goir.TString, goir.TString}, Ret: goir.TVoid,
+	}
+	for _, s := range c.structOrder {
+		if s.Display == "" {
+			continue
+		}
+		cl.emit(goir.Op{Code: goir.OpStrConst, Str: s.Name})
+		cl.emit(goir.Op{Code: goir.OpStrConst, Str: s.Display})
+		cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: displayExt})
+	}
 	// Build descriptors for every named/struct type (for dynamic reflect), then
 	// register all runtime type descriptors — kind, name, type string, element/key
 	// types, struct fields — split across chunks like var inits.
@@ -929,8 +944,12 @@ func (c *lowerCtx) structFor(named *types.Named) *goir.Struct {
 	name := c.prefixForPkg(named.Obj().Pkg()) + named.Obj().Name()
 	// Instantiated generic structs (List[int], List[string]) share a base name;
 	// mangle the type arguments in so each instantiation is a distinct TypeDef.
+	display := ""
 	if ta := named.TypeArgs(); ta != nil && ta.Len() > 0 {
 		name = mangleMono(name + "[" + typeListString(ta) + "]")
+		// The mangled CLR name loses the Go spelling; keep the reflect/%T display name
+		// ("main.Pair[string,int]") so fmt can name a value of this instantiation.
+		display, _ = reflectGenericName(named)
 	}
 	// Distinct *types.Named can denote the same instantiation (e.g. Stack[int]
 	// reached from a var decl vs. a method receiver); dedup by emitted name so
@@ -939,7 +958,7 @@ func (c *lowerCtx) structFor(named *types.Named) *goir.Struct {
 		c.structReg[named] = s
 		return s
 	}
-	s := &goir.Struct{Name: name, GoName: named.Obj().Name(), Id: int(c.nextTypeId())}
+	s := &goir.Struct{Name: name, GoName: named.Obj().Name(), Display: display, Id: int(c.nextTypeId())}
 	c.structReg[named] = s // register before fields to tolerate references
 	c.structByName[name] = s
 	c.structOrder = append(c.structOrder, s)
