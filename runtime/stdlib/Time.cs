@@ -197,9 +197,15 @@ public static class Time
     // (t Time).AddDate(years, months, days int) Time — calendar arithmetic.
     public static object Time_AddDate(object t, long years, long months, long days)
     {
-        var dt = ToDateTime((GoTime)t).AddYears((int)years).AddMonths((int)months).AddDays((int)days);
-        long nsRemainder = ((GoTime)t).N % 100; // preserve sub-100ns part the DateTime tick can't hold
-        var r = FromDateTime(dt); r.N += nsRemainder; return r;
+        // Go adds the calendar components then NORMALIZES via time.Date: an out-of-range
+        // result (Jan 31 + 1 month = Feb 31) rolls over (-> Mar 3), it does NOT clamp to the
+        // month's last day the way .NET's AddMonths does. Route through Date(), whose AddDays
+        // path normalizes the same way Go does (and preserves the full sub-second nanos).
+        var gt = (GoTime)t;
+        var dt = ToDateTime(gt);
+        long nanos = ((gt.N % Second) + Second) % Second;
+        return Date(dt.Year + years, dt.Month + months, dt.Day + days,
+                    dt.Hour, dt.Minute, dt.Second, nanos, null);
     }
     public static object Time_Round(object t, long d) { var n = ((GoTime)t).N; if (d <= 0) return new GoTime { N = n, IsZero = ((GoTime)t).IsZero }; long r = n % d; long h = d / 2; n = r + r < d ? n - r : n - r + d; return new GoTime { N = n, IsZero = false }; }
     public static object Time_Truncate(object t, long d) { var n = ((GoTime)t).N; if (d <= 0) return new GoTime { N = n, IsZero = ((GoTime)t).IsZero }; return new GoTime { N = n - n % d, IsZero = false }; }
