@@ -5,7 +5,7 @@ using System.IO.Compression;
 using GoCLR.Runtime;
 
 /// <summary>A gzip/zlib/flate writer that buffers and emits on Close.</summary>
-public sealed class GoCompWriter { public object? W; public MemoryStream Mem = new(); public Stream Z = null!; public int Kind; }
+public sealed class GoCompWriter { public object? W; public MemoryStream Mem = new(); public Stream Z = null!; public int Kind; public string Name = "", Comment = ""; public long ModTime; }
 
 /// <summary>compress/flate.ReadError / WriteError (deprecated): a byte offset + wrapped error.</summary>
 [GoShim("compress/flate.ReadError")]
@@ -63,14 +63,64 @@ public static class Compress
         2 => new DeflateStream(mem, CompressionMode.Compress, true),
         _ => new GZipStream(mem, CompressionMode.Compress, true),
     };
-    public static object GzipNewWriter(object? w) { var m = new MemoryStream(); return new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 0), Kind = 0 }; }
+    // gzip buffers the raw bytes (Z stays null) and frames the whole stream on Close, so the
+    // Name/Comment header fields can be written; zlib/flate stream through the .NET wrapper.
+    public static object GzipNewWriter(object? w) => new GoCompWriter { W = w, Mem = new MemoryStream(), Kind = 0 };
     // gzip.NewWriterLevel(w, level) (*Writer, error): valid level is [HuffmanOnly(-2), BestCompression(9)].
     public static object?[] GzipNewWriterLevel(object? w, long level)
     {
         if (level < -2 || level > 9)
             return new object?[] { null, new GoError(GoString.FromDotNetString($"gzip: invalid compression level: {level}")) };
-        var m = new MemoryStream();
-        return new object?[] { new GoCompWriter { W = w, Mem = m, Z = Wrap(m, 0), Kind = 0 }, null };
+        return new object?[] { new GoCompWriter { W = w, Mem = new MemoryStream(), Kind = 0 }, null };
+    }
+
+    // (*gzip.Writer) header field accessors (Name/Comment, promoted from gzip.Header).
+    public static void Writer_SetName(object w, GoString v) => ((GoCompWriter)w).Name = v.ToDotNetString();
+    public static void Writer_SetComment(object w, GoString v) => ((GoCompWriter)w).Comment = v.ToDotNetString();
+    public static GoString Writer_Name(object w) => GoString.FromDotNetString(((GoCompWriter)w).Name);
+    public static GoString Writer_Comment(object w) => GoString.FromDotNetString(((GoCompWriter)w).Comment);
+    public static GoString GzReader_Name(object r) => GoString.FromDotNetString(((GoReader)r).GzName ?? "");
+    public static GoString GzReader_Comment(object r) => GoString.FromDotNetString(((GoReader)r).GzComment ?? "");
+
+    // Frame the buffered raw bytes as a gzip stream (RFC 1952): header (+ optional FNAME /
+    // FCOMMENT), the raw deflate body, then CRC-32 and ISIZE little-endian.
+    private static byte[] BuildGzip(GoCompWriter w)
+    {
+        byte[] raw = w.Mem.ToArray();
+        var o = new System.Collections.Generic.List<byte> { 0x1f, 0x8b, 8 };
+        byte flg = 0;
+        if (w.Name.Length > 0) flg |= 0x08;
+        if (w.Comment.Length > 0) flg |= 0x10;
+        o.Add(flg);
+        uint mt = (uint)w.ModTime;
+        o.Add((byte)mt); o.Add((byte)(mt >> 8)); o.Add((byte)(mt >> 16)); o.Add((byte)(mt >> 24));
+        o.Add(0);   // XFL
+        o.Add(255); // OS = unknown
+        if (w.Name.Length > 0) { foreach (char c in w.Name) o.Add((byte)c); o.Add(0); }
+        if (w.Comment.Length > 0) { foreach (char c in w.Comment) o.Add((byte)c); o.Add(0); }
+        byte[] body;
+        using (var def = new MemoryStream())
+        {
+            using (var ds = new DeflateStream(def, CompressionLevel.Optimal, true)) ds.Write(raw, 0, raw.Length);
+            body = def.ToArray();
+        }
+        if (body.Length == 0) body = new byte[] { 0x03, 0x00 }; // canonical empty-deflate final block
+        o.AddRange(body);
+        uint crc = Crc32(raw), isize = (uint)raw.Length;
+        o.Add((byte)crc); o.Add((byte)(crc >> 8)); o.Add((byte)(crc >> 16)); o.Add((byte)(crc >> 24));
+        o.Add((byte)isize); o.Add((byte)(isize >> 8)); o.Add((byte)(isize >> 16)); o.Add((byte)(isize >> 24));
+        return o.ToArray();
+    }
+
+    private static uint Crc32(byte[] data)
+    {
+        uint crc = 0xFFFFFFFF;
+        foreach (byte b in data)
+        {
+            crc ^= b;
+            for (int i = 0; i < 8; i++) crc = (crc >> 1) ^ (0xEDB88320u & (uint)-(int)(crc & 1));
+        }
+        return ~crc;
     }
     // gzip/zlib/flate Writer.Reset(w): discard buffered state and write subsequent output to w.
     public static void CompW_Reset(object wo, object? w)
@@ -101,17 +151,19 @@ public static class Compress
         var w = (GoCompWriter)wo;
         var buf = new byte[p.Len];
         for (int i = 0; i < p.Len; i++) buf[i] = (byte)System.Convert.ToInt64(p.Data![p.Off + i]);
-        w.Z.Write(buf, 0, buf.Length);
+        if (w.Kind == 0) w.Mem.Write(buf, 0, buf.Length); // gzip: buffer raw, frame on Close
+        else w.Z.Write(buf, 0, buf.Length);               // zlib/flate: stream through the .NET wrapper
         return new object?[] { (long)p.Len, null };
     }
     public static object? CompW_Close(object wo)
     {
         var w = (GoCompWriter)wo;
+        if (w.Kind == 0) { WriteRaw(w.W, BuildGzip(w)); return null; }
         w.Z.Dispose();
         WriteRaw(w.W, w.Mem.ToArray());
         return null;
     }
-    public static object? CompW_Flush(object wo) { ((GoCompWriter)wo).Z.Flush(); return null; }
+    public static object? CompW_Flush(object wo) { var w = (GoCompWriter)wo; if (w.Kind != 0) w.Z.Flush(); return null; }
 
     // Write raw (binary) bytes to a writer the runtime understands.
     internal static void WriteRaw(object? w, byte[] data)
@@ -147,7 +199,25 @@ public static class Compress
         z.CopyTo(outp);
         return new GoReader { Data = outp.ToArray() };
     }
-    public static object?[] GzipNewReader(object? r) => new object?[] { DecompReader(r, 0), null };
+    public static object?[] GzipNewReader(object? r)
+    {
+        byte[] data = Readers.Drain(r);
+        string? name = null, comment = null;
+        if (data.Length >= 10 && data[0] == 0x1f && data[1] == 0x8b)
+        {
+            byte flg = data[3];
+            int pos = 10;
+            if ((flg & 0x04) != 0 && pos + 2 <= data.Length) { int xlen = data[pos] | data[pos + 1] << 8; pos += 2 + xlen; } // FEXTRA
+            if ((flg & 0x08) != 0) { int s = pos; while (pos < data.Length && data[pos] != 0) pos++; name = Latin1(data, s, pos - s); pos++; }
+            if ((flg & 0x10) != 0) { int s = pos; while (pos < data.Length && data[pos] != 0) pos++; comment = Latin1(data, s, pos - s); pos++; }
+        }
+        using var input = new MemoryStream(data);
+        using var z = new GZipStream(input, CompressionMode.Decompress);
+        using var outp = new MemoryStream();
+        z.CopyTo(outp);
+        return new object?[] { new GoReader { Data = outp.ToArray(), GzName = name, GzComment = comment }, null };
+    }
+    private static string Latin1(byte[] d, int s, int len) { var sb = new System.Text.StringBuilder(); for (int i = 0; i < len; i++) sb.Append((char)d[s + i]); return sb.ToString(); }
     public static object ZlibNewReaderObj(object? r) => DecompReader(r, 1);
     // zlib.NewReaderDict(r, dict) (io.ReadCloser, error): dict ignored (see NewWriterLevelDict).
     public static object?[] ZlibNewReaderDict(object? r, GoSlice dict) => new object?[] { DecompReader(r, 1), null };

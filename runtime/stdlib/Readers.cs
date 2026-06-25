@@ -20,7 +20,7 @@ public interface IGoErrorIs { bool GoIs(object? target); }
 [GoShim("io.ReadCloser")]
 [GoShim("strings.Reader")]
 [GoShim("bytes.Reader")]
-public sealed class GoReader { public byte[] Data = System.Array.Empty<byte>(); public int Pos; public int PrevRune = -1; }
+public sealed class GoReader { public byte[] Data = System.Array.Empty<byte>(); public int Pos; public int PrevRune = -1; public string? GzName, GzComment; }
 
 /// <summary>strings.NewReader / bytes.NewReader and the shared byte-extraction the
 /// io / bufio shims use to consume a reader.</summary>
