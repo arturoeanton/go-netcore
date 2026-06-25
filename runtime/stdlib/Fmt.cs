@@ -248,6 +248,8 @@ public static class Fmt
                 else if (f[i] == '0') sp.Zero = true;
                 else break;
             }
+            // explicit argument index [n] before the width / value (Go: %[2]d, %[2]*d)
+            ParseArgIndex(f, ref i, ref ai);
             // width (number or *)
             if (i < f.Length && f[i] == '*') { sp.Width = ai < args.Length ? (int)ToLong(args[ai++]) : 0; if (sp.Width < 0) { sp.Minus = true; sp.Width = -sp.Width; } i++; }
             else { int ws = i; while (i < f.Length && char.IsDigit(f[i])) i++; if (i > ws) sp.Width = int.Parse(f.Substring(ws, i - ws), Inv); }
@@ -255,9 +257,12 @@ public static class Fmt
             if (i < f.Length && f[i] == '.')
             {
                 i++;
+                ParseArgIndex(f, ref i, ref ai); // [n] may index the precision arg too
                 if (i < f.Length && f[i] == '*') { sp.Prec = ai < args.Length ? (int)ToLong(args[ai++]) : 0; i++; }
                 else { int ps = i; while (i < f.Length && char.IsDigit(f[i])) i++; sp.Prec = (i > ps) ? int.Parse(f.Substring(ps, i - ps), Inv) : 0; }
             }
+            // explicit argument index immediately before the verb (Go: %[1]v, %6.2[1]f)
+            ParseArgIndex(f, ref i, ref ai);
             if (i >= f.Length) { sb.Append('%'); break; }
             sp.Verb = f[i];
             if (sp.Verb == '%') { sb.Append('%'); continue; }
@@ -268,6 +273,21 @@ public static class Fmt
     }
 
     private static readonly object MissingArg = new();
+
+    // Go's explicit argument index: "[n]" sets the current 1-based argument to n (so the next
+    // value consumed — a '*' width/precision or the verb — reads args[n-1], and the implicit
+    // counter continues from there). A no-op if there is no valid "[digits]" at f[i].
+    private static void ParseArgIndex(string f, ref int i, ref int ai)
+    {
+        if (i >= f.Length || f[i] != '[') return;
+        int j = i + 1, start = j;
+        while (j < f.Length && char.IsDigit(f[j])) j++;
+        if (j < f.Length && f[j] == ']' && j > start)
+        {
+            ai = int.Parse(f.Substring(start, j - start), Inv) - 1;
+            i = j + 1;
+        }
+    }
 
     // FormatVerb with the width/precision applied at the right level: a numeric verb
     // recursing into a slice/map/struct pads each ELEMENT (Go: %03d of []int{5,42} is
@@ -386,8 +406,8 @@ public static class Fmt
             case 'd': return IntVerb(v, sp, 10, false);
             case 'b': return IntVerb(v, sp, 2, false);
             case 'o': return IntVerb(v, sp, 8, sp.Hash);
-            case 'x': return v is GoString gx ? HexStr(gx, false) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IntVerb(v, sp, 16, sp.Hash);
-            case 'X': return v is GoString gX ? HexStr(gX, true) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IntVerb(v, sp, -16, sp.Hash);
+            case 'x': return v is GoString gx ? HexStr(gx, false, sp.Space) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false, sp.Space) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IntVerb(v, sp, 16, sp.Hash);
+            case 'X': return v is GoString gX ? HexStr(gX, true, sp.Space) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true, sp.Space) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IntVerb(v, sp, -16, sp.Hash);
             case 't': return v is bool bb ? (bb ? "true" : "false") : BadVerb(verb, v);
             case 'c': return IsIntegral(v) ? char.ConvertFromUtf32((int)ToLong(v)) : BadVerb(verb, v);
             case 'U': return IsIntegral(v) ? UnicodeVerb(ToLong(v), sp.Hash) : BadVerb(verb, v);
@@ -573,17 +593,19 @@ public static class Fmt
     private static long ToLong(object? v) => v == null ? 0 : v is ulong u ? unchecked((long)u) : System.Convert.ToInt64(v, Inv);
     private static double ToDouble(object? v) => v == null ? 0 : System.Convert.ToDouble(v, Inv);
 
-    private static string HexStr(GoString s, bool upper)
+    // %x/%X of a byte string/slice; the space flag (% x) puts a space between each byte pair.
+    private static string HexStr(GoString s, bool upper, bool space)
     {
         var sb = new StringBuilder();
-        foreach (byte b in s.Bytes) sb.Append(b.ToString(upper ? "X2" : "x2", Inv));
+        var by = s.Bytes;
+        for (int i = 0; i < by.Length; i++) { if (space && i > 0) sb.Append(' '); sb.Append(by[i].ToString(upper ? "X2" : "x2", Inv)); }
         return sb.ToString();
     }
 
-    private static string HexSlice(GoSlice s, bool upper)
+    private static string HexSlice(GoSlice s, bool upper, bool space)
     {
         var sb = new StringBuilder();
-        for (int i = 0; i < s.Len; i++) sb.Append(((byte)ToLong(s.Data[s.Off + i])).ToString(upper ? "X2" : "x2", Inv));
+        for (int i = 0; i < s.Len; i++) { if (space && i > 0) sb.Append(' '); sb.Append(((byte)ToLong(s.Data[s.Off + i])).ToString(upper ? "X2" : "x2", Inv)); }
         return sb.ToString();
     }
 
