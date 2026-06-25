@@ -393,6 +393,7 @@ public static class Fmt
     {
         if (ReferenceEquals(v, MissingArg)) return "%!" + sp.Verb + "(MISSING)";
         v = MaybeRetag(v); // re-tag a []Stringer's bare elements before any verb dispatch
+        if (v is GoBigFloat bfv) v = bfv.V; // *big.Float (double-backed) formats like its value
         char verb = sp.Verb;
         // The typed-box name (if any) before unwrapping, so %x can tell a []byte ("[]uint8",
         // formatted as a hex string) from a []int ("[]int", which recurses element-wise).
@@ -714,6 +715,7 @@ public static class Fmt
     private static string Format(object? v, char verb, bool plus, bool hash)
     {
         v = MaybeRetag(v); // re-tag a []Stringer's bare elements (Sprint/Println path)
+        if (v is GoBigFloat bfv) v = bfv.V; // *big.Float (double-backed) prints like its value
         // A type's String()/Error() method governs %v and %s output (but not the
         // Go-syntax %#v, nor numeric/bool/pointer-address verbs).
         if (!hash && (verb == 'v' || verb == 's') && TryStringer(v, out var sv)) return sv;

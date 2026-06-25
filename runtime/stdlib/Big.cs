@@ -26,8 +26,19 @@ public static class Big
     public static long Float_Cmp(object z, object y) => F(z).CompareTo(F(y));
     public static long Float_Sign(object z) => System.Math.Sign(F(z));
     public static bool Float_IsInt(object z) { double v = F(z); return !double.IsInfinity(v) && !double.IsNaN(v) && v == System.Math.Truncate(v); }
-    public static GoString Float_String(object z) => GoString.FromDotNetString(GoCLR.Runtime.GoFtoa.Shortest(F(z)));
-    public static GoString Float_Text(object z, int fmt, long prec) => GoString.FromDotNetString(GoCLR.Runtime.GoFtoa.Shortest(F(z)));
+    // big.Float.String() == Text('g', 10). Backed by double, so for the common
+    // big.NewFloat(float64) case this is byte-exact with Go (which stores the exact float64).
+    public static GoString Float_String(object z) => Float_Text(z, 'g', 10);
+    // Text(format, prec) maps directly onto strconv.FormatFloat: 'e/E/f/g/G' honor prec
+    // (prec<0 = shortest). The big.Float-specific 'b'/'p'/'x' mantissa forms aren't modeled
+    // by the double backing — fall back to the shortest decimal for those.
+    public static GoString Float_Text(object z, int fmt, long prec)
+    {
+        char c = (char)fmt;
+        if (c is 'e' or 'E' or 'f' or 'g' or 'G')
+            return Strconv.FormatFloat(F(z), fmt, prec, 64);
+        return GoString.FromDotNetString(GoCLR.Runtime.GoFtoa.Shortest(F(z)));
+    }
     public static object?[] Float_Int(object z, object? dst)
     {
         var d = dst as GoBigInt ?? new GoBigInt();

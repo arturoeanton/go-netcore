@@ -404,6 +404,11 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
 - `strconv.FormatFloat` supports all verbs byte-exactly (`f/e/E/g/G/b/x/X`),
   including hexadecimal-float `0x1.…p±dd` with shortest and fixed precision;
   `fmt`'s `%x`/`%X` of a float routes through the same path.
+- `math/big.Float` is **double-backed** (53-bit), not arbitrary precision:
+  `SetPrec`/high-precision arithmetic are unsupported. `String`, `Text(fmt,
+  prec)`, and `fmt`'s `%v/%g/%e/%f/%G` are byte-exact for the common
+  `big.NewFloat(float64)` case (which stores the exact float64). `big.Int` and
+  `big.Rat` are exact.
 - Goroutine scheduling order is the .NET thread pool's, not Go's scheduler — keep
   concurrent test output order-independent (as Go's map-range convention already
   requires).
