@@ -48,8 +48,10 @@ public static class Scanner
     public static long Scanner_PLine(object so) => ((GoTextScanner)so).PLine;
     public static long Scanner_PColumn(object so) => ((GoTextScanner)so).PColumn;
     public static long Scanner_POffset(object so) => ((GoTextScanner)so).POffset;
-    public static long Scanner_Mode(object so) => ((GoTextScanner)so).Mode;
-    public static void Scanner_SetMode(object so, long v) => ((GoTextScanner)so).Mode = v;
+    // scanner.Mode is a Go `uint`, so the compiler emits/reads it as a ulong; keep the internal
+    // bitfield a long (for the bitwise checks) but expose the field as ulong.
+    public static ulong Scanner_Mode(object so) => (ulong)((GoTextScanner)so).Mode;
+    public static void Scanner_SetMode(object so, ulong v) => ((GoTextScanner)so).Mode = (long)v;
     public static long Scanner_ErrorCount(object so) => ((GoTextScanner)so).ErrorCount;
     public static object Scanner_Position(object so) { var s = (GoTextScanner)so; return new GoPosition { Filename = s.Filename, Offset = s.POffset, Line = s.PLine, Column = s.PColumn }; }
 
