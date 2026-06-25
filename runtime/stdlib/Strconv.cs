@@ -348,6 +348,8 @@ public static partial class Strconv
             'g' => p < 0 ? GoFtoa.Shortest(f) : GoFtoa.FormatG(f, p),
             'G' => p < 0 ? GoFtoa.Shortest(f).ToUpperInvariant() : GoFtoa.FormatG(f, p).ToUpperInvariant(),
             'b' => FormatB(f, (int)bitSize),
+            'x' => FormatX(f, p, false, (int)bitSize),
+            'X' => FormatX(f, p, true, (int)bitSize),
             _ => GoFtoa.Shortest(f),
         };
         return GoString.FromDotNetString(s);
@@ -389,6 +391,66 @@ public static partial class Strconv
         sb.Append(mant.ToString(Inv)).Append('p');
         if (exp >= 0) sb.Append('+');
         sb.Append(exp.ToString(Inv));
+        return sb.ToString();
+    }
+
+    // strconv 'x'/'X' format: hexadecimal floating-point "0x1.<hexfrac>p±dd". prec<0 prints
+    // the shortest exact fraction; prec>=0 prints exactly that many hex digits (round to
+    // even). A direct port of Go's strconv fmtX (leading 1 normalized to bit 1<<60).
+    private static string FormatX(double f, int prec, bool upper, int bitSize)
+    {
+        int mantbits, expbits, bias;
+        ulong bits;
+        if (bitSize == 32) { mantbits = 23; expbits = 8; bias = -127; bits = (uint)BitConverter.SingleToInt32Bits((float)f); }
+        else { mantbits = 52; expbits = 11; bias = -1023; bits = (ulong)BitConverter.DoubleToInt64Bits(f); }
+
+        bool neg = (bits >> (expbits + mantbits)) != 0;
+        int exp = (int)((bits >> mantbits) & (((ulong)1 << expbits) - 1));
+        ulong mant = bits & (((ulong)1 << mantbits) - 1);
+
+        if (exp == (1 << expbits) - 1) return mant != 0 ? "NaN" : (neg ? "-Inf" : "+Inf");
+        if (exp == 0) exp++;                       // denormalized
+        else mant |= (ulong)1 << mantbits;         // add implicit top bit
+        exp += bias;
+
+        if (mant == 0) exp = 0;
+        // Shift digits so leading 1 (if any) is at bit 1<<60.
+        mant <<= 60 - mantbits;
+        while (mant != 0 && (mant & ((ulong)1 << 60)) == 0) { mant <<= 1; exp--; }
+
+        // Round to 1+prec hex digits if requested.
+        if (prec >= 0 && prec < 15)
+        {
+            int shift = prec * 4;
+            ulong extra = (mant << shift) & (((ulong)1 << 60) - 1);
+            mant >>= 60 - shift;
+            if ((extra | (mant & 1)) > ((ulong)1 << 59)) mant++;
+            mant <<= 60 - shift;
+            if ((mant & ((ulong)1 << 61)) != 0) { mant >>= 1; exp++; } // wrapped into the integer digit
+        }
+
+        string hex = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+        var sb = new System.Text.StringBuilder();
+        if (neg) sb.Append('-');
+        sb.Append('0').Append(upper ? 'X' : 'x').Append((char)('0' + (int)((mant >> 60) & 1)));
+
+        mant <<= 4; // remove the leading 0 or 1
+        if (prec < 0 && mant != 0)
+        {
+            sb.Append('.');
+            while (mant != 0) { sb.Append(hex[(int)((mant >> 60) & 15)]); mant <<= 4; }
+        }
+        else if (prec > 0)
+        {
+            sb.Append('.');
+            for (int i = 0; i < prec; i++) { sb.Append(hex[(int)((mant >> 60) & 15)]); mant <<= 4; }
+        }
+
+        sb.Append(upper ? 'P' : 'p');
+        if (exp < 0) { sb.Append('-'); exp = -exp; } else sb.Append('+');
+        if (exp < 100) sb.Append((char)(exp / 10 + '0')).Append((char)(exp % 10 + '0'));
+        else if (exp < 1000) sb.Append((char)(exp / 100 + '0')).Append((char)(exp / 10 % 10 + '0')).Append((char)(exp % 10 + '0'));
+        else sb.Append((char)(exp / 1000 + '0')).Append((char)(exp / 100 % 10 + '0')).Append((char)(exp / 10 % 10 + '0')).Append((char)(exp % 10 + '0'));
         return sb.ToString();
     }
 

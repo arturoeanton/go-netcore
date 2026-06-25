@@ -422,8 +422,8 @@ public static class Fmt
             case 'd': return IntVerb(v, sp, 10, false);
             case 'b': return IntVerb(v, sp, 2, false);
             case 'o': return IntVerb(v, sp, 8, sp.Hash);
-            case 'x': return v is GoString gx ? HexStr(gx, false, sp.Space) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false, sp.Space) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IntVerb(v, sp, 16, sp.Hash);
-            case 'X': return v is GoString gX ? HexStr(gX, true, sp.Space) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true, sp.Space) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IntVerb(v, sp, -16, sp.Hash);
+            case 'x': return v is GoString gx ? HexStr(gx, false, sp.Space) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false, sp.Space) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'x', sp.Prec, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, 16, sp.Hash);
+            case 'X': return v is GoString gX ? HexStr(gX, true, sp.Space) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true, sp.Space) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'X', sp.Prec, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, -16, sp.Hash);
             case 't': return v is bool bb ? (bb ? "true" : "false") : BadVerb(verb, v);
             case 'c': return IsIntegral(v) ? char.ConvertFromUtf32((int)ToLong(v)) : BadVerb(verb, v);
             case 'U': return IsIntegral(v) ? UnicodeVerb(ToLong(v), sp.Hash) : BadVerb(verb, v);
