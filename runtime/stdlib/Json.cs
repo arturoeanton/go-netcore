@@ -119,9 +119,9 @@ public static class Json
                 case '\n': sb.Append("\\n"); break;
                 case '\t': sb.Append("\\t"); break;
                 case '\r': sb.Append("\\r"); break;
-                case '<': sb.Append("\\u003c"); break;
-                case '>': sb.Append("\\u003e"); break;
-                case '&': sb.Append("\\u0026"); break;
+                case '<': sb.Append(_noEscapeHTML ? "<" : "\\u003c"); break;
+                case '>': sb.Append(_noEscapeHTML ? ">" : "\\u003e"); break;
+                case '&': sb.Append(_noEscapeHTML ? "&" : "\\u0026"); break;
                 default:
                     if (c < 0x20) sb.Append("\\u").Append(((int)c).ToString("x4"));
                     else sb.Append(c);
@@ -394,6 +394,8 @@ public static class Json
     // True while decoding through a json.Decoder that called UseNumber(), so an interface{}
     // number is kept as json.Number. Thread-static: a concurrent goroutine decode is isolated.
     [System.ThreadStatic] private static bool _useNumber;
+    // Set by a json.Encoder with SetEscapeHTML(false) so WriteString leaves <, >, & literal.
+    [System.ThreadStatic] private static bool _noEscapeHTML;
 
     // Generic decode for interface{} targets — mirrors Go's default mapping.
     private static object? DecodeAny(JsonElement j)
@@ -673,8 +675,11 @@ public static class Json
     {
         var e = (GoJsonEncoder)enc;
         var sb = new StringBuilder();
+        bool prevEsc = _noEscapeHTML;
+        _noEscapeHTML = !e.EscapeHTML;
         try { Write(sb, v); }
         catch (System.Exception ex) { return new GoError(GoString.FromDotNetString("json: " + ex.Message)); }
+        finally { _noEscapeHTML = prevEsc; }
         string s = e.Indent.Length > 0 ? IndentJson(sb.ToString(), e.Prefix, e.Indent) : sb.ToString();
         Fmt.WriteTo(e.Writer, s + "\n"); // Encoder.Encode always appends a newline
         return null;
@@ -710,31 +715,45 @@ public sealed class GoJsonDecoder
     public void Tokenize(byte[] data)
     {
         _raw = data;
-        var reader = new Utf8JsonReader(data, isFinalBlock: true, state: default);
-        while (reader.Read())
+        // A json.Decoder reads a stream of concatenated values ({…}{…}); .NET's reader
+        // throws on a second top-level value, so tokenize one value at a time: read until
+        // the reader rejects the next value, then restart past the consumed bytes. Token
+        // end-offsets are recorded absolute (into the whole input).
+        int baseOff = 0;
+        while (baseOff < data.Length)
         {
-            switch (reader.TokenType)
+            while (baseOff < data.Length && IsJsonWs(data[baseOff])) baseOff++;
+            if (baseOff >= data.Length) break;
+            var reader = new Utf8JsonReader(new System.ReadOnlySpan<byte>(data, baseOff, data.Length - baseOff), isFinalBlock: true, state: default);
+            int lastEnd = 0;
+            while (true)
             {
-                case JsonTokenType.StartObject: Add(Delim('{'), ref reader); break;
-                case JsonTokenType.EndObject: Add(Delim('}'), ref reader); break;
-                case JsonTokenType.StartArray: Add(Delim('['), ref reader); break;
-                case JsonTokenType.EndArray: Add(Delim(']'), ref reader); break;
-                case JsonTokenType.PropertyName:
-                case JsonTokenType.String: Add(GoString.FromDotNetString(reader.GetString() ?? ""), ref reader); break;
-                case JsonTokenType.Number: Add(new NumberTok { Text = NumberText(ref reader) }, ref reader); break;
-                case JsonTokenType.True: Add(true, ref reader); break;
-                case JsonTokenType.False: Add(false, ref reader); break;
-                case JsonTokenType.Null: Add(NullTok, ref reader); break;
+                bool ok;
+                try { ok = reader.Read(); }
+                catch (JsonException) { break; } // start of the next top-level value
+                if (!ok) break;
+                int end = baseOff + (int)reader.BytesConsumed;
+                switch (reader.TokenType)
+                {
+                    case JsonTokenType.StartObject: _toks.Add(Delim('{')); _ends.Add(end); break;
+                    case JsonTokenType.EndObject: _toks.Add(Delim('}')); _ends.Add(end); break;
+                    case JsonTokenType.StartArray: _toks.Add(Delim('[')); _ends.Add(end); break;
+                    case JsonTokenType.EndArray: _toks.Add(Delim(']')); _ends.Add(end); break;
+                    case JsonTokenType.PropertyName:
+                    case JsonTokenType.String: _toks.Add(GoString.FromDotNetString(reader.GetString() ?? "")); _ends.Add(end); break;
+                    case JsonTokenType.Number: _toks.Add(new NumberTok { Text = NumberText(ref reader) }); _ends.Add(end); break;
+                    case JsonTokenType.True: _toks.Add(true); _ends.Add(end); break;
+                    case JsonTokenType.False: _toks.Add(false); _ends.Add(end); break;
+                    case JsonTokenType.Null: _toks.Add(NullTok); _ends.Add(end); break;
+                }
+                lastEnd = (int)reader.BytesConsumed;
             }
+            if (lastEnd == 0) break; // no progress (malformed) — stop
+            baseOff += lastEnd;
         }
     }
 
-    private void Add(object? tok, ref Utf8JsonReader reader)
-    {
-        _toks.Add(tok);
-        // BytesConsumed is the offset just past the token just read.
-        _ends.Add((int)reader.BytesConsumed);
-    }
+    private static bool IsJsonWs(byte b) => b == (byte)' ' || b == (byte)'\t' || b == (byte)'\n' || b == (byte)'\r';
 
     private static string NumberText(ref Utf8JsonReader reader)
     {
