@@ -10,7 +10,17 @@ public sealed class GoSlogHandler
     public object? Writer;
     public bool Json;
     public long Level; // slog.LevelInfo == 0
-    public readonly List<KeyValuePair<string, object?>> Preset = new();
+    public readonly List<GoSlogGAttr> Preset = new();
+    public readonly List<string> Groups = new(); // open groups (WithGroup), applied to later attrs
+}
+
+/// <summary>An accumulated attribute plus the group path open when it was added, so the
+/// renderer can nest it (JSON) or dotted-prefix it (text) like slog's WithGroup.</summary>
+public sealed class GoSlogGAttr
+{
+    public List<string> Groups = new();
+    public string Key = "";
+    public object? Value;
 }
 
 /// <summary>A *slog.Logger over a handler.</summary>
@@ -77,29 +87,53 @@ public static class Slog
     public static object Bool(GoString k, bool v) => new GoSlogAttr { Key = k.ToDotNetString(), Value = v };
     public static object Any(GoString k, object? v) => new GoSlogAttr { Key = k.ToDotNetString(), Value = v };
     public static object Duration(GoString k, long v) => new GoSlogAttr { Key = k.ToDotNetString(), Value = Time.Duration_String(v) };
+    // slog.Group(key, args...): an Attr whose value is a sub-group of attrs; rendered nested
+    // (JSON) or dotted (text) under key. The children are pre-collected with an empty relative
+    // group path and expanded under key at collect time.
+    public static object Group(GoString key, GoSlice args)
+    {
+        var children = new List<GoSlogGAttr>();
+        CollectArgs(children, args, new List<string>());
+        return new GoSlogAttr { Key = key.ToDotNetString(), Value = children };
+    }
 
     // --- logging -------------------------------------------------------------
     private static void Emit(GoSlogLogger l, long level, GoString msg, GoSlice args)
     {
         var h = l.Handler;
         if (level < h.Level) return;
-        var attrs = new List<KeyValuePair<string, object?>>(h.Preset);
-        CollectArgs(attrs, args);
+        var attrs = new List<GoSlogGAttr>(h.Preset);
+        CollectArgs(attrs, args, h.Groups); // record args take the handler's current group path
         string line = h.Json ? RenderJson(level, msg.ToDotNetString(), attrs)
                              : RenderText(level, msg.ToDotNetString(), attrs);
         Fmt.WriteTo(h.Writer, line + "\n");
     }
 
-    private static void CollectArgs(List<KeyValuePair<string, object?>> dst, GoSlice args)
+    private static void CollectArgs(List<GoSlogGAttr> dst, GoSlice args, List<string> groups)
     {
         for (int i = 0; i < args.Len; i++)
         {
             var a = args.Data![args.Off + i];
-            if (a is GoSlogAttr sa) { dst.Add(new(sa.Key, sa.Value)); continue; }
+            if (a is GoSlogAttr sa)
+            {
+                // slog.Group: expand the children under the group key (nested path).
+                if (sa.Value is List<GoSlogGAttr> grp)
+                {
+                    foreach (var ch in grp)
+                    {
+                        var ng = new List<string>(groups) { sa.Key };
+                        ng.AddRange(ch.Groups);
+                        dst.Add(new GoSlogGAttr { Groups = ng, Key = ch.Key, Value = ch.Value });
+                    }
+                    continue;
+                }
+                dst.Add(new GoSlogGAttr { Groups = groups, Key = sa.Key, Value = sa.Value });
+                continue;
+            }
             // alternating key, value
             string key = a is GoString gs ? gs.ToDotNetString() : Str(a);
             object? val = i + 1 < args.Len ? args.Data![args.Off + ++i] : GoString.FromDotNetString("!BADKEY");
-            dst.Add(new(key, val));
+            dst.Add(new GoSlogGAttr { Groups = groups, Key = key, Value = val });
         }
     }
 
@@ -111,10 +145,29 @@ public static class Slog
     public static object Logger_With(object l, GoSlice args)
     {
         var src = (GoSlogLogger)l;
-        var h = new GoSlogHandler { Writer = src.Handler.Writer, Json = src.Handler.Json, Level = src.Handler.Level };
-        h.Preset.AddRange(src.Handler.Preset);
-        CollectArgs(h.Preset, args);
+        var h = Clone(src.Handler);
+        CollectArgs(h.Preset, args, h.Groups); // attrs join the currently-open group path
         return new GoSlogLogger { Handler = h };
+    }
+
+    // (*Logger).WithGroup(name): subsequent attrs (and record args) nest under name. An empty
+    // name is a no-op, as in Go.
+    public static object Logger_WithGroup(object l, GoString name)
+    {
+        var src = (GoSlogLogger)l;
+        string g = name.ToDotNetString();
+        if (g.Length == 0) return src;
+        var h = Clone(src.Handler);
+        h.Groups.Add(g);
+        return new GoSlogLogger { Handler = h };
+    }
+
+    private static GoSlogHandler Clone(GoSlogHandler src)
+    {
+        var h = new GoSlogHandler { Writer = src.Writer, Json = src.Json, Level = src.Level };
+        h.Preset.AddRange(src.Preset);
+        h.Groups.AddRange(src.Groups);
+        return h;
     }
 
     // package-level helpers route to the default logger
@@ -124,28 +177,51 @@ public static class Slog
     public static void Error(GoString msg, GoSlice args) => Emit(Default(), 8, msg, args);
 
     // --- formatting ----------------------------------------------------------
-    private static string RenderText(long level, string msg, List<KeyValuePair<string, object?>> attrs)
+    private static string RenderText(long level, string msg, List<GoSlogGAttr> attrs)
     {
         var sb = new StringBuilder();
         sb.Append("level=").Append(LevelName(level));
         sb.Append(" msg=").Append(TextVal(GoString.FromDotNetString(msg)));
-        foreach (var (k, v) in attrs)
-            sb.Append(' ').Append(QuoteIfNeeded(k)).Append('=').Append(TextVal(v));
+        foreach (var a in attrs)
+        {
+            // grouped keys are dotted: WithGroup("req") -> "req.method=…"
+            string key = a.Groups.Count > 0 ? string.Join(".", a.Groups) + "." + a.Key : a.Key;
+            sb.Append(' ').Append(QuoteIfNeeded(key)).Append('=').Append(TextVal(a.Value));
+        }
         return sb.ToString();
     }
 
-    private static string RenderJson(long level, string msg, List<KeyValuePair<string, object?>> attrs)
+    private static string RenderJson(long level, string msg, List<GoSlogGAttr> attrs)
     {
         var sb = new StringBuilder();
         sb.Append("{\"level\":\"").Append(LevelName(level)).Append("\",\"msg\":");
         JsonStr(sb, msg);
-        foreach (var (k, v) in attrs)
+        // attrs carry a group path; nest each under its groups (a non-empty group becomes an
+        // object). Group paths only deepen across a logger chain, so track the open path and
+        // open/close object braces as the path changes.
+        var open = new List<string>();
+        bool needComma = true;
+        foreach (var a in attrs)
         {
-            sb.Append(',');
-            JsonStr(sb, k);
+            int common = 0;
+            while (common < open.Count && common < a.Groups.Count && open[common] == a.Groups[common]) common++;
+            for (int d = open.Count; d > common; d--) { sb.Append('}'); needComma = true; }
+            if (open.Count > common) open.RemoveRange(common, open.Count - common);
+            for (int d = common; d < a.Groups.Count; d++)
+            {
+                if (needComma) sb.Append(',');
+                JsonStr(sb, a.Groups[d]);
+                sb.Append(":{");
+                needComma = false;
+                open.Add(a.Groups[d]);
+            }
+            if (needComma) sb.Append(',');
+            JsonStr(sb, a.Key);
             sb.Append(':');
-            JsonVal(sb, v);
+            JsonVal(sb, a.Value);
+            needComma = true;
         }
+        for (int d = open.Count; d > 0; d--) sb.Append('}');
         sb.Append('}');
         return sb.ToString();
     }

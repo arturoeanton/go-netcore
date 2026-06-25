@@ -157,6 +157,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Info": {"Slog", "Info"}, "Debug": {"Slog", "Debug"}, "Warn": {"Slog", "Warn"}, "Error": {"Slog", "Error"},
 		"String": {"Slog", "String"}, "Int": {"Slog", "Int"}, "Int64": {"Slog", "Int64"}, "Uint64": {"Slog", "Uint64"},
 		"Float64": {"Slog", "Float64"}, "Bool": {"Slog", "Bool"}, "Any": {"Slog", "Any"}, "Duration": {"Slog", "Duration"},
+		"Group": {"Slog", "Group"},
 	},
 	"net/http/cookiejar": {"New": {"Cookiejar", "New"}},
 	"net/http/httptest": {
@@ -1522,6 +1523,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"log/slog.Logger": {
 		"Info": {"Slog", "Logger_Info"}, "Debug": {"Slog", "Logger_Debug"}, "Warn": {"Slog", "Logger_Warn"},
 		"Error": {"Slog", "Logger_Error"}, "With": {"Slog", "Logger_With"},
+		"WithGroup": {"Slog", "Logger_WithGroup"},
 	},
 	"syscall.Signal": {
 		"String": {"Ossignal", "Signal_String"}, "Signal": {"Ossignal", "Signal_Signal"},

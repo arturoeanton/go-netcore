@@ -215,8 +215,10 @@ module):
   `bytes.EqualFold`, `encoding/hex.Encode`/`Decode`, and the io.Reader callback bridge.
   See `examples/demo_uuid` (requires `go mod vendor`).
 - **slog edges**: the automatic timestamp is omitted (so output is reproducible —
-  drop `slog.TimeKey` via `ReplaceAttr` to match `go run`); `WithGroup`/`LogAttrs` and
-  the `HandlerOptions.Level`/`ReplaceAttr` fields are accepted but not applied.
+  drop `slog.TimeKey` via `ReplaceAttr` to match `go run`). Grouping is supported:
+  `(*Logger).WithGroup` and `slog.Group` nest attributes (JSON objects / dotted text
+  keys) and compose with `With`. `LogAttrs` and the `HandlerOptions.Level`/`ReplaceAttr`
+  fields are accepted but not applied.
 - **os/signal edges**: `int(syscall.SIGINT)` (converting a signal constant to an
   integer) is unsupported — a signal is an opaque `GoSignal`, not a bare int; print it
   or compare `os.Signal` values instead.
