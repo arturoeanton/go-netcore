@@ -364,8 +364,15 @@ public static class Template
         {
             string e = items[pos].Text.Substring(4).Trim();
             pos++;
-            if (e.StartsWith("if")) n.Else = new List<Node> { ParseIf(g, items, ref pos, "if " + e.Substring(2).Trim()) };
-            else n.Else = ParseList(g, items, ref pos);
+            // {{else if PIPE}} is sugar for a nested {{if}} sharing the SAME single {{end}}.
+            // The recursive ParseIf consumes that {{end}}, so return without ExpectEnd here —
+            // otherwise the outer if would try to consume a second {{end}} that doesn't exist.
+            if (e == "if" || e.StartsWith("if "))
+            {
+                n.Else = new List<Node> { ParseIf(g, items, ref pos, "if " + e.Substring(2).Trim()) };
+                return n;
+            }
+            n.Else = ParseList(g, items, ref pos);
         }
         ExpectEnd(items, ref pos);
         return n;
