@@ -405,12 +405,12 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   rule; Title uses Go's `isSeparator`, so `_` is not a word boundary).
 - `math/bits` int8/int16 are typed as int32 at the boundary; the `bits.*8/*16`
   helpers mask correctly but very unusual signedness edges may differ.
-- `slices`/`cmp` are partially supported: the functions whose result is a
-  concrete type work (`Sort`, `SortFunc`, `Contains(Func)`, `Index(Func)`,
-  `Equal(Func)`, `Reverse`, `IsSorted(Func)`, `BinarySearch(Func)`,
-  `cmp.Compare`/`Less`). Functions returning a *type parameter* (`Max`/`Min`,
-  `Clone`/`Compact`/`Concat`, `cmp.Or`) are not yet available — the backend does
-  not unbox a shim's generic-typed return. `maps` (iterator-based) is unsupported.
+- `slices`/`cmp` are supported, including functions that return a type
+  parameter — the backend unboxes a generic shim's boxed result to the call's
+  instantiated type. Covers `Sort`/`SortFunc`/`SortStableFunc`, `Contains(Func)`,
+  `Index(Func)`, `Max`/`Min`/`MaxFunc`/`MinFunc`, `Equal(Func)`, `Reverse`,
+  `IsSorted(Func)`, `BinarySearch(Func)`, `Clone`/`Compact(Func)`/`Concat`, and
+  `cmp.Compare`/`Less`/`Or`. `maps` (iterator-based) is still unsupported.
 - `strconv.FormatFloat` supports all verbs byte-exactly (`f/e/E/g/G/b/x/X`),
   including hexadecimal-float `0x1.…p±dd` with shortest and fixed precision;
   `fmt`'s `%x`/`%X` of a float routes through the same path.

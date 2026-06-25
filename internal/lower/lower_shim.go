@@ -331,12 +331,14 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Sort": {"Slices", "Sort"}, "SortFunc": {"Slices", "SortFunc"}, "SortStableFunc": {"Slices", "SortStableFunc"},
 		"Contains": {"Slices", "Contains"}, "ContainsFunc": {"Slices", "ContainsFunc"},
 		"Index": {"Slices", "Index"}, "IndexFunc": {"Slices", "IndexFunc"},
+		"Max": {"Slices", "Max"}, "Min": {"Slices", "Min"}, "MaxFunc": {"Slices", "MaxFunc"}, "MinFunc": {"Slices", "MinFunc"},
 		"Equal": {"Slices", "Equal"}, "EqualFunc": {"Slices", "EqualFunc"},
 		"Reverse": {"Slices", "Reverse"}, "IsSorted": {"Slices", "IsSorted"}, "IsSortedFunc": {"Slices", "IsSortedFunc"},
 		"BinarySearch": {"Slices", "BinarySearch"}, "BinarySearchFunc": {"Slices", "BinarySearchFunc"},
+		"Clone": {"Slices", "Clone"}, "Compact": {"Slices", "Compact"}, "CompactFunc": {"Slices", "CompactFunc"}, "Concat": {"Slices", "Concat"},
 	},
 	"cmp": {
-		"Compare": {"Cmp", "Compare"}, "Less": {"Cmp", "Less"},
+		"Compare": {"Cmp", "Compare"}, "Less": {"Cmp", "Less"}, "Or": {"Cmp", "Or"},
 	},
 	"time": {
 		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},
@@ -2272,6 +2274,26 @@ func (l *funcLowerer) shimMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr, sel
 	return ext.Ret
 }
 
+// containsTypeParam reports whether t is, or structurally contains, a type parameter — the
+// signal that a generic shim's result lowers to a boxed object needing an unbox at the call.
+func containsTypeParam(t types.Type) bool {
+	switch x := t.(type) {
+	case *types.TypeParam:
+		return true
+	case *types.Slice:
+		return containsTypeParam(x.Elem())
+	case *types.Array:
+		return containsTypeParam(x.Elem())
+	case *types.Pointer:
+		return containsTypeParam(x.Elem())
+	case *types.Map:
+		return containsTypeParam(x.Key()) || containsTypeParam(x.Elem())
+	case *types.Chan:
+		return containsTypeParam(x.Elem())
+	}
+	return false
+}
+
 // shimExtern builds an extern descriptor for a call to a shimmed stdlib function,
 // deriving its parameter and result IR types from the Go signature. Returns false
 // if the function is not shimmed (or has a multi-result signature, not yet
@@ -2305,8 +2327,12 @@ func (l *funcLowerer) shimExtern(fn *types.Func) (*goir.Extern, bool) {
 	switch sig.Results().Len() {
 	case 0:
 	case 1:
-		ret, ok = l.lowerCtx.goType(sig.Results().At(0).Type())
-		if !ok {
+		rtype := sig.Results().At(0).Type()
+		if containsTypeParam(rtype) {
+			// A generic result (slices.Max -> E, slices.Clone -> []E): the C# shim returns a
+			// boxed object; shimCall unboxes it to the call's instantiated type.
+			ret = goir.TObject
+		} else if ret, ok = l.lowerCtx.goType(rtype); !ok {
 			return nil, false
 		}
 	default:
@@ -2330,5 +2356,17 @@ func (l *funcLowerer) shimExtern(fn *types.Func) (*goir.Extern, bool) {
 func (l *funcLowerer) shimCall(e *ast.CallExpr, ext *goir.Extern, variadic bool) goir.Type {
 	l.emitCallArgs(e.Args, ext.Params, variadic, e.Ellipsis.IsValid())
 	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+	// A generic shim whose result is a type parameter (slices.Max -> E, slices.Clone -> []E)
+	// lowers its result to a boxed object (ext.Ret == TObject). If the call's *instantiated*
+	// result type is a concrete CLR type, unbox it so the caller sees the real value. A shim
+	// that genuinely returns `any` keeps an interface instantiated type, so it stays boxed.
+	if ext.Ret.Kind == goir.KObject && ext.Ret.Shim == "" {
+		if rt := l.pkg.TypesInfo.TypeOf(e); rt != nil {
+			if ct, ok := l.lowerCtx.goType(rt); ok && ct.Kind != goir.KObject {
+				l.emitUnbox(ct)
+				return ct
+			}
+		}
+	}
 	return ext.Ret
 }

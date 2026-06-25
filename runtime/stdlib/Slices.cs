@@ -69,6 +69,39 @@ public static class Slices
         return -1;
     }
 
+    public static object? Max(object slice)
+    {
+        var s = S(slice);
+        if (s.Len == 0) throw new GoPanicException(GoString.FromDotNetString("slices.Max: empty list"));
+        object? m = At(s, 0);
+        for (int i = 1; i < s.Len; i++) if (OrderedCompare(At(s, i), m) > 0) m = At(s, i);
+        return m;
+    }
+    public static object? Min(object slice)
+    {
+        var s = S(slice);
+        if (s.Len == 0) throw new GoPanicException(GoString.FromDotNetString("slices.Min: empty list"));
+        object? m = At(s, 0);
+        for (int i = 1; i < s.Len; i++) if (OrderedCompare(At(s, i), m) < 0) m = At(s, i);
+        return m;
+    }
+    public static object? MaxFunc(object slice, GoClosure cmp)
+    {
+        var s = S(slice);
+        if (s.Len == 0) throw new GoPanicException(GoString.FromDotNetString("slices.MaxFunc: empty list"));
+        object? m = At(s, 0);
+        for (int i = 1; i < s.Len; i++) if (System.Convert.ToInt64(GoRuntime.InvokeArgs(cmp, At(s, i), m)) > 0) m = At(s, i);
+        return m;
+    }
+    public static object? MinFunc(object slice, GoClosure cmp)
+    {
+        var s = S(slice);
+        if (s.Len == 0) throw new GoPanicException(GoString.FromDotNetString("slices.MinFunc: empty list"));
+        object? m = At(s, 0);
+        for (int i = 1; i < s.Len; i++) if (System.Convert.ToInt64(GoRuntime.InvokeArgs(cmp, At(s, i), m)) < 0) m = At(s, i);
+        return m;
+    }
+
     public static bool Equal(object a, object b)
     {
         var x = S(a); var y = S(b);
@@ -122,4 +155,38 @@ public static class Slices
         return new object?[] { (long)lo, found };
     }
 
+    public static object Clone(object slice)
+    {
+        var s = S(slice);
+        if (s.Data == null) return s; // nil stays nil
+        var d = new object?[s.Len];
+        for (int i = 0; i < s.Len; i++) d[i] = At(s, i);
+        return new GoSlice { Data = d, Off = 0, Len = s.Len, Cap = s.Len };
+    }
+    public static object Compact(object slice)
+    {
+        var s = S(slice);
+        if (s.Len == 0) return s;
+        var outp = new System.Collections.Generic.List<object?> { At(s, 0) };
+        for (int i = 1; i < s.Len; i++) if (!Eq(At(s, i), At(s, i - 1))) outp.Add(At(s, i));
+        return new GoSlice { Data = outp.ToArray(), Off = 0, Len = outp.Count, Cap = outp.Count };
+    }
+    public static object CompactFunc(object slice, GoClosure eq)
+    {
+        var s = S(slice);
+        if (s.Len == 0) return s;
+        var outp = new System.Collections.Generic.List<object?> { At(s, 0) };
+        for (int i = 1; i < s.Len; i++) if (!(bool)GoRuntime.InvokeArgs(eq, At(s, i), outp[outp.Count - 1])!) outp.Add(At(s, i));
+        return new GoSlice { Data = outp.ToArray(), Off = 0, Len = outp.Count, Cap = outp.Count };
+    }
+    public static object Concat(GoSlice slices)
+    {
+        var outp = new System.Collections.Generic.List<object?>();
+        for (int i = 0; i < slices.Len; i++)
+        {
+            var inner = S(slices.Data![slices.Off + i]!);
+            for (int j = 0; j < inner.Len; j++) outp.Add(At(inner, j));
+        }
+        return new GoSlice { Data = outp.ToArray(), Off = 0, Len = outp.Count, Cap = outp.Count };
+    }
 }
