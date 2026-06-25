@@ -27,6 +27,9 @@ public sealed class GoError : IGoError
 {
     private readonly GoString _msg;
     public object? Wrapped;
+    // fmt.Errorf with two or more %w verbs (Go 1.20 wrapErrors): all wrapped errors. Has
+    // Unwrap() []error semantics, so errors.Is/As search every element; Wrapped stays null.
+    public object?[]? Multi;
 
     public GoError(GoString msg) { _msg = msg; }
     public GoError(GoString msg, object? wrapped) { _msg = msg; Wrapped = wrapped; }

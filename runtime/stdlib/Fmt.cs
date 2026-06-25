@@ -112,14 +112,18 @@ public static class Fmt
         var a = Args(args);
         string f = format.ToDotNetString();
         string msg = DoSprintf(f, a);
-        object? wrapped = FindWrapArg(f, a);
-        return new GoError(GoString.FromDotNetString(msg), wrapped);
+        var wraps = FindWrapArgs(f, a);
+        // Go: 0 %w -> errors.errorString, 1 -> *fmt.wrapError, 2+ -> *fmt.wrapErrors
+        // (Unwrap() []error), so errors.Is/As must search every wrapped error.
+        if (wraps.Count >= 2) return new GoError(GoString.FromDotNetString(msg)) { Multi = wraps.ToArray() };
+        return new GoError(GoString.FromDotNetString(msg), wraps.Count == 1 ? wraps[0] : null);
     }
 
-    // Locate the argument consumed by a %w verb (the wrapped error), mirroring the
+    // The arguments consumed by %w verbs (the wrapped errors), in order, mirroring the
     // argument-advance rules of DoSprintf.
-    private static object? FindWrapArg(string f, object?[] args)
+    private static System.Collections.Generic.List<object?> FindWrapArgs(string f, object?[] args)
     {
+        var wraps = new System.Collections.Generic.List<object?>();
         int ai = 0;
         for (int i = 0; i < f.Length; i++)
         {
@@ -132,10 +136,10 @@ public static class Fmt
             if (i >= f.Length) break;
             char verb = f[i];
             if (verb == '%') continue;
-            if (verb == 'w') return ai < args.Length ? args[ai] : null;
+            if (verb == 'w') { if (ai < args.Length) wraps.Add(args[ai]); ai++; continue; }
             ai++;
         }
-        return null;
+        return wraps;
     }
 
     /// <summary>Write a string to an io.Writer the runtime understands (a buffer,
@@ -553,6 +557,7 @@ public static class Fmt
         float => "float32",
         GoString => "string",
         Errors.JoinError => "*errors.joinError",       // errors.Join
+        GoError gm when gm.Multi != null => "*fmt.wrapErrors", // fmt.Errorf with 2+ %w
         GoError ge when ge.Wrapped != null => "*fmt.wrapError", // fmt.Errorf with a single %w
         IGoError => "*errors.errorString",             // errors.New / fmt.Errorf without %w
         GoComplex => "complex128",

@@ -57,7 +57,7 @@ public static class Errors
     /// Unwrap() method via the callback bridge.</summary>
     public static object? Unwrap(object? err)
     {
-        if (err is GoError g) return g.Wrapped;
+        if (err is GoError g) return g.Multi != null ? null : g.Wrapped; // wrapErrors has Unwrap() []error, not error
         if (err is GoCLR.Runtime.IGoWrapped w) return w.GoUnwrapped();
         if (err != null && Bridge.HasMethod(err, "Unwrap")) return Bridge.CallMethod(err, "Unwrap");
         return null;
@@ -76,6 +76,11 @@ public static class Errors
             if (err is JoinError je) // Unwrap() []error: any joined error matching is a match
             {
                 foreach (var e in je.Errs) if (Is(e, target)) return true;
+                return false;
+            }
+            if (err is GoError gm && gm.Multi != null) // fmt.Errorf multi-%w: Unwrap() []error
+            {
+                foreach (var e in gm.Multi) if (Is(e, target)) return true;
                 return false;
             }
             err = Unwrap(err);
@@ -107,6 +112,11 @@ public static class Errors
             if (err is JoinError je) // Unwrap() []error: search each joined error
             {
                 foreach (var e in je.Errs) if (As(e, target, typeName)) return true;
+                return false;
+            }
+            if (err is GoError gm && gm.Multi != null) // fmt.Errorf multi-%w: Unwrap() []error
+            {
+                foreach (var e in gm.Multi) if (As(e, target, typeName)) return true;
                 return false;
             }
             err = Unwrap(err);
