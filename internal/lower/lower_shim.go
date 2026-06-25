@@ -2018,7 +2018,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"context.Context": {
 		"Value": {"Context", "Context_Value"}, "Err": {"Context", "Context_Err"},
-		"Done": {"Context", "Context_Done"},
+		"Done": {"Context", "Context_Done"}, "Deadline": {"Context", "Context_Deadline"},
 	},
 	"time.Time": {
 		"Unix": {"Time", "Time_Unix"}, "UnixNano": {"Time", "Time_UnixNano"}, "UnixMilli": {"Time", "Time_UnixMilli"},

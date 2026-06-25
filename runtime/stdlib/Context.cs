@@ -14,8 +14,22 @@ public sealed class GoContext
     public object? ErrVal;     // set once on cancel/timeout
     public object? CauseVal;   // the cancel cause (WithCancelCause); == ErrVal for a plain cancel
     public bool NoCancel;      // WithoutCancel: never done, never errs, but parent's values remain
+    public bool HasDeadline;   // set by WithTimeout/WithDeadline
+    public long DeadlineNs;    // the deadline (ns since Unix epoch) when HasDeadline
 
     public GoChan? Done() => NoCancel ? null : (DoneCh ?? Parent?.Done());
+
+    // Deadline() (time, ok): the nearest ancestor with a deadline wins (WithCancel/WithValue
+    // forward to their parent, as in Go). WithoutCancel severs inherited deadlines.
+    public (long ns, bool ok) DeadlineOf()
+    {
+        for (var c = this; c != null; c = c.Parent)
+        {
+            if (c.NoCancel) return (0, false);
+            if (c.HasDeadline) return (c.DeadlineNs, true);
+        }
+        return (0, false);
+    }
     public object? Err() => NoCancel ? null : (ErrVal ?? Parent?.Err());
 
     public object? Cause()
@@ -112,6 +126,7 @@ public static class Context
     public static object?[] WithTimeout(object parent, long timeout)
     {
         var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
+        ctx.HasDeadline = true; ctx.DeadlineNs = NowNs() + timeout;
         var cancel = NativeClosures.Make(_ => { ctx.Cancel(CanceledErr); return null; });
         // timeout is a time.Duration (nanoseconds).
         double ms = timeout / 1_000_000.0;
@@ -122,14 +137,18 @@ public static class Context
         return new object?[] { ctx, cancel };
     }
 
+    // Current time as nanoseconds since the Unix epoch (matching GoTime.N).
+    private static long NowNs() => (System.DateTime.UtcNow - new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)).Ticks * 100;
+
     // context.WithDeadline(parent, deadline time.Time) (Context, CancelFunc): cancel with
     // DeadlineExceeded when the deadline passes. deadline is a GoTime (nanoseconds in .N).
     public static object?[] WithDeadline(object parent, object? deadline)
     {
         var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
         var cancel = NativeClosures.Make(_ => { ctx.Cancel(CanceledErr); return null; });
-        long nowNs = (System.DateTime.UtcNow - new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)).Ticks * 100;
+        long nowNs = NowNs();
         long deadlineNs = deadline is GoTime t ? t.N : nowNs;
+        ctx.HasDeadline = true; ctx.DeadlineNs = deadlineNs;
         double ms = (deadlineNs - nowNs) / 1_000_000.0;
         if (ms > 0)
             System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.Cancel(DeadlineErr));
@@ -143,6 +162,7 @@ public static class Context
     public static object?[] WithTimeoutCause(object parent, long timeout, object? cause)
     {
         var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
+        ctx.HasDeadline = true; ctx.DeadlineNs = NowNs() + timeout;
         var cancel = NativeClosures.Make(_ => { ctx.Cancel(CanceledErr); return null; });
         double ms = timeout / 1_000_000.0;
         if (ms > 0) System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.CancelErrCause(DeadlineErr, cause));
@@ -153,8 +173,9 @@ public static class Context
     {
         var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
         var cancel = NativeClosures.Make(_ => { ctx.Cancel(CanceledErr); return null; });
-        long nowNs = (System.DateTime.UtcNow - new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)).Ticks * 100;
+        long nowNs = NowNs();
         long deadlineNs = deadline is GoTime t ? t.N : nowNs;
+        ctx.HasDeadline = true; ctx.DeadlineNs = deadlineNs;
         double ms = (deadlineNs - nowNs) / 1_000_000.0;
         if (ms > 0) System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.CancelErrCause(DeadlineErr, cause));
         else ctx.CancelErrCause(DeadlineErr, cause);
@@ -192,4 +213,11 @@ public static class Context
     public static object? Context_Value(object ctx, object? key) => ((GoContext)ctx).Value(key);
     public static object? Context_Err(object ctx) => ((GoContext)ctx).Err();
     public static GoChan? Context_Done(object ctx) => ((GoContext)ctx).Done();
+    // (ctx).Deadline() (time.Time, bool): the deadline + true for a timeout/deadline context
+    // (or an ancestor's), else the zero time + false.
+    public static object?[] Context_Deadline(object ctx)
+    {
+        var (ns, ok) = ((GoContext)ctx).DeadlineOf();
+        return new object?[] { ok ? new GoTime { N = ns, IsZero = false } : new GoTime { N = 0, IsZero = true }, ok };
+    }
 }
