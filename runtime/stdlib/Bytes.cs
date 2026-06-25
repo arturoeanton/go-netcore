@@ -174,7 +174,27 @@ public static class Bytes
     public static GoSlice Replace(GoSlice s, GoSlice oldb, GoSlice newb, long n)
     {
         byte[] src = B(s), o = B(oldb), nw = B(newb);
-        if (o.Length == 0 || n == 0) return S(src);
+        if (n == 0) return S(src);
+        // An empty old inserts new before each rune and at the end (Go: Count == runes+1).
+        if (o.Length == 0)
+        {
+            int m = 0;
+            foreach (byte b in src) if ((b & 0xC0) != 0x80) m++; // count UTF-8 lead bytes (runes)
+            m++;
+            if (n < 0 || m < n) n = m;
+            var ob = new System.Collections.Generic.List<byte>();
+            int start = 0;
+            for (long k = 0; k < n; k++)
+            {
+                int j = start;
+                if (k > 0) j += Utf8Width(src, start);
+                for (int p = start; p < j; p++) ob.Add(src[p]);
+                ob.AddRange(nw);
+                start = j;
+            }
+            for (int p = start; p < src.Length; p++) ob.Add(src[p]);
+            return S(ob.ToArray());
+        }
         var outp = new System.Collections.Generic.List<byte>();
         int i = 0, count = 0;
         while (i <= src.Length - o.Length)
@@ -191,6 +211,15 @@ public static class Bytes
         return S(outp.ToArray());
     }
     public static GoSlice ReplaceAll(GoSlice s, GoSlice oldb, GoSlice newb) => Replace(s, oldb, newb, -1);
+
+    // The UTF-8 byte width of the rune starting at p (an invalid lead byte decodes as width 1).
+    private static int Utf8Width(byte[] b, int p)
+    {
+        if (p >= b.Length) return 0;
+        byte c = b[p];
+        int w = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : c < 0xF8 ? 4 : 1;
+        return System.Math.Min(w, b.Length - p);
+    }
     public static GoSlice Clone(GoSlice s) => s.Data == null ? s : S(B(s));
 
     public static GoSlice Split(GoSlice s, GoSlice sep)

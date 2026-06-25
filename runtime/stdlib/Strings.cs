@@ -102,27 +102,52 @@ public static class Strings
     public static GoString Replace(GoString s, GoString old, GoString neu, long n)
     {
         string str = s.ToDotNetString(), o = old.ToDotNetString(), nw = neu.ToDotNetString();
-        if (n < 0) return GoString.FromDotNetString(str.Replace(o, nw));
-        if (o.Length == 0) return GoString.FromDotNetString(str); // simplification
+        // Go: a no-op when old == new or n == 0; an EMPTY old inserts new before each rune and
+        // at the end (Count("abc","") == runes+1), so .NET String.Replace (which rejects an
+        // empty old) can't be used.
+        if (o == nw || n == 0) return s;
+        int m = o.Length == 0 ? RuneCount(str) + 1 : CountSub(str, o);
+        if (m == 0) return s;
+        if (n < 0 || m < n) n = m;
         var sb = new System.Text.StringBuilder();
-        int i = 0; long done = 0;
-        while (done < n)
+        int start = 0;
+        for (long i = 0; i < n; i++)
         {
-            int idx = str.IndexOf(o, i, StringComparison.Ordinal);
-            if (idx < 0) break;
-            sb.Append(str, i, idx - i).Append(nw);
-            i = idx + o.Length; done++;
+            int j;
+            if (o.Length == 0)
+            {
+                j = start;
+                if (i > 0) j += (start < str.Length && char.IsSurrogatePair(str, start)) ? 2 : 1; // one rune
+            }
+            else j = str.IndexOf(o, start, StringComparison.Ordinal);
+            sb.Append(str, start, j - start).Append(nw);
+            start = j + o.Length;
         }
-        sb.Append(str, i, str.Length - i);
+        sb.Append(str, start, str.Length - start);
         return GoString.FromDotNetString(sb.ToString());
     }
-    public static GoString ReplaceAll(GoString s, GoString old, GoString neu) =>
-        GoString.FromDotNetString(s.ToDotNetString().Replace(old.ToDotNetString(), neu.ToDotNetString()));
+    public static GoString ReplaceAll(GoString s, GoString old, GoString neu) => Replace(s, old, neu, -1);
+
+    // non-overlapping occurrences of a non-empty substring; rune count for the rest.
+    private static int CountSub(string s, string sub)
+    {
+        int c = 0, i = 0;
+        while ((i = s.IndexOf(sub, i, StringComparison.Ordinal)) >= 0) { c++; i += sub.Length; }
+        return c;
+    }
+    private static int RuneCount(string s)
+    {
+        int c = 0;
+        for (int i = 0; i < s.Length; i += char.IsSurrogatePair(s, i) ? 2 : 1) c++;
+        return c;
+    }
 
     public static GoString TrimSpace(GoString s) => GoString.FromDotNetString(s.ToDotNetString().Trim());
-    public static GoString Trim(GoString s, GoString cut) => GoString.FromDotNetString(s.ToDotNetString().Trim(cut.ToDotNetString().ToCharArray()));
-    public static GoString TrimLeft(GoString s, GoString cut) => GoString.FromDotNetString(s.ToDotNetString().TrimStart(cut.ToDotNetString().ToCharArray()));
-    public static GoString TrimRight(GoString s, GoString cut) => GoString.FromDotNetString(s.ToDotNetString().TrimEnd(cut.ToDotNetString().ToCharArray()));
+    // An empty cutset trims nothing in Go; .NET's Trim(emptyArray) would default to trimming
+    // whitespace, so guard against it.
+    public static GoString Trim(GoString s, GoString cut) => cut.Len == 0 ? s : GoString.FromDotNetString(s.ToDotNetString().Trim(cut.ToDotNetString().ToCharArray()));
+    public static GoString TrimLeft(GoString s, GoString cut) => cut.Len == 0 ? s : GoString.FromDotNetString(s.ToDotNetString().TrimStart(cut.ToDotNetString().ToCharArray()));
+    public static GoString TrimRight(GoString s, GoString cut) => cut.Len == 0 ? s : GoString.FromDotNetString(s.ToDotNetString().TrimEnd(cut.ToDotNetString().ToCharArray()));
     public static GoString TrimPrefix(GoString s, GoString p)
     {
         string str = s.ToDotNetString(), pr = p.ToDotNetString();
