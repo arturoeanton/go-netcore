@@ -695,6 +695,17 @@ func (l *funcLowerer) namedFuncCall(e *ast.CallExpr, ident *ast.Ident, fn *types
 	if fn.Pkg() != nil && fn.Pkg().Path() == "encoding/json" && fn.Name() == "Unmarshal" {
 		return l.jsonUnmarshalCall(e)
 	}
+	// binary.Write/Read/Size need the data's static type (its field widths) — goclr boxes
+	// a uint16/uint8 as a 32-bit int, so the value alone does not carry the Go width.
+	if fn.Pkg() != nil && fn.Pkg().Path() == "encoding/binary" && len(e.Args) == 3 && fn.Name() == "Write" {
+		return l.binaryWriteCall(e)
+	}
+	if fn.Pkg() != nil && fn.Pkg().Path() == "encoding/binary" && len(e.Args) == 3 && fn.Name() == "Read" {
+		return l.binaryReadCall(e)
+	}
+	if fn.Pkg() != nil && fn.Pkg().Path() == "encoding/binary" && len(e.Args) == 1 && fn.Name() == "Size" {
+		return l.binarySizeCall(e)
+	}
 	// errors.As needs the target's concrete type to match against the chain.
 	if fn.Pkg() != nil && fn.Pkg().Path() == "errors" && fn.Name() == "As" {
 		return l.errorsAsCall(e)

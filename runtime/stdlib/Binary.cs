@@ -177,6 +177,197 @@ public static class Binary
         return outp.Count;
     }
 
+    // ---- descriptor-driven Write/Read/Size (the compiler passes the static type's field
+    // widths, since goclr boxes a uint16/uint8 as a 32-bit int and the value alone does not
+    // carry the Go width). Codes: b bool, c int8, C uint8, s int16, S uint16, i int32,
+    // I uint32, l int64, L uint64, f float32, g float64; {fields}; [N,elem]; <elem>. ----
+    public static object? WriteDesc(object? w, object order, object? data, GoString desc)
+    {
+        var outp = new System.Collections.Generic.List<byte>();
+        int pos = 0;
+        SerDesc(outp, ((GoByteOrder)order).Big, data, desc.ToDotNetString(), ref pos);
+        Compress.WriteRaw(w, outp.ToArray());
+        return null;
+    }
+
+    public static long SizeDesc(object? data, GoString desc)
+    {
+        var outp = new System.Collections.Generic.List<byte>();
+        int pos = 0;
+        SerDesc(outp, false, data, desc.ToDotNetString(), ref pos);
+        return outp.Count;
+    }
+
+    public static object? ReadDesc(object? r, object order, object? data, GoString descS)
+    {
+        bool big = ((GoByteOrder)order).Big;
+        string desc = descS.ToDotNetString();
+        int need = DescSize(desc, 0, out _, null); // fixed size; -1 for a slice (uses runtime len below)
+        var ptr = (GoPtr)data!;
+        // A slice descriptor needs the live target to know how many elements; compute its size.
+        if (need < 0) need = DescSize(desc, 0, out _, ptr.Value);
+        byte[] bytes = r is GoBuffer ? BytesBuffer.ReadRaw(r, need) : Readers.Drain(r);
+        if (bytes.Length < need) return new GoError(GoString.FromDotNetString("unexpected EOF"));
+        int bi = 0, pos = 0;
+        ptr.Value = DeserVal(bytes, big, ref bi, ptr.Value, desc, ref pos);
+        return null;
+    }
+
+    private static void SerDesc(System.Collections.Generic.List<byte> outp, bool big, object? v, string d, ref int pos)
+    {
+        char c = d[pos++];
+        switch (c)
+        {
+            case 'b': outp.Add((byte)(v is bool bb && bb ? 1 : 0)); break;
+            case 'c': case 'C': outp.Add((byte)System.Convert.ToInt64(v ?? 0L)); break;
+            case 's': case 'S': EmitN(outp, big, Bits(v, c), 2); break;
+            case 'i': case 'I': EmitN(outp, big, Bits(v, c), 4); break;
+            case 'l': case 'L': EmitN(outp, big, Bits(v, c), 8); break;
+            case 'f': Emit(outp, big, System.BitConverter.GetBytes((float)System.Convert.ToDouble(v ?? 0.0))); break;
+            case 'g': Emit(outp, big, System.BitConverter.GetBytes(System.Convert.ToDouble(v ?? 0.0))); break;
+            case '{':
+            {
+                var fields = v!.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                int fi = 0;
+                while (d[pos] != '}') SerDesc(outp, big, fields[fi++].GetValue(v), d, ref pos);
+                pos++;
+                break;
+            }
+            case '[': case '<':
+            {
+                bool array = c == '[';
+                int n;
+                var sl = (GoSlice)v!;
+                if (array) { int comma = d.IndexOf(',', pos); n = int.Parse(d.Substring(pos, comma - pos)); pos = comma + 1; }
+                else n = sl.Len;
+                int elemStart = pos;
+                for (int k = 0; k < n; k++) { pos = elemStart; SerDesc(outp, big, sl.Data![sl.Off + k], d, ref pos); }
+                pos = elemStart; SkipDesc(d, ref pos); pos++; // past elem desc + ']' / '>'
+                break;
+            }
+        }
+    }
+
+    // The unsigned bit pattern of a goclr-boxed integer value for a descriptor code.
+    private static ulong Bits(object? v, char code) =>
+        code == 'L' ? System.Convert.ToUInt64(v ?? 0UL) : unchecked((ulong)System.Convert.ToInt64(v ?? 0L));
+
+    private static void EmitN(System.Collections.Generic.List<byte> outp, bool big, ulong v, int n)
+    {
+        var b = new byte[n];
+        for (int i = 0; i < n; i++) b[i] = (byte)(v >> (i * 8));
+        Emit(outp, big, b); // Emit reverses for big-endian
+    }
+
+    private static void SkipDesc(string d, ref int pos)
+    {
+        char c = d[pos++];
+        if (c == '{') { while (d[pos] != '}') SkipDesc(d, ref pos); pos++; }
+        else if (c == '[') { int comma = d.IndexOf(',', pos); pos = comma + 1; SkipDesc(d, ref pos); pos++; }
+        else if (c == '<') { SkipDesc(d, ref pos); pos++; }
+    }
+
+    // The fixed byte size of a descriptor; for a slice <elem> uses sample's runtime length
+    // (or returns -1 when sample is null, signalling the caller to recompute with the target).
+    private static int DescSize(string d, int pos, out int endPos, object? sample)
+    {
+        char c = d[pos++];
+        int sz = 0;
+        switch (c)
+        {
+            case 'b': case 'c': case 'C': sz = 1; break;
+            case 's': case 'S': sz = 2; break;
+            case 'i': case 'I': case 'f': sz = 4; break;
+            case 'l': case 'L': case 'g': sz = 8; break;
+            case '{':
+            {
+                var fields = sample?.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                int fi = 0;
+                while (d[pos] != '}') { sz += DescSize(d, pos, out pos, fields != null ? fields[fi++].GetValue(sample) : null); }
+                pos++;
+                break;
+            }
+            case '[': case '<':
+            {
+                bool array = c == '[';
+                int n;
+                var sl = sample is GoSlice g ? g : default;
+                if (array) { int comma = d.IndexOf(',', pos); n = int.Parse(d.Substring(pos, comma - pos)); pos = comma + 1; }
+                else { if (sample == null) { endPos = pos; return -1; } n = sl.Len; }
+                int elemSz = 0, elemEnd = pos;
+                for (int k = 0; k < n; k++) { elemEnd = pos; elemSz += DescSize(d, pos, out int e, sl.Data != null ? sl.Data[sl.Off + k] : null); elemEnd = e; }
+                if (n == 0) { int e = pos; SkipDesc(d, ref e); elemEnd = e; }
+                pos = elemEnd; pos++; // past ']' / '>'
+                sz += elemSz;
+                break;
+            }
+        }
+        endPos = pos;
+        return sz;
+    }
+
+    private static object? DeserVal(byte[] buf, bool big, ref int bi, object? cur, string d, ref int pos)
+    {
+        char c = d[pos++];
+        object val;
+        switch (c)
+        {
+            case 'b': return Coerce(buf[bi++] != 0, cur);
+            case 'c': val = (long)(sbyte)buf[bi++]; break;
+            case 'C': val = (long)buf[bi++]; break;
+            case 's': val = (long)(short)RawN(buf, big, ref bi, 2); break;
+            case 'S': val = (long)(ushort)RawN(buf, big, ref bi, 2); break;
+            case 'i': val = (long)(int)RawN(buf, big, ref bi, 4); break;
+            case 'I': val = (long)(uint)RawN(buf, big, ref bi, 4); break;
+            case 'l': val = (long)RawN(buf, big, ref bi, 8); break;
+            case 'L': val = RawN(buf, big, ref bi, 8); break; // ulong
+            case 'f': val = System.BitConverter.ToSingle(Take(buf, big, ref bi, 4)); break;
+            case 'g': val = System.BitConverter.ToDouble(Take(buf, big, ref bi, 8)); break;
+            case '{':
+            {
+                var fields = cur!.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                int fi = 0;
+                while (d[pos] != '}') { var nv = DeserVal(buf, big, ref bi, fields[fi].GetValue(cur), d, ref pos); fields[fi].SetValue(cur, nv); fi++; }
+                pos++;
+                return cur;
+            }
+            case '[': case '<':
+            {
+                bool array = c == '[';
+                var sl = (GoSlice)cur!;
+                int n;
+                if (array) { int comma = d.IndexOf(',', pos); n = int.Parse(d.Substring(pos, comma - pos)); pos = comma + 1; }
+                else n = sl.Len;
+                int elemStart = pos;
+                for (int k = 0; k < n; k++) { pos = elemStart; sl.Data![sl.Off + k] = DeserVal(buf, big, ref bi, sl.Data[sl.Off + k], d, ref pos); }
+                pos = elemStart; SkipDesc(d, ref pos); pos++;
+                return cur;
+            }
+            default: return cur;
+        }
+        return Coerce(val, cur);
+    }
+
+    // Coerce a reconstructed scalar to the target cell/field's CLR type (a goclr uint16 cell
+    // is a 32-bit int, uint32 a CLR uint, etc.), so writing it back type-checks.
+    private static object? Coerce(object val, object? cur) =>
+        cur != null && val.GetType() != cur.GetType() ? System.Convert.ChangeType(val, cur.GetType()) : val;
+
+    private static ulong RawN(byte[] buf, bool big, ref int bi, int n)
+    {
+        ulong v = 0;
+        for (int i = 0; i < n; i++) v |= (ulong)buf[bi + i] << (big ? (n - 1 - i) * 8 : i * 8);
+        bi += n;
+        return v;
+    }
+    private static byte[] Take(byte[] buf, bool big, ref int bi, int n)
+    {
+        var b = new byte[n];
+        for (int i = 0; i < n; i++) b[i] = buf[bi + (big ? n - 1 - i : i)];
+        bi += n;
+        return b;
+    }
+
     private static byte Get(GoSlice b, int i) => (byte)System.Convert.ToInt64(b.Data![b.Off + i]);
     private static void Set(GoSlice b, int i, byte v) => b.Data![b.Off + i] = (int)v;
 
