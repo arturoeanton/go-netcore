@@ -70,7 +70,12 @@ public static class Errors
         if (target == null) return err == null;
         while (err != null)
         {
-            if (ReferenceEquals(err, target)) return true;
+            // Go compares err == target for a comparable target: a value-receiver struct error
+            // (CodeError{...}) matches by VALUE, not reference. GoKeyComparer is Go's ==: it
+            // does structural equality for value structs/GoNamed and reference equality for
+            // GoError sentinels and pointer errors (neither overrides Equals), so all error
+            // kinds keep the right semantics.
+            if (GoCLR.Runtime.GoKeyComparer.Instance.Equals(err, target)) return true;
             if (err is IGoErrorIs eis && eis.GoIs(target)) return true; // shim error's own Is(target)
             if (Bridge.HasMethod(err, "Is") && Bridge.CallMethod(err, "Is", target) is bool b && b) return true;
             if (err is JoinError je) // Unwrap() []error: any joined error matching is a match
