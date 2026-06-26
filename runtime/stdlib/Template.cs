@@ -17,6 +17,7 @@ public sealed class GoTemplate
     // parsed into an associated template must be visible from its siblings. Clone copies it.
     public Dictionary<string, GoTemplate> Set = new();
     public Dictionary<string, GoClosure> Funcs = new();
+    public string LeftDelim = "{{", RightDelim = "}}"; // (*Template).Delims, default {{ }}
 }
 
 /// <summary>html/template.Error: an escaping error (code + location + description). Error()
@@ -124,7 +125,16 @@ public static class Template
         // a later Parse into either is visible from both.
         return new GoTemplate { Name = name.ToDotNetString(), Html = p.Html, Set = p.Set, Funcs = p.Funcs };
     }
-    public static object Tmpl_Delims(object t, GoString left, GoString right) => t; // only default {{ }} supported
+    // (*Template).Delims(left, right): set the action delimiters (an empty string means the
+    // default). They take effect for subsequent Parse calls on this template.
+    public static object Tmpl_Delims(object t, GoString left, GoString right)
+    {
+        var g = (GoTemplate)t;
+        string l = left.ToDotNetString(), r = right.ToDotNetString();
+        g.LeftDelim = l.Length > 0 ? l : "{{";
+        g.RightDelim = r.Length > 0 ? r : "}}";
+        return t;
+    }
     public static object Tmpl_Funcs(object t, GoMap funcMap)
     {
         var g = (GoTemplate)t;
@@ -139,7 +149,7 @@ public static class Template
         var g = (GoTemplate)t;
         try
         {
-            var items = Lex(text.ToDotNetString());
+            var items = Lex(text.ToDotNetString(), g.LeftDelim, g.RightDelim);
             int pos = 0;
             var nodes = ParseList(g, items, ref pos);
             if (pos < items.Count) throw new System.Exception("unexpected " + (items[pos].IsAction ? "{{" + items[pos].Text + "}}" : "text") + " in command");
@@ -305,25 +315,26 @@ public static class Template
     // ---- lexer -------------------------------------------------------------
     sealed class Item { public bool IsAction; public string Text = ""; }
 
-    static List<Item> Lex(string s)
+    static List<Item> Lex(string s, string left = "{{", string right = "}}")
     {
         var items = new List<Item>();
         int i = 0;
         while (i < s.Length)
         {
-            int open = s.IndexOf("{{", i, System.StringComparison.Ordinal);
+            int open = s.IndexOf(left, i, System.StringComparison.Ordinal);
             if (open < 0) { items.Add(new Item { Text = s.Substring(i) }); break; }
             if (open > i) items.Add(new Item { Text = s.Substring(i, open - i) });
-            int close = s.IndexOf("}}", open + 2, System.StringComparison.Ordinal);
+            int innerStart = open + left.Length;
+            int close = s.IndexOf(right, innerStart, System.StringComparison.Ordinal);
             if (close < 0) throw new System.Exception("unclosed action");
-            string inner = s.Substring(open + 2, close - (open + 2));
+            string inner = s.Substring(innerStart, close - innerStart);
             bool trimLeft = inner.StartsWith("-"); if (trimLeft) inner = inner.Substring(1);
             bool trimRight = inner.EndsWith("-"); if (trimRight) inner = inner.Substring(0, inner.Length - 1);
             inner = inner.Trim();
             if (trimLeft && items.Count > 0 && !items[^1].IsAction) items[^1].Text = items[^1].Text.TrimEnd();
             if (!inner.StartsWith("/*")) // skip comments
                 items.Add(new Item { IsAction = true, Text = inner });
-            i = close + 2;
+            i = close + right.Length;
             if (trimRight && i < s.Length)
             {
                 int j = i; while (j < s.Length && char.IsWhiteSpace(s[j])) j++;
