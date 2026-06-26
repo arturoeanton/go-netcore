@@ -28,7 +28,7 @@ func main() {
 	fmt.Println(reflect.Indirect(reflect.ValueOf(pa)).Field(0).Interface())
 	fmt.Println(reflect.Indirect(reflect.ValueOf(pa)).Type() == reflect.TypeOf(Animal{}))
 
-	// Zero of the scalar/composite types that are supported.
+	// Zero of scalars, composites and structs.
 	fmt.Printf("%v %v %q %v %v %v\n",
 		reflect.Zero(reflect.TypeOf(0)).Interface(),
 		reflect.Zero(reflect.TypeOf(3.14)).Interface(),
@@ -36,4 +36,18 @@ func main() {
 		reflect.Zero(reflect.TypeOf(true)).Interface(),
 		reflect.Zero(reflect.TypeOf(int64(0))).Interface(),
 		reflect.Zero(reflect.TypeOf(uint8(0))).Interface())
+	type Inner struct {
+		A string
+		B int
+	}
+	type Big struct {
+		Name  string
+		Legs  int
+		Tags  []string
+		In    Inner
+		Ratio float64
+	}
+	fmt.Printf("%v\n%+v\n", reflect.Zero(reflect.TypeOf(Big{})).Interface(), reflect.Zero(reflect.TypeOf(Big{})).Interface())
+	fmt.Println(reflect.DeepEqual(reflect.Zero(reflect.TypeOf(Big{})).Interface(), Big{}))
+	fmt.Printf("%v\n", reflect.New(reflect.TypeOf(Animal{})).Elem().Interface())
 }

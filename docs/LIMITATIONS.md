@@ -37,9 +37,9 @@ Remaining gaps (tracked):
 - **`reflect.Type` is comparable** with `==` (interned per descriptor, so identical types
   from any producer compare equal and a `reflect.Type` works as a map key). `Value.Convert`
   carries the target type (incl. `int`→`string` as `string(rune)`) and `reflect.Indirect`
-  keeps the qualified element type. `reflect.Zero` builds the zero of scalars/slices/maps
-  but a **struct's `Zero().Interface()` is `nil`** (constructing a Go-zeroed struct instance
-  needs the CLR type + per-field zeroing); use a struct literal for a zero struct.
+  keeps the qualified element type. `reflect.Zero`/`reflect.New(...).Elem()` build the zero
+  of scalars, slices, maps **and structs** (a Go-zeroed CLR instance — numeric/bool 0/false,
+  slices/maps/pointers nil, string fields `""`, recursing into nested struct fields).
 
 ## Type-info erasure (runtime is non-generic)
 

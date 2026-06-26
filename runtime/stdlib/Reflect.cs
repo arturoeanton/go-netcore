@@ -145,6 +145,24 @@ public static class Reflect
         return new GoReflectValue { V = s };
     }
 
+    // A Go-zeroed instance of a struct's CLR (value) type: numeric/bool fields default to
+    // 0/false, slices/maps/pointers to nil, and string fields to "" (the CLR default leaves
+    // them null), recursing into nested struct fields.
+    private static object? ZeroStruct(System.Type ct)
+    {
+        object? inst = System.Activator.CreateInstance(ct);
+        if (inst == null) return null;
+        foreach (var f in ct.GetFields(BindingFlags.Public | BindingFlags.Instance))
+        {
+            var ft = f.FieldType;
+            if (ft == typeof(GoString)) f.SetValue(inst, GoString.FromDotNetString(""));
+            else if (ft.IsValueType && !ft.IsPrimitive && !ft.IsEnum
+                     && ft != typeof(GoSlice) && ft != typeof(GoComplex) && ft != typeof(GoString))
+                f.SetValue(inst, ZeroStruct(ft));
+        }
+        return inst;
+    }
+
     // The boxed zero value for a type descriptor's kind.
     private static object? ZeroForDesc(GoTypeDesc? d)
     {
@@ -164,7 +182,16 @@ public static class Reflect
     public static object Zero(object typ)
     {
         var d = TDesc(typ);
-        if (d != null) return new GoReflectValue { V = ZeroForDesc(d), Desc = d };
+        if (d != null)
+        {
+            object? zv = ZeroForDesc(d);
+            // A struct's zero is a default CLR instance of the struct's (value) type, taken
+            // from the type's sample, then each Go string field reset to "" (the CLR default
+            // leaves it null, but Go's zero string is empty).
+            if (zv == null && d.Kind == GoKind.Struct && (typ as GoReflectType)?.Sample is object samp)
+                try { zv = ZeroStruct(samp.GetType()); } catch { }
+            return new GoReflectValue { V = zv, Desc = d };
+        }
         var s = ((GoReflectType)typ).Sample;
         object? z = s switch
         {
