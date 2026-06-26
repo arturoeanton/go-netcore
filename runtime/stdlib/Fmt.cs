@@ -830,6 +830,13 @@ public static class Fmt
         v = MaybeRetag(v); // re-tag a []Stringer's bare elements (Sprint/Println path)
         // fmt.Formatter governs the Print/Println/Sprint path too (verb 'v', no flags).
         if (TryFormatter(v, new Spec { Verb = verb, Width = -1, Prec = -1, Plus = plus, Hash = hash }, out var ffr)) return ffr;
+        // *big.Int and *big.Float implement fmt.Formatter: under %v they honor the '+' flag as a
+        // sign for a non-negative value (unlike a plain scalar, whose %+v adds field names only).
+        if (plus && verb == 'v' && (v is GoBigInt || v is GoBigFloat))
+        {
+            string bs = v is GoBigInt gbi ? Big.Int_String(gbi).ToDotNetString() : Big.Float_String((GoBigFloat)v).ToDotNetString();
+            return bs.Length > 0 && bs[0] != '-' ? "+" + bs : bs;
+        }
         if (v is GoBigFloat bfv) v = bfv.V; // *big.Float (double-backed) prints like its value
         // A type's String()/Error() method governs %v and %s output (but not the
         // Go-syntax %#v, nor numeric/bool/pointer-address verbs).

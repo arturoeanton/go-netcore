@@ -173,6 +173,13 @@ Remaining edges (documented, not silent):
   `Width()`/`Precision()`/`Flag()`. Honored at the top level, through a pointer receiver, and
   per element inside a slice/map; the Formatter owns its own width padding. Fixture
   680_fmt_formatter.
+- **`*big.Int` honors the `+` flag under `%v`/`%+v`** (it is itself an `fmt.Formatter`,
+  so `%+v` of a non-negative value prints a leading `+`) — standalone and as a
+  struct/slice/map field. Fixture 726_bigint_plus_verb. Two narrow residuals remain:
+  the **space flag** (`% v` of a `big.Int`, a leading space) and the **`+` flag on a
+  standalone `*big.Float` under `%v`** (it is unwrapped to its `float64` value before
+  the flag is applied) are not yet honored — `%+d`/`% d` and the `*big.Int` field cases
+  are exact.
 - A non-numeric verb's **width applied to a composite** (`%6v` of a `[]int`)
   pads the whole rendering rather than each element; Go pads per element.
   Numeric verbs (`%6d`, `%03d`) already pad per element. `%!(EXTRA …)` for
