@@ -405,6 +405,14 @@ public static class Time
     // result is in UTC (goclr's time is UTC-only; see docs/LIMITATIONS.md).
     public static object?[] Parse(GoString layout, GoString value) => ParseImpl(layout, value, null);
 
+    // *time.ParseError exported-field reads + Error().
+    public static GoString PErr_Layout(object e) => GoString.FromDotNetString(((GoTimeParseError)e).Layout);
+    public static GoString PErr_Value(object e) => GoString.FromDotNetString(((GoTimeParseError)e).Value);
+    public static GoString PErr_LayoutElem(object e) => GoString.FromDotNetString(((GoTimeParseError)e).LayoutElem);
+    public static GoString PErr_ValueElem(object e) => GoString.FromDotNetString(((GoTimeParseError)e).ValueElem);
+    public static GoString PErr_Message(object e) => GoString.FromDotNetString(((GoTimeParseError)e).Message);
+    public static GoString PErr_Error(object e) => ((GoTimeParseError)e).Error();
+
     // Thrown when a parsed time field is outside its valid range (Go's "<field> out of range").
     private sealed class RangeError : System.Exception { public readonly string Field; public RangeError(string f) { Field = f; } }
     // Thrown when input remains after the layout is fully consumed (Go's "extra text: ...").
@@ -545,13 +553,15 @@ public static class Time
         catch (RangeError re)
         {
             // A parsed field was out of range: Go reports `parsing time "VALUE": <field> out of range`.
+            string msg = ": " + re.Field + " out of range";
             return new object?[] { new GoTime { IsZero = true },
-                new GoError("parsing time \"" + val + "\": " + re.Field + " out of range") };
+                new GoTimeParseError { Layout = lay, Value = val, Message = msg, Full = "parsing time \"" + val + "\"" + msg } };
         }
         catch (ExtraTextError et)
         {
+            string msg = ": extra text: \"" + et.Rest + "\"";
             return new object?[] { new GoTime { IsZero = true },
-                new GoError("parsing time \"" + val + "\": extra text: \"" + et.Rest + "\"") };
+                new GoTimeParseError { Layout = lay, Value = val, Message = msg, Full = "parsing time \"" + val + "\"" + msg } };
         }
         catch
         {
@@ -561,7 +571,8 @@ public static class Time
             string remaining = val.Substring(System.Math.Min(viStart, val.Length));
             string std = li > liStart ? lay.Substring(liStart, li - liStart) : lay.Substring(liStart);
             return new object?[] { new GoTime { IsZero = true },
-                new GoError("parsing time \"" + val + "\" as \"" + lay + "\": cannot parse \"" + remaining + "\" as \"" + std + "\"") };
+                new GoTimeParseError { Layout = lay, Value = val, LayoutElem = std, ValueElem = remaining,
+                    Full = "parsing time \"" + val + "\" as \"" + lay + "\": cannot parse \"" + remaining + "\" as \"" + std + "\"" } };
         }
     }
 
@@ -743,6 +754,16 @@ public static class Time
 /// default, so a UTC time behaves exactly as before.</summary>
 [GoShim("time.Time")]
 public sealed class GoTime { public long N; public bool IsZero; public int OffsetSeconds; public string ZoneName = "UTC"; public System.TimeZoneInfo? Tz; }
+
+/// <summary>A *time.ParseError (what time.Parse returns on failure): the exported
+/// Layout/Value/LayoutElem/ValueElem/Message fields plus the precomputed Error() string.
+/// [GoShim]-tagged so errors.As(*time.ParseError) recovers it.</summary>
+[GoShim("time.ParseError")]
+public sealed class GoTimeParseError : IGoError
+{
+    public string Layout = "", Value = "", LayoutElem = "", ValueElem = "", Message = "", Full = "";
+    public GoString Error() => GoString.FromDotNetString(Full);
+}
 
 /// <summary>A *time.Location: UTC by default, a fixed-offset zone from
 /// time.FixedZone (Name + OffsetSeconds), or a DST-aware IANA zone (Tz set,

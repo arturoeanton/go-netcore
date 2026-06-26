@@ -4,9 +4,13 @@ using System.Globalization;
 using GoCLR.Runtime;
 
 /// <summary>A *strconv.NumError (the error type Parse* return); Err is the shared
-/// ErrSyntax/ErrRange sentinel so code can compare `e.Err == strconv.ErrRange`.</summary>
-public sealed class GoNumError : IGoError
+/// ErrSyntax/ErrRange sentinel so code can compare `e.Err == strconv.ErrRange`.
+/// [GoShim]-tagged and IGoWrapped so errors.As(*strconv.NumError) and errors.Is
+/// (against ErrSyntax/ErrRange) work.</summary>
+[GoShim("strconv.NumError")]
+public sealed class GoNumError : IGoError, IGoWrapped
 {
+    public object? GoUnwrapped() => Err;
     public string Func = "", Num = "";
     public GoError Err = null!;
     public GoString Error() => GoString.FromDotNetString($"strconv.{Func}: parsing \"{Num}\": {Err.Message}");
@@ -564,7 +568,10 @@ public static partial class Strconv
             if (TryParseHexFloat(t, out double hv)) return FloatResult(hv, bitSize, s);
             return new object?[] { 0.0, NumError("ParseFloat", s, ErrSyntax) };
         }
-        if (double.TryParse(t, NumberStyles.Float, Inv, out double v))
+        // Go's ParseFloat does NOT allow surrounding whitespace or thousands separators
+        // (NumberStyles.Float would accept leading/trailing white) — only sign/point/exponent.
+        const NumberStyles floatStyle = NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent;
+        if (double.TryParse(t, floatStyle, Inv, out double v))
             return FloatResult(v, bitSize, s);
         return new object?[] { 0.0, NumError("ParseFloat", s, ErrSyntax) };
     }
