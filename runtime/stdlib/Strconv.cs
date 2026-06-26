@@ -340,17 +340,21 @@ public static partial class Strconv
     {
         char c = (char)fmt;
         int p = (int)prec;
+        // For the SHORTEST forms (prec < 0) a 32-bit size must use the float32 round-trip
+        // (fewer digits), else the spurious float64 tail prints (e.g. 0.10000000149011612 for
+        // a float32 0.1). Fixed-precision forms format the value's bits regardless of bitSize.
+        bool f32 = bitSize == 32 && p < 0;
         string s = c switch
         {
-            'f' or 'F' => GoFtoa.FormatF(f, p),
-            'e' => GoFtoa.FormatE(f, p),
-            'E' => GoFtoa.FormatE(f, p, 'E'),
-            'g' => p < 0 ? GoFtoa.Shortest(f) : GoFtoa.FormatG(f, p),
-            'G' => p < 0 ? GoFtoa.Shortest(f).ToUpperInvariant() : GoFtoa.FormatG(f, p).ToUpperInvariant(),
+            'f' or 'F' => f32 ? GoFtoa.ShortestF((float)f) : GoFtoa.FormatF(f, p),
+            'e' => f32 ? GoFtoa.ShortestE((float)f) : GoFtoa.FormatE(f, p),
+            'E' => f32 ? GoFtoa.ShortestE((float)f, 'E') : GoFtoa.FormatE(f, p, 'E'),
+            'g' => p < 0 ? (f32 ? GoFtoa.Shortest((float)f) : GoFtoa.Shortest(f)) : GoFtoa.FormatG(f, p),
+            'G' => p < 0 ? (f32 ? GoFtoa.Shortest((float)f) : GoFtoa.Shortest(f)).ToUpperInvariant() : GoFtoa.FormatG(f, p).ToUpperInvariant(),
             'b' => FormatB(f, (int)bitSize),
             'x' => FormatX(f, p, false, (int)bitSize),
             'X' => FormatX(f, p, true, (int)bitSize),
-            _ => GoFtoa.Shortest(f),
+            _ => f32 ? GoFtoa.Shortest((float)f) : GoFtoa.Shortest(f),
         };
         return GoString.FromDotNetString(s);
     }

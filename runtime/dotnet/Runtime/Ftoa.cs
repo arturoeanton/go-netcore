@@ -39,12 +39,35 @@ public static class GoFtoa
         return neg ? "-" + body : body;
     }
 
+    /// <summary>strconv.FormatFloat(f, 'e', -1, 32) — shortest float32 exponent form.</summary>
+    public static string ShortestE(float f, char e = 'e')
+    {
+        if (float.IsNaN(f)) return "NaN";
+        if (float.IsInfinity(f)) return f < 0 ? "-Inf" : "+Inf";
+        bool neg = float.IsNegative(f); if (neg) f = -f;
+        if (!ShortestDigitsFromR(f.ToString("R", Inv), out string digits, out int dp)) return (neg ? "-0" : "0") + (e == 'E' ? "E+00" : "e+00");
+        string body = FmtE(digits, dp - 1);
+        if (e == 'E') body = body.Replace('e', 'E');
+        return neg ? "-" + body : body;
+    }
+
+    /// <summary>strconv.FormatFloat(f, 'f', -1, 32) — shortest float32 fixed form.</summary>
+    public static string ShortestF(float f)
+    {
+        if (float.IsNaN(f)) return "NaN";
+        if (float.IsInfinity(f)) return f < 0 ? "-Inf" : "+Inf";
+        bool neg = float.IsNegative(f); if (neg) f = -f;
+        if (!ShortestDigitsFromR(f.ToString("R", Inv), out string digits, out int dp)) return neg ? "-0" : "0";
+        string body = FmtF(digits, dp);
+        return neg ? "-" + body : body;
+    }
+
     /// <summary>strconv.FormatFloat(d, 'e', -1, 64) — shortest digits in exponent form.</summary>
     public static string ShortestE(double d, char e = 'e')
     {
         if (double.IsNaN(d)) return "NaN";
         if (double.IsInfinity(d)) return d < 0 ? "-Inf" : "+Inf";
-        if (!ShortestDigits(d, out bool neg, out string digits, out int dp)) return (neg ? "-0e+00" : "0e+00");
+        if (!ShortestDigits(d, out bool neg, out string digits, out int dp)) return (neg ? "-0" : "0") + (e == 'E' ? "E+00" : "e+00");
         string body = FmtE(digits, dp - 1);
         if (e == 'E') body = body.Replace('e', 'E');
         return neg ? "-" + body : body;

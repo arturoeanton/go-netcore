@@ -502,8 +502,13 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   order is unspecified, like Go).
 - `strconv.FormatFloat` supports all verbs byte-exactly (`f/e/E/g/G/b/x/X`),
   including hexadecimal-float `0x1.…p±dd` with shortest and fixed precision;
-  `fmt`'s `%x`/`%X`/`%b` of a float route through the same path. A `complex`
-  formats both parts as `(re±imi)` under `%v`/`%f`/`%e`/`%E`/`%g`/`%G`/`%#v`.
+  `fmt`'s `%x`/`%X`/`%b` of a float route through the same path. A `bitSize` of 32
+  with shortest precision (`prec<0`) uses the float32 round-trip (so `FormatFloat(…,
+  'g', -1, 32)` of a float32 `0.1` is `0.1`, not the widened `0.10000000149011612`).
+  A `complex` formats both parts as `(re±imi)` under `%v`/`%f`/`%e`/`%E`/`%g`/`%G`/`%#v`.
+  **Edge:** the shortest **`'f'`** form of the float64 extremes — `math.MaxFloat64` and
+  `math.SmallestNonzeroFloat64` — differs (a last-digit rounding / underflow-to-`0` in the
+  ~300-digit fixed expansion); the `'g'`/`'e'` forms of those values are exact.
 - `math/big.Float` is **double-backed** (53-bit), not arbitrary precision. The arithmetic
   and setter methods are present (`Add`/`Sub`/`Mul`/`Quo`/`Neg`/`Abs`/`Set`/`Copy`/
   `SetFloat64`/`SetInt64`/`SetInt`/`Float64`/`Cmp`/`Sign`/`IsInt`/`String`/`Text`), and
