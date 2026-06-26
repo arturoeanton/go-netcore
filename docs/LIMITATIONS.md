@@ -128,6 +128,10 @@ Remaining edges (documented, not silent):
   struct by its reflect spelling (`struct { A int; B string }`) for both `%#v`
   and `%T`. (`%#v` of a `uint8`/`byte` *scalar* still prints decimal — it shares
   the int32 runtime representation.)
+- A non-numeric verb's **width applied to a composite** (`%6v` of a `[]int`)
+  pads the whole rendering rather than each element; Go pads per element.
+  Numeric verbs (`%6d`, `%03d`) already pad per element. `%!(EXTRA …)` for
+  surplus args and `%q` precision (rune truncation) match Go.
 
 ## Uncaught panic output format
 

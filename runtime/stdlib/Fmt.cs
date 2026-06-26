@@ -234,6 +234,7 @@ public static class Fmt
     {
         var sb = new StringBuilder();
         int ai = 0;
+        bool reordered = false;
         for (int i = 0; i < f.Length; i++)
         {
             if (f[i] != '%') { sb.Append(f[i]); continue; }
@@ -251,7 +252,7 @@ public static class Fmt
                 else break;
             }
             // explicit argument index [n] before the width / value (Go: %[2]d, %[2]*d)
-            ParseArgIndex(f, ref i, ref ai);
+            ParseArgIndex(f, ref i, ref ai, ref reordered);
             // width (number or *)
             if (i < f.Length && f[i] == '*') { sp.Width = ai < args.Length ? (int)ToLong(args[ai++]) : 0; if (sp.Width < 0) { sp.Minus = true; sp.Width = -sp.Width; } i++; }
             else { int ws = i; while (i < f.Length && char.IsDigit(f[i])) i++; if (i > ws) sp.Width = int.Parse(f.Substring(ws, i - ws), Inv); }
@@ -259,17 +260,29 @@ public static class Fmt
             if (i < f.Length && f[i] == '.')
             {
                 i++;
-                ParseArgIndex(f, ref i, ref ai); // [n] may index the precision arg too
+                ParseArgIndex(f, ref i, ref ai, ref reordered); // [n] may index the precision arg too
                 if (i < f.Length && f[i] == '*') { sp.Prec = ai < args.Length ? (int)ToLong(args[ai++]) : 0; i++; }
                 else { int ps = i; while (i < f.Length && char.IsDigit(f[i])) i++; sp.Prec = (i > ps) ? int.Parse(f.Substring(ps, i - ps), Inv) : 0; }
             }
             // explicit argument index immediately before the verb (Go: %[1]v, %6.2[1]f)
-            ParseArgIndex(f, ref i, ref ai);
+            ParseArgIndex(f, ref i, ref ai, ref reordered);
             if (i >= f.Length) { sb.Append('%'); break; }
             sp.Verb = f[i];
             if (sp.Verb == '%') { sb.Append('%'); continue; }
             object? arg = ai < args.Length ? args[ai++] : MissingArg;
             sb.Append(FmtElem(arg, sp));
+        }
+        // Leftover arguments are reported as %!(EXTRA type=val, ...) — unless an explicit
+        // argument index appeared (Go suppresses the check once arguments are reordered).
+        if (!reordered && ai < args.Length)
+        {
+            sb.Append("%!(EXTRA ");
+            for (int k = ai; k < args.Length; k++)
+            {
+                if (k > ai) sb.Append(", ");
+                sb.Append(GoTypeName(args[k])).Append('=').Append(Format(args[k], 'v', false, false));
+            }
+            sb.Append(')');
         }
         return sb.ToString();
     }
@@ -279,7 +292,7 @@ public static class Fmt
     // Go's explicit argument index: "[n]" sets the current 1-based argument to n (so the next
     // value consumed — a '*' width/precision or the verb — reads args[n-1], and the implicit
     // counter continues from there). A no-op if there is no valid "[digits]" at f[i].
-    private static void ParseArgIndex(string f, ref int i, ref int ai)
+    private static void ParseArgIndex(string f, ref int i, ref int ai, ref bool reordered)
     {
         if (i >= f.Length || f[i] != '[') return;
         int j = i + 1, start = j;
@@ -288,6 +301,7 @@ public static class Fmt
         {
             ai = int.Parse(f.Substring(start, j - start), Inv) - 1;
             i = j + 1;
+            reordered = true; // an explicit [n] disables the trailing %!(EXTRA ...) report
         }
     }
 
@@ -429,7 +443,10 @@ public static class Fmt
             case 'c': return IsIntegral(v) ? char.ConvertFromUtf32((int)ToLong(v)) : BadVerb(verb, v);
             case 'U': return IsIntegral(v) ? UnicodeVerb(ToLong(v), sp.Hash) : BadVerb(verb, v);
             case 's': return StrVerb(v, sp);
-            case 'q': return v is GoSlice qsl && (IsByteSliceName(wname) || wByteNamed) ? GoQuote(GoString.FromBytesOwned(SliceToBytes(qsl))) : QuoteVerb(v);
+            case 'q':
+                // %q on a string honors precision by truncating to that many runes first.
+                if (v is GoString qpre && sp.Prec >= 0) { var s = qpre.ToDotNetString(); v = GoString.FromDotNetString(s.Length > sp.Prec ? s.Substring(0, sp.Prec) : s); }
+                return v is GoSlice qsl && (IsByteSliceName(wname) || wByteNamed) ? GoQuote(GoString.FromBytesOwned(SliceToBytes(qsl))) : QuoteVerb(v);
             case 'f':
             case 'F': return v is GoComplex cf ? ComplexVerb(cf, d => GoFtoa.FormatF(d, sp.Prec < 0 ? 6 : sp.Prec)) : FloatVerb(v, sp, () => GoFtoa.FormatF(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
             case 'e': return v is GoComplex ce ? ComplexVerb(ce, d => GoFtoa.FormatE(d, sp.Prec < 0 ? 6 : sp.Prec)) : FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
