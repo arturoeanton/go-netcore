@@ -152,6 +152,8 @@ var bridgeInterfaces = []string{
 	// so encoding/json's Unmarshal can call a user type's own UnmarshalJSON()/UnmarshalText().
 	"encoding/json.Unmarshaler",
 	"encoding.TextUnmarshaler",
+	// so fmt's %#v can call a user type's own GoString() (fmt.GoStringer).
+	"fmt.GoStringer",
 }
 
 // collectBridgeMethods generates the method-callback adapters every concrete implementer

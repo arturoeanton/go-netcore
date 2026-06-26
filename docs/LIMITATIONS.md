@@ -154,6 +154,12 @@ Remaining edges (documented, not silent):
   struct by its reflect spelling (`struct { A int; B string }`) for both `%#v`
   and `%T`. (`%#v` of a `uint8`/`byte` *scalar* still prints decimal — it shares
   the int32 runtime representation.)
+- **`fmt.GoStringer`** is honored: a user type with a `GoString() string` method
+  controls its `%#v` (Go-syntax) rendering — at the top level, through a pointer, and
+  nested inside a struct/slice/map (driven through the callback bridge). `%v`/`%s` are
+  unaffected. Fixture 679_fmt_gostringer. **Deferred: `fmt.Formatter`** (a `Format(fmt.State,
+  rune)` method controlling every verb) is not yet honored — it needs a writable `fmt.State`
+  shim and interface-method dispatch on it; the value formats by the default verb rules.
 - A non-numeric verb's **width applied to a composite** (`%6v` of a `[]int`)
   pads the whole rendering rather than each element; Go pads per element.
   Numeric verbs (`%6d`, `%03d`) already pad per element. `%!(EXTRA …)` for

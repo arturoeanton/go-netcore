@@ -790,6 +790,10 @@ public static class Fmt
     // %#v — Go-syntax representation.
     private static string FormatGoSyntax(object? v)
     {
+        // fmt.GoStringer: a user GoString() controls the %#v representation (a shim type
+        // like time.Time carries no bridge adapter and falls through to its own case).
+        if (v != null && Bridge.HasMethod(v, "GoString") && Bridge.CallMethod(v, "GoString") is GoString gstr)
+            return gstr.ToDotNetString();
         switch (v)
         {
             case null: return "<nil>";
