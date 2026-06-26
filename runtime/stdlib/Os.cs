@@ -4,7 +4,7 @@ using GoCLR.Runtime;
 
 /// <summary>An os.File handle: a standard stream, or a file opened for writing.</summary>
 [GoShim("os.File")]
-public sealed class GoFile { public bool IsStderr; public bool IsStdin; public System.IO.Stream? Wr; public string Path = ""; }
+public sealed class GoFile { public bool IsStderr; public bool IsStdin; public System.IO.Stream? Wr; public string Path = ""; public bool Append; }
 
 /// <summary>An os.SyscallError (a syscall-tagged error). Implements IGoError so fmt
 /// prints it via Error() ("syscall: inner") instead of dumping the struct fields.</summary>
@@ -117,20 +117,40 @@ public static class Os
     public static object?[] OpenFile(GoString name, long flag, uint perm)
     {
         // The low two bits are the access mode on every Unix (O_RDONLY=0, O_WRONLY=1,
-        // O_RDWR=2); the create/trunc/append bits differ per platform, so this opens
-        // create-if-missing for any write mode (the common pager case) without relying
-        // on their exact values.
+        // O_RDWR=2). The create/trunc/append/excl bits differ per platform — goclr reads the
+        // SAME os.O_* constants Go does (from the host os package), so decode with the host's
+        // values (darwin vs the Linux family) to honor O_APPEND/O_TRUNC/O_CREATE/O_EXCL.
         long acc = flag & 0x3;
         bool write = acc != 0;
+        bool mac = System.OperatingSystem.IsMacOS();
+        long oCreate = mac ? 0x200 : 0x40;
+        long oExcl = mac ? 0x800 : 0x80;
+        long oTrunc = mac ? 0x400 : 0x200;
+        long oAppend = mac ? 0x8 : 0x400;
+        bool create = (flag & oCreate) != 0, excl = (flag & oExcl) != 0;
+        bool trunc = (flag & oTrunc) != 0, append = (flag & oAppend) != 0;
         try
         {
             string p = name.ToDotNetString();
-            var mode = write ? System.IO.FileMode.OpenOrCreate : System.IO.FileMode.Open;
+            // O_CREATE|O_EXCL on an existing path is EEXIST; report it the way Go does so
+            // os.IsExist recognizes it (the .NET IOException message wouldn't match).
+            if (create && excl && (System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))
+                return new object?[] { null, new GoError("open " + p + ": file already exists") };
+            System.IO.FileMode mode;
+            if (create && excl) mode = System.IO.FileMode.CreateNew;      // O_CREATE|O_EXCL: must not exist
+            else if (trunc) mode = create ? System.IO.FileMode.Create : System.IO.FileMode.Truncate;
+            else if (create || write) mode = System.IO.FileMode.OpenOrCreate;
+            else mode = System.IO.FileMode.Open;
             var access = write ? System.IO.FileAccess.ReadWrite : System.IO.FileAccess.Read;
             var fs = new System.IO.FileStream(p, mode, access, System.IO.FileShare.ReadWrite);
-            return new object?[] { new GoFile { Wr = fs, Path = p }, null };
+            // O_APPEND: position at end so writes extend the file (File_Write re-seeks to end
+            // before each write, matching Go's append-on-every-write semantics).
+            if (append) fs.Seek(0, System.IO.SeekOrigin.End);
+            return new object?[] { new GoFile { Wr = fs, Path = p, Append = append && write }, null };
         }
-        catch (System.Exception e) { return new object?[] { null, new GoError("open " + name.ToDotNetString() + ": " + e.Message) }; }
+        // Errno maps the .NET filesystem exception to Go's errno string so os.IsNotExist /
+        // os.IsExist match (a missing file -> "no such file or directory", etc.).
+        catch (System.Exception e) { return new object?[] { null, new GoError("open " + name.ToDotNetString() + ": " + Errno(e)) }; }
     }
 
     // (*os.File).Write(p): write at the current position to the underlying stream (or a
@@ -139,7 +159,7 @@ public static class Os
     {
         var gf = (GoFile)f;
         byte[] buf = Raw(p);
-        if (gf.Wr != null) gf.Wr.Write(buf, 0, buf.Length);
+        if (gf.Wr != null) { if (gf.Append) gf.Wr.Seek(0, System.IO.SeekOrigin.End); gf.Wr.Write(buf, 0, buf.Length); }
         else { var s = System.Text.Encoding.UTF8.GetString(buf); if (gf.IsStderr) System.Console.Error.Write(s); else System.Console.Out.Write(s); }
         return new object?[] { (long)p.Len, null };
     }
