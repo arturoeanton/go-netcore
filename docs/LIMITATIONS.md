@@ -231,6 +231,15 @@ inherit that last-ULP edge on the affected inputs; the value is correct to ~1 UL
 error, not a silent wrong answer) — `System.Math` has no equivalent and the fdlibm ports
 are a large deferred piece.
 
+`math/rand` with an explicit source — `rand.New(rand.NewSource(seed))` and all its methods
+(`Int`/`Intn`/`Int63`/`Uint64`/`Float64`/`NormFloat64`/`ExpFloat64`/`Perm`/`Shuffle`/`Read`,
+…) — is byte-exact with Go (Go's PRNG is ported). The **top-level** `rand.Seed`/`rand.Intn`
+(the global source) does **not** reproduce Go 1.20+'s exact sequence: Go's deprecated global
+`Seed` switches to an internal compatibility mode whose output is context-dependent (it
+varies with prior global calls), whereas goclr's `Seed(s)` behaves like `New(NewSource(s))`.
+Programs needing a reproducible sequence should use `rand.New(rand.NewSource(seed))`, as Go's
+own docs recommend.
+
 ## html/template contextual auto-escaping
 
 `html/template` escapes interpolated values by context — HTML text, attribute
