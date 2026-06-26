@@ -362,7 +362,9 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Inf": {"Cmplx", "Inf"}, "NaN": {"Cmplx", "NaN"}, "IsInf": {"Cmplx", "IsInf"},
 		"IsNaN": {"Cmplx", "IsNaN"}, "Sqrt": {"Cmplx", "Sqrt"}, "Log": {"Cmplx", "Log"},
 		"Log10": {"Cmplx", "Log10"},
-		// Exp/Rect deferred: backed by Sin/Cos/Exp which are not byte-exact with Go on this platform.
+		// Exp/Rect deferred: Go's math.Sincos uses a combined argument reduction, so a result
+		// built from separate Cos/Sin differs by the last ULP (verified). Sin/Cos/Tan/Pow are
+		// not implemented in the Cmplx shim either.
 	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},

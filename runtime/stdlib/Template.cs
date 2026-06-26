@@ -921,12 +921,15 @@ public static class Template
     // surrounding </script>).
     static string JsStrEscape(string s)
     {
+        // Exactly Go's jsStrReplacementTable: '=' is NOT escaped (it is not HTML-significant
+        // inside a JS string), but '+' / '/' / the HTML specials and the control chars are.
         var sb = new StringBuilder();
         foreach (char c in s)
             sb.Append(c switch
             {
-                '\\' => "\\\\", '"' => "\\u0022", '\'' => "\\u0027", '/' => "\\/", '\n' => "\\n", '\r' => "\\r", '\t' => "\\t",
-                '<' => "\\u003c", '>' => "\\u003e", '&' => "\\u0026", '=' => "\\u003d", '`' => "\\u0060", '+' => "\\u002b",
+                '\0' => "\\u0000", '\t' => "\\t", '\n' => "\\n", '\v' => "\\u000b", '\f' => "\\f", '\r' => "\\r",
+                '\\' => "\\\\", '"' => "\\u0022", '\'' => "\\u0027", '/' => "\\/",
+                '<' => "\\u003c", '>' => "\\u003e", '&' => "\\u0026", '`' => "\\u0060", '+' => "\\u002b",
                 _ => c.ToString(),
             });
         return sb.ToString();
