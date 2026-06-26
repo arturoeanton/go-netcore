@@ -284,7 +284,37 @@ public static class Big
     }
     public static object Int_Quo(object z, object x, object y) { ((GoBigInt)z).V = BigInteger.Divide(V(x), V(y)); return z; }
     public static object Int_Rem(object z, object x, object y) { ((GoBigInt)z).V = BigInteger.Remainder(V(x), V(y)); return z; }
-    public static object Int_GCD(object z, object a, object b, object x, object y) { ((GoBigInt)z).V = BigInteger.GreatestCommonDivisor(V(x), V(y)); return z; }
+    // (z *Int).GCD(x, y, a, b): z = gcd(a, b) (non-negative); if x/y are non-nil, set them to the
+    // Bézout coefficients so a*x + b*y = z. The shim params are (z, x, y, a, b) of Go's signature,
+    // i.e. this method's a,b are the coefficient outputs and x,y are the inputs.
+    public static object Int_GCD(object z, object a, object b, object x, object y)
+    {
+        var (g, ca, cb) = ExtGcd(V(x), V(y));
+        ((GoBigInt)z).V = g;
+        if (a is GoBigInt ga) ga.V = ca;
+        if (b is GoBigInt gb) gb.V = cb;
+        return z;
+    }
+
+    // Extended Euclidean on |inA|,|inB| with sign adjustment, matching Go's coefficient choice.
+    private static (BigInteger g, BigInteger x, BigInteger y) ExtGcd(BigInteger inA, BigInteger inB)
+    {
+        BigInteger A = BigInteger.Abs(inA), B = BigInteger.Abs(inB);
+        BigInteger oldR = A, r = B, oldS = 1, s = 0, oldT = 0, t = 1;
+        while (!r.IsZero)
+        {
+            BigInteger q = oldR / r;
+            (oldR, r) = (r, oldR - q * r);
+            (oldS, s) = (s, oldS - q * s);
+            (oldT, t) = (t, oldT - q * t);
+        }
+        // gcd(0,0) == 0 with both coefficients 0 (no iteration ran, so oldS is still its 1 seed).
+        if (oldR.IsZero) return (BigInteger.Zero, BigInteger.Zero, BigInteger.Zero);
+        // A*oldS + B*oldT == oldR(=g). Flip a coefficient's sign when its input was negative.
+        BigInteger cx = inA.Sign < 0 ? -oldS : oldS;
+        BigInteger cy = inB.Sign < 0 ? -oldT : oldT;
+        return (oldR, cx, cy);
+    }
     public static object Int_Mod(object z, object x, object y) { var r = V(x) % V(y); if (r.Sign < 0) r += BigInteger.Abs(V(y)); ((GoBigInt)z).V = r; return z; }
     public static object Int_Neg(object z, object x) { ((GoBigInt)z).V = -V(x); return z; }
     public static object Int_Abs(object z, object x) { ((GoBigInt)z).V = BigInteger.Abs(V(x)); return z; }
