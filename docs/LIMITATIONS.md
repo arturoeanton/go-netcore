@@ -265,7 +265,9 @@ last ULP for some inputs (e.g. `math.Log(0.01)`, `math.Cos(1e8)` where a huge ar
 needs Payne–Hanek reduction, `math.Erfc(10)` in the far tail). Functions built on them
 inherit that last-ULP edge on the affected inputs; the value is correct to ~1 ULP.
 `math.Expm1`, `math.Log1p`, `math.Exp2`, `math.Gamma`, `math.Lgamma`, `math.Erf`,
-`math.Erfinv` are faithful fdlibm ports and are byte-exact across the tested range.
+`math.Erfinv`, `math.Atanh` are faithful fdlibm/Go ports and are byte-exact across the
+tested range (`Atanh` is built on the byte-exact `Log1p`; fixture 732). `Asinh`/`Acosh`
+match `go run` bit-for-bit on the tested inputs via `System.Math`.
 The Bessel functions `math.J0`/`J1`/`Y0`/`Y1`/`Jn`/`Yn` are now fdlibm ports too:
 **byte-exact for `J0`/`J1` with `|x| < 2`** (pure polynomial) and all the special cases
 (`0`/`±Inf`/`NaN`, order/sign relations, the tiny-argument `Jn` Taylor branch). For

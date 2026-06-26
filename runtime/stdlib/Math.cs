@@ -17,7 +17,23 @@ public static partial class Math
     public static double Cosh(double x) => SM.Cosh(x);
     public static double Acosh(double x) => SM.Acosh(x);
     public static double Asinh(double x) => SM.Asinh(x);
-    public static double Atanh(double x) => SM.Atanh(x);
+    // Ported from Go's math/atanh.go (built on the byte-exact Log1p) so the result matches
+    // `go run` bit-for-bit — System.Math.Atanh differs by a ULP for |x| >= ~0.25.
+    public static double Atanh(double x)
+    {
+        const double NearZero = 1.0 / (1L << 28); // 2**-28
+        if (x < -1 || x > 1 || double.IsNaN(x)) return double.NaN;
+        if (x == 1) return double.PositiveInfinity;
+        if (x == -1) return double.NegativeInfinity;
+        bool sign = false;
+        if (x < 0) { x = -x; sign = true; }
+        double temp;
+        if (x < NearZero) temp = x;
+        else if (x < 0.5) { temp = x + x; temp = 0.5 * Log1p(temp + temp * x / (1 - x)); }
+        else temp = 0.5 * Log1p((x + x) / (1 - x));
+        if (sign) temp = -temp;
+        return temp;
+    }
     public static double Exp(double x) => SM.Exp(x);
     // Exp2: System.Math.Pow(2, x) differs from Go at the last ULP (e.g. Exp2(0.5)=√2). This is
     // a faithful port of Go's math.exp2 (argument reduction + the shared expmulti tail).
