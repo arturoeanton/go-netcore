@@ -20,8 +20,184 @@ public static class Math
     public static double Atanh(double x) => SM.Atanh(x);
     public static double Exp(double x) => SM.Exp(x);
     public static double Exp2(double x) => SM.Pow(2, x);
-    public static double Expm1(double x) => SM.Exp(x) - 1.0;
-    public static double Log1p(double x) => SM.Log(1.0 + x);
+    // Expm1/Log1p: a naive Exp(x)-1 / Log(1+x) loses precision for small |x| (catastrophic
+    // cancellation), diverging from Go. These are faithful ports of Go's fdlibm-based
+    // math.expm1 / math.log1p so the result is byte-exact across the whole range.
+    public static double Expm1(double x) => Expm1Impl(x);
+    public static double Log1p(double x) => Log1pImpl(x);
+
+    private static double Bits(ulong b) => System.BitConverter.Int64BitsToDouble((long)b);
+
+    private static double Expm1Impl(double x)
+    {
+        const double Othreshold = 7.09782712893383973096e+02;
+        const double Ln2X56 = 3.88162421113569373274e+01;
+        const double Ln2HalfX3 = 1.03972077083991796413e+00;
+        const double Ln2Half = 3.46573590279972654709e-01;
+        const double Ln2Hi = 6.93147180369123816490e-01;
+        const double Ln2Lo = 1.90821492927058770002e-10;
+        const double InvLn2 = 1.44269504088896338700e+00;
+        const double Tiny = 1.0 / (1L << 54);
+        const double Q1 = -3.33333333333331316428e-02;
+        const double Q2 = 1.58730158725481460165e-03;
+        const double Q3 = -7.93650757867487942473e-05;
+        const double Q4 = 4.00821782732936239552e-06;
+        const double Q5 = -2.01099218183624371326e-07;
+
+        if (double.IsNaN(x) || double.IsPositiveInfinity(x)) return x;
+        if (double.IsNegativeInfinity(x)) return -1;
+
+        double absx = x;
+        bool sign = false;
+        if (x < 0) { absx = -absx; sign = true; }
+
+        if (absx >= Ln2X56)
+        {
+            if (sign) return -1;
+            if (absx >= Othreshold) return double.PositiveInfinity;
+        }
+
+        double c = 0;
+        int k;
+        if (absx > Ln2Half)
+        {
+            double hi, lo;
+            if (absx < Ln2HalfX3)
+            {
+                if (!sign) { hi = x - Ln2Hi; lo = Ln2Lo; k = 1; }
+                else { hi = x + Ln2Hi; lo = -Ln2Lo; k = -1; }
+            }
+            else
+            {
+                k = !sign ? (int)(InvLn2 * x + 0.5) : (int)(InvLn2 * x - 0.5);
+                double tt = k;
+                hi = x - tt * Ln2Hi;
+                lo = tt * Ln2Lo;
+            }
+            x = hi - lo;
+            c = (hi - x) - lo;
+        }
+        else if (absx < Tiny) return x;
+        else k = 0;
+
+        double hfx = 0.5 * x;
+        double hxs = x * hfx;
+        double r1 = 1 + hxs * (Q1 + hxs * (Q2 + hxs * (Q3 + hxs * (Q4 + hxs * Q5))));
+        double t = 3 - r1 * hfx;
+        double e = hxs * ((r1 - t) / (6.0 - x * t));
+        if (k == 0) return x - (x * e - hxs);
+        e = (x * (e - c) - c);
+        e -= hxs;
+        if (k == -1) return 0.5 * (x - e) - 0.5;
+        if (k == 1)
+        {
+            if (x < -0.25) return -2 * (e - (x + 0.5));
+            return 1 + 2 * (x - e);
+        }
+        if (k <= -2 || k > 56)
+        {
+            double yy = 1 - (e - x);
+            if (k == 1024) yy = yy * 2 * 8.98846567431158e+307; // 0x1p1023
+            else yy = yy * Bits((ulong)(0x3ff + k) << 52);
+            return yy - 1;
+        }
+        if (k < 20)
+        {
+            t = Bits(0x3ff0000000000000UL - (0x0020000000000000UL >> k)); // 1 - 2**-k
+            double yy = t - (e - x);
+            yy = yy * Bits((ulong)(0x3ff + k) << 52); // 2**k
+            return yy;
+        }
+        t = Bits((ulong)(0x3ff - k) << 52); // 2**-k
+        double y = x - (e + t);
+        y++;
+        y = y * Bits((ulong)(0x3ff + k) << 52); // 2**k
+        return y;
+    }
+
+    private static double Log1pImpl(double x)
+    {
+        const double Sqrt2M1 = 4.142135623730950488017e-01;
+        const double Sqrt2HalfM1 = -2.928932188134524755992e-01;
+        const double Small = 1.0 / (1L << 29);
+        const double Tiny = 1.0 / (1L << 54);
+        const double Two53 = (double)(1L << 53);
+        const double Ln2Hi = 6.93147180369123816490e-01;
+        const double Ln2Lo = 1.90821492927058770002e-10;
+        const double Lp1 = 6.666666666666735130e-01;
+        const double Lp2 = 3.999999999940941908e-01;
+        const double Lp3 = 2.857142874366239149e-01;
+        const double Lp4 = 2.222219843214978396e-01;
+        const double Lp5 = 1.818357216161805012e-01;
+        const double Lp6 = 1.531383769920937332e-01;
+        const double Lp7 = 1.479819860511658591e-01;
+
+        if (x < -1 || double.IsNaN(x)) return double.NaN;
+        if (x == -1) return double.NegativeInfinity;
+        if (double.IsPositiveInfinity(x)) return double.PositiveInfinity;
+
+        double absx = System.Math.Abs(x);
+        double f = 0;
+        ulong iu = 0;
+        int k = 1;
+        if (absx < Sqrt2M1)
+        {
+            if (absx < Small)
+            {
+                if (absx < Tiny) return x;
+                return x - x * x * 0.5;
+            }
+            if (x > Sqrt2HalfM1) { k = 0; f = x; iu = 1; }
+        }
+        double c = 0;
+        if (k != 0)
+        {
+            double u;
+            if (absx < Two53)
+            {
+                u = 1.0 + x;
+                iu = (ulong)System.BitConverter.DoubleToInt64Bits(u);
+                k = (int)((iu >> 52) - 1023);
+                c = (k > 0) ? 1.0 - (u - x) : x - (u - 1.0);
+                c /= u;
+            }
+            else
+            {
+                u = x;
+                iu = (ulong)System.BitConverter.DoubleToInt64Bits(u);
+                k = (int)((iu >> 52) - 1023);
+                c = 0;
+            }
+            iu &= 0x000fffffffffffffUL;
+            if (iu < 0x0006a09e667f3bcdUL)
+                u = Bits(iu | 0x3ff0000000000000UL); // normalize u
+            else
+            {
+                k++;
+                u = Bits(iu | 0x3fe0000000000000UL); // normalize u/2
+                iu = (0x0010000000000000UL - iu) >> 2;
+            }
+            f = u - 1.0;
+        }
+        double hfsq = 0.5 * f * f;
+        if (iu == 0) // |f| < 2**-20
+        {
+            if (f == 0)
+            {
+                if (k == 0) return 0;
+                c += k * Ln2Lo;
+                return k * Ln2Hi + c;
+            }
+            double R0 = hfsq * (1.0 - 0.66666666666666666 * f);
+            if (k == 0) return f - R0;
+            return k * Ln2Hi - ((R0 - (k * Ln2Lo + c)) - f);
+        }
+        double s = f / (2.0 + f);
+        double z = s * s;
+        double R = z * (Lp1 + z * (Lp2 + z * (Lp3 + z * (Lp4 + z * (Lp5 + z * (Lp6 + z * Lp7))))));
+        if (k == 0) return f - (hfsq - s * (hfsq + R));
+        return k * Ln2Hi - ((hfsq - (s * (hfsq + R) + (k * Ln2Lo + c))) - f);
+    }
     public static double Floor(double x) => SM.Floor(x);
     // math.Modf(f) (int, frac): integer and fractional parts, both carrying f's sign.
     public static object?[] Modf(double f) { double i = SM.Truncate(f); return new object?[] { i, f - i }; }

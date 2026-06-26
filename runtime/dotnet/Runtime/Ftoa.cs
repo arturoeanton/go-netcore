@@ -128,11 +128,14 @@ public static class GoFtoa
         int ei = s.IndexOfAny(new[] { 'e', 'E' });
         if (ei < 0) return s;
         string mant = s.Substring(0, ei);
+        // .NET emits the exponent as <sign><digits> after 'E'; the digits parse to a magnitude
+        // (no sign), so the sign must come from the sign char — not recomputed from the
+        // magnitude (which is never negative). Mirrors FormatE.
         char sign = s[ei + 1];
         int ev = int.Parse(s.Substring(ei + 2), Inv);
-        string es = System.Math.Abs(ev).ToString(Inv);
+        string es = ev.ToString(Inv);
         if (es.Length < 2) es = "0" + es;
-        return mant + "e" + (ev < 0 ? '-' : '+') + es;
+        return mant + "e" + sign + es;
     }
 
     /// <summary>strconv.FormatFloat(d, 'e', prec, 64) — Go-style %e: lowercase 'e',
