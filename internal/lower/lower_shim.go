@@ -188,6 +188,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"text/scanner": {"TokenString": {"GoToken", "ScannerTokenString"}},
 	"hash/crc32":      {"ChecksumIEEE": {"Hashes", "Crc32ChecksumIEEE"}, "Update": {"Hashes", "Crc32Update"}, "NewIEEE": {"Hashes", "Crc32NewIEEE"}, "MakeTable": {"Hashes", "Crc32MakeTable"}, "Checksum": {"Hashes", "Crc32Checksum"}, "New": {"Hashes", "Crc32New"}},
 	"hash/adler32":    {"Checksum": {"Hashes", "Adler32Checksum"}, "New": {"Hashes", "Adler32New"}},
+	"hash/maphash":    {"MakeSeed": {"MapHash", "MakeSeed"}, "String": {"MapHash", "StringHash"}, "Bytes": {"MapHash", "BytesHash"}},
 	"compress/gzip":   {"NewWriter": {"Compress", "GzipNewWriter"}, "NewWriterLevel": {"Compress", "GzipNewWriterLevel"}, "NewReader": {"Compress", "GzipNewReader"}},
 	"compress/zlib":   {"NewWriter": {"Compress", "ZlibNewWriter"}, "NewReader": {"Compress", "ZlibNewReader"}, "NewWriterLevel": {"Compress", "ZlibNewWriterLevel"}, "NewWriterLevelDict": {"Compress", "ZlibNewWriterLevelDict"}, "NewReaderDict": {"Compress", "ZlibNewReaderDict"}},
 	"compress/flate":  {"NewWriter": {"Compress", "FlateNewWriter"}, "NewReader": {"Compress", "FlateNewReader"}},
@@ -643,6 +644,7 @@ var opaqueShimTypes = map[string]bool{
 	"math/big.Float":                     true,
 	"math/big.Rat":                       true,
 	"hash/maphash.Hash":                  true,
+	"hash/maphash.Seed":                  true,
 	"encoding/base32.Encoding":           true,
 	"strings.Reader":                     true,
 	"bytes.Reader":                       true,
@@ -1811,6 +1813,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"hash/maphash.Hash": {
 		"WriteByte": {"MapHash", "WriteByte"}, "Write": {"MapHash", "Write"}, "WriteString": {"MapHash", "WriteString"},
 		"Sum64": {"MapHash", "Sum64"}, "Reset": {"MapHash", "Reset"}, "Size": {"MapHash", "Size"}, "BlockSize": {"MapHash", "BlockSize"},
+		"SetSeed": {"MapHash", "SetSeed"}, "Seed": {"MapHash", "Seed"},
 	},
 	"strings.Replacer": {
 		"Replace": {"Strings", "Replacer_Replace"}, "WriteString": {"Strings", "Replacer_WriteString"},

@@ -257,6 +257,13 @@ varies with prior global calls), whereas goclr's `Seed(s)` behaves like `New(New
 Programs needing a reproducible sequence should use `rand.New(rand.NewSource(seed))`, as Go's
 own docs recommend.
 
+`hash/maphash` is likewise **not byte-exact in absolute value** — Go seeds each hash randomly,
+so `Sum64`/`String`/`Bytes` differ run-to-run in Go itself. The full surface is implemented
+(`MakeSeed`, `String`, `Bytes`, `(*Hash).SetSeed`/`Seed`/`Write*`/`Sum64`/`Reset`) and is
+internally consistent — same seed + same bytes give the same hash, `SetSeed`+`Write` matches
+the one-shot `String(seed, …)`, and distinct seeds (almost) never collide — but the backing
+algorithm is a seeded FNV-1a, not Go's exact maphash, so only those relative properties hold.
+
 ## html/template contextual auto-escaping
 
 `html/template` escapes interpolated values by context — HTML text, attribute
