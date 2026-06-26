@@ -398,6 +398,8 @@ public static class Time
 
     // Thrown when a parsed time field is outside its valid range (Go's "<field> out of range").
     private sealed class RangeError : System.Exception { public readonly string Field; public RangeError(string f) { Field = f; } }
+    // Thrown when input remains after the layout is fully consumed (Go's "extra text: ...").
+    private sealed class ExtraTextError : System.Exception { public readonly string Rest; public ExtraTextError(string r) { Rest = r; } }
 
     private static object?[] ParseImpl(GoString layout, GoString value, GoLocation? defaultLoc)
     {
@@ -412,12 +414,15 @@ public static class Time
 
         bool Tok(string tok) =>
             li + tok.Length <= lay.Length && string.CompareOrdinal(lay, li, tok, 0, tok.Length) == 0 && (li += tok.Length) >= 0;
-        int ReadInt(int max)
+        // Read up to `max` digits (at least one). When `exact`, require exactly `max` digits —
+        // Go's zero-padded tokens (01/02/03/04/05/06/2006) use getnum(value, true), so a single
+        // digit before a non-digit fails there; the non-padded forms (1/2/3/4/5/15/_2) accept 1.
+        int ReadInt(int max, bool exact = false)
         {
-            if (vi < val.Length && val[vi] == ' ') vi++; // tolerate space padding (_2)
+            if (!exact && vi < val.Length && val[vi] == ' ') vi++; // tolerate space padding (_2)
             int start = vi, n = 0;
             while (vi < val.Length && n < max && char.IsDigit(val[vi])) { vi++; n++; }
-            if (vi == start) throw new System.FormatException();
+            if (vi == start || (exact && n != max)) throw new System.FormatException();
             return int.Parse(val.Substring(start, vi - start), inv);
         }
         int ReadName(string[] names)
@@ -462,18 +467,19 @@ public static class Time
                 // Numeric fields are range-checked inline (as Go validates each field while
                 // parsing, before a later literal can fail): a bad value reports "<field> out
                 // of range" rather than "cannot parse".
-                if (Tok("2006")) year = ReadInt(4);
-                else if (Tok("06")) year = 2000 + ReadInt(2);
+                if (Tok("2006")) year = ReadInt(4, true);
+                else if (Tok("06")) year = 2000 + ReadInt(2, true);
                 else if (Tok("January")) month = ReadName(MonthsLong) + 1;
                 else if (Tok("Jan")) month = ReadName(MonthsAbbr) + 1;
-                else if (Tok("01")) { month = ReadInt(2); if (month < 1 || month > 12) throw new RangeError("month"); }
+                else if (Tok("01")) { month = ReadInt(2, true); if (month < 1 || month > 12) throw new RangeError("month"); }
                 else if (Tok("Monday")) ReadName(DaysLong);
                 else if (Tok("Mon")) ReadName(DaysAbbr);
-                else if (Tok("02") || Tok("_2")) { day = ReadInt(2); if (day < 1 || day > 31) throw new RangeError("day"); }
+                else if (Tok("02")) { day = ReadInt(2, true); if (day < 1 || day > 31) throw new RangeError("day"); }
+                else if (Tok("_2")) { day = ReadInt(2); if (day < 1 || day > 31) throw new RangeError("day"); }
                 else if (Tok("15")) { hour = ReadInt(2); if (hour < 0 || hour > 23) throw new RangeError("hour"); }
-                else if (Tok("03")) { hour = ReadInt(2); hour12 = true; if (hour < 0 || hour > 12) throw new RangeError("hour"); }
-                else if (Tok("04")) { min = ReadInt(2); if (min < 0 || min > 59) throw new RangeError("minute"); }
-                else if (Tok("05")) { sec = ReadInt(2); if (sec < 0 || sec > 60) throw new RangeError("second"); }
+                else if (Tok("03")) { hour = ReadInt(2, true); hour12 = true; if (hour < 0 || hour > 12) throw new RangeError("hour"); }
+                else if (Tok("04")) { min = ReadInt(2, true); if (min < 0 || min > 59) throw new RangeError("minute"); }
+                else if (Tok("05")) { sec = ReadInt(2, true); if (sec < 0 || sec > 60) throw new RangeError("second"); }
                 else if (Tok("PM") || Tok("pm"))
                 {
                     hasPM = true;
@@ -502,6 +508,8 @@ public static class Time
                     else throw new System.FormatException();
                 }
             }
+            // Go reports unconsumed input after the layout is exhausted.
+            if (vi < val.Length) throw new ExtraTextError(val.Substring(vi));
             if (hasPM) { if (pm && hour < 12) hour += 12; else if (!pm && hour == 12) hour = 0; }
             var dt = new System.DateTime(year, month, day, hour, min, sec, System.DateTimeKind.Utc);
             var t = FromDateTime(dt);
@@ -527,6 +535,11 @@ public static class Time
             // A parsed field was out of range: Go reports `parsing time "VALUE": <field> out of range`.
             return new object?[] { new GoTime { IsZero = true },
                 new GoError("parsing time \"" + val + "\": " + re.Field + " out of range") };
+        }
+        catch (ExtraTextError et)
+        {
+            return new object?[] { new GoTime { IsZero = true },
+                new GoError("parsing time \"" + val + "\": extra text: \"" + et.Rest + "\"") };
         }
         catch
         {

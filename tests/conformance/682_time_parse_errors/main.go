@@ -18,6 +18,9 @@ func main() {
 		{"15:04:05", "25:00:00"},       // hour out of range (24h)
 		{"3:04 PM", "13:04 PM"},        // hour out of range (12h)
 		{"2006-01-02", "2024-13-02"},   // month out of range
+		{"2006-01-02", "2024-01-9z"},   // zero-padded "02" needs exactly two digits
+		{"2006", "2024xyz"},            // trailing extra text
+		{"2006-01-02", "2024-01-02 ok"}, // trailing extra text after a full date
 	}
 	for _, c := range cases {
 		_, err := time.Parse(c.lay, c.val)
