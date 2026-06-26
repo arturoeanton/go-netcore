@@ -128,6 +128,19 @@ func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string 
 			}
 		}
 	}
+	// A user type with its own json.Unmarshaler (UnmarshalJSON) or, failing that,
+	// encoding.TextUnmarshaler (UnmarshalText) decodes via that method. Emit a marker plus
+	// the type's runtime id (and CLR name for a struct, so the decoder can build a settable
+	// receiver instance) — checked before the structural cases so it wins over the
+	// underlying representation. Only honored when the method is a lowered Go body (so a
+	// callback-bridge adapter exists); stdlib shim types like time.Time are excluded above.
+	if kind, id, clr, ok := l.jsonUserUnmarshaler(t); ok {
+		s := `{"k":"` + kind + `","id":` + strconv.FormatInt(id, 10)
+		if clr != "" {
+			s += `,"n":` + strconv.Quote(clr)
+		}
+		return s + `,"t":"` + typeDescStr(t) + `"}`
+	}
 	switch u := t.Underlying().(type) {
 	case *types.Basic:
 		// "t" carries the Go type's display name (int / int64 / main.Money) so a
@@ -216,6 +229,47 @@ func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string 
 		return `{"k":"any"}`
 	}
 	return `{"k":"any"}`
+}
+
+// jsonUserUnmarshaler reports whether named type t decodes through its own
+// UnmarshalJSON (json.Unmarshaler) or UnmarshalText (encoding.TextUnmarshaler) — both
+// pointer-receiver, signature func([]byte) error — and returns the descriptor kind
+// ("ujson"/"utext"), the type's runtime id (for the callback bridge), and the struct's
+// CLR name (empty for a non-struct). Only true when the method has a lowered Go body, so
+// a bridge adapter is generated; stdlib shim implementers (time.Time, big.Int) are not
+// lowered and fall through to their own descriptor.
+func (l *funcLowerer) jsonUserUnmarshaler(t types.Type) (kind string, id int64, clr string, ok bool) {
+	named, isNamed := t.(*types.Named)
+	if !isNamed {
+		return "", 0, "", false
+	}
+	ptr := types.NewPointer(named)
+	pkg := named.Obj().Pkg()
+	for _, cand := range []struct{ name, k string }{{"UnmarshalJSON", "ujson"}, {"UnmarshalText", "utext"}} {
+		obj, _, _ := types.LookupFieldOrMethod(ptr, true, pkg, cand.name)
+		fn, isFn := obj.(*types.Func)
+		if !isFn || l.byFunc[fn] == nil {
+			continue
+		}
+		sig, sok := fn.Type().(*types.Signature)
+		if !sok || sig.Params().Len() != 1 || sig.Results().Len() != 1 {
+			continue
+		}
+		s, isSlice := sig.Params().At(0).Type().Underlying().(*types.Slice)
+		if !isSlice {
+			continue
+		}
+		if b, isBasic := s.Elem().Underlying().(*types.Basic); !isBasic || b.Kind() != types.Byte {
+			continue
+		}
+		if _, isStruct := named.Underlying().(*types.Struct); isStruct {
+			st := l.structFor(named)
+			return cand.k, int64(st.Id), st.Name, true
+		}
+		nid, _ := l.namedIdentity(named)
+		return cand.k, nid, "", true
+	}
+	return "", 0, "", false
 }
 
 // jsonFieldKey returns the JSON object key for a struct field and whether the

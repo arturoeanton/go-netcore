@@ -115,6 +115,16 @@ one; these don't yet):
   embedding; a returned error propagates as `json: error calling MarshalJSON for type T`.
   Fixture 677_json_marshaler. (Deferred edge: the compaction does not re-escape raw
   `<`/`>`/`&` inside a marshaler's output, which Go's HTML-escaping compaction does.)
+- **`json.Unmarshal` into a *user* `json.Unmarshaler`/`encoding.TextUnmarshaler`** is
+  honored, like Go: a type with its own `UnmarshalJSON([]byte) error` decodes via that
+  method; failing that, `UnmarshalText([]byte) error` receives the unquoted string. Works
+  at the top level, as a struct field, slice element, map value, and a `*T` pointer (a nil
+  pointer target receives an allocated value). The compiler emits a descriptor marker +
+  the type's runtime id; the decoder builds a settable receiver and drives the method
+  through the callback bridge, capturing the raw JSON token (or unquoted string). A
+  returned error becomes `json.Unmarshal`'s error. The method may call `json.Unmarshal`
+  re-entrantly (the alias trick) — the mismatch-context state is saved/restored across
+  calls. Fixture 678_json_unmarshaler.
 
 ## Stringer/Error of named types — the typed box (largely implemented)
 

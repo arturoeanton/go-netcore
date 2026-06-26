@@ -149,6 +149,9 @@ var bridgeInterfaces = []string{
 	// (Go honors json.Marshaler first, then falls back to encoding.TextMarshaler).
 	"encoding/json.Marshaler",
 	"encoding.TextMarshaler",
+	// so encoding/json's Unmarshal can call a user type's own UnmarshalJSON()/UnmarshalText().
+	"encoding/json.Unmarshaler",
+	"encoding.TextUnmarshaler",
 }
 
 // collectBridgeMethods generates the method-callback adapters every concrete implementer

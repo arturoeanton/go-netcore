@@ -463,10 +463,14 @@ public static class Json
 
     public static object? Unmarshal(GoSlice data, object? target, GoString desc)
     {
+        // Save/restore the mismatch-context thread-statics: a user UnmarshalJSON may call
+        // json.Unmarshal re-entrantly, and clobbering the outer decode's _errFields would
+        // corrupt its struct-field path (and underflow its finally's RemoveAt).
+        var savedStruct = _errStruct; var savedFields = _errFields;
+        _errStruct = null; _errFields = null;
         try
         {
             string json = SliceToString(data);
-            _errStruct = null; _errFields?.Clear(); // reset per-call mismatch context
             using var doc = JsonDocument.Parse(json);
             using var ddoc = JsonDocument.Parse(desc.ToDotNetString());
             object? decoded = Decode(doc.RootElement, ddoc.RootElement);
@@ -477,6 +481,7 @@ public static class Json
         {
             return new GoError(GoString.FromDotNetString(JsonErrMsg(e)));
         }
+        finally { _errStruct = savedStruct; _errFields = savedFields; }
     }
 
     // Map a decode exception to Go's wording where it's unambiguous: a GoJsonError already
@@ -556,8 +561,18 @@ public static class Json
     private static object? Decode(JsonElement j, JsonElement desc)
     {
         string k = desc.GetProperty("k").GetString() ?? "any";
-        // json.RawMessage captures the raw bytes of any value, including a literal null.
-        if (j.ValueKind == JsonValueKind.Null && k != "raw") return DefaultFor(k);
+        // A user UnmarshalJSON sees a literal null too (Go calls it for JSON null); a
+        // TextUnmarshaler does not (null leaves the target's zero value).
+        if (j.ValueKind == JsonValueKind.Null && k != "raw" && k != "ujson") return DefaultFor(k);
+        switch (k)
+        {
+            // A user json.Unmarshaler / encoding.TextUnmarshaler: drive its own method through
+            // the callback bridge on a freshly-built, settable receiver, then read it back.
+            case "ujson": return CallUnmarshaler(desc, j.GetRawText(), "UnmarshalJSON");
+            case "utext":
+                if (j.ValueKind != JsonValueKind.String) throw Mismatch(j, desc);
+                return CallUnmarshaler(desc, j.GetString() ?? "", "UnmarshalText");
+        }
         switch (k)
         {
             // time.Time: parse the RFC3339 JSON string into a GoTime (Time.UnmarshalJSON).
@@ -584,7 +599,18 @@ public static class Json
                 for (int i = 0; i < raw.Length; i++) d[i] = (int)raw[i];
                 return new GoSlice { Data = d, Off = 0, Len = raw.Length, Cap = raw.Length };
             }
-            case "ptr": return Decode(j, desc.GetProperty("e"));
+            case "ptr":
+            {
+                var ed = desc.GetProperty("e");
+                var pv = Decode(j, ed);
+                // A pointer to a user-unmarshaler value: wrap the decoded pointee in a GoPtr so
+                // a nil `*T` target (whose cell carries no type to coerce against) still receives
+                // a pointer. Other pointee kinds keep the existing field-level coercion.
+                string ek = ed.GetProperty("k").GetString() ?? "";
+                if ((ek == "ujson" || ek == "utext") && pv != null && pv is not GoPtr)
+                    return new GoPtr { Value = pv };
+                return pv;
+            }
             case "slice":
             {
                 var et = desc.GetProperty("e");
@@ -689,6 +715,26 @@ public static class Json
             }
             default: return null;
         }
+    }
+
+    // Decode a value through a user UnmarshalJSON / UnmarshalText: build a settable receiver
+    // (a fresh struct instance when the descriptor names a CLR type, else a bare cell the
+    // method assigns into), drive the method via the callback bridge with the input bytes
+    // (raw JSON for UnmarshalJSON, the unquoted string for UnmarshalText), then read back the
+    // populated value. A returned error propagates as Go's Unmarshal error.
+    private static object? CallUnmarshaler(JsonElement desc, string input, string method)
+    {
+        long id = desc.GetProperty("id").GetInt64();
+        object? cell = null;
+        if (desc.TryGetProperty("n", out var np))
+        {
+            var t = ResolveType(np.GetString() ?? "");
+            if (t != null) cell = System.Activator.CreateInstance(t);
+        }
+        var ptr = GoPtrs.New(cell, id);
+        var err = Bridge.CallMethod(ptr, method, Bytes(input));
+        if (err != null) throw new GoJsonError(MarshalerErr(err));
+        return GoPtrs.Get(ptr);
     }
 
     private static object? DefaultFor(string k) => k switch
