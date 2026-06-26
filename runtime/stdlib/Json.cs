@@ -642,6 +642,20 @@ public static class Json
         // index JSON members case-insensitively (Go matches that way)
         var members = new Dictionary<string, JsonElement>(System.StringComparer.OrdinalIgnoreCase);
         foreach (var p in j.EnumerateObject()) members[p.Name] = p.Value;
+        // An embedded (promoted) struct is decoded from the PARENT's JSON object, so its limited
+        // descriptor must not run the unknown-field check (the parent already covers all promoted
+        // keys). Read-and-clear the flag so nested NAMED structs within this one still check.
+        bool isEmbeddedDecode = _embeddedDecode;
+        _embeddedDecode = false;
+        // DisallowUnknownFields: record the first JSON key that maps to no struct field (across
+        // promoted/embedded fields) as a deferred error — Go still decodes the known fields.
+        if (_disallowUnknown && _unknownErr == null && !isEmbeddedDecode)
+        {
+            var known = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            CollectKnownKeys(desc, known);
+            foreach (var p in j.EnumerateObject())
+                if (!known.Contains(p.Name)) { _unknownErr = "json: unknown field \"" + p.Name + "\""; break; }
+        }
         foreach (var fd in desc.GetProperty("f").EnumerateArray())
         {
             string cfield = fd.GetProperty("c").GetString() ?? "";
@@ -651,6 +665,7 @@ public static class Json
             // object into it (its own descriptor matches its keys against this object).
             if (fd.TryGetProperty("embed", out var em) && em.GetBoolean())
             {
+                _embeddedDecode = true; // suppress the embedded struct's own unknown-field check
                 fi.SetValue(inst, Coerce(Decode(j, fd.GetProperty("t")), fi.FieldType));
                 continue;
             }
@@ -680,9 +695,34 @@ public static class Json
         return inst;
     }
 
+    // The set of JSON keys a struct descriptor accepts, recursing into embedded (promoted)
+    // structs — used by the DisallowUnknownFields check.
+    private static void CollectKnownKeys(JsonElement desc, HashSet<string> keys)
+    {
+        if (!desc.TryGetProperty("f", out var farr)) return;
+        foreach (var fd in farr.EnumerateArray())
+        {
+            if (fd.TryGetProperty("embed", out var em) && em.GetBoolean())
+            {
+                if (fd.TryGetProperty("t", out var et)) CollectKnownKeys(et, keys);
+            }
+            else if (fd.TryGetProperty("j", out var jk))
+            {
+                var s = jk.GetString();
+                if (s != null) keys.Add(s);
+            }
+        }
+    }
+
     // True while decoding through a json.Decoder that called UseNumber(), so an interface{}
     // number is kept as json.Number. Thread-static: a concurrent goroutine decode is isolated.
     [System.ThreadStatic] private static bool _useNumber;
+    // Set while decoding through a json.Decoder that called DisallowUnknownFields(), with the
+    // first unknown field's error captured in _unknownErr. Thread-static for the same reason.
+    [System.ThreadStatic] private static bool _disallowUnknown;
+    [System.ThreadStatic] private static string? _unknownErr;
+    // True only while decoding an embedded (promoted) struct from its parent's JSON object.
+    [System.ThreadStatic] private static bool _embeddedDecode;
     // Set by a json.Encoder with SetEscapeHTML(false) so WriteString leaves <, >, & literal.
     [System.ThreadStatic] private static bool _noEscapeHTML;
 
@@ -794,7 +834,7 @@ public static class Json
     }
 
     public static void Decoder_UseNumber(object dec) => ((GoJsonDecoder)dec).UseNumber = true;
-    public static void Decoder_DisallowUnknownFields(object dec) { /* lenient decoder: accepted, not enforced */ }
+    public static void Decoder_DisallowUnknownFields(object dec) => ((GoJsonDecoder)dec).DisallowUnknown = true;
 
     public static bool Decoder_More(object dec) => ((GoJsonDecoder)dec).More();
 
@@ -943,8 +983,13 @@ public static class Json
             using var doc = JsonDocument.Parse(raw);
             using var ddoc = JsonDocument.Parse(d);
             _useNumber = ((GoJsonDecoder)dec).UseNumber;
+            _disallowUnknown = ((GoJsonDecoder)dec).DisallowUnknown;
+            _unknownErr = null;
             try { SetPtr(target, Decode(doc.RootElement, ddoc.RootElement)); }
-            finally { _useNumber = false; }
+            finally { _useNumber = false; _disallowUnknown = false; }
+            // DisallowUnknownFields: the known fields are still populated (as Go does), but the
+            // first unknown field surfaces as the error.
+            if (_unknownErr != null) { var m = _unknownErr; _unknownErr = null; return new GoError(GoString.FromDotNetString(m)); }
             return null;
         }
         catch (System.Exception e) { return new GoError(GoString.FromDotNetString(e.Message)); }
@@ -1008,6 +1053,7 @@ public static class Json
 public sealed class GoJsonDecoder
 {
     public bool UseNumber;
+    public bool DisallowUnknown;
     private readonly List<object?> _toks = new();
     private readonly List<int> _ends = new(); // byte offset just past each token
     private byte[] _raw = System.Array.Empty<byte>();
