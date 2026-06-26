@@ -707,7 +707,9 @@ public static class Reflect
     public static object Indirect(object v)
     {
         var x = RVal(v);
-        if (x is GoPtr p) return new GoReflectValue { V = p.Value, Setter = nv => p.Value = nv };
+        // Carry the pointed-at element's descriptor so Indirect(...).Type() keeps the
+        // package-qualified name (main.Animal), not just the bare value-derived name.
+        if (x is GoPtr p) return new GoReflectValue { V = p.Value, Setter = nv => p.Value = nv, Desc = VDesc(v)?.Elem() };
         return v;
     }
 
@@ -771,6 +773,11 @@ public static class Reflect
         return sk == tk;
     }
 
+    // Go's string(rune): the UTF-8 encoding of the code point, or U+FFFD when out of range
+    // or a surrogate.
+    private static string RuneToStr(long n) =>
+        (n < 0 || n > 0x10FFFF || (n >= 0xD800 && n <= 0xDFFF)) ? "�" : char.ConvertFromUtf32((int)n);
+
     public static object Value_Convert(object v, object t)
     {
         var src = RVal(v);
@@ -781,10 +788,16 @@ public static class Reflect
             KInt or 3 or 4 or 5 or 6 => src is double di ? (long)di : src is float fi ? (long)fi : System.Convert.ToInt64(src ?? 0L),
             KUint or 8 or 9 or 10 or 11 => src is double du ? (ulong)du : src is float fu ? (ulong)fu : System.Convert.ToUInt64(src ?? (ulong)0),
             13 or KFloat64 => System.Convert.ToDouble(src ?? 0.0),
-            KString => src is GoString ? src : GoString.FromDotNetString(System.Convert.ToString(src) ?? ""),
+            // int -> string is Go's string(rune): the UTF-8 of the code point (U+FFFD if out
+            // of range / a surrogate), NOT the decimal text.
+            KString => src is GoString ? src
+                : (src is long || src is int || src is ulong || src is uint) ? GoString.FromDotNetString(RuneToStr(System.Convert.ToInt64(src)))
+                : GoString.FromDotNetString(System.Convert.ToString(src) ?? ""),
             _ => src,
         };
-        return new GoReflectValue { V = conv };
+        // Carry the target type's descriptor so the result's Type()/Kind() report the
+        // converted type (e.g. int -> int64, which share goclr's CLR long representation).
+        return new GoReflectValue { V = conv, Desc = TDesc(t) };
     }
     public static object Value_Addr(object v)
     {
