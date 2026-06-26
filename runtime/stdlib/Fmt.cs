@@ -56,6 +56,7 @@ public static class Fmt
                 case "time.Month": s = Time.Month_String(System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
                 case "time.Weekday": s = Time.Weekday_String(System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
                 case "slog.Level": s = Slog.Level_String(System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;
+                case "fs.FileMode": s = Fs.Mode_String(System.Convert.ToUInt32(tnm.Value ?? 0u)).ToDotNetString(); return true;
                 // json.Delim is a rune whose String() is the single character (its shim
                 // method has no lowered body, so no stringer closure is registered).
                 case "json.Delim": s = Json.Delim_String((int)System.Convert.ToInt64(tnm.Value ?? 0L)).ToDotNetString(); return true;

@@ -20,7 +20,7 @@ import (
 // a non-struct, non-interface underlying and a non-empty method set — assigning a
 // fresh stable id on first sight. ok is false for types that don't need a tag.
 func (c *lowerCtx) namedIdentity(t types.Type) (id int64, ok bool) {
-	named, isNamed := t.(*types.Named)
+	named, isNamed := types.Unalias(t).(*types.Named) // os.FileMode (alias) -> io/fs.FileMode
 	if !isNamed {
 		return 0, false
 	}
@@ -314,6 +314,7 @@ func compositeHasInterfaceElem(t types.Type) bool {
 // element types %T would otherwise erase. Called right after a value is boxed into
 // an interface slot.
 func (l *funcLowerer) maybeWrapNamed(t types.Type) {
+	t = types.Unalias(t) // os.FileMode (alias) -> io/fs.FileMode, so its identity is tagged
 	// A pointer boxed into an interface: a NON-nil GoPtr is stamped with its pointee's id so
 	// %T reports *main.Color / *[]int (the pointer stays a GoPtr — a GoNamed wrapper would
 	// break deref/dispatch); a NIL pointer (a bare null with no cell to stamp) is wrapped in
