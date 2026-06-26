@@ -7,6 +7,16 @@ using System.Text;
 using System.Text.Json;
 using GoCLR.Runtime;
 
+/// <summary>A *json.SyntaxError (malformed JSON): the byte Offset where parsing failed
+/// plus the message. [GoShim]-tagged so errors.As(*json.SyntaxError) recovers it.</summary>
+[GoShim("encoding/json.SyntaxError")]
+public sealed class GoJsonSyntaxError : IGoError
+{
+    public long Offset;
+    public string Msg = "";
+    public GoString Error() => GoString.FromDotNetString(Msg);
+}
+
 /// <summary>Shim for a subset of Go's <c>encoding/json</c> (Marshal). Uses .NET
 /// reflection over the boxed value plus the registered struct tags. Map keys are
 /// sorted (as Go does); struct fields use their json tag (name, omitempty, -).</summary>
@@ -468,14 +478,26 @@ public static class Json
         // corrupt its struct-field path (and underflow its finally's RemoveAt).
         var savedStruct = _errStruct; var savedFields = _errFields;
         _errStruct = null; _errFields = null;
+        string json = SliceToString(data);
         try
         {
-            string json = SliceToString(data);
             using var doc = JsonDocument.Parse(json);
             using var ddoc = JsonDocument.Parse(desc.ToDotNetString());
             object? decoded = Decode(doc.RootElement, ddoc.RootElement);
             SetPtr(target, decoded);
             return null;
+        }
+        // Malformed JSON throws a JsonException at parse time (not a GoJsonError type-mismatch);
+        // surface it as a *json.SyntaxError with the byte offset so errors.As/Offset work.
+        catch (JsonException jx)
+        {
+            string msg = JsonErrMsg(jx);
+            // "unexpected end of JSON input" carries Offset == len(data) in Go (0 for empty input);
+            // other syntax errors carry the byte offset where parsing stopped.
+            long off = msg == "unexpected end of JSON input"
+                ? System.Text.Encoding.UTF8.GetByteCount(json)
+                : SyntaxOffset(jx, json);
+            return new GoJsonSyntaxError { Offset = off, Msg = msg };
         }
         catch (System.Exception e)
         {
@@ -494,6 +516,16 @@ public static class Json
         if (m.Contains("reached end of data") || m.Contains("does not contain any JSON tokens"))
             return "unexpected end of JSON input";
         return m;
+    }
+
+    // The 1-based byte offset where a JsonException stopped, used for SyntaxError.Offset.
+    private static long SyntaxOffset(JsonException jx, string json)
+    {
+        long col = jx.BytePositionInLine ?? 0, line = jx.LineNumber ?? 0;
+        if (line <= 0) return col + 1;
+        long off = 0, nl = 0;
+        foreach (char c in json) { if (nl >= line) break; off++; if (c == '\n') nl++; }
+        return off + col + 1;
     }
 
     private static string SliceToString(GoSlice s)
@@ -858,8 +890,8 @@ public static class Json
     public static GoString UTE_Field(object e) => GoString.FromDotNetString("");
     public static GoString UTE_Struct(object e) => GoString.FromDotNetString("");
     public static long UTE_Offset(object e) => 0;
-    public static GoString SyntaxErr_Error(object e) => GoString.FromDotNetString("json: syntax error");
-    public static long SyntaxErr_Offset(object e) => 0;
+    public static GoString SyntaxErr_Error(object e) => e is GoJsonSyntaxError s ? s.Error() : GoString.FromDotNetString("json: syntax error");
+    public static long SyntaxErr_Offset(object e) => e is GoJsonSyntaxError s ? s.Offset : 0;
 
     public static long Decoder_InputOffset(object dec) => ((GoJsonDecoder)dec).InputOffset();
     // json.Delim is a rune; its String() is the single character.
