@@ -42,6 +42,8 @@ public static class Fmt
         if (v is GoNetAddr nad) { s = nad.Str; return true; }
         // *url.URL prints via its String() (the shim object, not its struct fields).
         if (v is GoUrl gu) { s = Url.URL_String(gu).ToDotNetString(); return true; }
+        // *time.Location prints its zone name (Local/UTC/IST/...).
+        if (v is GoLocation gloc) { s = Time.Location_String(gloc).ToDotNetString(); return true; }
         if (v is GoNamed kn && Rt.NamedTypeName(kn.TypeId) == "reflect.Kind")
         { s = GoKind.Name((int)System.Convert.ToInt64(kn.Value ?? 0L)); return true; }
         // Shim named scalar types whose String() is a runtime shim (not a lowered Go

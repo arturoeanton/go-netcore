@@ -152,9 +152,14 @@ public static class Time
     private static readonly System.DateTime Epoch =
         new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc);
 
-    private static System.DateTime ToDateTime(GoTime t) => Epoch.AddTicks(t.N / 100);
+    // The wall-clock DateTime in the value's own zone (instant + the zone's fixed offset).
+    // OffsetSeconds is 0 for UTC, so UTC values decompose exactly as before.
+    private static System.DateTime ToDateTime(GoTime t) => Epoch.AddTicks((t.N + (long)t.OffsetSeconds * Second) / 100);
     private static GoTime FromDateTime(System.DateTime dt) =>
         new GoTime { N = (dt.ToUniversalTime() - Epoch).Ticks * 100, IsZero = false };
+    // A new instant carrying the same zone (offset + name) as src.
+    private static GoTime With(GoTime src, long n) =>
+        new GoTime { N = n, IsZero = false, OffsetSeconds = src.OffsetSeconds, ZoneName = src.ZoneName };
 
     // Construction.
     public static object Now() => new GoTime { N = (System.DateTime.UtcNow - Epoch).Ticks * 100, IsZero = false };
@@ -166,7 +171,15 @@ public static class Time
         var dt = new System.DateTime((int)year, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)
             .AddMonths((int)month - 1).AddDays(day - 1)
             .AddHours(hour).AddMinutes(min).AddSeconds(sec);
-        var t = FromDateTime(dt); t.N += nsec; return t;
+        var t = FromDateTime(dt); t.N += nsec;
+        // The y/m/d/h/m/s are wall-clock in loc; the stored instant is that minus the offset.
+        if (loc is GoLocation gl)
+        {
+            t.N -= (long)gl.OffsetSeconds * Second;
+            t.OffsetSeconds = gl.OffsetSeconds;
+            t.ZoneName = gl.Name;
+        }
+        return t;
     }
     public static long Since(object t) => (System.DateTime.UtcNow - Epoch).Ticks * 100 - ((GoTime)t).N;
     public static long Until(object t) => ((GoTime)t).N - (System.DateTime.UtcNow - Epoch).Ticks * 100;
@@ -182,10 +195,15 @@ public static class Time
         new object?[] { Time_Year(t), Time_Month(t), Time_Day(t) };
     public static object?[] Time_Clock(object t) =>
         new object?[] { Time_Hour(t), Time_Minute(t), Time_Second(t) };
-    // UTC-only: the zone is always UTC with a zero offset.
-    public static object?[] Time_Zone(object t) => new object?[] { GoString.FromDotNetString("UTC"), 0L };
-    public static object Time_In(object t, object loc) => t;       // UTC-only: location is ignored
-    public static object Time_Location(object t) => UTC();
+    // The value's fixed zone (name, offset in seconds east of UTC).
+    public static object?[] Time_Zone(object t) { var gt = (GoTime)t; return new object?[] { GoString.FromDotNetString(gt.ZoneName), (long)gt.OffsetSeconds }; }
+    // (t Time).In(loc): the same instant displayed in loc's zone.
+    public static object Time_In(object t, object loc)
+    {
+        var gt = (GoTime)t; var gl = loc as GoLocation;
+        return new GoTime { N = gt.N, IsZero = gt.IsZero, OffsetSeconds = gl?.OffsetSeconds ?? 0, ZoneName = gl?.Name ?? "UTC" };
+    }
+    public static object Time_Location(object t) { var gt = (GoTime)t; return new GoLocation { Name = gt.ZoneName, OffsetSeconds = gt.OffsetSeconds }; }
     public static long Time_Month(object t) => ZeroDate(t, dt => dt.Month, 1);
     public static long Time_Day(object t) => ZeroDate(t, dt => dt.Day, 1);
     public static long Time_Hour(object t) => ZeroDate(t, dt => dt.Hour, 0);
@@ -193,7 +211,7 @@ public static class Time
     public static long Time_Second(object t) => ZeroDate(t, dt => dt.Second, 0);
     public static long Time_Nanosecond(object t) => ((GoTime)t).N % Second;
     public static long Time_Weekday(object t) => ZeroDate(t, dt => (int)dt.DayOfWeek, 1);
-    public static object Time_Add(object t, long d) => new GoTime { N = ((GoTime)t).N + d, IsZero = false };
+    public static object Time_Add(object t, long d) => With((GoTime)t, ((GoTime)t).N + d);
     // (t Time).AddDate(years, months, days int) Time — calendar arithmetic.
     public static object Time_AddDate(object t, long years, long months, long days)
     {
@@ -204,18 +222,21 @@ public static class Time
         var gt = (GoTime)t;
         var dt = ToDateTime(gt);
         long nanos = ((gt.N % Second) + Second) % Second;
+        // Re-apply the value's own zone so AddDate preserves the location (Date with a matching
+        // GoLocation interprets the wall-clock fields in that zone).
         return Date(dt.Year + years, dt.Month + months, dt.Day + days,
-                    dt.Hour, dt.Minute, dt.Second, nanos, null);
+                    dt.Hour, dt.Minute, dt.Second, nanos,
+                    new GoLocation { Name = gt.ZoneName, OffsetSeconds = gt.OffsetSeconds });
     }
-    public static object Time_Round(object t, long d) { var n = ((GoTime)t).N; if (d <= 0) return new GoTime { N = n, IsZero = ((GoTime)t).IsZero }; long r = n % d; long h = d / 2; n = r + r < d ? n - r : n - r + d; return new GoTime { N = n, IsZero = false }; }
-    public static object Time_Truncate(object t, long d) { var n = ((GoTime)t).N; if (d <= 0) return new GoTime { N = n, IsZero = ((GoTime)t).IsZero }; return new GoTime { N = n - n % d, IsZero = false }; }
+    public static object Time_Round(object t, long d) { var gt = (GoTime)t; var n = gt.N; if (d <= 0) return gt.IsZero ? t : With(gt, n); long r = n % d; n = r + r < d ? n - r : n - r + d; return With(gt, n); }
+    public static object Time_Truncate(object t, long d) { var gt = (GoTime)t; var n = gt.N; if (d <= 0) return gt.IsZero ? t : With(gt, n); return With(gt, n - n % d); }
     public static long Time_Sub(object t, object u) => ((GoTime)t).N - ((GoTime)u).N;
     public static bool Time_Before(object t, object u) => ((GoTime)t).N < ((GoTime)u).N;
     public static bool Time_After(object t, object u) => ((GoTime)t).N > ((GoTime)u).N;
     public static bool Time_Equal(object t, object u) => ((GoTime)t).N == ((GoTime)u).N;
     public static bool Time_IsZero(object t) => ((GoTime)t).IsZero;
-    public static object Time_UTC(object t) => t;
-    public static object Time_Local(object t) => t;
+    public static object Time_UTC(object t) { var gt = (GoTime)t; return new GoTime { N = gt.N, IsZero = gt.IsZero }; } // same instant, UTC zone
+    public static object Time_Local(object t) { var gt = (GoTime)t; return new GoTime { N = gt.N, IsZero = gt.IsZero }; } // Local == UTC in goclr
     public static GoString Time_String(object t) => GoString.FromDotNetString(DoFormat((GoTime)t, "2006-01-02 15:04:05.999999999 -0700 MST"));
     public static GoString Time_Format(object t, GoString layout) => GoString.FromDotNetString(DoFormat((GoTime)t, layout.ToDotNetString()));
     // (time.Time).AppendFormat(b, layout): append the formatted time to the byte slice.
@@ -484,6 +505,16 @@ public static class Time
     private static readonly string[] DaysLong = { "Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday" };
     private static readonly string[] DaysAbbr = { "Sun","Mon","Tue","Wed","Thu","Fri","Sat" };
 
+    // A numeric zone offset like "-0500" / "-05:00" from seconds east of UTC.
+    private static string ZoneOffset(int offsetSec, bool colon)
+    {
+        char sign = offsetSec < 0 ? '-' : '+';
+        int a = System.Math.Abs(offsetSec), hh = a / 3600, mm = (a % 3600) / 60;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        return colon ? $"{sign}{hh.ToString("D2", inv)}:{mm.ToString("D2", inv)}"
+                     : $"{sign}{hh.ToString("D2", inv)}{mm.ToString("D2", inv)}";
+    }
+
     private static string DoFormat(GoTime t, string layout)
     {
         System.DateTime dt = t.IsZero ? new System.DateTime(1, 1, 1, 0, 0, 0, System.DateTimeKind.Utc) : ToDateTime(t);
@@ -530,11 +561,11 @@ public static class Time
                 }
                 else { sb.Append(sep).Append(frac); }
             }
-            else if (M("Z07:00")) { sb.Append('Z'); }
-            else if (M("Z0700")) { sb.Append('Z'); }
-            else if (M("-07:00")) { sb.Append("+00:00"); }
-            else if (M("-0700")) { sb.Append("+0000"); }
-            else if (M("MST")) { sb.Append("UTC"); }
+            else if (M("Z07:00")) { sb.Append(t.OffsetSeconds == 0 ? "Z" : ZoneOffset(t.OffsetSeconds, true)); }
+            else if (M("Z0700")) { sb.Append(t.OffsetSeconds == 0 ? "Z" : ZoneOffset(t.OffsetSeconds, false)); }
+            else if (M("-07:00")) { sb.Append(ZoneOffset(t.OffsetSeconds, true)); }
+            else if (M("-0700")) { sb.Append(ZoneOffset(t.OffsetSeconds, false)); }
+            else if (M("MST")) { sb.Append(t.ZoneName.Length > 0 ? t.ZoneName : "UTC"); }
             else if (M("2")) { sb.Append(dt.Day.ToString(inv)); }
             else if (M("1")) { sb.Append(dt.Month.ToString(inv)); }
             else if (M("4")) { sb.Append(dt.Minute.ToString(inv)); }
@@ -612,9 +643,11 @@ public static class Time
     private static readonly object UtcLoc = new GoLocation();
 }
 
-/// <summary>A time.Time value: Unix nanoseconds in UTC, plus a Go zero-value flag.</summary>
+/// <summary>A time.Time value: the instant as Unix nanoseconds (UTC), plus the location's
+/// fixed UTC offset and zone name for wall-clock display. OffsetSeconds 0 / "UTC" is the
+/// default, so a UTC time behaves exactly as before.</summary>
 [GoShim("time.Time")]
-public sealed class GoTime { public long N; public bool IsZero; }
+public sealed class GoTime { public long N; public bool IsZero; public int OffsetSeconds; public string ZoneName = "UTC"; }
 
 /// <summary>A *time.Location: UTC by default, or a fixed-offset zone from
 /// time.FixedZone (Name + OffsetSeconds).</summary>

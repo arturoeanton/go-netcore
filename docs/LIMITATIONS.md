@@ -204,10 +204,16 @@ matches `"a"` here, `"ab"` under Go's POSIX mode. `(*Regexp).Longest()` is a no-
 special-case expansions (e.g. `İ` U+0130 → `i` + combining dot) are not applied.
 `ß`→`SS`, final-sigma, and the common Latin/Greek/Cyrillic mappings are correct.
 
-## time is UTC-only
+## time zones — fixed-offset only
 
-`time.Time` operates in UTC. Go's `time.Now()`/`time.Unix()` use the local zone;
-for cross-runtime-deterministic output use `.UTC()` and `time.Date(..., time.UTC)`.
+`time.FixedZone` and any location with a constant UTC offset are supported:
+`time.Date(..., loc)` interprets the wall-clock fields in that zone, `Format`
+renders the offset (`-0700`/`Z07:00`) and zone name (`MST`), and `UTC`/`In`/
+`Zone`/`Location` convert and report it; `Add`/`AddDate`/`Truncate`/`Round`
+preserve the zone, and the instant (`Unix`) is zone-independent. **DST and IANA
+transitions are not modeled** — `LoadLocation` returns a fixed zone at the
+location's base offset, so dates in the DST half of the year will be off by an
+hour. Go's `time.Now()`/`time.Local` use UTC (no local zone in the runtime).
 
 `Format`/`Parse` accept fractional-second layout tokens of **any** width — a `.`
 or `,` separator followed by a run of `0`s (fixed width, trailing zeros kept) or
