@@ -88,15 +88,31 @@ public static class Reflect
         return "";
     }
 
-    public static object TypeOf(object? x, int descId) => new GoReflectType { Sample = x, Desc = TypeReg.ById(descId) ?? TypeReg.FromValue(x) };
+    // reflect.Type is comparable with == (Go interns *rtype): intern a GoReflectType per
+    // type descriptor so the same type always yields the same object and the reference-
+    // equality the lowering uses for interface == reports identical types as equal.
+    private static readonly System.Collections.Generic.Dictionary<GoTypeDesc, GoReflectType> _rtIntern = new();
+    internal static GoReflectType RType(GoTypeDesc? desc, object? sample)
+    {
+        if (desc == null) return new GoReflectType { Sample = sample, Desc = null };
+        lock (_rtIntern)
+        {
+            if (_rtIntern.TryGetValue(desc, out var c)) return c;
+            var rt = new GoReflectType { Sample = sample, Desc = desc };
+            _rtIntern[desc] = rt;
+            return rt;
+        }
+    }
+
+    public static object TypeOf(object? x, int descId) => RType(TypeReg.ById(descId) ?? TypeReg.FromValue(x), x);
     public static object ValueOf(object? x, int descId) => new GoReflectValue { V = x, Desc = TypeReg.ById(descId) ?? TypeReg.FromValue(x) };
     // reflect.TypeFor[T](): the reflect.Type for the static type T (descriptor id, or
     // -1 for an interface type such as any).
-    public static object TypeFor(int descId) => new GoReflectType { Desc = TypeReg.ById(descId) };
+    public static object TypeFor(int descId) => RType(TypeReg.ById(descId), null);
 
     // A reflect.Type for a descriptor id (used by Field.Type).
-    private static object RTypeById(int id) => new GoReflectType { Desc = TypeReg.ById(id) };
-    private static object RTypeFromDesc(GoTypeDesc? d) => new GoReflectType { Desc = d };
+    private static object RTypeById(int id) => RType(TypeReg.ById(id), null);
+    private static object RTypeFromDesc(GoTypeDesc? d) => RType(d, null);
     private static GoTypeDesc? TDesc(object t) => (t as GoReflectType)?.Desc;
 
     // --- reflect type construction (descriptor synthesis) ------------------
@@ -179,7 +195,7 @@ public static class Reflect
     private static object? RValC(object? v) => RVal(v);
     private static GoTypeDesc? VDesc(object? v) => (v as GoReflectValue)?.Desc;
     public static ulong Value_Kind(object? v) { var d = VDesc(v); return d != null ? (ulong)d.Kind : KindOf(RVal(v)); }
-    public static object Value_Type(object? v) => new GoReflectType { Sample = RVal(v), Desc = VDesc(v) };
+    public static object Value_Type(object? v) => RType(VDesc(v), RVal(v));
     public static object? Value_Interface(object? v)
     {
         if (v is GoReflectValue rv && rv.RO)
