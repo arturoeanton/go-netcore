@@ -344,10 +344,11 @@ Done since this list was first written: **`net` UDP** (UDPConn/UDPAddr, loopback
 round-trip), **`log/slog`** (text + JSON), **`os/signal`** (real SIGINT/SIGTERM
 delivery), **`net/http/cookiejar`**, **`net/http/httptest`** (live server + recorder),
 **`database/sql` + `database/sql/driver`** (with the `go-r2-sqlite` engine),
-**`mime/multipart`** (form parsing), and **`image/color`** (compiled from real source —
-RGBA/NRGBA/Gray/Alpha/RGBA64/NRGBA64/YCbCr/CMYK + their Models and the YCbCr/CMYK
-conversion helpers, all byte-exact). Still deferred (need a larger feature or external
-module):
+**`mime/multipart`** (form parsing), and **`image` + `image/color`** (compiled from real
+source — the color types/Models/conversions, plus the Rectangle/Point geometry and the
+buffered image types RGBA/NRGBA/Gray/Paletted/YCbCr with SubImage/Palette and the decoder
+registry, all byte-exact; `image.Decode` returns `ErrFormat` since no format decoder
+(png/jpeg/gif) is registered). Still deferred (need a larger feature or external module):
 
 - **`container/heap`** — works, including the idiomatic **named-slice** implementer
   (`type IntHeap []int` reached as `*IntHeap`): `heap.Init/Push/Pop/Fix/Remove` drive
