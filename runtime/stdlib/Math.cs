@@ -19,7 +19,45 @@ public static class Math
     public static double Asinh(double x) => SM.Asinh(x);
     public static double Atanh(double x) => SM.Atanh(x);
     public static double Exp(double x) => SM.Exp(x);
-    public static double Exp2(double x) => SM.Pow(2, x);
+    // Exp2: System.Math.Pow(2, x) differs from Go at the last ULP (e.g. Exp2(0.5)=√2). This is
+    // a faithful port of Go's math.exp2 (argument reduction + the shared expmulti tail).
+    public static double Exp2(double x) => Exp2Impl(x);
+
+    private static double Exp2Impl(double x)
+    {
+        const double Ln2Hi = 6.93147180369123816490e-01;
+        const double Ln2Lo = 1.90821492927058770002e-10;
+        const double Overflow = 1.0239999999999999e+03;
+        const double Underflow = -1.0740e+03;
+
+        if (double.IsNaN(x) || double.IsPositiveInfinity(x)) return x;
+        if (double.IsNegativeInfinity(x)) return 0;
+        if (x > Overflow) return double.PositiveInfinity;
+        if (x < Underflow) return 0;
+
+        int k = 0;
+        if (x > 0) k = (int)(x + 0.5);
+        else if (x < 0) k = (int)(x - 0.5);
+        double t = x - k;
+        double hi = t * Ln2Hi;
+        double lo = -t * Ln2Lo;
+        return Expmulti(hi, lo, k);
+    }
+
+    // The shared tail of Go's exp/exp2: y ≈ e**(hi-lo) scaled by 2**k.
+    private static double Expmulti(double hi, double lo, int k)
+    {
+        const double P1 = 1.66666666666666657415e-01;
+        const double P2 = -2.77777777770155933842e-03;
+        const double P3 = 6.61375632143793436117e-05;
+        const double P4 = -1.65339022054652515390e-06;
+        const double P5 = 4.13813679705723846039e-08;
+        double r = hi - lo;
+        double t = r * r;
+        double c = r - t * (P1 + t * (P2 + t * (P3 + t * (P4 + t * P5))));
+        double y = 1 - ((lo - (r * c) / (2 - c)) - hi);
+        return SM.ScaleB(y, k); // Ldexp(y, k)
+    }
     // Expm1/Log1p: a naive Exp(x)-1 / Log(1+x) loses precision for small |x| (catastrophic
     // cancellation), diverging from Go. These are faithful ports of Go's fdlibm-based
     // math.expm1 / math.log1p so the result is byte-exact across the whole range.
@@ -468,20 +506,20 @@ public static class Math
                 case 0:
                     {
                         double z = y * y;
-                        double p1 = Fma(z, Fma(z, Fma(z, Fma(z, Fma(z, _lgamA[10], _lgamA[8]), _lgamA[6]), _lgamA[4]), _lgamA[2]), _lgamA[0]);
-                        double p2 = z * Fma(z, Fma(z, Fma(z, Fma(z, Fma(z, _lgamA[11], _lgamA[9]), _lgamA[7]), _lgamA[5]), _lgamA[3]), _lgamA[1]);
-                        double p = Fma(y, p1, p2);
-                        lgamma += Fma(-0.5, y, p);
+                        double p1 = Madd(z, Madd(z, Madd(z, Madd(z, Madd(z, _lgamA[10], _lgamA[8]), _lgamA[6]), _lgamA[4]), _lgamA[2]), _lgamA[0]);
+                        double p2 = z * Madd(z, Madd(z, Madd(z, Madd(z, Madd(z, _lgamA[11], _lgamA[9]), _lgamA[7]), _lgamA[5]), _lgamA[3]), _lgamA[1]);
+                        double p = Madd(y, p1, p2);
+                        lgamma += Madd(-0.5, y, p);
                         break;
                     }
                 case 1:
                     {
                         double z = y * y;
                         double w = z * y;
-                        double p1 = Fma(w, Fma(w, Fma(w, Fma(w, _lgamT[12], _lgamT[9]), _lgamT[6]), _lgamT[3]), _lgamT[0]);
-                        double p2 = Fma(w, Fma(w, Fma(w, Fma(w, _lgamT[13], _lgamT[10]), _lgamT[7]), _lgamT[4]), _lgamT[1]);
-                        double p3 = Fma(w, Fma(w, Fma(w, Fma(w, _lgamT[14], _lgamT[11]), _lgamT[8]), _lgamT[5]), _lgamT[2]);
-                        double p = Fma(z, p1, -Fma(-w, Fma(y, p3, p2), Tt));
+                        double p1 = Madd(w, Madd(w, Madd(w, Madd(w, _lgamT[12], _lgamT[9]), _lgamT[6]), _lgamT[3]), _lgamT[0]);
+                        double p2 = Madd(w, Madd(w, Madd(w, Madd(w, _lgamT[13], _lgamT[10]), _lgamT[7]), _lgamT[4]), _lgamT[1]);
+                        double p3 = Madd(w, Madd(w, Madd(w, Madd(w, _lgamT[14], _lgamT[11]), _lgamT[8]), _lgamT[5]), _lgamT[2]);
+                        double p = Madd(z, p1, -Madd(-w, Madd(y, p3, p2), Tt));
                         lgamma += Tf + p;
                         break;
                     }
@@ -500,10 +538,10 @@ public static class Math
         {
             int i = (int)x;
             double y = x - i;
-            double p = y * Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, _lgamS[6], _lgamS[5]), _lgamS[4]), _lgamS[3]), _lgamS[2]), _lgamS[1]), _lgamS[0]);
-            double q = Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, _lgamR[6], _lgamR[5]), _lgamR[4]), _lgamR[3]), _lgamR[2]), _lgamR[1]);
-            q = Fma(y, q, 1);
-            lgamma = Fma(0.5, y, p / q);
+            double p = y * Madd(y, Madd(y, Madd(y, Madd(y, Madd(y, Madd(y, _lgamS[6], _lgamS[5]), _lgamS[4]), _lgamS[3]), _lgamS[2]), _lgamS[1]), _lgamS[0]);
+            double q = Madd(y, Madd(y, Madd(y, Madd(y, Madd(y, _lgamR[6], _lgamR[5]), _lgamR[4]), _lgamR[3]), _lgamR[2]), _lgamR[1]);
+            q = Madd(y, q, 1);
+            lgamma = Madd(0.5, y, p / q);
             double z = 1.0;
             switch (i)
             {
@@ -519,8 +557,8 @@ public static class Math
             double t = SM.Log(x);
             double z = 1 / x;
             double y = z * z;
-            double w = Fma(z, Fma(y, Fma(y, Fma(y, Fma(y, Fma(y, _lgamW[6], _lgamW[5]), _lgamW[4]), _lgamW[3]), _lgamW[2]), _lgamW[1]), _lgamW[0]);
-            lgamma = Fma(x - 0.5, t - 1, w);
+            double w = Madd(z, Madd(y, Madd(y, Madd(y, Madd(y, Madd(y, _lgamW[6], _lgamW[5]), _lgamW[4]), _lgamW[3]), _lgamW[2]), _lgamW[1]), _lgamW[0]);
+            lgamma = Madd(x - 0.5, t - 1, w);
         }
         else lgamma = x * (SM.Log(x) - 1);
 
@@ -561,9 +599,9 @@ public static class Math
         double ans;
         if (x <= 0.85)
         {
-            double r = Fma(-(0.25 * x), x, 0.180625); // Go contracts 0.180625 - 0.25*x*x to FMA
-            double z1 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_a7, r, ei_a6), r, ei_a5), r, ei_a4), r, ei_a3), r, ei_a2), r, ei_a1), r, ei_a0);
-            double z2 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_b7, r, ei_b6), r, ei_b5), r, ei_b4), r, ei_b3), r, ei_b2), r, ei_b1), r, ei_b0);
+            double r = Madd(-(0.25 * x), x, 0.180625); // Go contracts 0.180625 - 0.25*x*x to FMA
+            double z1 = Madd(Madd(Madd(Madd(Madd(Madd(Madd(ei_a7, r, ei_a6), r, ei_a5), r, ei_a4), r, ei_a3), r, ei_a2), r, ei_a1), r, ei_a0);
+            double z2 = Madd(Madd(Madd(Madd(Madd(Madd(Madd(ei_b7, r, ei_b6), r, ei_b5), r, ei_b4), r, ei_b3), r, ei_b2), r, ei_b1), r, ei_b0);
             ans = (x * z1) / z2;
         }
         else
@@ -573,14 +611,14 @@ public static class Math
             if (r <= 5.0)
             {
                 r -= 1.6;
-                z1 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_c7, r, ei_c6), r, ei_c5), r, ei_c4), r, ei_c3), r, ei_c2), r, ei_c1), r, ei_c0);
-                z2 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_d7, r, ei_d6), r, ei_d5), r, ei_d4), r, ei_d3), r, ei_d2), r, ei_d1), r, ei_d0);
+                z1 = Madd(Madd(Madd(Madd(Madd(Madd(Madd(ei_c7, r, ei_c6), r, ei_c5), r, ei_c4), r, ei_c3), r, ei_c2), r, ei_c1), r, ei_c0);
+                z2 = Madd(Madd(Madd(Madd(Madd(Madd(Madd(ei_d7, r, ei_d6), r, ei_d5), r, ei_d4), r, ei_d3), r, ei_d2), r, ei_d1), r, ei_d0);
             }
             else
             {
                 r -= 5.0;
-                z1 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_e7, r, ei_e6), r, ei_e5), r, ei_e4), r, ei_e3), r, ei_e2), r, ei_e1), r, ei_e0);
-                z2 = Fma(Fma(Fma(Fma(Fma(Fma(Fma(ei_f7, r, ei_f6), r, ei_f5), r, ei_f4), r, ei_f3), r, ei_f2), r, ei_f1), r, ei_f0);
+                z1 = Madd(Madd(Madd(Madd(Madd(Madd(Madd(ei_e7, r, ei_e6), r, ei_e5), r, ei_e4), r, ei_e3), r, ei_e2), r, ei_e1), r, ei_e0);
+                z2 = Madd(Madd(Madd(Madd(Madd(Madd(Madd(ei_f7, r, ei_f6), r, ei_f5), r, ei_f4), r, ei_f3), r, ei_f2), r, ei_f1), r, ei_f0);
             }
             ans = z1 / z2;
         }
@@ -615,7 +653,10 @@ public static class Math
         erf_sb3 = 1.53672958608443695994e+03, erf_sb4 = 3.19985821950859553908e+03, erf_sb5 = 2.55305040643316442583e+03,
         erf_sb6 = 4.74528541206955367215e+02, erf_sb7 = -2.24409524465858183362e+01;
 
-    private static double Fma(double a, double b, double c) => SM.FusedMultiplyAdd(a, b, c);
+    // Fused multiply-add a*b+c (single rounding). The erf/lgamma/erfinv ports use this to
+    // reproduce Go's results bit-for-bit across the tested range. (A couple of extreme inputs
+    // — Erfc(10), large-argument trig — still differ by the last ULP; documented.)
+    private static double Madd(double a, double b, double c) => SM.FusedMultiplyAdd(a, b, c);
     public static double Erf(double x)
     {
         const double VeryTiny = 2.848094538889218e-306;
@@ -636,17 +677,17 @@ public static class Math
             else
             {
                 double z = x * x;
-                double r = Fma(z, Fma(z, Fma(z, Fma(z, erf_pp4, erf_pp3), erf_pp2), erf_pp1), erf_pp0);
-                double s = Fma(z, Fma(z, Fma(z, Fma(z, Fma(z, erf_qq5, erf_qq4), erf_qq3), erf_qq2), erf_qq1), 1);
-                temp = Fma(x, r / s, x);
+                double r = Madd(z, Madd(z, Madd(z, Madd(z, erf_pp4, erf_pp3), erf_pp2), erf_pp1), erf_pp0);
+                double s = Madd(z, Madd(z, Madd(z, Madd(z, Madd(z, erf_qq5, erf_qq4), erf_qq3), erf_qq2), erf_qq1), 1);
+                temp = Madd(x, r / s, x);
             }
             return sign ? -temp : temp;
         }
         if (x < 1.25)
         {
             double s = x - 1;
-            double P = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_pa6, erf_pa5), erf_pa4), erf_pa3), erf_pa2), erf_pa1), erf_pa0);
-            double Q = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_qa6, erf_qa5), erf_qa4), erf_qa3), erf_qa2), erf_qa1), 1);
+            double P = Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, erf_pa6, erf_pa5), erf_pa4), erf_pa3), erf_pa2), erf_pa1), erf_pa0);
+            double Q = Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, erf_qa6, erf_qa5), erf_qa4), erf_qa3), erf_qa2), erf_qa1), 1);
             return sign ? -erf_erx - P / Q : erf_erx + P / Q;
         }
         if (x >= 6) return sign ? -1 : 1;
@@ -654,16 +695,16 @@ public static class Math
         double R, S;
         if (x < 1 / 0.35)
         {
-            R = Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, erf_ra7, erf_ra6), erf_ra5), erf_ra4), erf_ra3), erf_ra2), erf_ra1), erf_ra0);
-            S = Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, erf_sa8, erf_sa7), erf_sa6), erf_sa5), erf_sa4), erf_sa3), erf_sa2), erf_sa1), 1);
+            R = Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, erf_ra7, erf_ra6), erf_ra5), erf_ra4), erf_ra3), erf_ra2), erf_ra1), erf_ra0);
+            S = Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, erf_sa8, erf_sa7), erf_sa6), erf_sa5), erf_sa4), erf_sa3), erf_sa2), erf_sa1), 1);
         }
         else
         {
-            R = Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, erf_rb6, erf_rb5), erf_rb4), erf_rb3), erf_rb2), erf_rb1), erf_rb0);
-            S = Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, Fma(s2, erf_sb7, erf_sb6), erf_sb5), erf_sb4), erf_sb3), erf_sb2), erf_sb1), 1);
+            R = Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, erf_rb6, erf_rb5), erf_rb4), erf_rb3), erf_rb2), erf_rb1), erf_rb0);
+            S = Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, Madd(s2, erf_sb7, erf_sb6), erf_sb5), erf_sb4), erf_sb3), erf_sb2), erf_sb1), 1);
         }
         double zz = Float64frombits(Float64bits(x) & 0xffffffff00000000UL);
-        double rr = SM.Exp(-zz * zz - 0.5625) * SM.Exp(Fma(zz - x, zz + x, R / S));
+        double rr = SM.Exp(-zz * zz - 0.5625) * SM.Exp(Madd(zz - x, zz + x, R / S));
         return sign ? rr / x - 1 : 1 - rr / x;
     }
 
@@ -682,19 +723,19 @@ public static class Math
             else
             {
                 double z = x * x;
-                double r = Fma(z, Fma(z, Fma(z, Fma(z, erf_pp4, erf_pp3), erf_pp2), erf_pp1), erf_pp0);
-                double s = Fma(z, Fma(z, Fma(z, Fma(z, Fma(z, erf_qq5, erf_qq4), erf_qq3), erf_qq2), erf_qq1), 1);
+                double r = Madd(z, Madd(z, Madd(z, Madd(z, erf_pp4, erf_pp3), erf_pp2), erf_pp1), erf_pp0);
+                double s = Madd(z, Madd(z, Madd(z, Madd(z, Madd(z, erf_qq5, erf_qq4), erf_qq3), erf_qq2), erf_qq1), 1);
                 double y = r / s;
-                if (x < 0.25) temp = Fma(x, y, x);
-                else temp = 0.5 + Fma(x, y, x - 0.5);
+                if (x < 0.25) temp = Madd(x, y, x);
+                else temp = 0.5 + Madd(x, y, x - 0.5);
             }
             return sign ? 1 + temp : 1 - temp;
         }
         if (x < 1.25)
         {
             double s = x - 1;
-            double P = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_pa6, erf_pa5), erf_pa4), erf_pa3), erf_pa2), erf_pa1), erf_pa0);
-            double Q = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_qa6, erf_qa5), erf_qa4), erf_qa3), erf_qa2), erf_qa1), 1);
+            double P = Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, erf_pa6, erf_pa5), erf_pa4), erf_pa3), erf_pa2), erf_pa1), erf_pa0);
+            double Q = Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, erf_qa6, erf_qa5), erf_qa4), erf_qa3), erf_qa2), erf_qa1), 1);
             return sign ? 1 + erf_erx + P / Q : 1 - erf_erx - P / Q;
         }
         if (x < 28)
@@ -703,17 +744,17 @@ public static class Math
             double R, S;
             if (x < 1 / 0.35)
             {
-                R = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_ra7, erf_ra6), erf_ra5), erf_ra4), erf_ra3), erf_ra2), erf_ra1), erf_ra0);
-                S = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_sa8, erf_sa7), erf_sa6), erf_sa5), erf_sa4), erf_sa3), erf_sa2), erf_sa1), 1);
+                R = Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, erf_ra7, erf_ra6), erf_ra5), erf_ra4), erf_ra3), erf_ra2), erf_ra1), erf_ra0);
+                S = Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, erf_sa8, erf_sa7), erf_sa6), erf_sa5), erf_sa4), erf_sa3), erf_sa2), erf_sa1), 1);
             }
             else
             {
                 if (sign && x > 6) return 2;
-                R = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_rb6, erf_rb5), erf_rb4), erf_rb3), erf_rb2), erf_rb1), erf_rb0);
-                S = Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, Fma(s, erf_sb7, erf_sb6), erf_sb5), erf_sb4), erf_sb3), erf_sb2), erf_sb1), 1);
+                R = Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, erf_rb6, erf_rb5), erf_rb4), erf_rb3), erf_rb2), erf_rb1), erf_rb0);
+                S = Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, Madd(s, erf_sb7, erf_sb6), erf_sb5), erf_sb4), erf_sb3), erf_sb2), erf_sb1), 1);
             }
             double z = Float64frombits(Float64bits(x) & 0xffffffff00000000UL);
-            double r = SM.Exp(-z * z - 0.5625) * SM.Exp(Fma(z - x, z + x, R / S));
+            double r = SM.Exp(-z * z - 0.5625) * SM.Exp(Madd(z - x, z + x, R / S));
             return sign ? 2 - r / x : r / x;
         }
         return sign ? 2 : 0;
@@ -749,7 +790,7 @@ public static class Math
         const double SqrtTwoPi = 2.506628274631000502417;
         const double MaxStirling = 143.01608;
         double w = 1 / x;
-        w = Fma(w, Fma(Fma(Fma(Fma(_gamS[0], w, _gamS[1]), w, _gamS[2]), w, _gamS[3]), w, _gamS[4]), 1);
+        w = Madd(w, Madd(Madd(Madd(Madd(_gamS[0], w, _gamS[1]), w, _gamS[2]), w, _gamS[3]), w, _gamS[4]), 1);
         double y1 = SM.Exp(x);
         double y2 = 1.0;
         if (x > MaxStirling) { double v = SM.Pow(x, 0.5 * x - 0.25); y2 = v / y1; y1 = v; } // Go: y1, y2 = v, v/y1 (simultaneous)
@@ -787,11 +828,11 @@ public static class Math
         while (x < 2) { if (x < 1e-09) goto small; z = z / x; x = x + 1; }
         if (x == 2) return z;
         x = x - 2;
-        p = Fma(Fma(Fma(Fma(Fma(Fma(x, _gamP[0], _gamP[1]), x, _gamP[2]), x, _gamP[3]), x, _gamP[4]), x, _gamP[5]), x, _gamP[6]);
-        q = Fma(Fma(Fma(Fma(Fma(Fma(Fma(x, _gamQ[0], _gamQ[1]), x, _gamQ[2]), x, _gamQ[3]), x, _gamQ[4]), x, _gamQ[5]), x, _gamQ[6]), x, _gamQ[7]);
+        p = Madd(Madd(Madd(Madd(Madd(Madd(x, _gamP[0], _gamP[1]), x, _gamP[2]), x, _gamP[3]), x, _gamP[4]), x, _gamP[5]), x, _gamP[6]);
+        q = Madd(Madd(Madd(Madd(Madd(Madd(Madd(x, _gamQ[0], _gamQ[1]), x, _gamQ[2]), x, _gamQ[3]), x, _gamQ[4]), x, _gamQ[5]), x, _gamQ[6]), x, _gamQ[7]);
         return z * p / q;
     small:
         if (x == 0) return double.PositiveInfinity;
-        return z / (Fma(Euler, x, 1) * x);
+        return z / (Madd(Euler, x, 1) * x);
     }
 }

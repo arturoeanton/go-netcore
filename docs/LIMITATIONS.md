@@ -220,11 +220,16 @@ Unicode fold orbits (e.g. `K` U+212A KELVIN SIGN ↔ `k`, `ſ` long-s ↔ `s`, `
 
 ## math transcendental last-ULP
 
-The `math` package maps the transcendental functions (`Log`, `Log10`, `Sin`, …) onto
+The `math` package maps most transcendental functions (`Log`, `Log10`, `Sin`, …) onto
 the platform's `System.Math`, which can differ from Go's own implementations by the
-last ULP for some inputs (e.g. `math.Log(0.01)`). Functions built on them — including
-`math.Lgamma` (a faithful port of Go's algorithm, otherwise byte-exact) — inherit that
-last-ULP edge on the affected inputs; the value is correct to ~1 ULP.
+last ULP for some inputs (e.g. `math.Log(0.01)`, `math.Cos(1e8)` where a huge argument
+needs Payne–Hanek reduction, `math.Erfc(10)` in the far tail). Functions built on them
+inherit that last-ULP edge on the affected inputs; the value is correct to ~1 ULP.
+`math.Expm1`, `math.Log1p`, `math.Exp2`, `math.Gamma`, `math.Lgamma`, `math.Erf`,
+`math.Erfinv` are faithful fdlibm ports and are byte-exact across the tested range.
+**Not implemented:** the Bessel functions `math.J0`/`J1`/`Y0`/`Y1` (a call is a compile
+error, not a silent wrong answer) — `System.Math` has no equivalent and the fdlibm ports
+are a large deferred piece.
 
 ## regexp POSIX leftmost-longest
 
