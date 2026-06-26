@@ -12,8 +12,11 @@ public static class Subtle
         for (int i = 0; i < x.Len; i++) v |= (byte)System.Convert.ToInt64(x.Data![x.Off + i]) ^ (byte)System.Convert.ToInt64(y.Data![y.Off + i]);
         return v == 0 ? 1 : 0;
     }
-    public static long ConstantTimeByteEq(long a, long b) => (byte)a == (byte)b ? 1 : 0;
-    public static long ConstantTimeEq(long a, long b) => a == b ? 1 : 0;
+    // ConstantTimeByteEq takes uint8 and ConstantTimeEq takes int32 in Go; both lower to a
+    // 32-bit CLR value, so the params must be Int32 (a (long, long) signature would not bind
+    // at the call site — MissingMethodException). The other functions take Go `int` (Int64).
+    public static long ConstantTimeByteEq(int a, int b) => (byte)a == (byte)b ? 1 : 0;
+    public static long ConstantTimeEq(int a, int b) => a == b ? 1 : 0;
     public static long ConstantTimeSelect(long v, long a, long b) => v == 1 ? a : b;
 
     // subtle.ConstantTimeLessOrEq(x, y) int: 1 if x <= y, else 0 (x, y in [0, 2**31-1]).
