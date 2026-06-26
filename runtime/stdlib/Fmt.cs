@@ -90,6 +90,12 @@ public static class Fmt
         if (v is GoUrl gu) { s = Url.URL_String(gu).ToDotNetString(); return true; }
         // *mail.Address prints via its String() ("Name" <addr>), not its struct fields.
         if (v is GoMailAddress gma) { s = Mail.Address_String(gma).ToDotNetString(); return true; }
+        // *url.Userinfo prints via its String() ("user:password"), not its struct fields.
+        if (v is GoUserinfo gui) { s = Url.Userinfo_String(gui).ToDotNetString(); return true; }
+        // *bytes.Buffer and *regexp.Regexp are Stringers — print the buffer contents / the
+        // pattern, not their internal struct fields.
+        if (v is GoBuffer gbuf) { s = BytesBuffer.String(gbuf).ToDotNetString(); return true; }
+        if (v is GoRegexp gre) { s = Regexp.Re_String(gre).ToDotNetString(); return true; }
         // *time.Location prints its zone name (Local/UTC/IST/...).
         if (v is GoLocation gloc) { s = Time.Location_String(gloc).ToDotNetString(); return true; }
         if (v is GoNamed kn && Rt.NamedTypeName(kn.TypeId) == "reflect.Kind")
@@ -113,6 +119,7 @@ public static class Fmt
                 case "net.IP" when tnm.Value is GoSlice ipv: s = Net.IP_String(ipv).ToDotNetString(); return true;
                 case "net.IPMask" when tnm.Value is GoSlice mv: s = Net.IPMask_String(mv).ToDotNetString(); return true;
                 case "net.HardwareAddr" when tnm.Value is GoSlice hv: s = Net.HardwareAddr_String(hv).ToDotNetString(); return true;
+                case "net.Flags": s = Net.Flags_String(System.Convert.ToUInt64(tnm.Value ?? 0u)).ToDotNetString(); return true;
             }
         }
         GoClosure? fn = null;
