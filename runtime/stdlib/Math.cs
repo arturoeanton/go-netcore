@@ -10,11 +10,41 @@ public static partial class Math
     public static double Asin(double x) => SM.Asin(x);
     public static double Atan(double x) => SM.Atan(x);
     public static double Atan2(double y, double x) => SM.Atan2(y, x);
-    public static double Cbrt(double x) => SM.Cbrt(x);
+    // Ported from Go's math/cbrt.go (fdlibm) for bit-exact output (System.Math.Cbrt
+    // differs by a ULP for some inputs, e.g. cbrt(0.5), cbrt(100)).
+    public static double Cbrt(double x)
+    {
+        const ulong B1 = 715094163, B2 = 696219795;
+        const double C = 5.42857142857142815906e-01, D = -7.05306122448979611050e-01;
+        const double E = 1.41428571428571436819e+00, F = 1.60714285714285720630e+00;
+        const double G = 3.57142857142857150787e-01, SmallestNormal = 2.22507385850720138309e-308;
+        if (x == 0 || double.IsNaN(x) || double.IsInfinity(x)) return x;
+        bool sign = false;
+        if (x < 0) { x = -x; sign = true; }
+        double t = Float64frombits(Float64bits(x) / 3 + (B1 << 32));
+        if (x < SmallestNormal) { t = (double)(1L << 54); t *= x; t = Float64frombits(Float64bits(t) / 3 + (B2 << 32)); }
+        double r = t * t / x;
+        double s = C + r * t;
+        t *= G + F / (s + E + D / s);
+        t = Float64frombits((Float64bits(t) & (0xFFFFFFFFCUL << 28)) + (1UL << 30));
+        s = t * t;
+        r = x / s;
+        double w = t + t;
+        r = (r - t) / (w + r);
+        t = t + t * r;
+        return sign ? -t : t;
+    }
     public static double Ceil(double x) => SM.Ceiling(x);
     public static double Copysign(double x, double y) => SM.CopySign(x, y);
     public static double Cos(double x) => SM.Cos(x);
-    public static double Cosh(double x) => SM.Cosh(x);
+    // Ported from Go's math/sinh.go (cosh) — uses the byte-exact Exp.
+    public static double Cosh(double x)
+    {
+        x = SM.Abs(x);
+        if (x > 21) return Exp(x) * 0.5;
+        double ex = Exp(x);
+        return (ex + 1 / ex) * 0.5;
+    }
     public static double Acosh(double x) => SM.Acosh(x);
     public static double Asinh(double x) => SM.Asinh(x);
     // Ported from Go's math/atanh.go (built on the byte-exact Log1p) so the result matches
@@ -256,7 +286,31 @@ public static partial class Math
     // math.Modf(f) (int, frac): integer and fractional parts, both carrying f's sign.
     public static object?[] Modf(double f) { double i = SM.Truncate(f); return new object?[] { i, f - i }; }
     public static double Hypot(double p, double q) => SM.Sqrt(p * p + q * q);
-    public static double Log(double x) => SM.Log(x);
+    // Ported from Go's math/log.go (fdlibm) — self-contained via the byte-exact Frexp;
+    // System.Math.Log differs by a ULP for some inputs (e.g. Log(0.01)).
+    public static double Log(double x)
+    {
+        const double Ln2Hi = 6.93147180369123816490e-01, Ln2Lo = 1.90821492927058770002e-10;
+        const double L1 = 6.666666666666735130e-01, L2 = 3.999999999940941908e-01, L3 = 2.857142874366239149e-01;
+        const double L4 = 2.222219843214978396e-01, L5 = 1.818357216161805012e-01;
+        const double L6 = 1.531383769920937332e-01, L7 = 1.479819860511658591e-01;
+        const double Sqrt2 = 1.41421356237309504880168872420969807856967187537694;
+        if (double.IsNaN(x) || double.IsPositiveInfinity(x)) return x;
+        if (x < 0) return double.NaN;
+        if (x == 0) return double.NegativeInfinity;
+        var (f1, ki) = FrexpD(x);
+        if (f1 < Sqrt2 / 2) { f1 *= 2; ki--; }
+        double f = f1 - 1;
+        double k = (double)ki;
+        double s = f / (2 + f);
+        double s2 = s * s;
+        double s4 = s2 * s2;
+        double t1 = s2 * (L1 + s4 * (L3 + s4 * (L5 + s4 * L7)));
+        double t2 = s4 * (L2 + s4 * (L4 + s4 * L6));
+        double R = t1 + t2;
+        double hfsq = 0.5 * f * f;
+        return k * Ln2Hi - ((hfsq - (s * (hfsq + R) + k * Ln2Lo)) - f);
+    }
     public static double Log10(double x) => SM.Log10(x);
     public static double Log2(double x) => SM.Log2(x);
     public static double Max(double x, double y) => SM.Max(x, y);
@@ -268,7 +322,27 @@ public static partial class Math
     public static double Round(double x) => SM.Round(x, System.MidpointRounding.AwayFromZero);
     public static bool Signbit(double x) => double.IsNegative(x);
     public static double Sin(double x) => SM.Sin(x);
-    public static double Sinh(double x) => SM.Sinh(x);
+    // Ported from Go's math/sinh.go — Exp-based for |x| > 0.5, a Hart & Cheney rational
+    // polynomial otherwise; uses the byte-exact Exp. (System.Math.Sinh differs by a ULP.)
+    public static double Sinh(double x)
+    {
+        const double P0 = -0.6307673640497716991184787251e+6, P1 = -0.8991272022039509355398013511e+5;
+        const double P2 = -0.2894211355989563807284660366e+4, P3 = -0.2630563213397497062819489e+2;
+        const double Q0 = -0.6307673640497716991212077277e+6, Q1 = 0.1521517378790019070696485176e+5;
+        const double Q2 = -0.173678953558233699533450911e+3;
+        bool sign = false;
+        if (x < 0) { x = -x; sign = true; }
+        double temp;
+        if (x > 21) temp = Exp(x) * 0.5;
+        else if (x > 0.5) { double ex = Exp(x); temp = (ex - 1 / ex) * 0.5; }
+        else
+        {
+            double sq = x * x;
+            temp = (((P3 * sq + P2) * sq + P1) * sq + P0) * x;
+            temp = temp / (((sq + Q2) * sq + Q1) * sq + Q0);
+        }
+        return sign ? -temp : temp;
+    }
     public static double Sqrt(double x) => SM.Sqrt(x);
     public static double Tan(double x) => SM.Tan(x);
     public static double Tanh(double x) => SM.Tanh(x);
@@ -309,17 +383,19 @@ public static partial class Math
 
     public static double FMA(double x, double y, double z) => SM.FusedMultiplyAdd(x, y, z);
 
-    public static object?[] Frexp(double f)
+    private static (double frac, long exp) FrexpD(double f)
     {
-        if (f == 0) return new object?[] { f, 0L };                 // ±0
-        if (double.IsInfinity(f) || double.IsNaN(f)) return new object?[] { f, 0L };
+        if (f == 0) return (f, 0L);                                 // ±0
+        if (double.IsInfinity(f) || double.IsNaN(f)) return (f, 0L);
         var (nf, e) = Normalize(f);
         ulong x = Float64bits(nf);
         long exp = e + (long)((x >> fShift) & fMask) - fBias + 1;
         x &= ~(fMask << fShift);
         x |= (ulong)(-1 + fBias) << fShift;
-        return new object?[] { Float64frombits(x), exp };
+        return (Float64frombits(x), exp);
     }
+
+    public static object?[] Frexp(double f) { var (frac, exp) = FrexpD(f); return new object?[] { frac, exp }; }
 
     public static double Ldexp(double frac, long exp)
     {
