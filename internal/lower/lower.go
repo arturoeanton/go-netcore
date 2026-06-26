@@ -685,6 +685,7 @@ var compileFromSource = map[string]bool{
 	"maps":                true, // generic map helpers (iterators)
 	"iter":                true, // iter.Seq[K] range-over-func
 	"container/ring":      true, // circular list — pure pointer/struct code, no deps
+	"image/color":         true, // leaf package (no imports): RGBA/NRGBA/Gray/YCbCr/CMYK + Models, pure arithmetic
 	"io":                  true, // pure Go (errors+sync); shims still win for Copy/ReadAll/… (shimExtern precedes byFunc), but MultiWriter/MultiReader/TeeReader/Pipe come from real source so their per-writer/-reader Write/Read go through normal interface dispatch
 	"text/tabwriter":      true, // compiles from source (a runtime use may still NRE — see LIMITATIONS); lets fiber's test-only assert helper lower
 	// `goclr test` only: a minimal real-Go `testing` + testdeps overlay (see

@@ -343,8 +343,10 @@ covered (assignment, argument, return, container store, range binding).
 Done since this list was first written: **`net` UDP** (UDPConn/UDPAddr, loopback
 round-trip), **`log/slog`** (text + JSON), **`os/signal`** (real SIGINT/SIGTERM
 delivery), **`net/http/cookiejar`**, **`net/http/httptest`** (live server + recorder),
-**`database/sql` + `database/sql/driver`** (with the `go-r2-sqlite` engine), and
-**`mime/multipart`** (form parsing). Still deferred (need a larger feature or external
+**`database/sql` + `database/sql/driver`** (with the `go-r2-sqlite` engine),
+**`mime/multipart`** (form parsing), and **`image/color`** (compiled from real source —
+RGBA/NRGBA/Gray/Alpha/RGBA64/NRGBA64/YCbCr/CMYK + their Models and the YCbCr/CMYK
+conversion helpers, all byte-exact). Still deferred (need a larger feature or external
 module):
 
 - **`container/heap`** — works, including the idiomatic **named-slice** implementer
