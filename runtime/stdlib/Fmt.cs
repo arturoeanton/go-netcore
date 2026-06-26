@@ -511,10 +511,10 @@ public static class Fmt
         // %T (handled downstream); every other verb formats the underlying value —
         // unwrap here so the numeric/char/quote paths never see the wrapper (and so
         // a Stringer that itself uses %d can't recurse infinitely).
-        // %q also dispatches a Stringer/error (so `type Color int` with String() quotes
-        // the name, not a rune) — keep the wrapper in that one case.
+        // %q/%x/%X also dispatch a Stringer/error (so `type Color int` with String() quotes
+        // or hex-encodes the name, not the rune) — keep the wrapper in those cases.
         if (v is GoNamed gn && verb != 'v' && verb != 's' && verb != 'T'
-            && !(verb == 'q' && TryStringer(gn, out _))) v = gn.Value;
+            && !((verb == 'q' || verb == 'x' || verb == 'X') && TryStringer(gn, out _))) v = gn.Value;
         // A scalar verb applied to a slice/array or map recurses element-wise, as Go does
         // (%d of []int{1,2} -> "[1 2]", %d of map[int]int -> "map[1:2]"). %v/%s/%T/%p and
         // the []byte-special x/X/q paths are handled by their own cases below.
@@ -524,6 +524,18 @@ public static class Fmt
             if (v is GoMap rmp) return RecurseMap(rmp, sp);
             if (IsStructVal(v)) return RecurseStruct(v!, sp);
             if (v is GoPtr rgp && IsStructVal(GoPtrs.Get(rgp))) return "&" + RecurseStruct(GoPtrs.Get(rgp)!, sp);
+        }
+        // Go's Stringer/error rule applies to %x/%X/%q too (not only %v/%s): a value with
+        // Error()/String() formats its string representation, which is then hex-encoded or
+        // quoted. The Go-syntax flag (%#x) and a raw string opt out. The math/big
+        // Formatters Int and Float own their verb handling — %x is the hexadecimal of the
+        // *number*, not the hex of its decimal string — so they are excluded; big.Rat is
+        // NOT a Formatter and follows the Stringer rule (%x of a Rat is the hex of "1/3").
+        if (verb is 'x' or 'X' or 'q' && !sp.Hash
+            && v is not GoString && v is not GoBigInt && v is not GoBigFloat)
+        {
+            if (v is IGoError ge) v = ge.Error();
+            else if (TryStringer(v, out var strv)) v = GoString.FromDotNetString(strv);
         }
         switch (verb)
         {
@@ -758,7 +770,24 @@ public static class Fmt
 
     // Go type name for a boxed value (for %T and bad-verb messages). Slice/map
     // element types are erased at runtime, so those are approximate.
-    private static string GoTypeName(object? v) => v switch
+    private static string GoTypeName(object? v) => NormalizeByteRune(GoTypeNameRaw(v));
+
+    // %T / reflect type names render the builtin aliases by their underlying type: a
+    // byte is uint8 and a rune is int32 (go/types' "[]byte"/"[]rune" → "[]uint8"/"[]int32").
+    private static readonly System.Text.RegularExpressions.Regex _byteRe =
+        new System.Text.RegularExpressions.Regex(@"\bbyte\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _runeRe =
+        new System.Text.RegularExpressions.Regex(@"\brune\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static string NormalizeByteRune(string n)
+    {
+        if (n.IndexOf("byte", System.StringComparison.Ordinal) < 0 &&
+            n.IndexOf("rune", System.StringComparison.Ordinal) < 0) return n;
+        n = _byteRe.Replace(n, "uint8");
+        n = _runeRe.Replace(n, "int32");
+        return n;
+    }
+
+    private static string GoTypeNameRaw(object? v) => v switch
     {
         null => "<nil>",
         bool => "bool",

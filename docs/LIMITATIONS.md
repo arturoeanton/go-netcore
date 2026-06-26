@@ -155,6 +155,16 @@ Remaining edges (documented, not silent):
   representation (only method-bearing named types get an identity tag so far). A
   composite over a named interface element (`[]error`, `map[error]int`) now names
   it correctly; only the empty interface erases to `interface {}` (as in Go).
+- The **Stringer/error rule extends to `%x`/`%X`/`%q`** (as in Go, which applies it to
+  `%v %s %q %x %X`): a value with `String()`/`Error()` formats its string form, which is
+  then hex-encoded (`%x` of a `Color` Stringer → the hex of `"Green"`) or quoted. The
+  Go-syntax flag (`%#x`) and a raw string/`[]byte` opt out (still hexed as bytes).
+- **`%T` renders the builtin aliases via reflect**: in a composite, `byte`→`uint8` and
+  `rune`→`int32` (`%T` of `[]byte` → `[]uint8`, `map[byte]rune` → `map[uint8]int32`).
+  Two residuals remain (both the typed-box scalar gap): `%T` of a **bare `byte`/`rune`
+  scalar** prints `int32` (a narrow scalar boxes to a .NET int32, losing byte/rune
+  identity), and `%T` of a **channel** prints the runtime class (`main.GoChan`) rather
+  than `chan uint8` — channels carry no reflect descriptor yet.
 - A **type alias** to an identity-bearing named type (`os.FileMode =
   io/fs.FileMode`) is unaliased for identity, so `%T`/`%v`/`%s`, methods,
   constants, bit-ops and struct fields behave as the underlying named type.
