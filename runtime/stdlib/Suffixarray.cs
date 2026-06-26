@@ -25,27 +25,35 @@ public static class Suffixarray
         Regexp.Re_FindAllIndex(r, ((GoSuffixIndex)x).Data, n);
 
     // (*Index).Lookup(s, n) []int: byte offsets where s occurs in the data, at most n
-    // (all for n < 0). Go returns them in an unspecified (suffix-array) order; this
-    // returns them in ascending positional order — for n < 0 the SET is exact (sort to
-    // compare byte-for-byte), and an empty s or n == 0 yields nil, matching Go.
+    // (all for n < 0). Go returns them in suffix-array order — the matching positions sorted
+    // by their suffix data[pos:] lexicographically — and for n > 0 it returns the first n in
+    // that order. We reproduce that order exactly (collect all matches, sort by suffix, then
+    // truncate). An empty s or n == 0 yields nil, matching Go.
     public static GoSlice Lookup(object x, GoSlice s, long n)
     {
         if (n == 0 || s.Len == 0) return new GoSlice { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
         var hay = Bytes(((GoSuffixIndex)x).Data);
         var needle = Bytes(s);
-        var offs = new System.Collections.Generic.List<object?>();
+        var pos = new System.Collections.Generic.List<int>();
         for (int i = 0; i + needle.Length <= hay.Length; i++)
         {
             bool hit = true;
             for (int j = 0; j < needle.Length; j++)
                 if (hay[i + j] != needle[j]) { hit = false; break; }
-            if (hit)
-            {
-                offs.Add((long)i);
-                if (n > 0 && offs.Count >= (int)n) break;
-            }
+            if (hit) pos.Add(i);
         }
-        return new GoSlice { Data = offs.ToArray(), Off = 0, Len = offs.Count, Cap = offs.Count };
+        // Suffix-array order: sort positions by data[pos:] (a shorter suffix that is a prefix
+        // of a longer one sorts first), matching Go's sorted-suffix Lookup output.
+        pos.Sort((a, b) =>
+        {
+            int la = hay.Length - a, lb = hay.Length - b, m = la < lb ? la : lb;
+            for (int k = 0; k < m; k++) { int d = hay[a + k] - hay[b + k]; if (d != 0) return d; }
+            return la - lb;
+        });
+        int count = (n > 0 && pos.Count > (int)n) ? (int)n : pos.Count;
+        var offs = new object?[count];
+        for (int i = 0; i < count; i++) offs[i] = (long)pos[i];
+        return new GoSlice { Data = offs, Off = 0, Len = count, Cap = count };
     }
 
     private static byte[] Bytes(GoSlice s)

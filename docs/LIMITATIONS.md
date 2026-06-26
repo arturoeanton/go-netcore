@@ -262,7 +262,11 @@ Unicode fold orbits (e.g. `K` U+212A KELVIN SIGN ↔ `k`, `ſ` long-s ↔ `s`, `
 The `math` package maps some transcendental functions (`Log10`, `Sin`, `Cos`, `Tan`, …)
 onto the platform's `System.Math`, which can differ from Go's own implementations by the
 last ULP for some inputs (e.g. `math.Sin(2)`, `math.Tan(1.5)`, `math.Cos(1e8)` where a
-huge argument needs Payne–Hanek reduction, `math.Erfc(10)` in the far tail). Functions
+huge argument needs Payne–Hanek reduction, `math.Erfc(10)` in the far tail). Porting Go's
+own `sin`/`cos`/`tan` source does **not** remove this for the trig functions: the residual
+is a back-end floating-point codegen difference (the .NET ARM64 JIT fuses some `a*b+c`
+into an FMA where Go's arm64 codegen rounds differently), which also shows up in pure
+lowered-Go polynomial evaluation, so it cannot be fixed at the shim layer. Functions
 built on them inherit that last-ULP edge on the affected inputs; the value is correct to
 ~1 ULP. `math.Expm1`, `math.Log1p`, `math.Exp2`, `math.Gamma`, `math.Lgamma`, `math.Erf`,
 `math.Erfinv`, `math.Atanh`, **`math.Log`, `math.Cbrt`, `math.Sinh`, `math.Cosh`** are
