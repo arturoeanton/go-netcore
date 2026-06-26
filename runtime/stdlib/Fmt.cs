@@ -368,7 +368,7 @@ public static class Fmt
     {
         if (verb is not ('d' or 'b' or 'o' or 'c' or 'U' or 'f' or 'F' or 'e' or 'E' or 'g' or 'G' or 't'))
             return false; // only numeric verbs recurse element-wise with no byte/string ambiguity
-        return v is GoSlice || v is GoMap || IsStructVal(v) || (v is GoPtr p && IsStructVal(p.Value));
+        return v is GoSlice || v is GoMap || IsStructVal(v) || (v is GoPtr p && IsStructVal(GoPtrs.Get(p)));
     }
 
     // Pad a formatted core string to the spec width (space- or zero-justified).
@@ -514,7 +514,7 @@ public static class Fmt
             if (v is GoSlice rsl) return RecurseSlice(rsl, sp);
             if (v is GoMap rmp) return RecurseMap(rmp, sp);
             if (IsStructVal(v)) return RecurseStruct(v!, sp);
-            if (v is GoPtr rgp && IsStructVal(rgp.Value)) return "&" + RecurseStruct(rgp.Value!, sp);
+            if (v is GoPtr rgp && IsStructVal(GoPtrs.Get(rgp))) return "&" + RecurseStruct(GoPtrs.Get(rgp)!, sp);
         }
         switch (verb)
         {
@@ -613,7 +613,7 @@ public static class Fmt
         // %s of a struct with no String() formats each field with %s (Go recurses the verb);
         // a pointer to such a struct prints &{...}.
         if (IsStructVal(v)) return RecurseStruct(v!, sp);
-        if (v is GoPtr sgp && IsStructVal(sgp.Value)) return "&" + RecurseStruct(sgp.Value!, sp);
+        if (v is GoPtr sgp && IsStructVal(GoPtrs.Get(sgp))) return "&" + RecurseStruct(GoPtrs.Get(sgp)!, sp);
         // %s applies to strings, errors, and composites; a bare number/bool/char
         // is a bad verb in Go (it has no string form).
         if (IsIntegral(v) || IsFloaty(v) || v is bool) return BadVerb('s', v);
@@ -847,8 +847,8 @@ public static class Fmt
             case GoComplex c: return "(" + FormatFloatV(c.Re) + ComplexImag(c.Im) + "i)";
             // Go prints &{...}/&[...]/&map[...] for pointers to a composite, but a
             // hex address for a pointer to a scalar.
-            case GoPtr p when p.Value is GoSlice || p.Value is GoMap || IsStructVal(p.Value):
-                return "&" + Format(p.Value, verb, plus, hash);
+            case GoPtr p when GoPtrs.Get(p) is var pv && (pv is GoSlice || pv is GoMap || IsStructVal(pv)):
+                return "&" + Format(pv, verb, plus, hash);
             // A pointer whose cell holds null (a nil pointer boxed into an interface, or a
             // pointer to a nil interface) prints <nil> like Go — these are the only Value==null
             // GoPtrs, and Go would otherwise print a non-deterministic address (never byte-exact).
@@ -890,7 +890,7 @@ public static class Fmt
             case long or int: return Format(v, 'v', false, false);
             case double d: return FormatFloatV(d);
             case GoComplex c: return "(" + FormatFloatV(c.Re) + ComplexImag(c.Im) + "i)";
-            case GoPtr p: return "&" + FormatGoSyntax(p.Value);
+            case GoPtr p: return "&" + FormatGoSyntax(GoPtrs.Get(p)); // resolve field/element-alias pointers, not just p.Value
             // A typed box carries the precise composite type, so %#v can spell its real
             // element types ("[]int{...}", "main.IntHeap{...}") instead of the erased
             // "[]interface {}". A named scalar (Celsius) just renders its value.

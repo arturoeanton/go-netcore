@@ -80,7 +80,9 @@ one; these don't yet):
   `&{…}` at the top level; deeper pointer fields print their address. Since the
   address is non-deterministic in both runtimes this can't be made byte-exact, and
   goclr's content form is more useful; nil pointer fields and top-level pointers are
-  correct.
+  correct — including a top-level pointer taken from a struct field (`&s.f`) or an
+  array/slice element (`&a[i]`), which expand to `&{…}`/`&[…]`/`&map[…]` like Go (these
+  alias their target through a getter rather than holding it, and fmt now resolves that).
 - **`fmt` of a nil pointer / nil interface** matches Go's `fmtPointer` byte-for-byte:
   an untyped `nil` prints `<nil>` for `%v`/`%T` and `%!verb(<nil>)` for every other
   verb; a typed nil pointer (`var p *int`) prints `<nil>` for `%v`, its type name for
