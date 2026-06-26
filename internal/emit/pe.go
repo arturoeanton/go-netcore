@@ -66,8 +66,8 @@ func buildPE(text []byte, textRVA uint32) []byte {
 
 	// --- Optional header (PE32) ---
 	w.u16(0x010B)      // Magic = PE32
-	w.u8(0)            // MajorLinkerVersion
-	w.u8(0)            // MinorLinkerVersion
+	w.u8(8)            // MajorLinkerVersion (a real linker version: a 0.0 linker is a
+	w.u8(0)            // MinorLinkerVersion  heuristic-AV red flag for hand-built PEs)
 	w.u32(textRawSize) // SizeOfCode
 	w.u32(0)           // SizeOfInitializedData
 	w.u32(0)           // SizeOfUninitializedData
