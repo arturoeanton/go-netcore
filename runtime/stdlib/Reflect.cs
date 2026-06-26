@@ -213,7 +213,13 @@ public static class Reflect
     public static GoSlice Value_Bytes(object? v) => RVal(v) is GoSlice s ? s : new GoSlice { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
     public static long Value_Len(object? v) => LenOf(RVal(v));
     public static long Value_NumField(object? v) => Fields(RVal(v))?.Length ?? 0;
-    public static bool Value_IsNil(object? v) { var x = RVal(v); return x == null || (x is GoSlice s && s.Data == null) || (x is GoMap m && m.Data == null); }
+    public static bool Value_IsNil(object? v)
+    {
+        var x = RVal(v);
+        return x == null || (x is GoSlice s && s.Data == null) || (x is GoMap m && m.Data == null)
+            // a nil pointer is a GoPtr with no pointee and no aliased storage
+            || (x is GoPtr p && p.Value == null && p.Arr == null && p.FGet == null && p.FSet == null);
+    }
     public static bool Value_IsValid(object? v) => RVal(v) != null;
 
     // reflect.Value.Comparable: whether values of this kind are comparable. Slice/map/func
