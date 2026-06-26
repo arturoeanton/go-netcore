@@ -490,7 +490,36 @@ public static class Template
     }
 
     // ---- executor ----------------------------------------------------------
-    sealed class ExecState { public GoTemplate Tmpl = null!; public StringBuilder Out = null!; public readonly Dictionary<string, object?> Vars = new(); public HtmlState? Ctx; }
+    sealed class ExecState { public GoTemplate Tmpl = null!; public StringBuilder Out = null!; public readonly Dictionary<string, object?> Vars = new(); public HtmlState? Ctx; public bool InComment; }
+
+    // Emit static template text. In html/template mode this elides HTML comments (<!-- … -->)
+    // from the output the way Go does, tracking the open state across text nodes; only the
+    // non-comment text is appended and fed to the context tokenizer. (text/template keeps the
+    // text verbatim, including comments.)
+    static void EmitText(ExecState st, string text)
+    {
+        if (st.Ctx == null) { st.Out.Append(text); return; }
+        int i = 0;
+        while (i < text.Length)
+        {
+            if (!st.InComment)
+            {
+                int open = text.IndexOf("<!--", i, System.StringComparison.Ordinal);
+                string seg = open < 0 ? text.Substring(i) : text.Substring(i, open - i);
+                st.Out.Append(seg); st.Ctx.Feed(seg);
+                if (open < 0) return;
+                st.InComment = true;
+                i = open + 4;
+            }
+            else
+            {
+                int close = text.IndexOf("-->", i, System.StringComparison.Ordinal);
+                if (close < 0) return; // the comment continues into a later node
+                st.InComment = false;
+                i = close + 3;
+            }
+        }
+    }
 
     static void ExecList(ExecState st, List<Node> nodes, object? dot) { foreach (var n in nodes) ExecNode(st, n, dot); }
 
@@ -498,11 +527,12 @@ public static class Template
     {
         switch (n)
         {
-            case TextNode t: st.Out.Append(t.Text); st.Ctx?.Feed(t.Text); break;
+            case TextNode t: EmitText(st, t.Text); break;
             case ActionNode a:
                 {
                     var v = EvalPipe(st, a.Pipe, dot);
                     if (a.AssignVar.Length > 0) { st.Vars[a.AssignVar] = v; break; }
+                    if (st.InComment) break; // inside an HTML comment: elided like Go
                     string outp = st.Ctx == null ? Render(v, false) : EscapeFor(st.Ctx, v);
                     st.Out.Append(outp);
                     st.Ctx?.Feed(outp);
@@ -755,7 +785,7 @@ public static class Template
     }
 
     // ---- html/template contextual auto-escaping ----------------------------
-    enum Ctx { Text, TagName, BeforeAttr, AttrName, AfterAttrName, BeforeValue, ValueDQ, ValueSQ, ValueUQ, Js, JsStrDQ, JsStrSQ, Css, Comment }
+    enum Ctx { Text, TagName, BeforeAttr, AttrName, AfterAttrName, BeforeValue, ValueDQ, ValueSQ, ValueUQ, Js, JsStrDQ, JsStrSQ, Css, Comment, Decl }
 
     // A lightweight HTML tokenizer that tracks the context of the output produced so far,
     // so each interpolated value gets the escaper its position requires (text/attr/URL/
@@ -780,7 +810,10 @@ public static class Template
                     if (c == '<') { tag.Clear(); C = Ctx.TagName; }
                     break;
                 case Ctx.TagName:
-                    if (c == '!' && tag.Length == 0) { C = Ctx.Comment; }
+                    // '<!' begins a markup declaration (<!DOCTYPE …>) — it ends at '>', unlike a
+                    // comment. (Real comments <!-- … --> are stripped by EmitText before they
+                    // ever reach the tokenizer, so they never enter here.)
+                    if (c == '!' && tag.Length == 0) { C = Ctx.Decl; }
                     else if (char.IsWhiteSpace(c)) { Tag = tag.ToString().ToLowerInvariant(); C = Ctx.BeforeAttr; }
                     else if (c == '>') { Tag = tag.ToString().ToLowerInvariant(); EnterContent(); }
                     else if (c == '/') { /* closing or self-close */ }
@@ -818,6 +851,7 @@ public static class Template
                 case Ctx.JsStrSQ: if (c == '\'') C = Ctx.Js; break;
                 case Ctx.Css: break;
                 case Ctx.Comment: break;
+                case Ctx.Decl: if (c == '>') C = Ctx.Text; break;
             }
             // crude end-of-special-element detection for </script> / </style> / -->
             if (C == Ctx.Js && EndsWith("</script")) C = Ctx.Text;

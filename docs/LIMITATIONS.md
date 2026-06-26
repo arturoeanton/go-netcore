@@ -238,9 +238,9 @@ are a large deferred piece.
 http/https/mailto scheme allowlist → `#ZgotmplZ` for others), CSS, JS value and JS
 string — matching Go including the `ZgotmplZ` neutralization of a dynamic attribute
 **name** and dangerous CSS, and Go's `jsStrReplacementTable`/url-normalizer byte-for-byte.
-**Deferred:** Go elides HTML comments (`<!-- … -->`) from the output entirely; goclr keeps
-them (the contextual tokenizer tracks a comment state but the static delimiters are not
-yet stripped, and a precise `<!--`-vs-`<!DOCTYPE` distinction is needed first).
+HTML comments (`<!-- … -->`) are elided from the output (including any actions inside them,
+even across a text/action boundary), while a `<!DOCTYPE …>` declaration is preserved and a
+later contextual action still gets the right escaper. (text/template keeps comments verbatim.)
 
 ## regexp POSIX leftmost-longest
 
