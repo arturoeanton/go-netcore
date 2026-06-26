@@ -1768,6 +1768,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"SetInt": {"Big", "Float_SetInt"}, "Sub": {"Big", "Float_Sub"}, "Cmp": {"Big", "Float_Cmp"},
 		"Sign": {"Big", "Float_Sign"}, "IsInt": {"Big", "Float_IsInt"}, "String": {"Big", "Float_String"},
 		"Text": {"Big", "Float_Text"}, "Int": {"Big", "Float_Int"}, "SetString": {"Big", "Float_SetString"},
+		"Add": {"Big", "Float_Add"}, "Mul": {"Big", "Float_Mul"}, "Quo": {"Big", "Float_Quo"},
+		"Neg": {"Big", "Float_Neg"}, "Abs": {"Big", "Float_Abs"}, "Set": {"Big", "Float_Set"}, "Copy": {"Big", "Float_Copy"},
+		"SetFloat64": {"Big", "Float_SetFloat64"}, "SetInt64": {"Big", "Float_SetInt64"}, "SetUint64": {"Big", "Float_SetUint64"},
+		"Float64": {"Big", "Float_Float64"}, "IsInf": {"Big", "Float_IsInf"},
+		"SetPrec": {"Big", "Float_SetPrec"}, "SetMode": {"Big", "Float_SetMode"}, "Prec": {"Big", "Float_Prec"},
+		"MinPrec": {"Big", "Float_MinPrec"}, "Mode": {"Big", "Float_Mode"}, "Acc": {"Big", "Float_Acc"},
 	},
 	"math/big.Rat": {
 		"Add": {"Big", "Rat_Add"}, "Sub": {"Big", "Rat_Sub"}, "Mul": {"Big", "Rat_Mul"}, "Quo": {"Big", "Rat_Quo"},

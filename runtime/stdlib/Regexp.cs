@@ -400,7 +400,10 @@ public static class Regexp
 
     public static long Re_SubexpIndex(object r, GoString name) => ((GoRegexp)r).GoIndexOfName(name.ToDotNetString());
     public static object?[] Re_LiteralPrefix(object r) => new object?[] { GoString.FromDotNetString(""), false }; // conservative: no literal prefix asserted
-    public static void Re_Longest(object r) { } // leftmost-longest mode (.NET is leftmost-first; accepted)
+    // Longest() requests POSIX leftmost-longest matching. The .NET engine is leftmost-FIRST
+    // (like Go's default), and true leftmost-longest needs a different matching engine, so
+    // this is a documented no-op: an alternation like `a|ab` still matches `a`, not `ab`.
+    public static void Re_Longest(object r) { }
     public static object Re_Copy(object r) { var g = (GoRegexp)r; return new GoRegexp { Re = g.Re, Orig = g.Orig }; }
     public static object?[] Re_MarshalText(object r) => new object?[] { ByteSliceOf(((GoRegexp)r).Orig), null };
     public static object?[] Re_AppendText(object r, GoSlice b) => new object?[] { Rt.AppendSlice(b, ByteSliceOf(((GoRegexp)r).Orig)), null };

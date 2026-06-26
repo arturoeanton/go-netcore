@@ -51,6 +51,28 @@ public static class Big
         { ((GoBigFloat)z).V = v; return new object?[] { z, true }; }
         return new object?[] { null, false };
     }
+    // Arithmetic + setters on the double backing (returning the receiver, like Go).
+    public static object Float_Add(object z, object x, object y) { ((GoBigFloat)z).V = F(x) + F(y); return z; }
+    public static object Float_Mul(object z, object x, object y) { ((GoBigFloat)z).V = F(x) * F(y); return z; }
+    public static object Float_Quo(object z, object x, object y) { ((GoBigFloat)z).V = F(x) / F(y); return z; }
+    public static object Float_Neg(object z, object x) { ((GoBigFloat)z).V = -F(x); return z; }
+    public static object Float_Abs(object z, object x) { ((GoBigFloat)z).V = System.Math.Abs(F(x)); return z; }
+    public static object Float_Set(object z, object x) { ((GoBigFloat)z).V = F(x); return z; }
+    public static object Float_Copy(object z, object x) { ((GoBigFloat)z).V = F(x); return z; }
+    public static object Float_SetFloat64(object z, double x) { ((GoBigFloat)z).V = x; return z; }
+    public static object Float_SetInt64(object z, long x) { ((GoBigFloat)z).V = x; return z; }
+    public static object Float_SetUint64(object z, ulong x) { ((GoBigFloat)z).V = x; return z; }
+    public static object?[] Float_Float64(object z) => new object?[] { F(z), 0L }; // (float64, Accuracy=Exact)
+    public static bool Float_IsInf(object z) => double.IsInfinity(F(z));
+    // Precision/mode are not modeled beyond the double backing (53-bit mantissa): SetPrec/
+    // SetMode are accepted (return the receiver) and Prec/MinPrec report 53. A computation
+    // needing more than float64 precision is a documented gap.
+    public static object Float_SetPrec(object z, ulong prec) => z;
+    public static object Float_SetMode(object z, long mode) => z;
+    public static ulong Float_Prec(object z) => 53;
+    public static ulong Float_MinPrec(object z) => 53;
+    public static long Float_Mode(object z) => 0;  // ToNearestEven
+    public static long Float_Acc(object z) => 0;   // Exact
 
     // --- big.Rat (exact rational, two BigIntegers) ---
     private static GoBigRat Norm(GoBigRat r)

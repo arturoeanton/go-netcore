@@ -488,10 +488,13 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   including hexadecimal-float `0x1.…p±dd` with shortest and fixed precision;
   `fmt`'s `%x`/`%X`/`%b` of a float route through the same path. A `complex`
   formats both parts as `(re±imi)` under `%v`/`%f`/`%e`/`%E`/`%g`/`%G`/`%#v`.
-- `math/big.Float` is **double-backed** (53-bit), not arbitrary precision:
-  `SetPrec`/high-precision arithmetic are unsupported. `String`, `Text(fmt,
-  prec)`, and `fmt`'s `%v/%g/%e/%f/%G` are byte-exact for the common
-  `big.NewFloat(float64)` case (which stores the exact float64). `big.Int` and
+- `math/big.Float` is **double-backed** (53-bit), not arbitrary precision. The arithmetic
+  and setter methods are present (`Add`/`Sub`/`Mul`/`Quo`/`Neg`/`Abs`/`Set`/`Copy`/
+  `SetFloat64`/`SetInt64`/`SetInt`/`Float64`/`Cmp`/`Sign`/`IsInt`/`String`/`Text`), and
+  `SetPrec`/`SetMode` are accepted as no-ops (`Prec`/`MinPrec` report 53) — a computation
+  that genuinely needs more than float64 precision is the documented gap. `String`,
+  `Text(fmt, prec)`, and `fmt`'s `%v/%g/%e/%f/%G` are byte-exact for the common
+  `big.NewFloat(float64)` / within-float64 case (which stores the exact float64). `big.Int` and
   `big.Rat` are exact, including `fmt`'s `%d/%b/%o/%x/%X` integer verbs on a
   `*big.Int` (arbitrary precision, with the #/+/space/width/zero-pad flags).
 - `html.UnescapeString` is byte-exact: the full HTML5 named-reference table
