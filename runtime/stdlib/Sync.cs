@@ -161,7 +161,48 @@ public static class Sync
     public static object NewCondZero() => new GoCond();
     public static object? Cond_L(object c) => ((GoCond)c).L;
     public static void Cond_SetL(object c, object? l) => ((GoCond)c).L = l;
-    public static void Cond_Wait(object co) { var c = (GoCond)co; lock (c.Mon) System.Threading.Monitor.Wait(c.Mon, 50); }
+    // sync.Cond.Wait: atomically release the associated Locker (c.L) and block until a
+    // Signal/Broadcast, then re-acquire it — exactly as Go does. The previous version waited
+    // on a private monitor WITHOUT releasing c.L, so any goroutine needing c.L deadlocked.
+    // Holding c.Mon across the unlock closes the lost-wakeup window: a concurrent Signal must
+    // take c.Mon to Pulse, so it can't fire between the unlock and Monitor.Wait (which
+    // atomically releases c.Mon while blocking).
+    public static void Cond_Wait(object co)
+    {
+        var c = (GoCond)co;
+        System.Threading.Monitor.Enter(c.Mon);
+        try
+        {
+            CondUnlock(c.L);
+            System.Threading.Monitor.Wait(c.Mon);
+        }
+        finally
+        {
+            System.Threading.Monitor.Exit(c.Mon);
+            CondLock(c.L);
+        }
+    }
+
+    // Drive Lock()/Unlock() on a sync.Cond's Locker (a *sync.Mutex / *sync.RWMutex, possibly
+    // behind a GoPtr, or a user Locker reached through the callback bridge).
+    private static void CondLock(object? l)
+    {
+        switch (l is GoPtr p ? GoPtrs.Get(p) : l)
+        {
+            case GoMutex m: m.Sem.Wait(); break;
+            case GoRWMutex rw: rw.Sem.Wait(); break;
+            default: if (l != null && Bridge.HasMethod(l, "Lock")) Bridge.CallMethod(l, "Lock"); break;
+        }
+    }
+    private static void CondUnlock(object? l)
+    {
+        switch (l is GoPtr p ? GoPtrs.Get(p) : l)
+        {
+            case GoMutex m: m.Sem.Release(); break;
+            case GoRWMutex rw: rw.Sem.Release(); break;
+            default: if (l != null && Bridge.HasMethod(l, "Unlock")) Bridge.CallMethod(l, "Unlock"); break;
+        }
+    }
     public static void Cond_Signal(object co) { var c = (GoCond)co; lock (c.Mon) System.Threading.Monitor.Pulse(c.Mon); }
     public static void Cond_Broadcast(object co) { var c = (GoCond)co; lock (c.Mon) System.Threading.Monitor.PulseAll(c.Mon); }
 }

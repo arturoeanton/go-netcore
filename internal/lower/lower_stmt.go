@@ -1503,7 +1503,10 @@ func (l *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 				l.loadVar(l.namedResults[0])
 				l.emitBox(l.closureRet)
 			} else {
-				l.emitBoxedElem(s.Results[0])
+				// When the closure returns an interface, tag the boxed value with its
+				// named/composite identity (like a named function's exprCoerced path), so a
+				// `func() any { return make([]byte, n) }` result still asserts as []byte.
+				l.emitBoxedElemInto(s.Results[0], l.closureRet)
 			}
 		default:
 			l.emit(goir.Op{Code: goir.OpLdNull})
