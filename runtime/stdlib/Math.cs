@@ -333,12 +333,84 @@ public static partial class Math
         double hfsq = 0.5 * f * f;
         return k * Ln2Hi - ((hfsq - (s * (hfsq + R) + k * Ln2Lo)) - f);
     }
-    public static double Log10(double x) => SM.Log10(x);
-    public static double Log2(double x) => SM.Log2(x);
+    // Ported from Go's math/log10.go — thin wrappers over the byte-exact Log/Frexp, so they
+    // match go run far more often than System.Math.{Log10,Log2}. The reciprocal constants are
+    // derived from the exact bits (Go computes 1/Ln10, 1/Ln2 in arbitrary precision).
+    private static readonly double InvLn10 = Float64frombits(0x3FDBCB7B1526E50EUL); // 1/Ln10
+    private static readonly double InvLn2 = Float64frombits(0x3FF71547652B82FEUL);  // 1/Ln2
+    public static double Log10(double x) => Log(x) * InvLn10;
+    public static double Log2(double x)
+    {
+        var (frac, exp) = FrexpD(x);
+        if (frac == 0.5) return (double)(exp - 1); // exact powers of two
+        return Log(frac) * InvLn2 + (double)exp;
+    }
     public static double Max(double x, double y) => SM.Max(x, y);
     public static double Min(double x, double y) => SM.Min(x, y);
     public static double Mod(double x, double y) => x % y; // C# % on doubles is fmod, like Go's Mod
-    public static double Pow(double x, double y) => SM.Pow(x, y);
+    private static bool IsOddInt(double x)
+    {
+        if (SM.Abs(x) >= (1L << 53)) return false; // beyond exact-integer range -> even
+        double xi = SM.Truncate(x), xf = x - xi;
+        return xf == 0 && ((long)xi & 1) == 1;
+    }
+
+    // Ported from Go's math/pow.go — successive-squaring of the integer part and Exp(yf*Log(x))
+    // for the fraction. Built on the byte-exact Exp/Log/Frexp/Ldexp, so it matches go run far
+    // more often than System.Math.Pow (which differs by a ULP for ~40% of inputs).
+    public static double Pow(double x, double y)
+    {
+        if (y == 0 || x == 1) return 1;
+        if (y == 1) return x;
+        if (double.IsNaN(x) || double.IsNaN(y)) return double.NaN;
+        if (x == 0)
+        {
+            if (y < 0) return (Signbit(x) && IsOddInt(y)) ? double.NegativeInfinity : double.PositiveInfinity;
+            if (y > 0) return (Signbit(x) && IsOddInt(y)) ? x : 0;
+        }
+        if (double.IsInfinity(y))
+        {
+            if (x == -1) return 1;
+            if ((SM.Abs(x) < 1) == double.IsPositiveInfinity(y)) return 0;
+            return double.PositiveInfinity;
+        }
+        if (double.IsInfinity(x))
+        {
+            if (double.IsNegativeInfinity(x)) return Pow(1 / x, -y); // Pow(-0, -y)
+            if (y < 0) return 0;
+            if (y > 0) return double.PositiveInfinity;
+        }
+        if (y == 0.5) return Sqrt(x);
+        if (y == -0.5) return 1 / Sqrt(x);
+
+        double yi = SM.Truncate(SM.Abs(y)), yf = SM.Abs(y) - yi;
+        if (yf != 0 && x < 0) return double.NaN;
+        if (yi >= 9223372036854775808.0) // 1<<63 as a positive float64 (a signed 1L<<63 overflows)
+        {
+            if (x == -1) return 1;
+            if ((SM.Abs(x) < 1) == (y > 0)) return 0;
+            return double.PositiveInfinity;
+        }
+
+        double a1 = 1.0;
+        int ae = 0;
+        if (yf != 0)
+        {
+            if (yf > 0.5) { yf--; yi++; }
+            a1 = Exp(yf * Log(x));
+        }
+        var (x1, xe) = FrexpD(x);
+        for (long i = (long)yi; i != 0; i >>= 1)
+        {
+            if (xe < -1 << 12 || 1 << 12 < xe) { ae += (int)xe; break; }
+            if ((i & 1) == 1) { a1 *= x1; ae += (int)xe; }
+            x1 *= x1;
+            xe <<= 1;
+            if (x1 < 0.5) { x1 += x1; xe--; }
+        }
+        if (y < 0) { a1 = 1 / a1; ae = -ae; }
+        return Ldexp(a1, ae);
+    }
     public static double Pow10(long n) => SM.Pow(10, n);
     public static double Remainder(double x, double y) => SM.IEEERemainder(x, y);
     public static double Round(double x) => SM.Round(x, System.MidpointRounding.AwayFromZero);

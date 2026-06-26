@@ -277,8 +277,13 @@ and are likewise byte-exact across the sweep (0 divergences — previously ≈9%
 fixtures and for the large majority of inputs, with a **small fraction** (≈0.1–0.5%) still
 off by the last ULP — the back-end FMA-codegen residual, not an algorithm error (e.g.
 `Exp(-13.38)`, and `Exp(-745)` rounds the smallest subnormal where Go flushes to 0).
-`Asinh`/`Acosh` go through `System.Math` and match `go run` on the tested inputs. Fixtures
-732, 733, 735.
+`Asinh`/`Acosh` go through `System.Math` and match `go run` on the tested inputs.
+`math.Pow`, `math.Log10` are Go-source ports built on the byte-exact `Exp`/`Log`/`Frexp`:
+≈0.3% / ≈0.7% residual (down from ~44% / ~39% via `System.Math`), and Pow's full
+special-case lattice is exact. `math.Log2` is also ported but its final `Log(frac)·(1/Ln2) +
+exp` is an `a*b+c` that the back-end fuses differently from Go, so it keeps a ≈16% last-ULP
+residual (still below `System.Math`'s ~36%); exact powers of two are exact. Fixtures 732,
+733, 735, 736.
 The Bessel functions `math.J0`/`J1`/`Y0`/`Y1`/`Jn`/`Yn` are now fdlibm ports too:
 **byte-exact for `J0`/`J1` with `|x| < 2`** (pure polynomial) and all the special cases
 (`0`/`±Inf`/`NaN`, order/sign relations, the tiny-argument `Jn` Taylor branch). For
