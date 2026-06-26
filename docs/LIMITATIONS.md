@@ -190,6 +190,14 @@ Remaining edges (documented, not silent):
   standalone `*big.Float` under `%v`** (it is unwrapped to its `float64` value before
   the flag is applied) are not yet honored — `%+d`/`% d` and the `*big.Int` field cases
   are exact.
+- **`*big.Int`/`*big.Float` verb sets match their `Format` methods.** `big.Int` supports
+  `%b %o %O %d %s %v %x %X`; `big.Float` supports `%e %E %f %F %g %G %x %b %v`. `big.Float`'s
+  `%x` defaults to **6 hex-mantissa digits** (`0x1.c00000p+01`, not a `float64`'s shortest
+  form), and `%X` is a **bad verb** (it has no uppercase-hex case). Any verb outside the set
+  bad-verbs as `%!v(big.Int=<dec>)` / `%!v(*big.Float=<Text('g',10)>)`, naming the Go type.
+  Fixture 729.
+- **The `%O` verb** (Go 1.13+ `0o`-prefixed octal) is honored for every integer type,
+  including `*big.Int` (`%O` of 255 → `0o377`, of 0 → `0o0`, with sign/width/`+`/`-`).
 - A non-numeric verb's **width applied to a composite** (`%6v` of a `[]int`)
   pads the whole rendering rather than each element; Go pads per element.
   Numeric verbs (`%6d`, `%03d`) already pad per element. `%!(EXTRA …)` for

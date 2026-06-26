@@ -481,6 +481,22 @@ public static class Fmt
         }
         if (v is string vraw) v = GoString.FromDotNetString(vraw); // a shim struct's raw C# string field
         v = MaybeRetag(v); // re-tag a []Stringer's bare elements before any verb dispatch
+        // *big.Float's %x is a Formatter case that differs from a plain float64: it uses a
+        // default precision of 6 hex-mantissa digits (a float64 uses the shortest form).
+        if (v is GoBigFloat bfg && sp.Verb == 'x')
+        {
+            int hprec = sp.Prec >= 0 ? sp.Prec : 6;
+            return FloatVerb(bfg.V, sp, () => Strconv.FormatFloat(bfg.V, 'x', hprec, 64).ToDotNetString(), 'x');
+        }
+        // big.Int and big.Float are Formatters with a fixed supported-verb set; any other
+        // (non-Go-syntax, non-%T/%p) verb yields a bad-verb string naming the Go type and the
+        // value, exactly as their Format methods do (big.Float's value is Text('g', 10)).
+        if (v is GoBigInt gi9 && !sp.Hash && sp.Verb != 'T' && sp.Verb != 'p'
+            && "boOdsvxX".IndexOf(sp.Verb) < 0)
+            return "%!" + sp.Verb + "(big.Int=" + Big.Int_String(gi9).ToDotNetString() + ")";
+        if (v is GoBigFloat gf9 && !sp.Hash && sp.Verb != 'T' && sp.Verb != 'p'
+            && "eEfFgGxbv".IndexOf(sp.Verb) < 0)
+            return "%!" + sp.Verb + "(*big.Float=" + Big.Float_String(gf9).ToDotNetString() + ")";
         if (v is GoBigFloat bfv) v = bfv.V; // *big.Float (double-backed) formats like its value
         char verb = sp.Verb;
         // A typed nil pointer/func/chan is a typed box whose underlying value is nil. Go's
@@ -495,6 +511,7 @@ public static class Fmt
                 case 'd': return IntVerb(0L, sp, 10, false);
                 case 'b': return IntVerb(0L, sp, 2, false);
                 case 'o': return IntVerb(0L, sp, 8, sp.Hash);
+                case 'O': return IntVerb(0L, sp, 8, sp.Hash);
                 case 'x': return IntVerb(0L, sp, 16, sp.Hash);
                 case 'X': return IntVerb(0L, sp, -16, sp.Hash);
                 case 'p': return "0x0";
@@ -542,6 +559,7 @@ public static class Fmt
             case 'd': return IntVerb(v, sp, 10, false);
             case 'b': return IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'b', -1, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, 2, false);
             case 'o': return IntVerb(v, sp, 8, sp.Hash);
+            case 'O': return IntVerb(v, sp, 8, sp.Hash); // 0o-prefixed octal (prefix added in IntVerb)
             case 'x': return v is GoString gx ? HexStr(gx, false, sp.Space) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false, sp.Space) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'x', sp.Prec, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, 16, sp.Hash);
             case 'X': return v is GoString gX ? HexStr(gX, true, sp.Space) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true, sp.Space) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'X', sp.Prec, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, -16, sp.Hash);
             case 't': return v is bool bb ? (bb ? "true" : "false") : BadVerb(verb, v);
@@ -607,6 +625,7 @@ public static class Fmt
         string prefix = "";
         if (hash && b == 16) prefix = upper ? "0X" : "0x";
         if (hash && b == 8 && digits != "0") prefix = "0";
+        if (sp.Verb == 'O' && b == 8) prefix = "0o"; // %O always carries the 0o prefix (even for 0)
         string sign = neg ? "-" : sp.Plus ? "+" : sp.Space ? " " : "";
         return sign + prefix + digits;
     }
