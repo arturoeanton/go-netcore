@@ -761,8 +761,9 @@ public static class Reflect
         var k = KindOf(((GoReflectType)t).Sample);
         object? conv = k switch
         {
-            KInt or 3 or 4 or 5 or 6 => System.Convert.ToInt64(src ?? 0L),
-            KUint or 8 or 9 or 10 or 11 => System.Convert.ToUInt64(src ?? (ulong)0),
+            // float -> int truncates toward zero (Go), not .NET's round-to-even.
+            KInt or 3 or 4 or 5 or 6 => src is double di ? (long)di : src is float fi ? (long)fi : System.Convert.ToInt64(src ?? 0L),
+            KUint or 8 or 9 or 10 or 11 => src is double du ? (ulong)du : src is float fu ? (ulong)fu : System.Convert.ToUInt64(src ?? (ulong)0),
             13 or KFloat64 => System.Convert.ToDouble(src ?? 0.0),
             KString => src is GoString ? src : GoString.FromDotNetString(System.Convert.ToString(src) ?? ""),
             _ => src,
@@ -805,7 +806,8 @@ public static class Reflect
         var x = RVal(v);
         return x == null ? 0 : (ulong)(uint)System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(x);
     }
-    public static long Value_NumMethod(object? v) => 0;
+    // Value.NumMethod == Type.NumMethod (exported methods of the value's type).
+    public static long Value_NumMethod(object? v) => Type_NumMethod(Value_Type(v));
     public static bool Value_CanInterface(object? v) => !(v is GoReflectValue rv && rv.RO);
     // FieldByIndex walks a multi-level field path ([]int). The sample model tracks
     // a single level; navigate as far as the live value allows.
