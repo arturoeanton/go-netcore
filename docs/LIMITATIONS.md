@@ -462,7 +462,8 @@ larger feature or external module):
   first). `,comment` emits `<!--…-->` and `,cdata` emits `<![CDATA[…]]>` (kept inline by
   `MarshalIndent`, like Go). `xml.Name`/`xml.Attr`/… are `[GoShim]`-tagged so `%v`/`%+v`/
   `%#v`/`%T` name them as their Go type. `xml.Unmarshal`/`Decoder.Decode` return an honest
-  error (`xml: decoding is not supported under goclr`) — a reflection-driven decoder is the
+  error (`xml: decoding is not supported under goclr`) and `Decoder.Token` reports `io.EOF`
+  immediately (an empty token stream) — a reflection-driven decoder / tokenizer is the
   larger deferred piece.
 - **asymmetric crypto** — `crypto/ecdsa` (`GenerateKey`/`Sign`/`Verify` on P-256/P-384/P-521)
   and `crypto/rsa` `SignPKCS1v15`/`VerifyPKCS1v15` (SHA-1/256/384/512) now work, backed by the

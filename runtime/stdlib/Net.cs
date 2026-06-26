@@ -373,8 +373,21 @@ public static class Net
         int slash = str.IndexOf('/');
         if (slash < 0 || !IPAddress.TryParse(str.Substring(0, slash), out var ip) || !int.TryParse(str.Substring(slash + 1), out var bits))
             return new object?[] { NilBytes(), null, new GoError("invalid CIDR address: " + str) };
-        var ipBytes = Bytes(ip.GetAddressBytes());
-        return new object?[] { ipBytes, new GoNetAddr { Str = str, Port = bits, Ip = ipBytes }, null };
+        byte[] rawIp = ip.GetAddressBytes();
+        long ipBits = rawIp.Length == 4 ? 32 : 128;
+        if (bits < 0 || bits > ipBits)
+            return new object?[] { NilBytes(), null, new GoError("invalid CIDR address: " + str) };
+        var ipBytes = Bytes(rawIp);
+        // Build the IPNet exactly like Go: Mask from the prefix, the IP masked to the network
+        // number, and Str the canonical (masked) "network/prefix" string. Populating Ip/Mask
+        // makes the n.IP and n.Mask field reads work; Str is what fmt/String() use directly.
+        var maskSlice = CIDRMask(bits, ipBits);
+        byte[] maskBytes = Raw(maskSlice);
+        var network = new byte[rawIp.Length];
+        for (int i = 0; i < rawIp.Length; i++) network[i] = (byte)(rawIp[i] & maskBytes[i]);
+        var netSlice = Bytes(network);
+        string netStr = IP_String(netSlice).ToDotNetString() + "/" + bits;
+        return new object?[] { ipBytes, new GoNetAddr { Str = netStr, Port = bits, Ip = netSlice, Mask = maskSlice }, null };
     }
 
     // net.IP methods (receiver is the []byte representation).
