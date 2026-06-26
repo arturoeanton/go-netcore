@@ -390,6 +390,15 @@ module):
   `%#v`/`%T` name them as their Go type. `xml.Unmarshal`/`Decoder.Decode` return an honest
   error (`xml: decoding is not supported under goclr`) — a reflection-driven decoder is the
   larger deferred piece.
+- **asymmetric crypto** — `crypto/ecdsa` (`GenerateKey`/`Sign`/`Verify` on P-256/P-384/P-521)
+  and `crypto/rsa` `SignPKCS1v15`/`VerifyPKCS1v15` (SHA-1/256/384/512) now work, backed by the
+  same real .NET key handles `crypto/x509` produces — so JWT ES*/RS* and PKCS1v15 signatures
+  round-trip and verify. Still **fail-closed** (an honest error / `false`, never a bogus
+  accept): **RSA-PSS** (`SignPSS`/`VerifyPSS` — PSS salt-length compatibility with Go is not
+  yet settled), **Ed25519** (no .NET primitive), `SignPKCS1v15` with `crypto.Hash(0)` (raw,
+  no DigestInfo), and DER public-key parsing (`x509.ParsePKIXPublicKey`/`ParsePKCS1PublicKey`).
+  `crypto/hmac` (HS*) was already real. Signatures are non-deterministic (random key, and a
+  random nonce for ECDSA), so only verify outcomes are byte-stable across runs.
 
 ## Interface dispatch keys on the boxed representation
 
