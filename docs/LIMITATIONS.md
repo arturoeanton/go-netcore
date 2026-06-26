@@ -103,12 +103,18 @@ one; these don't yet):
 - **`time.Time` in JSON** marshals/unmarshals as its RFC3339 string (Go's
   `Time.MarshalJSON`/`UnmarshalJSON`) as a struct field, slice element, map value, or
   top-level target — not the raw runtime struct.
-- **`json.Marshal` of a *user* `json.Marshaler`** (a type with its own custom
-  `MarshalJSON`, other than the built-ins special-cased above) is not honored: the
-  runtime marshals the underlying value structurally (a `Temp float64` emits the
-  number) because the named type loses its identity once stored as a struct field or
-  slice element. Honoring it needs the marshaled type's static descriptor threaded
-  into `Marshal` (as `Unmarshal` does).
+- **`json.Marshal` of a *user* `json.Marshaler`/`encoding.TextMarshaler`** is honored,
+  like Go: a type with its own `MarshalJSON` controls its JSON; failing that, a
+  `MarshalText` type emits a quoted string (and is used for map keys). Works at the top
+  level, as a struct field, a slice/array element, a map value, a `*T` (pointer-receiver
+  marshaler) and a `TextMarshaler` map key. The method is driven through the callback
+  bridge (`encoding/json.Marshaler`/`encoding.TextMarshaler` are registered bridge
+  interfaces); a bare field/element value is re-tagged with its static type id (the
+  field-type / composite-element registry) so the named identity it lost in a type-erased
+  container is recovered. The `MarshalJSON` bytes are whitespace-compacted before
+  embedding; a returned error propagates as `json: error calling MarshalJSON for type T`.
+  Fixture 677_json_marshaler. (Deferred edge: the compaction does not re-escape raw
+  `<`/`>`/`&` inside a marshaler's output, which Go's HTML-escaping compaction does.)
 
 ## Stringer/Error of named types — the typed box (largely implemented)
 

@@ -69,6 +69,114 @@ public static class Json
         return sb.ToString();
     }
 
+    // If v's concrete type implements json.Marshaler (MarshalJSON) or, failing that,
+    // encoding.TextMarshaler (MarshalText), drive that method through the callback bridge and
+    // emit its result the way Go's encoder does: MarshalJSON bytes are compacted and embedded
+    // verbatim; MarshalText bytes become a quoted JSON string. Returns false when no such
+    // adapter is registered (so the caller marshals the value structurally).
+    private static bool TryMarshaler(StringBuilder sb, object v)
+    {
+        if (Bridge.HasMethod(v, "MarshalJSON"))
+        {
+            var res = Bridge.CallMethod(v, "MarshalJSON") as object?[];
+            if (res != null && res.Length > 1 && res[1] != null)
+                throw new System.Exception($"error calling MarshalJSON for type {Fmt.TypeName(v)}: {MarshalerErr(res[1])}");
+            if (res != null && res[0] is GoSlice s && s.Data != null)
+                Compact(sb, SliceToString(s));
+            else
+                sb.Append("null");
+            return true;
+        }
+        if (Bridge.HasMethod(v, "MarshalText"))
+        {
+            WriteString(sb, MarshalTextOf(v));
+            return true;
+        }
+        return false;
+    }
+
+    // The string produced by a value's MarshalText (used for a TextMarshaler value or map key).
+    private static string MarshalTextOf(object v)
+    {
+        var res = Bridge.CallMethod(v, "MarshalText") as object?[];
+        if (res != null && res.Length > 1 && res[1] != null)
+            throw new System.Exception($"error calling MarshalText for type {Fmt.TypeName(v)}: {MarshalerErr(res[1])}");
+        return res != null && res[0] is GoSlice s && s.Data != null ? SliceToString(s) : "";
+    }
+
+    // Re-tag the bare elements of a typed-box composite with their element/key identity id,
+    // so a slice/map of a Marshaler/TextMarshaler type dispatches the per-element method.
+    // Returns the (untagged) underlying value for a non-composite box.
+    private static object? RetagComposite(GoNamed n)
+    {
+        if (n.Value is GoSlice sl && sl.Data != null)
+        {
+            long eid = Rt.CompositeElemId(n.TypeId);
+            if (eid == 0) return sl;
+            var nd = new object?[sl.Len];
+            for (int i = 0; i < sl.Len; i++)
+            {
+                var e = sl.Data[sl.Off + i];
+                nd[i] = e is GoNamed || e is GoPtr ? e : Rt.MakeNamed(e, eid);
+            }
+            return new GoSlice { Data = nd, Off = 0, Len = sl.Len, Cap = sl.Len };
+        }
+        if (n.Value is GoMap m && m.Data != null)
+        {
+            long eid = Rt.CompositeElemId(n.TypeId);
+            long kid = Rt.CompositeKeyId(n.TypeId);
+            if (eid == 0 && kid == 0) return m;
+            var nm = new GoMap { Data = new System.Collections.Generic.Dictionary<object, object?>(m.Data.Count) };
+            foreach (var kv in m.Data)
+            {
+                object key = kid != 0 && kv.Key is not GoNamed ? Rt.MakeNamed(kv.Key, kid)! : kv.Key;
+                object? val = eid != 0 && kv.Value is not GoNamed && kv.Value is not GoPtr ? Rt.MakeNamed(kv.Value, eid) : kv.Value;
+                nm.Data[key] = val;
+            }
+            return nm;
+        }
+        return n.Value;
+    }
+
+    // The JSON object-key string for a map key: a TextMarshaler key uses MarshalText (as Go
+    // does); a string key is itself; any other key uses its underlying scalar text.
+    private static string MapKeyString(object? k)
+    {
+        if (k != null && Bridge.HasMethod(k, "MarshalText")) return MarshalTextOf(k);
+        return k switch
+        {
+            GoString g => g.ToDotNetString(),
+            GoNamed n => MapKeyString(n.Value),
+            _ => k?.ToString() ?? "",
+        };
+    }
+
+    private static string MarshalerErr(object? err) =>
+        err is GoError ge ? ge.Message
+        : err != null && Bridge.HasMethod(err, "Error") && Bridge.CallMethod(err, "Error") is GoString gs ? gs.ToDotNetString()
+        : err?.ToString() ?? "";
+
+    // Append JSON with insignificant whitespace removed (outside string literals), matching
+    // the whitespace-stripping Go's compact() applies to a Marshaler's output.
+    private static void Compact(StringBuilder sb, string s)
+    {
+        bool inStr = false;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (inStr)
+            {
+                sb.Append(c);
+                if (c == '\\' && i + 1 < s.Length) sb.Append(s[++i]);
+                else if (c == '"') inStr = false;
+                continue;
+            }
+            if (c == '"') { inStr = true; sb.Append(c); continue; }
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') continue;
+            sb.Append(c);
+        }
+    }
+
     private static GoSlice Bytes(string s)
     {
         var b = Encoding.UTF8.GetBytes(s);
@@ -79,6 +187,12 @@ public static class Json
 
     private static void Write(StringBuilder sb, object? v)
     {
+        // A user type implementing json.Marshaler (MarshalJSON) or encoding.TextMarshaler
+        // (MarshalText) controls its own JSON, exactly as Go's encoder does — checked before
+        // the underlying-representation cases so a named scalar like `type Temp float64` with
+        // a MarshalJSON wins over its float. Shim types (time.Time, big.Int, json.RawMessage)
+        // are not lowered, so they carry no bridge adapter and fall through to their own cases.
+        if (v != null && TryMarshaler(sb, v)) return;
         switch (v)
         {
             case null: sb.Append("null"); break;
@@ -95,7 +209,10 @@ public static class Json
                 string tn = Rt.NamedTypeName(n.TypeId);
                 if (tn == "json.Number") { WriteRawNumber(sb, n.Value); break; }
                 if (tn == "json.RawMessage") { WriteRawMessage(sb, n.Value); break; }
-                Write(sb, n.Value);
+                // A composite ([]T / map[K]V) whose element/key type implements a marshaler:
+                // re-tag the bare elements with their identity id so the per-element method is
+                // honored (the typed box erased it). Scalars fall through to their underlying.
+                Write(sb, RetagComposite(n));
                 break;
             }
             case GoPtr p: Write(sb, GoPtrs.Get(p)); break;
@@ -164,7 +281,7 @@ public static class Json
         var byKey = new System.Collections.Generic.Dictionary<string, object?>();
         foreach (var k in m.Data.Keys)
         {
-            string ks = k is GoString g ? g.ToDotNetString() : k?.ToString() ?? "";
+            string ks = MapKeyString(k);
             keys.Add(ks); byKey[ks] = m.Data[k];
         }
         keys.Sort(System.StringComparer.Ordinal);
@@ -221,6 +338,11 @@ public static class Json
             if (quoted && IsQuotableScalar(val)) { WriteQuotedScalar(sb, val); }
             else if (ftn == "json.Number") { WriteRawNumber(sb, val); }
             else if (ftn == "json.RawMessage") { WriteRawMessage(sb, val); }
+            // A field whose named static type implements json.Marshaler/TextMarshaler but
+            // whose stored value is a bare scalar/composite (identity erased): re-tag it with
+            // the field's type id so TryMarshaler can dispatch the custom method.
+            else if (ftid != 0 && val != null && val is not GoNamed && val is not GoPtr && FieldNeedsTag(ftid))
+                Write(sb, Rt.MakeNamed(val, ftid));
             else Write(sb, val);
         }
     }
@@ -263,6 +385,13 @@ public static class Json
         if (val is GoSlice s && s.Data != null && s.Len > 0) sb.Append(SliceToString(s));
         else sb.Append("null");
     }
+
+    // A struct field whose bare stored value has lost identity needs re-tagging with its
+    // field type id before marshaling when that type is a Marshaler/TextMarshaler, or a
+    // composite whose element/key type is (so the per-element method is honored).
+    private static bool FieldNeedsTag(long ftid) =>
+        Bridge.HasMethodById(ftid, "MarshalJSON") || Bridge.HasMethodById(ftid, "MarshalText")
+        || Rt.CompositeElemId(ftid) != 0 || Rt.CompositeKeyId(ftid) != 0;
 
     private static bool IsGoStruct(System.Type t) =>
         t.IsValueType && t != typeof(GoSlice) && t != typeof(GoComplex) && !t.IsPrimitive && t != typeof(GoString);

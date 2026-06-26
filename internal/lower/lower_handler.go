@@ -145,6 +145,10 @@ var bridgeInterfaces = []string{
 	"io/fs.FS",     // so fs.Stat can call fsys.Open
 	"io/fs.File",   // so fs.Stat can call the opened file's Stat/Close
 	"io/fs.StatFS", // so fs.Stat can take the StatFS fast path (fsys.Stat) like Go does
+	// so encoding/json's Marshal can call a user type's own MarshalJSON()/MarshalText()
+	// (Go honors json.Marshaler first, then falls back to encoding.TextMarshaler).
+	"encoding/json.Marshaler",
+	"encoding.TextMarshaler",
 }
 
 // collectBridgeMethods generates the method-callback adapters every concrete implementer

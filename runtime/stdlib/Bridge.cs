@@ -38,6 +38,14 @@ public static class Bridge
         lock (Methods) return Methods.ContainsKey((TypeIdOf(value), name));
     }
 
+    /// <summary>Whether a bridge adapter is registered for the method on a specific runtime
+    /// type id — used when only the static type id is known (a struct field whose bare value
+    /// has lost its named identity), to decide whether to re-tag it before dispatching.</summary>
+    public static bool HasMethodById(long id, string name)
+    {
+        lock (Methods) return Methods.ContainsKey((id, name));
+    }
+
     private static long TypeIdOf(object? value)
     {
         switch (value)
