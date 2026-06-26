@@ -346,8 +346,20 @@ public static class Json
         }
         catch (System.Exception e)
         {
-            return new GoError(GoString.FromDotNetString(e.Message));
+            return new GoError(GoString.FromDotNetString(JsonErrMsg(e)));
         }
+    }
+
+    // Map a decode exception to Go's wording where it's unambiguous: a GoJsonError already
+    // carries Go's message; truncated/empty input is Go's "unexpected end of JSON input".
+    // Other malformed-JSON cases surface the underlying reader text (documented).
+    private static string JsonErrMsg(System.Exception e)
+    {
+        if (e is GoJsonError) return e.Message;
+        string m = e.Message;
+        if (m.Contains("reached end of data") || m.Contains("does not contain any JSON tokens"))
+            return "unexpected end of JSON input";
+        return m;
     }
 
     private static string SliceToString(GoSlice s)

@@ -89,6 +89,9 @@ one; these don't yet):
   <jsonkind> into Go value of type <T>` at the top level, and `...into Go struct
   field <Struct>.<key-path> of type <T>` inside a struct (the descriptor carries
   the precise Go type name; the field path uses the innermost struct + JSON keys).
+  **`json` *syntax*-error messages differ** (malformed JSON surfaces the
+  underlying .NET reader text, not Go's `invalid character … / unexpected end of
+  JSON input`); the error is still non-nil, so `err != nil` checks behave the same.
 - **`json.Number` and `json.RawMessage`** are supported as struct fields and at the
   top level, both directions: `Unmarshal` keeps a `Number`'s raw numeric literal and
   captures a `RawMessage`'s value bytes verbatim; `Marshal` emits a `Number` unquoted
