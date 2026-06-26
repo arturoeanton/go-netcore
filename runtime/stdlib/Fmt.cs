@@ -458,6 +458,7 @@ public static class Fmt
     private static string FormatVerb(object? v, Spec sp)
     {
         if (ReferenceEquals(v, MissingArg)) return "%!" + sp.Verb + "(MISSING)";
+        if (v is string vraw) v = GoString.FromDotNetString(vraw); // a shim struct's raw C# string field
         v = MaybeRetag(v); // re-tag a []Stringer's bare elements before any verb dispatch
         if (v is GoBigFloat bfv) v = bfv.V; // *big.Float (double-backed) formats like its value
         char verb = sp.Verb;
@@ -745,6 +746,7 @@ public static class Fmt
     // matches its Go name, so "main." + the type name.
     private static string StructTypeName(object v)
     {
+        if (ShimTypes.GoNameOf(v) is string shimName) return shimName; // e.g. GoXmlName -> xml.Name
         var d = Rt.StructDisplay(v.GetType().Name);
         return d.Length > 0 ? d : "main." + v.GetType().Name;
     }
@@ -784,6 +786,7 @@ public static class Fmt
 
     private static string Format(object? v, char verb, bool plus, bool hash)
     {
+        if (v is string vraw) v = GoString.FromDotNetString(vraw); // a shim struct's raw C# string field
         v = MaybeRetag(v); // re-tag a []Stringer's bare elements (Sprint/Println path)
         // fmt.Formatter governs the Print/Println/Sprint path too (verb 'v', no flags).
         if (TryFormatter(v, new Spec { Verb = verb, Width = -1, Prec = -1, Plus = plus, Hash = hash }, out var ffr)) return ffr;
@@ -844,6 +847,7 @@ public static class Fmt
         // like time.Time carries no bridge adapter and falls through to its own case).
         if (v != null && Bridge.HasMethod(v, "GoString") && Bridge.CallMethod(v, "GoString") is GoString gstr)
             return gstr.ToDotNetString();
+        if (v is string vraw) v = GoString.FromDotNetString(vraw); // a shim struct's raw C# string field
         switch (v)
         {
             case null: return "<nil>";
@@ -880,7 +884,9 @@ public static class Fmt
                 var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
                 // An anonymous/generic struct has a registered reflect display name
                 // ("struct { A int; B string }"); a plain named struct is "main.T".
-                string disp = Rt.StructDisplay(t.Name);
+                // A shim struct (xml.Name, …) names its Go type; else a registered reflect
+                // display ("struct { … }" / "main.T"), else "main.T".
+                string disp = ShimTypes.GoNameOf(v!) ?? Rt.StructDisplay(t.Name);
                 var sb = new StringBuilder((disp.Length > 0 ? disp : "main." + t.Name) + "{");
                 for (int i = 0; i < fields.Length; i++)
                 {

@@ -6,15 +6,19 @@ using System.Text;
 using GoCLR.Runtime;
 
 /// <summary>An xml.Name (namespace + local name).</summary>
+[GoShim("xml.Name")]
 public sealed class GoXmlName { public string Space = ""; public string Local = ""; }
 
 /// <summary>An xml.Attr (a name/value attribute).</summary>
+[GoShim("xml.Attr")]
 public sealed class GoXmlAttr { public GoXmlName Name = new(); public string Value = ""; }
 
 /// <summary>An xml.StartElement token.</summary>
+[GoShim("xml.StartElement")]
 public sealed class GoXmlStart { public GoXmlName Name = new(); public GoSlice Attr; }
 
 /// <summary>An xml.EndElement token.</summary>
+[GoShim("xml.EndElement")]
 public sealed class GoXmlEnd { public GoXmlName Name = new(); }
 
 /// <summary>An xml.Encoder writing to an underlying writer.</summary>
@@ -260,7 +264,7 @@ public static partial class Xml
             string tag = Reflect.TagGet(Reflect.TagFor(t.Name, f.Name), "xml");
             var val = f.GetValue(v);
             string fname = f.Name;
-            bool attr = false, chardata = false, omitempty = false, skip = false, innerxml = false;
+            bool attr = false, chardata = false, omitempty = false, skip = false, innerxml = false, comment = false, cdata = false;
             if (tag.Length > 0)
             {
                 var parts = tag.Split(',');
@@ -272,12 +276,25 @@ public static partial class Xml
                     else if (parts[i] == "chardata") chardata = true;
                     else if (parts[i] == "omitempty") omitempty = true;
                     else if (parts[i] == "innerxml") innerxml = true;
+                    else if (parts[i] == "comment") comment = true;
+                    else if (parts[i] == "cdata") cdata = true;
                 }
             }
             if (skip) continue;
             if (omitempty && IsEmpty(val)) continue;
             if (attr) { attrs.Append(' ').Append(fname).Append("=\"").Append(Escape(Scalar(val))).Append('"'); continue; }
-            if (chardata || innerxml) { body.Append(chardata ? Escape(Scalar(val)) : Scalar(val)); continue; }
+            // A comment / cdata / chardata / innerxml field is not part of a nested-path group,
+            // so close any open path wrappers (e.g. <tags>) before emitting it.
+            if (comment || cdata || chardata || innerxml)
+            {
+                for (int i = openPath.Count - 1; i >= 0; i--) body.Append("</").Append(openPath[i]).Append('>');
+                openPath.Clear();
+                // A ,comment field marshals as an XML comment; ,cdata wraps the char data in CDATA.
+                if (comment) { var cs = Scalar(val); if (cs.Length > 0) body.Append("<!--").Append(cs).Append("-->"); }
+                else if (cdata) body.Append("<![CDATA[").Append(Scalar(val)).Append("]]>");
+                else body.Append(chardata ? Escape(Scalar(val)) : Scalar(val));
+                continue;
+            }
             WriteField(body, val, fname, openPath);
         }
         // Close any wrappers still open after the last path field.
@@ -329,13 +346,28 @@ public static partial class Xml
         {
             if (xml[i] == '<')
             {
-                int end = xml.IndexOf('>', i);
+                // A CDATA section is character data: Go emits it inline (no newline/indent),
+                // attached to the preceding element's line.
+                if (string.CompareOrdinal(xml, i, "<![CDATA[", 0, 9) == 0)
+                {
+                    int ce = IndexOfEnd(xml, "]]>", i);
+                    if (ce < 0) { sb.Append(xml.Substring(i)); break; }
+                    sb.Append(xml.Substring(i, ce - i + 1));
+                    i = ce + 1;
+                    continue;
+                }
+                // A comment <!--...--> ends at "-->" (its body may contain '>'); other markup
+                // ends at the next '>'. Comments / processing instructions / declarations do
+                // not nest, so they keep the current depth (like a self-closing element).
+                bool isComment = string.CompareOrdinal(xml, i, "<!--", 0, 4) == 0;
+                int end = isComment ? IndexOfEnd(xml, "-->", i) : xml.IndexOf('>', i);
                 if (end < 0) { sb.Append(xml.Substring(i)); break; }
                 string tag = xml.Substring(i, end - i + 1);
                 bool closing = tag.StartsWith("</");
+                bool nonNest = isComment || tag.StartsWith("<?") || tag.StartsWith("<!");
                 bool selfText = false;
                 // Peek: <a>text</a> on one line stays compact.
-                if (!closing && !tag.EndsWith("/>"))
+                if (!closing && !tag.EndsWith("/>") && !nonNest)
                 {
                     int next = xml.IndexOf('<', end + 1);
                     if (next > end + 1 && xml.Substring(next).StartsWith("</")) selfText = true;
@@ -343,7 +375,7 @@ public static partial class Xml
                 if (closing) depth--;
                 if (sb.Length > 0) { sb.Append('\n').Append(prefix); for (int k = 0; k < depth; k++) sb.Append(indent); }
                 sb.Append(tag);
-                if (!closing && !tag.EndsWith("/>")) depth++;
+                if (!closing && !tag.EndsWith("/>") && !nonNest) depth++;
                 i = end + 1;
                 if (selfText)
                 {
@@ -358,6 +390,13 @@ public static partial class Xml
             else { int next = xml.IndexOf('<', i); if (next < 0) next = xml.Length; sb.Append(xml.Substring(i, next - i)); i = next; }
         }
         return sb.ToString();
+    }
+
+    // Index of the last char of `needle` at/after `from`, or -1 if not found.
+    private static int IndexOfEnd(string s, string needle, int from)
+    {
+        int p = s.IndexOf(needle, from, System.StringComparison.Ordinal);
+        return p < 0 ? -1 : p + needle.Length - 1;
     }
 
     // ---- helpers -----------------------------------------------------------

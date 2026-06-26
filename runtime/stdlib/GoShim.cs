@@ -71,4 +71,16 @@ public static class ShimTypes
         EnsureScanned();
         return _clrToGo.ContainsKey(v.GetType());
     }
+
+    /// <summary>The Go type name of a shim value (e.g. GoXmlName -> "xml.Name"), or null if
+    /// its CLR class is not a registered shim. Used by fmt's %T / %#v so a shim struct names
+    /// its Go type rather than the internal CLR class. The first registered name is returned
+    /// (types backing several Go names are rare and ambiguous under %T anyway).</summary>
+    public static string? GoNameOf(object v)
+    {
+        EnsureScanned();
+        if (_clrToGo.TryGetValue(v.GetType(), out var names))
+            foreach (var n in names) return n;
+        return null;
+    }
 }

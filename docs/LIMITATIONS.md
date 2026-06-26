@@ -323,10 +323,13 @@ module):
   integer) is unsupported — a signal is an opaque `GoSignal`, not a bare int; print it
   or compare `os.Signal` values instead.
 - **`encoding/xml` is marshal-only**: `xml.Marshal`/`MarshalIndent`/`Encoder` are
-  reflection-based and cover element/attr/chardata/innerxml/omitempty tags, `XMLName`,
-  and nested-element paths (`xml:"a>b>c"`, with consecutive fields sharing a prefix
-  merged into one wrapper). `xml.Unmarshal`/`Decoder.Decode` return an honest error
-  (`xml: decoding is not supported under goclr`) — a reflection-driven decoder is the
+  reflection-based and cover element/attr/chardata/cdata/comment/innerxml/omitempty tags,
+  `XMLName`, and nested-element paths (`xml:"a>b>c"`, with consecutive fields sharing a
+  prefix merged into one wrapper; a comment/cdata/chardata field closes any open wrapper
+  first). `,comment` emits `<!--…-->` and `,cdata` emits `<![CDATA[…]]>` (kept inline by
+  `MarshalIndent`, like Go). `xml.Name`/`xml.Attr`/… are `[GoShim]`-tagged so `%v`/`%+v`/
+  `%#v`/`%T` name them as their Go type. `xml.Unmarshal`/`Decoder.Decode` return an honest
+  error (`xml: decoding is not supported under goclr`) — a reflection-driven decoder is the
   larger deferred piece.
 
 ## Interface dispatch keys on the boxed representation
