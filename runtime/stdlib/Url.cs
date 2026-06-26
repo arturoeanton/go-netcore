@@ -5,7 +5,7 @@ using GoCLR.Runtime;
 
 /// <summary>A *url.URL handle (parsed components).</summary>
 [GoShim("net/url.URL")]
-public sealed class GoUrl { public string Scheme = "", Host = "", Path = "", RawPath = "", RawQuery = "", Fragment = "", RawFragment = "", Opaque = ""; public GoUserinfo? User; }
+public sealed class GoUrl { public string Scheme = "", Host = "", Path = "", RawPath = "", RawQuery = "", Fragment = "", RawFragment = "", Opaque = ""; public bool ForceQuery; public GoUserinfo? User; }
 
 /// <summary>url.Userinfo: the username (and optional password) of a URL's authority.</summary>
 public sealed class GoUserinfo { public string Username = ""; public string Password = ""; public bool HasPassword; }
@@ -30,7 +30,7 @@ public static class Url
         if (hash >= 0) { frag = s.Substring(hash + 1); s = s.Substring(0, hash); }
         string beforeFrag = s; // path errors report the URL without its fragment (Go's `u`)
         int q = s.IndexOf('?');
-        if (q >= 0) { u.RawQuery = s.Substring(q + 1); s = s.Substring(0, q); }
+        if (q >= 0) { u.RawQuery = s.Substring(q + 1); s = s.Substring(0, q); if (u.RawQuery.Length == 0) u.ForceQuery = true; }
         int scheme = s.IndexOf("://", System.StringComparison.Ordinal);
         if (scheme >= 0)
         {
@@ -176,6 +176,9 @@ public static class Url
     public static GoString URL_Scheme(object u) => GoString.FromDotNetString(((GoUrl)u).Scheme);
     public static GoString URL_Host(object u) => GoString.FromDotNetString(((GoUrl)u).Host);
     public static GoString URL_Path(object u) => GoString.FromDotNetString(((GoUrl)u).Path);
+    public static GoString URL_RawPath(object u) => GoString.FromDotNetString(((GoUrl)u).RawPath);
+    public static GoString URL_RawFragment(object u) => GoString.FromDotNetString(((GoUrl)u).RawFragment);
+    public static bool URL_ForceQuery(object u) => ((GoUrl)u).ForceQuery;
     public static GoString URL_RawQuery(object u) => GoString.FromDotNetString(((GoUrl)u).RawQuery);
     public static GoString URL_Fragment(object u) => GoString.FromDotNetString(((GoUrl)u).Fragment);
     public static GoString URL_Opaque(object u) => GoString.FromDotNetString(((GoUrl)u).Opaque);
@@ -438,7 +441,7 @@ public static class Url
             if (u.User != null) sb.Append(Userinfo_String(u.User).ToDotNetString()).Append('@');
             sb.Append(u.Host).Append(EscapedPath(u));
         }
-        if (u.RawQuery.Length > 0) sb.Append('?').Append(u.RawQuery);
+        if (u.ForceQuery || u.RawQuery.Length > 0) sb.Append('?').Append(u.RawQuery);
         if (u.Fragment.Length > 0 || u.RawFragment.Length > 0) sb.Append('#').Append(EscapedFragment(u));
         return GoString.FromDotNetString(sb.ToString());
     }

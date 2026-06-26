@@ -42,6 +42,7 @@ public sealed class GoFileInfo
     public long Size;
     public bool Dir;
     public long ModTimeN; // nanoseconds since Unix epoch
+    public uint Mode;      // Go FileMode (perm bits + type bits); 0 == unset
 }
 
 /// <summary>Shim for a subset of Go's <c>os</c> package.</summary>
@@ -234,7 +235,9 @@ public static class Os
     {
         var gf = (GoFile)f;
         long size = gf.Wr?.Length ?? 0;
-        return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(System.IO.Path.GetFileName(gf.Path)), Size = size, Dir = false }, null };
+        bool isDir = gf.Path != null && System.IO.Directory.Exists(gf.Path);
+        uint mode = gf.Path != null && (System.IO.File.Exists(gf.Path) || isDir) ? GoFileMode(gf.Path, isDir) : 0u;
+        return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(System.IO.Path.GetFileName(gf.Path)), Size = size, Dir = isDir, Mode = mode, ModTimeN = gf.Path != null ? FileMTimeN(gf.Path) : 0 }, null };
     }
     private static byte[] Raw(GoSlice p)
     {
@@ -290,17 +293,46 @@ public static class Os
     // is the same stat.
     public static object?[] Lstat(GoString name) => Stat(name);
 
+    // Map a path's Unix file mode to a Go FileMode (perm bits + setuid/setgid/sticky, plus the
+    // ModeDir bit for a directory). Falls back to 0777/0666 if the platform can't report it.
+    internal static uint GoFileMode(string p, bool isDir)
+    {
+        uint mode;
+        try
+        {
+            uint u = (uint)System.IO.File.GetUnixFileMode(p);
+            mode = u & 0x1FFu;                       // rwxrwxrwx
+            if ((u & 0x800u) != 0) mode |= 1u << 23; // setuid  -> ModeSetuid
+            if ((u & 0x400u) != 0) mode |= 1u << 22; // setgid  -> ModeSetgid
+            if ((u & 0x200u) != 0) mode |= 1u << 20; // sticky  -> ModeSticky
+        }
+        catch { mode = isDir ? 0x1FFu : 0x1B6u; }
+        if (isDir) mode |= 1u << 31;                 // ModeDir
+        return mode;
+    }
+
+    // The path's last-write time as nanoseconds since the Unix epoch (0 if unavailable).
+    internal static long FileMTimeN(string p)
+    {
+        try
+        {
+            long ticks = System.IO.File.GetLastWriteTimeUtc(p).Ticks - 621355968000000000L; // ticks at 1970-01-01
+            return ticks * 100; // 1 tick == 100 ns
+        }
+        catch { return 0; }
+    }
+
     public static object?[] Stat(GoString name)
     {
         string p = name.ToDotNetString();
         try
         {
             if (System.IO.Directory.Exists(p))
-                return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(System.IO.Path.GetFileName(p.TrimEnd('/')) is var d && d.Length > 0 ? d : p), Dir = true, Size = 0 }, null };
+                return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(System.IO.Path.GetFileName(p.TrimEnd('/')) is var d && d.Length > 0 ? d : p), Dir = true, Size = 0, Mode = GoFileMode(p, true), ModTimeN = FileMTimeN(p) }, null };
             if (System.IO.File.Exists(p))
             {
                 var fi = new System.IO.FileInfo(p);
-                return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(fi.Name), Size = fi.Length, Dir = false }, null };
+                return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(fi.Name), Size = fi.Length, Dir = false, Mode = GoFileMode(p, false), ModTimeN = FileMTimeN(p) }, null };
             }
             return new object?[] { null, NotExist(p) };
         }
@@ -484,11 +516,18 @@ public static class Os
     // os.FileInfo method set.
     public static GoString FileInfo_Name(object fi) => ((GoFileInfo)fi).FileName;
     public static long FileInfo_Size(object fi) => ((GoFileInfo)fi).Size;
+    // ModTime() time.Time: the file's last-write time (a real, non-zero instant).
+    public static object FileInfo_ModTime(object fi) => new GoTime { N = ((GoFileInfo)fi).ModTimeN, IsZero = false };
     public static bool FileInfo_IsDir(object fi) => ((GoFileInfo)fi).Dir;
     // Mode() io/fs.FileMode: goclr does not read OS file modes, so this reports the
     // directory bit (1<<31) for a directory and 0 otherwise — enough for the common
     // IsDir()/Type() checks; socket/device bits are not represented.
-    public static uint FileInfo_Mode(object fi) => ((GoFileInfo)fi).Dir ? (uint)(1u << 31) : 0u;
+    public static uint FileInfo_Mode(object fi)
+    {
+        var f = (GoFileInfo)fi;
+        if (f.Mode != 0) return f.Mode;
+        return f.Dir ? (1u << 31) | 0x1FFu : 0x1B6u; // fallback if Mode unset
+    }
 
     public static GoString Getenv(GoString key) =>
         GoString.FromDotNetString(System.Environment.GetEnvironmentVariable(key.ToDotNetString()) ?? "");
@@ -659,7 +698,21 @@ public static class Os
         {
             var bytes = new byte[data.Len];
             for (int i = 0; i < data.Len; i++) bytes[i] = (byte)(System.Convert.ToInt64(data.Data![data.Off + i]) & 0xff);
-            System.IO.File.WriteAllBytes(name.ToDotNetString(), bytes);
+            string p = name.ToDotNetString();
+            bool existed = System.IO.File.Exists(p);
+            System.IO.File.WriteAllBytes(p, bytes);
+            // Like Go's WriteFile, the perm applies only to a newly-created file, modulo the
+            // process umask (derived from the just-created file's default 0666 & ~umask mode).
+            if (!existed)
+            {
+                try
+                {
+                    uint created = (uint)System.IO.File.GetUnixFileMode(p) & 0x1FFu;
+                    uint umask = 0x1B6u & ~created; // 0666 & ~(0666 & ~umask) recovers the rw umask bits
+                    System.IO.File.SetUnixFileMode(p, (System.IO.UnixFileMode)(perm & 0x1FFu & ~umask));
+                }
+                catch { }
+            }
             return null;
         }
         catch (System.Exception ex)

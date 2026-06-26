@@ -887,7 +887,8 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"net/url.URL": {
 		"Scheme": {"Url", "URL_Scheme"}, "Host": {"Url", "URL_Host"}, "Path": {"Url", "URL_Path"},
 		"RawQuery": {"Url", "URL_RawQuery"}, "Fragment": {"Url", "URL_Fragment"},
-		"User": {"Url", "URL_User"}, "RawPath": {"Url", "URL_Path"}, "Opaque": {"Url", "URL_Opaque"},
+		"User": {"Url", "URL_User"}, "RawPath": {"Url", "URL_RawPath"}, "Opaque": {"Url", "URL_Opaque"},
+		"RawFragment": {"Url", "URL_RawFragment"}, "ForceQuery": {"Url", "URL_ForceQuery"},
 	},
 	"net.IPNet": {
 		"IP": {"Net", "IPNet_IP"}, "Mask": {"Net", "IPNet_Mask"},
@@ -1954,10 +1955,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Error": {"Os", "SyscallError_Error"}, "Unwrap": {"Os", "SyscallError_Unwrap"}, "Timeout": {"Os", "SyscallError_Timeout"},
 	},
 	"os.FileInfo": {
-		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"}, "Mode": {"Os", "FileInfo_Mode"},
+		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"}, "Mode": {"Os", "FileInfo_Mode"}, "ModTime": {"Os", "FileInfo_ModTime"},
 	},
 	"io/fs.FileInfo": {
-		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"}, "Mode": {"Os", "FileInfo_Mode"},
+		"Name": {"Os", "FileInfo_Name"}, "Size": {"Os", "FileInfo_Size"}, "IsDir": {"Os", "FileInfo_IsDir"}, "Mode": {"Os", "FileInfo_Mode"}, "ModTime": {"Os", "FileInfo_ModTime"},
 	},
 	"io/fs.DirEntry": {
 		"Name": {"Fs", "DirEntry_Name"}, "IsDir": {"Fs", "DirEntry_IsDir"}, "Type": {"Fs", "DirEntry_Type"}, "Info": {"Fs", "DirEntry_Info"},
