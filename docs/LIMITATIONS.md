@@ -201,7 +201,10 @@ Remaining edges (documented, not silent):
 - A non-numeric verb's **width applied to a composite** (`%6v` of a `[]int`)
   pads the whole rendering rather than each element; Go pads per element.
   Numeric verbs (`%6d`, `%03d`) already pad per element. `%!(EXTRA …)` for
-  surplus args and `%q` precision (rune truncation) match Go.
+  surplus args and `%q` precision (rune truncation) match Go. The `%q` flags are
+  honored too: `%#q` prefers a raw-string (back-quote) literal when the value can be
+  back-quoted (else double-quotes), and `%+q` escapes all non-ASCII (`QuoteToASCII` /
+  `QuoteRuneToASCII`), through strings, runes, `[]byte`, slices and maps. Fixture 741.
 - **Integer precision** sets the minimum number of digits (zero-padded), distinct
   from width: `%.3d` of 5 → `005`, `%.5x` of 255 → `000ff`, `%#.4o` of 8 → `0010`
   (the `#` prefix is applied after the precision pad), `%.0d` of 0 → empty. The `0`

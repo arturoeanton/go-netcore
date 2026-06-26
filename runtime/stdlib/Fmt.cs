@@ -572,7 +572,7 @@ public static class Fmt
             case 'q':
                 // %q on a string honors precision by truncating to that many runes first.
                 if (v is GoString qpre && sp.Prec >= 0) { var s = qpre.ToDotNetString(); v = GoString.FromDotNetString(s.Length > sp.Prec ? s.Substring(0, sp.Prec) : s); }
-                return v is GoSlice qsl && (IsByteSliceName(wname) || wByteNamed) ? GoQuote(GoString.FromBytesOwned(SliceToBytes(qsl))) : QuoteVerb(v);
+                return v is GoSlice qsl && (IsByteSliceName(wname) || wByteNamed) ? GoQuote(GoString.FromBytesOwned(SliceToBytes(qsl)), sp.Plus, sp.Hash) : QuoteVerb(v, sp.Plus, sp.Hash);
             case 'f':
             case 'F': return v is GoComplex cf ? ComplexVerb(cf, d => GoFtoa.FormatF(d, sp.Prec < 0 ? 6 : sp.Prec)) : FloatVerb(v, sp, () => GoFtoa.FormatF(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
             case 'e': return v is GoComplex ce ? ComplexVerb(ce, d => GoFtoa.FormatE(d, sp.Prec < 0 ? 6 : sp.Prec)) : FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
@@ -692,25 +692,26 @@ public static class Fmt
         return b;
     }
 
-    private static string QuoteVerb(object? v)
+    private static string QuoteVerb(object? v) => QuoteVerb(v, false, false);
+    private static string QuoteVerb(object? v, bool plus, bool sharp)
     {
         // A value implementing Stringer/error: %q quotes its String()/Error() result (Go
         // invokes the method first — even for a named integer like `type Color int`, %q
         // yields the quoted String(), not a rune literal).
-        if (TryStringer(v, out var sv)) return GoQuote(GoString.FromDotNetString(sv));
+        if (TryStringer(v, out var sv)) return GoQuote(GoString.FromDotNetString(sv), plus, sharp);
         // A []byte (e.g. a nested element of [][]byte) quotes as its string, like Go.
         if (v is GoNamed bnm && bnm.Value is GoSlice bbs && IsByteTag(Rt.NamedTypeName(bnm.TypeId)))
-            return GoQuote(GoString.FromBytesOwned(SliceToBytes(bbs)));
+            return GoQuote(GoString.FromBytesOwned(SliceToBytes(bbs)), plus, sharp);
         // Unwrap any other typed box (a nested []string/[]int element of a [][]T carries
         // its identity as a GoNamed) so the slice/scalar branches below can recurse.
         if (v is GoNamed nmv) v = nmv.Value;
-        if (v is GoString gq) return GoQuote(gq);
-        if (IsIntegral(v)) return Strconv.QuoteRune((int)ToLong(v)).ToDotNetString();
+        if (v is GoString gq) return GoQuote(gq, plus, sharp);
+        if (IsIntegral(v)) return (plus ? Strconv.QuoteRuneToASCII((int)ToLong(v)) : Strconv.QuoteRune((int)ToLong(v))).ToDotNetString();
         // %q over a slice quotes each element.
         if (v is GoSlice sl)
         {
             var sb = new StringBuilder("[");
-            for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(sl.Data![sl.Off + i])); }
+            for (int i = 0; i < sl.Len; i++) { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(sl.Data![sl.Off + i], plus, sharp)); }
             return sb.Append(']').ToString();
         }
         // %q over a map quotes each key and value, keys sorted (like %v).
@@ -722,7 +723,7 @@ public static class Fmt
             keys.Sort((a, b) => MapKeyCompare(a.k, b.k));
             var sb = new StringBuilder("map[");
             for (int i = 0; i < keys.Count; i++)
-            { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(keys[i].k)).Append(':').Append(QuoteVerb(qm.Data[keys[i].k!])); }
+            { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(keys[i].k, plus, sharp)).Append(':').Append(QuoteVerb(qm.Data[keys[i].k!], plus, sharp)); }
             return sb.Append(']').ToString();
         }
         // %q over a struct quotes each field.
@@ -732,7 +733,7 @@ public static class Fmt
             var fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
             var sb = new StringBuilder("{");
             for (int i = 0; i < fields.Length; i++)
-            { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(RetagField(t.Name, fields[i].Name, fields[i].GetValue(v)))); }
+            { if (i > 0) sb.Append(' '); sb.Append(QuoteVerb(RetagField(t.Name, fields[i].Name, fields[i].GetValue(v)), plus, sharp)); }
             return sb.Append('}').ToString();
         }
         return BadVerb('q', v);
@@ -781,7 +782,14 @@ public static class Fmt
 
     // Go-style quoted string (%q): the byte-exact strconv.Quote (printable classification,
     // \a..\v shorthands, \xNN for invalid bytes, \u/\U for non-printable runes).
-    private static string GoQuote(GoString gs) => Strconv.Quote(gs).ToDotNetString();
+    private static string GoQuote(GoString gs) => GoQuote(gs, false, false);
+    // %q flags: '#' prefers a raw-string literal (backquotes) when the value CanBackquote;
+    // '+' escapes all non-ASCII (QuoteToASCII). The sharp/backquote test wins over plus.
+    private static string GoQuote(GoString gs, bool plus, bool sharp)
+    {
+        if (sharp && Strconv.CanBackquote(gs)) return "`" + gs.ToDotNetString() + "`";
+        return (plus ? Strconv.QuoteToASCII(gs) : Strconv.Quote(gs)).ToDotNetString();
+    }
 
     // Length (1-4) of the UTF-8 sequence starting at b[i]; 1 if invalid.
     private static int Utf8DecodeLen(byte[] b, int i)
