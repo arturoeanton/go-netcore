@@ -1,6 +1,7 @@
 namespace GoCLR.Stdlib;
 
 using GoCLR.Runtime;
+using System.Collections.Generic;
 
 /// <summary>A context.Context value. WithValue links a key/value onto a parent;
 /// WithCancel/WithTimeout attach a closeable Done channel + a sticky error.</summary>
@@ -16,6 +17,7 @@ public sealed class GoContext
     public bool NoCancel;      // WithoutCancel: never done, never errs, but parent's values remain
     public bool HasDeadline;   // set by WithTimeout/WithDeadline
     public long DeadlineNs;    // the deadline (ns since Unix epoch) when HasDeadline
+    public List<GoContext>? Children;  // cancelable descendants to cascade cancellation to
 
     public GoChan? Done() => NoCancel ? null : (DoneCh ?? Parent?.Done());
 
@@ -52,40 +54,51 @@ public sealed class GoContext
         return object.Equals(a, b);
     }
 
-    public void Cancel(object err)
-    {
-        lock (this)
-        {
-            if (ErrVal != null) return;
-            ErrVal = err;
-            CauseVal = err;
-            DoneCh?.Close();
-        }
-    }
+    public void Cancel(object err) => CancelInternal(err, err);
 
     // CancelErrCause: set a specific Err() (e.g. DeadlineExceeded) while Cause() reports the
     // supplied cause (or Err itself when the cause is nil). Used by With*Cause timeouts.
-    public void CancelErrCause(object err, object? cause)
+    public void CancelErrCause(object err, object? cause) => CancelInternal(err, cause ?? err);
+
+    // CancelCause: Err() stays Canceled, but Cause() reports the supplied cause (or Canceled
+    // when the cause is nil), as Go's context.WithCancelCause does.
+    public void CancelCause(object? cause) => CancelInternal(Context.Canceled(), cause ?? Context.Canceled());
+
+    // Set this context's sticky error/cause + close its Done channel, then cascade the same
+    // cancellation to every registered cancelable descendant (as Go's cancelCtx.cancel does,
+    // so a child's Done() unblocks when an ancestor is cancelled — not just lazily via Err()).
+    private void CancelInternal(object err, object? cause)
     {
+        List<GoContext>? kids;
         lock (this)
         {
             if (ErrVal != null) return;
             ErrVal = err;
-            CauseVal = cause ?? err;
+            CauseVal = cause;
             DoneCh?.Close();
+            kids = Children;
+            Children = null;
         }
+        if (kids != null)
+            foreach (var k in kids) k.CancelInternal(err, cause);
     }
 
-    // CancelCause: Err() stays Canceled, but Cause() reports the supplied cause (or Canceled
-    // when the cause is nil), as Go's context.WithCancelCause does.
-    public void CancelCause(object? cause)
+    // Register `child` with the nearest cancelable ancestor so it cascades on cancel. If that
+    // ancestor is already cancelled, cancel the child immediately. A WithoutCancel ancestor
+    // severs the chain (the child is never cancelled by an ancestor).
+    public static void PropagateCancel(GoContext child)
     {
-        lock (this)
+        for (var p = child.Parent; p != null; p = p.Parent)
         {
-            if (ErrVal != null) return;
-            ErrVal = Context.Canceled();
-            CauseVal = cause ?? Context.Canceled();
-            DoneCh?.Close();
+            if (p.NoCancel) return;
+            if (p.DoneCh == null) continue; // not itself cancelable; keep walking up
+            lock (p)
+            {
+                if (p.ErrVal == null) { (p.Children ??= new List<GoContext>()).Add(child); return; }
+            }
+            // ancestor already cancelled — propagate now
+            child.CancelInternal(p.ErrVal!, p.CauseVal ?? p.ErrVal);
+            return;
         }
     }
 }
@@ -109,6 +122,7 @@ public static class Context
     {
         var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
         var cancel = NativeClosures.Make(_ => { ctx.Cancel(CanceledErr); return null; });
+        GoContext.PropagateCancel(ctx);
         return new object?[] { ctx, cancel };
     }
 
@@ -117,6 +131,7 @@ public static class Context
     {
         var ctx = new GoContext { Parent = (GoContext)parent, DoneCh = GoChans.Make(0) };
         var cancel = NativeClosures.Make(a => { ctx.CancelCause(a != null && a.Length > 0 ? a[0] : null); return null; });
+        GoContext.PropagateCancel(ctx);
         return new object?[] { ctx, cancel };
     }
 
@@ -134,6 +149,7 @@ public static class Context
             System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.Cancel(DeadlineErr));
         else
             ctx.Cancel(DeadlineErr);
+        GoContext.PropagateCancel(ctx);
         return new object?[] { ctx, cancel };
     }
 
@@ -154,6 +170,7 @@ public static class Context
             System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.Cancel(DeadlineErr));
         else
             ctx.Cancel(DeadlineErr);
+        GoContext.PropagateCancel(ctx);
         return new object?[] { ctx, cancel };
     }
 
@@ -167,6 +184,7 @@ public static class Context
         double ms = timeout / 1_000_000.0;
         if (ms > 0) System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.CancelErrCause(DeadlineErr, cause));
         else ctx.CancelErrCause(DeadlineErr, cause);
+        GoContext.PropagateCancel(ctx);
         return new object?[] { ctx, cancel };
     }
     public static object?[] WithDeadlineCause(object parent, object? deadline, object? cause)
@@ -179,6 +197,7 @@ public static class Context
         double ms = (deadlineNs - nowNs) / 1_000_000.0;
         if (ms > 0) System.Threading.Tasks.Task.Delay((int)ms).ContinueWith(_ => ctx.CancelErrCause(DeadlineErr, cause));
         else ctx.CancelErrCause(DeadlineErr, cause);
+        GoContext.PropagateCancel(ctx);
         return new object?[] { ctx, cancel };
     }
 

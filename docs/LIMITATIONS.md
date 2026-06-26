@@ -279,7 +279,10 @@ module):
   dispatch gap; a user-defined in-memory `fs.FS` works.)
 - **`x/sync/errgroup`** — works: compiles from source and runs (concurrent goroutines +
   first-error propagation), now that `context.WithCancelCause`/`context.Cause` are shimmed.
-  See `examples/demo_errgroup` (requires `go mod vendor`).
+  See `examples/demo_errgroup` (requires `go mod vendor`). Cancellation now cascades to
+  descendants: cancelling (or timing out) an ancestor closes the `Done()` channel of every
+  cancelable child/grandchild — across intervening `WithValue` layers — so `<-child.Done()`
+  unblocks, while `WithoutCancel` severs the chain. Fixture 676_context_cancel_propagation.
 - **`google/uuid`** — works: compiles from source and runs (v4 with a custom rand reader,
   v5 `NewSHA1`, parse/format, version/variant, nil). Closed the stdlib gaps it needs:
   `os.Getuid`/`Getgid`, `net.Interfaces` (empty list — no host-NIC enumeration),
