@@ -431,11 +431,11 @@ public static class Fmt
             case 's': return StrVerb(v, sp);
             case 'q': return v is GoSlice qsl && (IsByteSliceName(wname) || wByteNamed) ? GoQuote(GoString.FromBytesOwned(SliceToBytes(qsl))) : QuoteVerb(v);
             case 'f':
-            case 'F': return FloatVerb(v, sp, () => GoFtoa.FormatF(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
-            case 'e': return FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
-            case 'E': return FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec, 'E'), verb);
-            case 'g': return FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gf ? GoFtoa.Shortest(gf) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
-            case 'G': return FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gF ? GoFtoa.Shortest(gF) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
+            case 'F': return v is GoComplex cf ? ComplexVerb(cf, d => GoFtoa.FormatF(d, sp.Prec < 0 ? 6 : sp.Prec)) : FloatVerb(v, sp, () => GoFtoa.FormatF(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
+            case 'e': return v is GoComplex ce ? ComplexVerb(ce, d => GoFtoa.FormatE(d, sp.Prec < 0 ? 6 : sp.Prec)) : FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
+            case 'E': return v is GoComplex cE ? ComplexVerb(cE, d => GoFtoa.FormatE(d, sp.Prec < 0 ? 6 : sp.Prec, 'E')) : FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec, 'E'), verb);
+            case 'g': return v is GoComplex cg ? ComplexVerb(cg, d => sp.Prec < 0 ? GoFtoa.Shortest(d) : GoFtoa.FormatG(d, sp.Prec)) : FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gf ? GoFtoa.Shortest(gf) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
+            case 'G': return v is GoComplex cG ? ComplexVerb(cG, d => sp.Prec < 0 ? GoFtoa.Shortest(d) : GoFtoa.FormatG(d, sp.Prec)) : FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gF ? GoFtoa.Shortest(gF) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
             case 'p':
                 if (v == null) return "<nil>";
                 // Go's %p accepts only pointer-like kinds (pointer/slice/map/chan/func);
@@ -779,6 +779,7 @@ public static class Fmt
             case uint ui: return "0x" + ui.ToString("x", Inv);
             case long or int: return Format(v, 'v', false, false);
             case double d: return FormatFloatV(d);
+            case GoComplex c: return "(" + FormatFloatV(c.Re) + ComplexImag(c.Im) + "i)";
             case GoPtr p: return "&" + FormatGoSyntax(p.Value);
             // A typed box carries the precise composite type, so %#v can spell its real
             // element types ("[]int{...}", "main.IntHeap{...}") instead of the erased
@@ -891,6 +892,15 @@ public static class Fmt
     {
         string s = FormatFloatV(im);
         return s.Length > 0 && (s[0] == '+' || s[0] == '-') ? s : "+" + s;
+    }
+
+    // A complex under a float verb (%f/%e/%g/...) formats as "(re±imi)", each part via the
+    // given per-double formatter; the imaginary part always carries an explicit sign.
+    private static string ComplexVerb(GoComplex c, System.Func<double, string> fmt)
+    {
+        string re = fmt(c.Re), im = fmt(c.Im);
+        if (im.Length == 0 || (im[0] != '+' && im[0] != '-')) im = "+" + im;
+        return "(" + re + im + "i)";
     }
 
     private static string FormatSlice(GoSlice s, bool plus, bool hash)

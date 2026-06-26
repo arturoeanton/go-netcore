@@ -422,7 +422,8 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   `maps.Keys`/`Values`/`All`) need `iter.Seq` and are not yet supported.
 - `strconv.FormatFloat` supports all verbs byte-exactly (`f/e/E/g/G/b/x/X`),
   including hexadecimal-float `0x1.…p±dd` with shortest and fixed precision;
-  `fmt`'s `%x`/`%X`/`%b` of a float route through the same path.
+  `fmt`'s `%x`/`%X`/`%b` of a float route through the same path. A `complex`
+  formats both parts as `(re±imi)` under `%v`/`%f`/`%e`/`%E`/`%g`/`%G`/`%#v`.
 - `math/big.Float` is **double-backed** (53-bit), not arbitrary precision:
   `SetPrec`/high-precision arithmetic are unsupported. `String`, `Text(fmt,
   prec)`, and `fmt`'s `%v/%g/%e/%f/%G` are byte-exact for the common
