@@ -43,6 +43,18 @@ public static class Url
             u.Host = authority;
             if (SetPath(u, slash < 0 ? "" : rest.Substring(slash)) is GoError pe) return new object?[] { u, ParseErr(beforeFrag, pe) };
         }
+        else if (s.StartsWith("//"))
+        {
+            // A network-path reference (no scheme): //authority/path, e.g. a protocol-relative
+            // URL //cdn.example.com/lib.js. The authority is parsed like the scheme:// case.
+            string rest = s.Substring(2);
+            int slash = rest.IndexOf('/');
+            string authority = slash < 0 ? rest : rest.Substring(0, slash);
+            int at = authority.IndexOf('@');
+            if (at >= 0) { u.User = ParseUserinfo(authority.Substring(0, at)); authority = authority.Substring(at + 1); }
+            u.Host = authority;
+            if (SetPath(u, slash < 0 ? "" : rest.Substring(slash)) is GoError pe3) return new object?[] { u, ParseErr(beforeFrag, pe3) };
+        }
         else if (s.Contains(":") && !s.StartsWith("/"))
         {
             int c = s.IndexOf(':');
@@ -182,11 +194,13 @@ public static class Url
     // url.User(username) / url.UserPassword(username, password) -> *Userinfo.
     public static object User(GoString name) => new GoUserinfo { Username = name.ToDotNetString() };
     public static object UserPassword(GoString name, GoString pw) => new GoUserinfo { Username = name.ToDotNetString(), Password = pw.ToDotNetString(), HasPassword = true };
-    public static GoString Userinfo_Username(object ui) => GoString.FromDotNetString(((GoUserinfo)ui).Username);
-    public static object?[] Userinfo_Password(object ui) { var u = (GoUserinfo)ui; return new object?[] { GoString.FromDotNetString(u.Password), u.HasPassword }; }
-    public static GoString Userinfo_String(object ui)
+    // A nil *url.Userinfo (a URL with no userinfo) is valid in Go: its methods return the
+    // empty value rather than panicking, so guard the null receiver here too.
+    public static GoString Userinfo_Username(object? ui) => GoString.FromDotNetString(ui is GoUserinfo u ? u.Username : "");
+    public static object?[] Userinfo_Password(object? ui) { var u = ui as GoUserinfo; return new object?[] { GoString.FromDotNetString(u?.Password ?? ""), u?.HasPassword ?? false }; }
+    public static GoString Userinfo_String(object? ui)
     {
-        var u = (GoUserinfo)ui;
+        if (ui is not GoUserinfo u) return GoString.FromDotNetString("");
         return GoString.FromDotNetString(u.HasPassword ? EscapeMode(u.Username, EncUserPw) + ":" + EscapeMode(u.Password, EncUserPw) : EscapeMode(u.Username, EncUserPw));
     }
 
@@ -275,10 +289,13 @@ public static class Url
     public static GoString URL_Port(object u) => GoString.FromDotNetString(SplitHostPort(((GoUrl)u).Host).port);
     private static (string host, string port) SplitHostPort(string h)
     {
+        string host = h, port = "";
         int colon = h.LastIndexOf(':');
         int bracket = h.LastIndexOf(']');
-        if (colon > bracket && colon >= 0) return (h.Substring(0, colon), h.Substring(colon + 1));
-        return (h, "");
+        if (colon > bracket && colon >= 0) { host = h.Substring(0, colon); port = h.Substring(colon + 1); }
+        // An IPv6-literal host carries brackets in Host ("[::1]"); Hostname() strips them.
+        if (host.Length >= 2 && host[0] == '[' && host[^1] == ']') host = host.Substring(1, host.Length - 2);
+        return (host, port);
     }
     public static GoString URL_EscapedPath(object u) => GoString.FromDotNetString(EscapedPath((GoUrl)u));
     public static GoString URL_EscapedFragment(object u) => GoString.FromDotNetString(EscapedFragment((GoUrl)u));
