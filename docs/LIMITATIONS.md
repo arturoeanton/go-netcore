@@ -435,10 +435,11 @@ durations print as `0.00s`. `t.Parallel()` is a no-op (tests run sequentially).
   `Index(Func)`, `Max`/`Min`/`MaxFunc`/`MinFunc`, `Equal(Func)`, `Reverse`,
   `IsSorted(Func)`, `BinarySearch(Func)`, `Clone`/`Compact(Func)`/`Concat`,
   `Insert`/`Delete`/`Replace`/`DeleteFunc`/`Repeat`, `Compare(Func)`, and
-  `cmp.Compare`/`Less`/`Or`. The `maps` package provides its non-iterator
-  functions (`Clone`, `Copy`, `Equal`, `EqualFunc`, `DeleteFunc`). The
-  iterator-based functions (`slices.Sorted`/`Collect`/`All`/`Values`,
-  `maps.Keys`/`Values`/`All`) need `iter.Seq` and are not yet supported.
+  `cmp.Compare`/`Less`/`Or`. The `maps` package provides `Clone`, `Copy`,
+  `Equal`, `EqualFunc`, `DeleteFunc`. The **iterator (`iter.Seq`) functions are
+  also supported** via range-over-func: `slices.Values`/`All`/`Backward`/
+  `Collect`/`Sorted`/`SortedFunc` and `maps.Keys`/`Values`/`All` (map iteration
+  order is unspecified, like Go).
 - `strconv.FormatFloat` supports all verbs byte-exactly (`f/e/E/g/G/b/x/X`),
   including hexadecimal-float `0x1.…p±dd` with shortest and fixed precision;
   `fmt`'s `%x`/`%X`/`%b` of a float route through the same path. A `complex`

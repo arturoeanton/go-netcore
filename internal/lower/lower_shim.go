@@ -338,6 +338,8 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Clone": {"Slices", "Clone"}, "Compact": {"Slices", "Compact"}, "CompactFunc": {"Slices", "CompactFunc"}, "Concat": {"Slices", "Concat"},
 		"Insert": {"Slices", "Insert"}, "Delete": {"Slices", "Delete"}, "Replace": {"Slices", "Replace"}, "DeleteFunc": {"Slices", "DeleteFunc"},
 		"Repeat": {"Slices", "Repeat"}, "Compare": {"Slices", "Compare"}, "CompareFunc": {"Slices", "CompareFunc"},
+		"Values": {"Slices", "Values"}, "All": {"Slices", "All"}, "Backward": {"Slices", "Backward"},
+		"Collect": {"Slices", "Collect"}, "Sorted": {"Slices", "Sorted"}, "SortedFunc": {"Slices", "SortedFunc"},
 	},
 	"cmp": {
 		"Compare": {"Cmp", "Compare"}, "Less": {"Cmp", "Less"}, "Or": {"Cmp", "Or"},
@@ -346,6 +348,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"maps": {
 		"Clone": {"Maps", "Clone"}, "Copy": {"Maps", "Copy"}, "Equal": {"Maps", "Equal"},
 		"EqualFunc": {"Maps", "EqualFunc"}, "DeleteFunc": {"Maps", "DeleteFunc"},
+		"Keys": {"Maps", "Keys"}, "Values": {"Maps", "Values"}, "All": {"Maps", "All"},
 	},
 	"time": {
 		"Sleep": {"Time", "Sleep"}, "After": {"Time", "After"},

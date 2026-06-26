@@ -52,6 +52,41 @@ public static class Maps
         }
         return true;
     }
+    // --- iterators (iter.Seq) ---
+    // maps.Keys(m): an iter.Seq[K] over the keys (Go's order is unspecified).
+    public static GoClosure Keys(object m)
+    {
+        var s = M(m);
+        return NativeClosures.Make(a =>
+        {
+            var yield = (GoClosure)a![0]!;
+            if (s.Data != null) foreach (var kv in s.Data) if (!(bool)GoRuntime.InvokeArgs(yield, kv.Key)!) break;
+            return null;
+        });
+    }
+    // maps.Values(m): an iter.Seq[V] over the values.
+    public static GoClosure Values(object m)
+    {
+        var s = M(m);
+        return NativeClosures.Make(a =>
+        {
+            var yield = (GoClosure)a![0]!;
+            if (s.Data != null) foreach (var kv in s.Data) if (!(bool)GoRuntime.InvokeArgs(yield, kv.Value)!) break;
+            return null;
+        });
+    }
+    // maps.All(m): an iter.Seq2[K, V] over the entries.
+    public static GoClosure All(object m)
+    {
+        var s = M(m);
+        return NativeClosures.Make(a =>
+        {
+            var yield = (GoClosure)a![0]!;
+            if (s.Data != null) foreach (var kv in s.Data) if (!(bool)GoRuntime.InvokeArgs(yield, kv.Key, kv.Value)!) break;
+            return null;
+        });
+    }
+
     // maps.DeleteFunc(m, del): remove every entry for which del(k, v) is true.
     public static void DeleteFunc(object m, GoClosure del)
     {

@@ -192,6 +192,62 @@ public static class Slices
     private static GoSlice FromList(System.Collections.Generic.List<object?> l) =>
         new GoSlice { Data = l.ToArray(), Off = 0, Len = l.Count, Cap = l.Count };
 
+    // --- iterators (iter.Seq) ---
+    // Values(s): an iter.Seq[E] yielding each element in order.
+    public static GoClosure Values(object slice)
+    {
+        var s = S(slice);
+        return NativeClosures.Make(a =>
+        {
+            var yield = (GoClosure)a![0]!;
+            for (int i = 0; i < s.Len; i++) if (!(bool)GoRuntime.InvokeArgs(yield, At(s, i))!) break;
+            return null;
+        });
+    }
+    // All(s): an iter.Seq2[int, E] yielding (index, element).
+    public static GoClosure All(object slice)
+    {
+        var s = S(slice);
+        return NativeClosures.Make(a =>
+        {
+            var yield = (GoClosure)a![0]!;
+            for (int i = 0; i < s.Len; i++) if (!(bool)GoRuntime.InvokeArgs(yield, (long)i, At(s, i))!) break;
+            return null;
+        });
+    }
+    // Backward(s): an iter.Seq2[int, E] yielding (index, element) from the end.
+    public static GoClosure Backward(object slice)
+    {
+        var s = S(slice);
+        return NativeClosures.Make(a =>
+        {
+            var yield = (GoClosure)a![0]!;
+            for (int i = s.Len - 1; i >= 0; i--) if (!(bool)GoRuntime.InvokeArgs(yield, (long)i, At(s, i))!) break;
+            return null;
+        });
+    }
+    // Collect(seq): drain an iter.Seq[E] into a new slice (insertion order).
+    public static object Collect(GoClosure seq)
+    {
+        var outp = new System.Collections.Generic.List<object?>();
+        var sink = NativeClosures.Make(a => { outp.Add(a![0]); return true; });
+        GoRuntime.InvokeArgs(seq, sink);
+        return FromList(outp);
+    }
+    // Sorted(seq) / SortedFunc(seq, cmp): collect then sort.
+    public static object Sorted(GoClosure seq)
+    {
+        var r = (GoSlice)Collect(seq);
+        if (r.Len > 1) System.Array.Sort(r.Data!, r.Off, r.Len, System.Collections.Generic.Comparer<object?>.Create(OrderedCompare));
+        return r;
+    }
+    public static object SortedFunc(GoClosure seq, GoClosure cmp)
+    {
+        var r = (GoSlice)Collect(seq);
+        SortByClosure(r, cmp, false);
+        return r;
+    }
+
     // Insert(s, i, vals...) -> s[:i] + vals + s[i:].
     public static object Insert(object slice, long i, GoSlice vals)
     {
