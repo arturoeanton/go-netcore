@@ -159,7 +159,7 @@ public static class Time
         new GoTime { N = (dt.ToUniversalTime() - Epoch).Ticks * 100, IsZero = false };
     // A new instant carrying the same zone (offset + name) as src.
     private static GoTime With(GoTime src, long n) =>
-        new GoTime { N = n, IsZero = false, OffsetSeconds = src.OffsetSeconds, ZoneName = src.ZoneName };
+        new GoTime { N = n, IsZero = false, OffsetSeconds = src.OffsetSeconds, ZoneName = src.ZoneName, Tz = src.Tz };
 
     // Construction.
     public static object Now() => new GoTime { N = (System.DateTime.UtcNow - Epoch).Ticks * 100, IsZero = false };
@@ -173,11 +173,14 @@ public static class Time
             .AddHours(hour).AddMinutes(min).AddSeconds(sec);
         var t = FromDateTime(dt); t.N += nsec;
         // The y/m/d/h/m/s are wall-clock in loc; the stored instant is that minus the offset.
+        // For a DST-aware zone the offset is resolved at the given wall-clock moment.
         if (loc is GoLocation gl)
         {
-            t.N -= (long)gl.OffsetSeconds * Second;
-            t.OffsetSeconds = gl.OffsetSeconds;
-            t.ZoneName = gl.Name;
+            var (off, name) = ZoneAt(gl, System.DateTime.SpecifyKind(dt, System.DateTimeKind.Unspecified));
+            t.N -= (long)off * Second;
+            t.OffsetSeconds = off;
+            t.ZoneName = name;
+            t.Tz = gl.Tz;
         }
         return t;
     }
@@ -201,9 +204,15 @@ public static class Time
     public static object Time_In(object t, object loc)
     {
         var gt = (GoTime)t; var gl = loc as GoLocation;
-        return new GoTime { N = gt.N, IsZero = gt.IsZero, OffsetSeconds = gl?.OffsetSeconds ?? 0, ZoneName = gl?.Name ?? "UTC" };
+        if (gl == null) return new GoTime { N = gt.N, IsZero = gt.IsZero };
+        // Display the same instant in loc's zone; for a DST-aware zone resolve at this instant.
+        var utc = Epoch.AddTicks(gt.N / 100); // Kind=Utc (Epoch is UTC)
+        var (off, name) = ZoneAt(gl, utc);
+        return new GoTime { N = gt.N, IsZero = gt.IsZero, OffsetSeconds = off, ZoneName = name, Tz = gl.Tz };
     }
-    public static object Time_Location(object t) { var gt = (GoTime)t; return new GoLocation { Name = gt.ZoneName, OffsetSeconds = gt.OffsetSeconds }; }
+    // Location().String() is the zone's IANA id ("America/New_York"), not the per-instant
+    // abbreviation stored in ZoneName ("EDT") — recover the id from Tz when it is a real zone.
+    public static object Time_Location(object t) { var gt = (GoTime)t; return new GoLocation { Name = gt.Tz?.Id ?? gt.ZoneName, OffsetSeconds = gt.OffsetSeconds, Tz = gt.Tz }; }
     public static long Time_Month(object t) => ZeroDate(t, dt => dt.Month, 1);
     public static long Time_Day(object t) => ZeroDate(t, dt => dt.Day, 1);
     public static long Time_Hour(object t) => ZeroDate(t, dt => dt.Hour, 0);
@@ -226,7 +235,7 @@ public static class Time
         // GoLocation interprets the wall-clock fields in that zone).
         return Date(dt.Year + years, dt.Month + months, dt.Day + days,
                     dt.Hour, dt.Minute, dt.Second, nanos,
-                    new GoLocation { Name = gt.ZoneName, OffsetSeconds = gt.OffsetSeconds });
+                    new GoLocation { Name = gt.ZoneName, OffsetSeconds = gt.OffsetSeconds, Tz = gt.Tz });
     }
     public static object Time_Round(object t, long d) { var gt = (GoTime)t; var n = gt.N; if (d <= 0) return gt.IsZero ? t : With(gt, n); long r = n % d; n = r + r < d ? n - r : n - r + d; return With(gt, n); }
     public static object Time_Truncate(object t, long d) { var gt = (GoTime)t; var n = gt.N; if (d <= 0) return gt.IsZero ? t : With(gt, n); return With(gt, n - n % d); }
@@ -689,7 +698,7 @@ public static class Time
         try
         {
             var tz = System.TimeZoneInfo.FindSystemTimeZoneById(n);
-            return new object?[] { new GoLocation { Name = n, OffsetSeconds = (int)tz.BaseUtcOffset.TotalSeconds }, null };
+            return new object?[] { new GoLocation { Name = n, OffsetSeconds = (int)tz.BaseUtcOffset.TotalSeconds, Tz = tz }, null };
         }
         catch
         {
@@ -697,18 +706,46 @@ public static class Time
         }
     }
     private static readonly object UtcLoc = new GoLocation();
+
+    // Resolve a zone's offset (seconds east of UTC) and abbreviation at a given moment.
+    // For a DST-aware IANA zone (gl.Tz set) the offset varies by instant, so we ask
+    // TimeZoneInfo: pass the wall-clock as Unspecified (interpreted in the zone) when
+    // constructing from y/m/d fields, or the instant as Utc when displaying an existing
+    // time. A fixed/UTC zone (Tz null) keeps its constant offset and name.
+    private static (int off, string name) ZoneAt(GoLocation gl, System.DateTime moment)
+    {
+        if (gl.Tz == null) return (gl.OffsetSeconds, gl.Name);
+        int off = (int)gl.Tz.GetUtcOffset(moment).TotalSeconds;
+        bool dst = gl.Tz.IsDaylightSavingTime(moment);
+        return (off, ZoneAbbrev(dst ? gl.Tz.DaylightName : gl.Tz.StandardName, gl.Name));
+    }
+
+    // .NET reports a zone's full English name ("Eastern Daylight Time"); Go's time uses the
+    // IANA abbreviation ("EDT"). For the common US/European zones the uppercase initials of
+    // the English name are exactly the IANA abbreviation, so derive that; fall back to the
+    // IANA id when the name has no usable initials. (A handful of zones whose abbreviation is
+    // not the English initials — e.g. Europe/Moscow "MSK" — are noted in LIMITATIONS.)
+    private static string ZoneAbbrev(string fullName, string ianaId)
+    {
+        if (string.IsNullOrEmpty(fullName)) return ianaId;
+        var sb = new System.Text.StringBuilder();
+        foreach (var w in fullName.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))
+            if (char.IsUpper(w[0])) sb.Append(w[0]);
+        return sb.Length >= 2 ? sb.ToString() : ianaId;
+    }
 }
 
 /// <summary>A time.Time value: the instant as Unix nanoseconds (UTC), plus the location's
 /// fixed UTC offset and zone name for wall-clock display. OffsetSeconds 0 / "UTC" is the
 /// default, so a UTC time behaves exactly as before.</summary>
 [GoShim("time.Time")]
-public sealed class GoTime { public long N; public bool IsZero; public int OffsetSeconds; public string ZoneName = "UTC"; }
+public sealed class GoTime { public long N; public bool IsZero; public int OffsetSeconds; public string ZoneName = "UTC"; public System.TimeZoneInfo? Tz; }
 
-/// <summary>A *time.Location: UTC by default, or a fixed-offset zone from
-/// time.FixedZone (Name + OffsetSeconds).</summary>
+/// <summary>A *time.Location: UTC by default, a fixed-offset zone from
+/// time.FixedZone (Name + OffsetSeconds), or a DST-aware IANA zone (Tz set,
+/// so the offset/abbreviation are resolved per instant).</summary>
 [GoShim("time.Location")]
-public sealed class GoLocation { public string Name = "UTC"; public int OffsetSeconds; }
+public sealed class GoLocation { public string Name = "UTC"; public int OffsetSeconds; public System.TimeZoneInfo? Tz; }
 
 /// <summary>A *time.Ticker / *time.Timer: the C channel plus its driving timer.</summary>
 public sealed class GoTicker { public GoChan C = null!; public System.Threading.Timer? Timer; }

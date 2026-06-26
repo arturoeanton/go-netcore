@@ -272,18 +272,26 @@ matches `"a"` here, `"ab"` under Go's POSIX mode. `(*Regexp).Longest()` is a no-
 special-case expansions (e.g. `İ` U+0130 → `i` + combining dot) are not applied.
 `ß`→`SS`, final-sigma, and the common Latin/Greek/Cyrillic mappings are correct.
 
-## time zones — fixed-offset only
+## time zones — DST-aware IANA + fixed-offset
 
-`time.FixedZone` and any location with a constant UTC offset are supported:
-`time.Date(..., loc)` interprets the wall-clock fields in that zone, `Format`
-renders the offset (`-0700`/`Z07:00`) and zone name (`MST`), and `UTC`/`In`/
-`Zone`/`Location` convert and report it; `Add`/`AddDate`/`Truncate`/`Round`
-preserve the zone, and the instant (`Unix`) is zone-independent. **DST and IANA
-transitions are not modeled** — `LoadLocation` returns a fixed zone at the
-location's base offset, so dates in the DST half of the year will be off by an
-hour. Go's `time.Now()`/`time.Local` use UTC (no local zone in the runtime).
-`Parse` reads a zone offset from the input (`Z07:00`/`-0700`) into the value,
-and `ParseInLocation` interprets a zoneless layout in the given location.
+`time.FixedZone`, `time.UTC`, and DST-aware IANA zones from `time.LoadLocation`
+are supported: `time.Date(..., loc)` interprets the wall-clock fields in that
+zone, `Format` renders the offset (`-0700`/`Z07:00`) and abbreviation (`MST`
+token), and `UTC`/`In`/`Zone`/`Location` convert and report it; `Add`/`AddDate`/
+`Truncate`/`Round` preserve the zone (and `AddDate` re-resolves DST at the new
+date), and the instant (`Unix`) is zone-independent. **DST transitions ARE now
+modeled** — `LoadLocation("America/New_York")` resolves `-0400 EDT` in July and
+`-0500 EST` in January via the system zoneinfo, so offsets and cross-zone `Sub`
+are correct year-round. Two residual edges: (1) the zone *abbreviation* is
+derived from .NET's English zone name (whose uppercase initials equal the IANA
+abbreviation for the US/EU/common zones — EDT, PST, CST, BST, GMT, JST, IST,
+AEST/AEDT — but a few zones whose IANA abbreviation is not the English initials,
+e.g. `Europe/Moscow` → `MSK`, will differ); (2) the exact wall-clock chosen
+inside a spring-forward/fall-back transition hour may differ from Go's rule.
+Go's `time.Now()`/`time.Local` use UTC (no local zone in the runtime). `Parse`
+reads a zone offset from the input (`Z07:00`/`-0700`) into the value, and
+`ParseInLocation` interprets a zoneless layout in the given location (at the
+location's base offset).
 
 `Format`/`Parse` accept fractional-second layout tokens of **any** width — a `.`
 or `,` separator followed by a run of `0`s (fixed width, trailing zeros kept) or
