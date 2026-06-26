@@ -109,7 +109,8 @@ public static class Csv
             if (want < 0) { r.Expect = line.Count; want = line.Count; }
             if (line.Count != want)
                 // Go returns the parsed record ALONGSIDE the field-count error, not a nil record.
-                return new object?[] { Row(line), new GoError(GoString.FromDotNetString("record on line " + r.RowIdx + ": wrong number of fields")) };
+                // The error is a *csv.ParseError wrapping ErrFieldCount, so errors.As/Is work.
+                return new object?[] { Row(line), new GoCsvParseError { StartLine = r.RowIdx, Line = r.RowIdx, Column = 1, Err = ErrFieldCountSentinel } };
         }
         return new object?[] { Row(line), null };
     }
@@ -126,7 +127,7 @@ public static class Csv
             {
                 if (expect < 0) expect = line.Count; // FieldsPerRecord==0: set from first record
                 else if (line.Count != expect)
-                    return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("record on line " + lineNo + ": wrong number of fields")) };
+                    return new object?[] { default(GoSlice), new GoCsvParseError { StartLine = lineNo, Line = lineNo, Column = 1, Err = ErrFieldCountSentinel } };
             }
             rows.Add(Row(line));
         }
