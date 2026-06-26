@@ -337,7 +337,12 @@ public static class Csv
         {
             if (i > 0) w.SB.Append(w.Comma);
             string f = ((GoString)record.Data![record.Off + i]!).ToDotNetString();
-            if (f.Contains(w.Comma) || f.Contains('"') || f.Contains('\n') || f.Contains('\r'))
+            // Go's fieldNeedsQuotes: quote when the field contains the comma/quote/CR/LF, is
+            // the literal "\." (confuses some parsers), or BEGINS with whitespace (so leading
+            // space is preserved against readers that trim).
+            bool needQuotes = f.Length > 0 &&
+                (f == "\\." || f.Contains(w.Comma) || f.Contains('"') || f.Contains('\n') || f.Contains('\r') || char.IsWhiteSpace(f[0]));
+            if (needQuotes)
                 w.SB.Append('"').Append(f.Replace("\"", "\"\"")).Append('"');
             else w.SB.Append(f);
         }
