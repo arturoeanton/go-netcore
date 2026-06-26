@@ -11,6 +11,10 @@ public sealed class GoGCM { public byte[] Key = System.Array.Empty<byte>(); }
 public sealed class GoCBC { public byte[] Key = System.Array.Empty<byte>(); public byte[] IV = System.Array.Empty<byte>(); public bool Encrypt; }
 /// <summary>A cipher.Stream (AES-CTR): a big-endian counter + the current keystream block.</summary>
 public sealed class GoCTR { public byte[] Key = System.Array.Empty<byte>(); public byte[] Counter = System.Array.Empty<byte>(); public byte[] KeyStream = new byte[16]; public int Used = 16; }
+/// <summary>A cipher.Stream (AES-CFB, 128-bit full-block feedback): the feedback is the ciphertext.</summary>
+public sealed class GoCFB { public byte[] Key = System.Array.Empty<byte>(); public byte[] Next = System.Array.Empty<byte>(); public byte[] Out = new byte[16]; public int Used = 16; public bool Decrypt; }
+/// <summary>A cipher.Stream (AES-OFB): the keystream feeds back into itself (O_j = E(O_{j-1})).</summary>
+public sealed class GoOFB { public byte[] Key = System.Array.Empty<byte>(); public byte[] Feedback = System.Array.Empty<byte>(); public int Used = 16; }
 
 /// <summary>Shim for crypto/aes + crypto/cipher AES-GCM (the common AEAD path).</summary>
 public static class Aes
@@ -102,5 +106,83 @@ public static class Aes
             outp[i] = (byte)(input[i] ^ ctr.KeyStream[ctr.Used++]);
         }
         Into(dst, outp);
+    }
+
+    private static ICryptoTransform Ecb(byte[] key)
+    {
+        var a = System.Security.Cryptography.Aes.Create();
+        a.Key = key; a.Mode = CipherMode.ECB; a.Padding = PaddingMode.None;
+        return a.CreateEncryptor();
+    }
+
+    // CTR/CFB/OFB all satisfy cipher.Stream, so the interface's XORKeyStream dispatches on the
+    // concrete handle the constructor returned.
+    public static void Stream_XORKeyStream(object c, GoSlice dst, GoSlice src)
+    {
+        switch (c)
+        {
+            case GoCTR: CTR_XORKeyStream(c, dst, src); break;
+            case GoCFB: CFB_XORKeyStream(c, dst, src); break;
+            case GoOFB: OFB_XORKeyStream(c, dst, src); break;
+        }
+    }
+
+    // --- cipher.NewCFBEncrypter / NewCFBDecrypter (128-bit full-block CFB, like Go) ---
+    public static object NewCFBEncrypter(object block, GoSlice iv) => new GoCFB { Key = ((GoBlock)block).Key, Next = B(iv), Decrypt = false };
+    public static object NewCFBDecrypter(object block, GoSlice iv) => new GoCFB { Key = ((GoBlock)block).Key, Next = B(iv), Decrypt = true };
+    private static void CFB_XORKeyStream(object c, GoSlice dst, GoSlice src)
+    {
+        var cfb = (GoCFB)c;
+        byte[] input = B(src);
+        byte[] outp = new byte[input.Length];
+        var enc = Ecb(cfb.Key);
+        for (int i = 0; i < input.Length; i++)
+        {
+            if (cfb.Used == 16) { cfb.Out = enc.TransformFinalBlock(cfb.Next, 0, 16); cfb.Used = 0; }
+            if (cfb.Decrypt)
+            {
+                cfb.Next[cfb.Used] = input[i];
+                outp[i] = (byte)(input[i] ^ cfb.Out[cfb.Used]);
+            }
+            else
+            {
+                outp[i] = (byte)(input[i] ^ cfb.Out[cfb.Used]);
+                cfb.Next[cfb.Used] = outp[i];
+            }
+            cfb.Used++;
+        }
+        Into(dst, outp);
+    }
+
+    // --- cipher.NewOFB ---
+    public static object NewOFB(object block, GoSlice iv) => new GoOFB { Key = ((GoBlock)block).Key, Feedback = B(iv), Used = 16 };
+    private static void OFB_XORKeyStream(object c, GoSlice dst, GoSlice src)
+    {
+        var ofb = (GoOFB)c;
+        byte[] input = B(src);
+        byte[] outp = new byte[input.Length];
+        var enc = Ecb(ofb.Key);
+        for (int i = 0; i < input.Length; i++)
+        {
+            if (ofb.Used == 16) { ofb.Feedback = enc.TransformFinalBlock(ofb.Feedback, 0, 16); ofb.Used = 0; }
+            outp[i] = (byte)(input[i] ^ ofb.Feedback[ofb.Used]);
+            ofb.Used++;
+        }
+        Into(dst, outp);
+    }
+
+    // --- cipher.Block.Encrypt / Decrypt (a single raw 16-byte block) ---
+    public static long Block_BlockSize(object b) => 16;
+    public static void Block_Encrypt(object b, GoSlice dst, GoSlice src)
+    {
+        byte[] in16 = new byte[16]; System.Array.Copy(B(src), in16, 16);
+        Into(dst, Ecb(((GoBlock)b).Key).TransformFinalBlock(in16, 0, 16));
+    }
+    public static void Block_Decrypt(object b, GoSlice dst, GoSlice src)
+    {
+        byte[] in16 = new byte[16]; System.Array.Copy(B(src), in16, 16);
+        var a = System.Security.Cryptography.Aes.Create();
+        a.Key = ((GoBlock)b).Key; a.Mode = CipherMode.ECB; a.Padding = PaddingMode.None;
+        Into(dst, a.CreateDecryptor().TransformFinalBlock(in16, 0, 16));
     }
 }
