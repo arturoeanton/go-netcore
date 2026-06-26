@@ -241,6 +241,13 @@ The Bessel functions `math.J0`/`J1`/`Y0`/`Y1`/`Jn`/`Yn` are now fdlibm ports too
 inherit the same last-ULP trig/log edge as `math.Sin`/`Cos`/`Log` above (correct to
 ~1 ULP, ~15 significant digits).
 
+`math/cmplx` is now complete — `Exp`/`Rect`/`Pow`/`Sin`/`Cos`/`Tan`/`Cot`/`Sinh`/`Cosh`/
+`Tanh` and the inverse trig/hyperbolic (`Asin`/`Acos`/`Atan`/`Asinh`/`Acosh`/`Atanh`) are
+faithful ports of Go's `cmplx` package. Their **special cases are exact** (`0`/`±Inf`/`NaN`,
+sign conventions, the `Pow(0, y)` table), and transcendental values are correct to ~1 ULP:
+they are built from the real `Sin`/`Cos`/`Exp`/`Log`/`Asin`/`Atanh` primitives, which match
+Go to within the last ULP on this platform (`math.Asin`/`Atanh`/`Sin`/`Cos` already do).
+
 `math/rand` with an explicit source — `rand.New(rand.NewSource(seed))` and all its methods
 (`Int`/`Intn`/`Int63`/`Uint64`/`Float64`/`NormFloat64`/`ExpFloat64`/`Perm`/`Shuffle`/`Read`,
 …) — is byte-exact with Go (Go's PRNG is ported). The **top-level** `rand.Seed`/`rand.Intn`

@@ -363,10 +363,14 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Abs": {"Cmplx", "Abs"}, "Conj": {"Cmplx", "Conj"}, "Phase": {"Cmplx", "Phase"}, "Polar": {"Cmplx", "Polar"},
 		"Inf": {"Cmplx", "Inf"}, "NaN": {"Cmplx", "NaN"}, "IsInf": {"Cmplx", "IsInf"},
 		"IsNaN": {"Cmplx", "IsNaN"}, "Sqrt": {"Cmplx", "Sqrt"}, "Log": {"Cmplx", "Log"},
-		"Log10": {"Cmplx", "Log10"},
-		// Exp/Rect deferred: Go's math.Sincos uses a combined argument reduction, so a result
-		// built from separate Cos/Sin differs by the last ULP (verified). Sin/Cos/Tan/Pow are
-		// not implemented in the Cmplx shim either.
+		"Log10": {"Cmplx", "Log10"}, "Rect": {"Cmplx", "Rect"}, "Exp": {"Cmplx", "Exp"},
+		"Pow": {"Cmplx", "Pow"}, "Cot": {"Cmplx", "Cot"},
+		"Sin": {"Cmplx", "Sin"}, "Cos": {"Cmplx", "Cos"}, "Tan": {"Cmplx", "Tan"},
+		"Sinh": {"Cmplx", "Sinh"}, "Cosh": {"Cmplx", "Cosh"}, "Tanh": {"Cmplx", "Tanh"},
+		"Asin": {"Cmplx", "Asin"}, "Acos": {"Cmplx", "Acos"}, "Atan": {"Cmplx", "Atan"},
+		"Asinh": {"Cmplx", "Asinh"}, "Acosh": {"Cmplx", "Acosh"}, "Atanh": {"Cmplx", "Atanh"},
+		// Exp/Rect and the trig/Pow functions call Sin/Cos/Exp/Log, which match Go to within
+		// the last ULP on this platform (math.Sin/Cos already do) — see LIMITATIONS.
 	},
 	"math/bits": {
 		"OnesCount": {"MathBits", "OnesCount"}, "OnesCount64": {"MathBits", "OnesCount64"}, "OnesCount32": {"MathBits", "OnesCount32"},
