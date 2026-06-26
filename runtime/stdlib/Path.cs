@@ -222,6 +222,93 @@ public static class Path
         return new object?[] { nm.Length == 0, null };
     }
 
+    // filepath.Glob(pattern) ([]string, error): the names of all files matching pattern
+    // (filepath.Match syntax). File-system errors are ignored (a non-existent or unreadable
+    // directory yields no matches); only a malformed pattern returns ErrBadPattern. Results
+    // within a directory are sorted, matching Go's use of a sorted Readdirnames.
+    public static object?[] Glob(GoString pattern)
+    {
+        var (matches, err) = GlobImpl(pattern.ToDotNetString(), 0);
+        if (err != null) return new object?[] { NilStrSlice(), err };
+        if (matches == null || matches.Count == 0) return new object?[] { NilStrSlice(), null };
+        return new object?[] { StrSlice(matches), null };
+    }
+
+    private static GoSlice NilStrSlice() => new GoSlice { Data = null, Off = 0, Len = 0, Cap = 0 };
+    private static GoSlice StrSlice(System.Collections.Generic.List<string> xs)
+    {
+        var d = new object?[xs.Count];
+        for (int i = 0; i < xs.Count; i++) d[i] = GoString.FromDotNetString(xs[i]);
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
+
+    private static bool HasMeta(string path)
+    {
+        foreach (char c in path) if (c == '*' || c == '?' || c == '[' || c == '\\') return true;
+        return false;
+    }
+
+    private static (System.Collections.Generic.List<string>?, object?) GlobImpl(string pattern, int depth)
+    {
+        if (depth >= 10000) return (null, ErrBadPatternSentinel);
+        if (!HasMeta(pattern))
+        {
+            if (!(System.IO.File.Exists(pattern) || System.IO.Directory.Exists(pattern)))
+                return (new System.Collections.Generic.List<string>(), null);
+            return (new System.Collections.Generic.List<string> { pattern }, null);
+        }
+        var sp = Split(GoString.FromDotNetString(pattern));
+        string dir = ((GoString)sp[0]!).ToDotNetString();
+        string file = ((GoString)sp[1]!).ToDotNetString();
+        dir = CleanGlobPath(dir);
+        if (!HasMeta(dir))
+            return GlobDir(dir, file, new System.Collections.Generic.List<string>());
+        if (dir == pattern) return (null, ErrBadPatternSentinel);
+        var (m, e) = GlobImpl(dir, depth + 1);
+        if (e != null) return (null, e);
+        var result = new System.Collections.Generic.List<string>();
+        foreach (var d in m!)
+        {
+            var (r, e2) = GlobDir(d, file, result);
+            if (e2 != null) return (null, e2);
+            result = r!;
+        }
+        return (result, null);
+    }
+
+    // Go's cleanGlobPath: "" -> ".", "/" stays, otherwise drop the trailing separator.
+    private static string CleanGlobPath(string path)
+    {
+        if (path.Length == 0) return ".";
+        if (path == "/") return path;
+        return path.TrimEnd('/');
+    }
+
+    private static (System.Collections.Generic.List<string>?, object?) GlobDir(string dir, string pattern, System.Collections.Generic.List<string> matches)
+    {
+        string statDir = dir.Length == 0 ? "." : dir;
+        if (!System.IO.Directory.Exists(statDir)) return (matches, null); // not a dir / missing -> ignored
+        string[] names;
+        try { names = System.IO.Directory.GetFileSystemEntries(statDir); }
+        catch (System.Exception) { return (matches, null); }
+        var bases = new System.Collections.Generic.List<string>(names.Length);
+        foreach (var n in names) bases.Add(System.IO.Path.GetFileName(n));
+        bases.Sort(System.StringComparer.Ordinal);
+        foreach (var n in bases)
+        {
+            var mr = Match(GoString.FromDotNetString(pattern), GoString.FromDotNetString(n));
+            if (mr[1] != null) return (matches, mr[1]);
+            if ((bool)mr[0]!) matches.Add(JoinTwo(dir, n));
+        }
+        return (matches, null);
+    }
+
+    private static string JoinTwo(string a, string b)
+    {
+        if (a.Length == 0) return Clean(b);
+        return Clean(a + "/" + b);
+    }
+
     private static byte[] Sub(byte[] b, int from) => Sub(b, from, b.Length);
     private static byte[] Sub(byte[] b, int from, int to)
     {

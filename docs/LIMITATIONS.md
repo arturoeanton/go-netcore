@@ -411,6 +411,13 @@ larger feature or external module):
   403_fs_fileinfo_dispatch. (Note: `testing/fstest.MapFS` is standard-library code that is
   not lowered, so its methods can't be bridged — that is a stdlib-coverage gap, not a
   dispatch gap; a user-defined in-memory `fs.FS` works.)
+- **`path/filepath.Glob`** — works: returns the files matching a `Match`-syntax pattern
+  (`*`, `?`, `[…]`, recursive `*/*.go`), sorted within each directory; file-system errors
+  are ignored (a missing/unreadable directory yields no matches), a non-meta pattern checks
+  existence, no matches returns a nil slice, and a malformed pattern returns `ErrBadPattern`.
+  Fixture 731. (`filepath.Walk` is still a no-op that returns nil without walking, and
+  `WalkDir` is unsupported — both need to invoke a Go walk callback from the shim, the same
+  callback-bridge gap noted for a few other APIs.)
 - **`x/sync/errgroup`** — works: compiles from source and runs (concurrent goroutines +
   first-error propagation), now that `context.WithCancelCause`/`context.Cause` are shimmed.
   See `examples/demo_errgroup` (requires `go mod vendor`). Cancellation now cascades to

@@ -223,7 +223,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
 		"ToSlash": {"Path", "ToSlash"}, "FromSlash": {"Path", "FromSlash"}, "Walk": {"Path", "Walk"}, "Abs": {"Path", "Abs"},
-		"Match": {"Path", "Match"},
+		"Match": {"Path", "Match"}, "Glob": {"Path", "Glob"},
 		"Rel": {"Path", "Rel"}, "SplitList": {"Path", "SplitList"}, "VolumeName": {"Path", "VolumeName"},
 		"IsLocal": {"Path", "IsLocal"}, "HasPrefix": {"Path", "HasPrefix"},
 	},
