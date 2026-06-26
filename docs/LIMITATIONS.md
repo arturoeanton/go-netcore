@@ -258,6 +258,15 @@ or `,` separator followed by a run of `0`s (fixed width, trailing zeros kept) or
 `9`s (trailing zeros trimmed, separator dropped when empty) — not just the canonical
 `.000`/`.000000000`/`.999999999` forms (`.9`, `.99`, `.000000`, `05,000`, … all work).
 
+`Parse` error messages match Go: a failed layout token reports the unparsed value
+remainder and the expected token (`cannot parse "9z" as "02"`), and an out-of-range
+numeric field reports `parsing time "…": <field> out of range` (month/day/hour/minute/
+second, validated inline as Go does). Fixture 682_time_parse_errors. **Deferred parse
+edges:** a zero-padded token (`02`) is not yet strict about requiring exactly two digits
+(a single digit before a non-digit is accepted), a literal-separator mismatch names the
+whole remaining layout rather than just the literal chunk, and trailing "extra text" is
+not reported.
+
 ## Fixed-size arrays — value semantics edge
 
 `[N]T` fixed-size arrays are supported (slice-backed). They carry Go value

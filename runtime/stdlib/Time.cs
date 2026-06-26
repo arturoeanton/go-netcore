@@ -396,6 +396,9 @@ public static class Time
     // result is in UTC (goclr's time is UTC-only; see docs/LIMITATIONS.md).
     public static object?[] Parse(GoString layout, GoString value) => ParseImpl(layout, value, null);
 
+    // Thrown when a parsed time field is outside its valid range (Go's "<field> out of range").
+    private sealed class RangeError : System.Exception { public readonly string Field; public RangeError(string f) { Field = f; } }
+
     private static object?[] ParseImpl(GoString layout, GoString value, GoLocation? defaultLoc)
     {
         string lay = layout.ToDotNetString(), val = value.ToDotNetString();
@@ -403,7 +406,7 @@ public static class Time
         // Unix epoch (representable range ~1678..2262), so a yearless layout uses 1970
         // to keep the parsed clock fields exact without overflowing (see docs/LIMITATIONS.md).
         int year = 1970, month = 1, day = 1, hour = 0, min = 0, sec = 0, nsec = 0;
-        bool hasPM = false, pm = false;
+        bool hasPM = false, pm = false, hour12 = false;
         int li = 0, vi = 0;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
 
@@ -450,22 +453,27 @@ public static class Time
             }
         }
 
+        int liStart = 0, viStart = 0; // start of the layout element / value position being parsed
         try
         {
             while (li < lay.Length)
             {
+                liStart = li; viStart = vi;
+                // Numeric fields are range-checked inline (as Go validates each field while
+                // parsing, before a later literal can fail): a bad value reports "<field> out
+                // of range" rather than "cannot parse".
                 if (Tok("2006")) year = ReadInt(4);
                 else if (Tok("06")) year = 2000 + ReadInt(2);
                 else if (Tok("January")) month = ReadName(MonthsLong) + 1;
                 else if (Tok("Jan")) month = ReadName(MonthsAbbr) + 1;
-                else if (Tok("01")) month = ReadInt(2);
+                else if (Tok("01")) { month = ReadInt(2); if (month < 1 || month > 12) throw new RangeError("month"); }
                 else if (Tok("Monday")) ReadName(DaysLong);
                 else if (Tok("Mon")) ReadName(DaysAbbr);
-                else if (Tok("02") || Tok("_2")) day = ReadInt(2);
-                else if (Tok("15")) hour = ReadInt(2);
-                else if (Tok("03")) hour = ReadInt(2);
-                else if (Tok("04")) min = ReadInt(2);
-                else if (Tok("05")) sec = ReadInt(2);
+                else if (Tok("02") || Tok("_2")) { day = ReadInt(2); if (day < 1 || day > 31) throw new RangeError("day"); }
+                else if (Tok("15")) { hour = ReadInt(2); if (hour < 0 || hour > 23) throw new RangeError("hour"); }
+                else if (Tok("03")) { hour = ReadInt(2); hour12 = true; if (hour < 0 || hour > 12) throw new RangeError("hour"); }
+                else if (Tok("04")) { min = ReadInt(2); if (min < 0 || min > 59) throw new RangeError("minute"); }
+                else if (Tok("05")) { sec = ReadInt(2); if (sec < 0 || sec > 60) throw new RangeError("second"); }
                 else if (Tok("PM") || Tok("pm"))
                 {
                     hasPM = true;
@@ -483,11 +491,11 @@ public static class Time
                 else if (Tok("Z07:00") || Tok("Z0700") || Tok("Z07")) ReadZone();
                 else if (Tok("-07:00") || Tok("-0700") || Tok("-07")) ReadZone();
                 else if (Tok("MST")) { while (vi < val.Length && char.IsLetter(val[vi])) vi++; }
-                else if (Tok("3")) hour = ReadInt(2);
-                else if (Tok("2")) day = ReadInt(2);
-                else if (Tok("1")) month = ReadInt(2);
-                else if (Tok("4")) min = ReadInt(2);
-                else if (Tok("5")) sec = ReadInt(2);
+                else if (Tok("3")) { hour = ReadInt(2); hour12 = true; if (hour < 0 || hour > 12) throw new RangeError("hour"); }
+                else if (Tok("2")) { day = ReadInt(2); if (day < 1 || day > 31) throw new RangeError("day"); }
+                else if (Tok("1")) { month = ReadInt(2); if (month < 1 || month > 12) throw new RangeError("month"); }
+                else if (Tok("4")) { min = ReadInt(2); if (min < 0 || min > 59) throw new RangeError("minute"); }
+                else if (Tok("5")) { sec = ReadInt(2); if (sec < 0 || sec > 60) throw new RangeError("second"); }
                 else
                 {
                     if (vi < val.Length && val[vi] == lay[li]) { vi++; li++; }
@@ -514,10 +522,21 @@ public static class Time
             }
             return new object?[] { t, null };
         }
+        catch (RangeError re)
+        {
+            // A parsed field was out of range: Go reports `parsing time "VALUE": <field> out of range`.
+            return new object?[] { new GoTime { IsZero = true },
+                new GoError("parsing time \"" + val + "\": " + re.Field + " out of range") };
+        }
         catch
         {
+            // Go's message names where it stopped: the unparsed value remainder and the layout
+            // element it expected there (the matched token, e.g. "2006"; for a literal mismatch,
+            // the remaining layout text).
+            string remaining = val.Substring(System.Math.Min(viStart, val.Length));
+            string std = li > liStart ? lay.Substring(liStart, li - liStart) : lay.Substring(liStart);
             return new object?[] { new GoTime { IsZero = true },
-                new GoError("parsing time \"" + val + "\" as \"" + lay + "\": cannot parse") };
+                new GoError("parsing time \"" + val + "\" as \"" + lay + "\": cannot parse \"" + remaining + "\" as \"" + std + "\"") };
         }
     }
 
