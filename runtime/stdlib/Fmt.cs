@@ -563,8 +563,8 @@ public static class Fmt
             case 'b': return IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'b', -1, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, 2, false);
             case 'o': return IntVerb(v, sp, 8, sp.Hash);
             case 'O': return IntVerb(v, sp, 8, sp.Hash); // 0o-prefixed octal (prefix added in IntVerb)
-            case 'x': return v is GoString gx ? HexStr(gx, false, sp.Space) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false, sp.Space) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'x', sp.Prec, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, 16, sp.Hash);
-            case 'X': return v is GoString gX ? HexStr(gX, true, sp.Space) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true, sp.Space) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'X', sp.Prec, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, -16, sp.Hash);
+            case 'x': return v is GoString gx ? HexStr(gx, false, sp.Space, sp.Hash) : v is GoSlice sx ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sx, false, sp.Space, sp.Hash) : RecurseSlice(sx, sp)) : v is GoMap mx ? RecurseMap(mx, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'x', sp.Prec, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, 16, sp.Hash);
+            case 'X': return v is GoString gX ? HexStr(gX, true, sp.Space, sp.Hash) : v is GoSlice sX ? ((IsByteSliceName(wname) || wByteNamed) ? HexSlice(sX, true, sp.Space, sp.Hash) : RecurseSlice(sX, sp)) : v is GoMap mX ? RecurseMap(mX, sp) : IsStructVal(v) ? RecurseStruct(v!, sp) : IsFloaty(v) ? FloatVerb(v, sp, () => Strconv.FormatFloat(ToDouble(v), 'X', sp.Prec, v is float ? 32 : 64).ToDotNetString(), verb) : IntVerb(v, sp, -16, sp.Hash);
             case 't': return v is bool bb ? (bb ? "true" : "false") : BadVerb(verb, v);
             case 'c': return IsIntegral(v) ? char.ConvertFromUtf32((int)ToLong(v)) : BadVerb(verb, v);
             case 'U': return IsIntegral(v) ? UnicodeVerb(ToLong(v), sp.Hash) : BadVerb(verb, v);
@@ -578,7 +578,7 @@ public static class Fmt
             case 'e': return v is GoComplex ce ? ComplexVerb(ce, d => GoFtoa.FormatE(d, sp.Prec < 0 ? 6 : sp.Prec)) : FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
             case 'E': return v is GoComplex cE ? ComplexVerb(cE, d => GoFtoa.FormatE(d, sp.Prec < 0 ? 6 : sp.Prec, 'E')) : FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec, 'E'), verb);
             case 'g': return v is GoComplex cg ? ComplexVerb(cg, d => sp.Prec < 0 ? GoFtoa.Shortest(d) : GoFtoa.FormatG(d, sp.Prec)) : FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gf ? GoFtoa.Shortest(gf) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
-            case 'G': return v is GoComplex cG ? ComplexVerb(cG, d => sp.Prec < 0 ? GoFtoa.Shortest(d) : GoFtoa.FormatG(d, sp.Prec)) : FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gF ? GoFtoa.Shortest(gF) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
+            case 'G': return v is GoComplex cG ? ComplexVerb(cG, d => UpperExp(sp.Prec < 0 ? GoFtoa.Shortest(d) : GoFtoa.FormatG(d, sp.Prec))) : FloatVerb(v, sp, () => UpperExp(sp.Prec < 0 ? (v is float gF ? GoFtoa.Shortest(gF) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec)), verb);
             case 'p':
                 if (v == null) return "<nil>";
                 // Go's %p accepts only pointer-like kinds (pointer/slice/map/chan/func);
@@ -765,18 +765,31 @@ public static class Fmt
     private static double ToDouble(object? v) => v == null ? 0 : System.Convert.ToDouble(v, Inv);
 
     // %x/%X of a byte string/slice; the space flag (% x) puts a space between each byte pair.
-    private static string HexStr(GoString s, bool upper, bool space)
+    // %G uppercases the exponent marker only (e->E), leaving +Inf/NaN as-is.
+    private static string UpperExp(string s) => s.IndexOf('e') >= 0 ? s.Replace('e', 'E') : s;
+
+    private static string HexStr(GoString s, bool upper, bool space, bool hash = false)
     {
-        var sb = new StringBuilder();
         var by = s.Bytes;
-        for (int i = 0; i < by.Length; i++) { if (space && i > 0) sb.Append(' '); sb.Append(by[i].ToString(upper ? "X2" : "x2", Inv)); }
-        return sb.ToString();
+        return HexBytes(i => by[i], by.Length, upper, space, hash);
     }
 
-    private static string HexSlice(GoSlice s, bool upper, bool space)
+    private static string HexSlice(GoSlice s, bool upper, bool space, bool hash = false) =>
+        HexBytes(i => (byte)ToLong(s.Data![s.Off + i]), s.Len, upper, space, hash);
+
+    // Hex of a byte sequence for %x/%X. The '#' flag adds an 0x/0X prefix — once for the
+    // whole run, or once per byte when combined with the space flag (Go: "0xde 0xad").
+    private static string HexBytes(System.Func<int, byte> at, int len, bool upper, bool space, bool hash)
     {
         var sb = new StringBuilder();
-        for (int i = 0; i < s.Len; i++) { if (space && i > 0) sb.Append(' '); sb.Append(((byte)ToLong(s.Data[s.Off + i])).ToString(upper ? "X2" : "x2", Inv)); }
+        string prefix = upper ? "0X" : "0x";
+        if (hash && !space && len > 0) sb.Append(prefix);
+        for (int i = 0; i < len; i++)
+        {
+            if (space && i > 0) sb.Append(' ');
+            if (hash && space) sb.Append(prefix);
+            sb.Append(at(i).ToString(upper ? "X2" : "x2", Inv));
+        }
         return sb.ToString();
     }
 

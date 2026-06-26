@@ -205,6 +205,10 @@ Remaining edges (documented, not silent):
   honored too: `%#q` prefers a raw-string (back-quote) literal when the value can be
   back-quoted (else double-quotes), and `%+q` escapes all non-ASCII (`QuoteToASCII` /
   `QuoteRuneToASCII`), through strings, runes, `[]byte`, slices and maps. Fixture 741.
+  `%#x`/`%#X` of a string or `[]byte` add the `0x`/`0X` prefix (once, or per byte under
+  ` ` like Go's `0xde 0xad`), and `%G` uppercases the shortest-form exponent (`1E-05`).
+  Fixture 742. The one residual is **`%#g`/`%#G`** (the `#` flag's "keep trailing zeros to
+  6 significant digits", e.g. `1.00000`), which still prints the shortest form (`1`).
 - **Integer precision** sets the minimum number of digits (zero-padded), distinct
   from width: `%.3d` of 5 → `005`, `%.5x` of 255 → `000ff`, `%#.4o` of 8 → `0010`
   (the `#` prefix is applied after the precision pad), `%.0d` of 0 → empty. The `0`
