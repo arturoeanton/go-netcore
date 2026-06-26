@@ -268,15 +268,17 @@ is a back-end floating-point codegen difference (the .NET ARM64 JIT fuses some `
 into an FMA where Go's arm64 codegen rounds differently), which also shows up in pure
 lowered-Go polynomial evaluation, so it cannot be fixed at the shim layer. Functions
 built on them inherit that last-ULP edge on the affected inputs; the value is correct to
-~1 ULP. `math.Exp2`, `math.Cbrt` are faithful fdlibm ports and are byte-exact across a
-broad sweep (0 divergences in 2000 inputs). `math.Expm1`, `math.Log1p`, `math.Log`,
-`math.Atanh`, `math.Gamma`, `math.Lgamma`, `math.Erf`, `math.Erfinv` are fdlibm ports that
-are byte-exact on their fixtures and for the large majority of inputs, with a **small
-fraction** (≈0.1–0.5%) still off by the last ULP — the same back-end FMA-codegen residual,
-not an algorithm error. `math.Sinh`/`math.Cosh` are Go-source ports built on `Exp` but
-carry a **larger residual** (≈9% of inputs off by 1 ULP) from that codegen edge; they are
-exact on their fixtures (733) but not in general. `Asinh`/`Acosh`/`Exp`/`Tanh` go through
-`System.Math` and match `go run` on the tested inputs.
+~1 ULP. `math.Exp`, `math.Exp2`, `math.Cbrt` are faithful fdlibm/Go ports and are
+byte-exact across a broad sweep (0 divergences in 3000 inputs for `Exp`; the platform
+`exp` differed for ~10%). `math.Sinh`, `math.Cosh`, `math.Tanh` build on the ported `Exp`
+and are likewise byte-exact across the sweep (0 divergences — previously ≈9% / ≈1.4% via
+`System.Math`). `math.Expm1`, `math.Log1p`, `math.Log`, `math.Atanh`, `math.Gamma`,
+`math.Lgamma`, `math.Erf`, `math.Erfinv` are fdlibm ports that are byte-exact on their
+fixtures and for the large majority of inputs, with a **small fraction** (≈0.1–0.5%) still
+off by the last ULP — the back-end FMA-codegen residual, not an algorithm error (e.g.
+`Exp(-13.38)`, and `Exp(-745)` rounds the smallest subnormal where Go flushes to 0).
+`Asinh`/`Acosh` go through `System.Math` and match `go run` on the tested inputs. Fixtures
+732, 733, 735.
 The Bessel functions `math.J0`/`J1`/`Y0`/`Y1`/`Jn`/`Yn` are now fdlibm ports too:
 **byte-exact for `J0`/`J1` with `|x| < 2`** (pure polynomial) and all the special cases
 (`0`/`±Inf`/`NaN`, order/sign relations, the tiny-argument `Jn` Taylor branch). For

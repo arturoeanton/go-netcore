@@ -64,7 +64,29 @@ public static partial class Math
         if (sign) temp = -temp;
         return temp;
     }
-    public static double Exp(double x) => SM.Exp(x);
+    // Ported from Go's math/exp.go — argument reduction + the shared (byte-exact) expmulti
+    // tail. System.Math.Exp differs from Go by a ULP for ~10% of inputs, which propagated
+    // into everything built on Exp (Sinh/Cosh, …); this port is byte-exact like Exp2.
+    public static double Exp(double x)
+    {
+        const double Ln2Hi = 6.93147180369123816490e-01;
+        const double Ln2Lo = 1.90821492927058770002e-10;
+        const double Log2e = 1.44269504088896338700e+00;
+        const double Overflow = 7.09782712893383973096e+02;
+        const double Underflow = -7.45133219101941108420e+02;
+        const double NearZero = 1.0 / (1L << 28); // 2**-28
+        if (double.IsNaN(x) || double.IsPositiveInfinity(x)) return x;
+        if (double.IsNegativeInfinity(x)) return 0;
+        if (x > Overflow) return double.PositiveInfinity;
+        if (x < Underflow) return 0;
+        if (-NearZero < x && x < NearZero) return 1 + x;
+        int k = 0;
+        if (x < 0) k = (int)(Log2e * x - 0.5);
+        else if (x > 0) k = (int)(Log2e * x + 0.5);
+        double hi = x - (double)k * Ln2Hi;
+        double lo = (double)k * Ln2Lo;
+        return Expmulti(hi, lo, k);
+    }
     // Exp2: System.Math.Pow(2, x) differs from Go at the last ULP (e.g. Exp2(0.5)=√2). This is
     // a faithful port of Go's math.exp2 (argument reduction + the shared expmulti tail).
     public static double Exp2(double x) => Exp2Impl(x);
@@ -345,7 +367,29 @@ public static partial class Math
     }
     public static double Sqrt(double x) => SM.Sqrt(x);
     public static double Tan(double x) => SM.Tan(x);
-    public static double Tanh(double x) => SM.Tanh(x);
+    // Ported from Go's math/tanh.go — Exp-based for |x| >= 0.625 (now byte-exact via the
+    // ported Exp), a rational polynomial otherwise.
+    private static readonly double[] _tanhP = { -9.64399179425052238628e-1, -9.92877231001918586564e1, -1.61468768441708447952e3 };
+    private static readonly double[] _tanhQ = { 1.12811678491632931402e2, 2.23548839060100448583e3, 4.84406305325125486048e3 };
+    public static double Tanh(double x)
+    {
+        const double MAXLOG = 8.8029691931113054295988e+01;
+        double z = SM.Abs(x);
+        if (z > 0.5 * MAXLOG) return x < 0 ? -1 : 1;
+        if (z >= 0.625)
+        {
+            double s = Exp(2 * z);
+            z = 1 - 2 / (s + 1);
+            if (x < 0) z = -z;
+        }
+        else
+        {
+            if (x == 0) return x;
+            double s = x * x;
+            z = x + x * s * ((_tanhP[0] * s + _tanhP[1]) * s + _tanhP[2]) / (((s + _tanhQ[0]) * s + _tanhQ[1]) * s + _tanhQ[2]);
+        }
+        return z;
+    }
     public static double Trunc(double x) => SM.Truncate(x);
     public static bool IsNaN(double x) => double.IsNaN(x);
     public static bool IsInf(double x, long sign) =>
