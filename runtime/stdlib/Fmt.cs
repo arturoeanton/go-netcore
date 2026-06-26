@@ -88,6 +88,8 @@ public static class Fmt
         if (v is GoNetAddr nad) { s = nad.Str; return true; }
         // *url.URL prints via its String() (the shim object, not its struct fields).
         if (v is GoUrl gu) { s = Url.URL_String(gu).ToDotNetString(); return true; }
+        // *mail.Address prints via its String() ("Name" <addr>), not its struct fields.
+        if (v is GoMailAddress gma) { s = Mail.Address_String(gma).ToDotNetString(); return true; }
         // *time.Location prints its zone name (Local/UTC/IST/...).
         if (v is GoLocation gloc) { s = Time.Location_String(gloc).ToDotNetString(); return true; }
         if (v is GoNamed kn && Rt.NamedTypeName(kn.TypeId) == "reflect.Kind")

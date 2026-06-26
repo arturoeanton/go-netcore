@@ -26,6 +26,26 @@ public static class Mail
         }
     }
 
+    // mail.ParseDate(date) (time.Time, error): parse an RFC 5322 date header. Go tries several
+    // layouts (with/without the day-of-week and seconds, numeric or named zone); route each
+    // through the time shim so the result is a real time.Time.
+    private static readonly string[] DateLayouts =
+    {
+        "Mon, 02 Jan 2006 15:04:05 -0700", "Mon, 2 Jan 2006 15:04:05 -0700",
+        "02 Jan 2006 15:04:05 -0700", "2 Jan 2006 15:04:05 -0700",
+        "Mon, 02 Jan 2006 15:04:05 MST", "Mon, 02 Jan 2006 15:04 -0700",
+        "Mon, 2 Jan 2006 15:04 -0700", "02 Jan 2006 15:04 -0700", "2 Jan 2006 15:04 -0700",
+    };
+    public static object?[] ParseDate(GoString date)
+    {
+        foreach (var layout in DateLayouts)
+        {
+            var r = Time.Parse(GoString.FromDotNetString(layout), date);
+            if (r[1] == null) return r;
+        }
+        return new object?[] { new GoTime { IsZero = true }, new GoError("mail: header could not be parsed") };
+    }
+
     // A zero-value Address + field setters so &mail.Address{Name:..., Address:...} literals work.
     public static object NewAddress() => new GoMailAddress();
     public static GoString Address_Name(object a) => GoString.FromDotNetString(((GoMailAddress)a).Name);

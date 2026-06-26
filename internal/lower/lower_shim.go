@@ -146,7 +146,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/subtle": {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}, "ConstantTimeCopy": {"Subtle", "ConstantTimeCopy"}, "ConstantTimeLessOrEq": {"Subtle", "ConstantTimeLessOrEq"}, "WithDataIndependentTiming": {"Subtle", "WithDataIndependentTiming"}},
 	"mime":          {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}, "FormatMediaType": {"Mime", "FormatMediaType"}, "AddExtensionType": {"Mime", "AddExtensionType"}},
 	"mime/multipart": {"NewReader": {"Multipart", "NewReader"}, "NewWriter": {"Multipart", "NewWriter"}, "FileContentDisposition": {"Multipart", "FileContentDisposition"}},
-	"net/mail":      {"ParseAddress": {"Mail", "ParseAddress"}, "ParseAddressList": {"Mail", "ParseAddressList"}, "ReadMessage": {"Mail", "ReadMessage"}},
+	"net/mail":      {"ParseAddress": {"Mail", "ParseAddress"}, "ParseAddressList": {"Mail", "ParseAddressList"}, "ReadMessage": {"Mail", "ReadMessage"}, "ParseDate": {"Mail", "ParseDate"}},
 	"os/signal": {
 		"Notify": {"Ossignal", "Notify"}, "Stop": {"Ossignal", "Stop"}, "Ignored": {"Ossignal", "Ignored"}, "NotifyContext": {"Ossignal", "NotifyContext"},
 		"Reset": {"Ossignal", "Reset"}, "Ignore": {"Ossignal", "Ignore"},
