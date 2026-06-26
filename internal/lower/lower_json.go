@@ -51,6 +51,9 @@ func (l *funcLowerer) errorMatchName(t types.Type) string {
 	if p, ok := t.Underlying().(*types.Pointer); ok {
 		t = p.Elem()
 	}
+	// Resolve a type alias to its target, so an aliased shim error type (os.PathError =
+	// fs.PathError) matches against the underlying [GoShim] name ("io/fs.PathError").
+	t = types.Unalias(t)
 	if named, ok := t.(*types.Named); ok {
 		if obj := named.Obj(); obj.Pkg() != nil && opaqueShimTypes[obj.Pkg().Path()+"."+obj.Name()] {
 			return obj.Pkg().Path() + "." + obj.Name()

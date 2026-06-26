@@ -6,6 +6,15 @@ using GoCLR.Runtime;
 [GoShim("os.File")]
 public sealed class GoFile { public bool IsStderr; public bool IsStdin; public System.IO.Stream? Wr; public string Path = ""; public bool Append; }
 
+/// <summary>A syscall.Errno-like value: its own Go message ("no such file or directory")
+/// while wrapping the os sentinel (ErrNotExist/…) so errors.Is matches through PathError.</summary>
+public sealed class GoOsErrno : IGoError, IGoWrapped
+{
+    public string Msg = ""; public GoError? Sentinel;
+    public object? GoUnwrapped() => Sentinel;
+    public GoString Error() => GoString.FromDotNetString(Msg);
+}
+
 /// <summary>An os.SyscallError (a syscall-tagged error). Implements IGoError so fmt
 /// prints it via Error() ("syscall: inner") instead of dumping the struct fields.</summary>
 [GoShim("os.SyscallError")]
@@ -101,7 +110,7 @@ public static class Os
         }
         catch (System.Exception e)
         {
-            return new object?[] { null, new GoError("open " + name.ToDotNetString() + ": " + e.Message) };
+            return new object?[] { null, PathErr("open", name.ToDotNetString(), e) };
         }
     }
 
@@ -109,7 +118,7 @@ public static class Os
     public static object?[] Create(GoString name)
     {
         try { return new object?[] { new GoFile { Wr = System.IO.File.Create(name.ToDotNetString()), Path = name.ToDotNetString() }, null }; }
-        catch (System.Exception e) { return new object?[] { null, new GoError("open " + name.ToDotNetString() + ": " + e.Message) }; }
+        catch (System.Exception e) { return new object?[] { null, PathErr("open", name.ToDotNetString(), e) }; }
     }
 
     // os.OpenFile(name, flag, perm) (*os.File, error): open a file with full random
@@ -135,7 +144,7 @@ public static class Os
             // O_CREATE|O_EXCL on an existing path is EEXIST; report it the way Go does so
             // os.IsExist recognizes it (the .NET IOException message wouldn't match).
             if (create && excl && (System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))
-                return new object?[] { null, new GoError("open " + p + ": file already exists") };
+                return new object?[] { null, PathErrSentinel("open", p, "file exists", ErrExistSentinel) };
             System.IO.FileMode mode;
             if (create && excl) mode = System.IO.FileMode.CreateNew;      // O_CREATE|O_EXCL: must not exist
             else if (trunc) mode = create ? System.IO.FileMode.Create : System.IO.FileMode.Truncate;
@@ -150,7 +159,7 @@ public static class Os
         }
         // Errno maps the .NET filesystem exception to Go's errno string so os.IsNotExist /
         // os.IsExist match (a missing file -> "no such file or directory", etc.).
-        catch (System.Exception e) { return new object?[] { null, new GoError("open " + name.ToDotNetString() + ": " + Errno(e)) }; }
+        catch (System.Exception e) { return new object?[] { null, PathErr("open", name.ToDotNetString(), e) }; }
     }
 
     // (*os.File).Write(p): write at the current position to the underlying stream (or a
@@ -297,25 +306,30 @@ public static class Os
         }
         catch (System.Exception e)
         {
-            return new object?[] { null, new GoError("stat " + p + ": " + e.Message) };
+            return new object?[] { null, PathErr("stat", p, e) };
         }
     }
 
-    private static GoError NotExist(string p) => new("stat " + p + ": no such file or directory");
+    private static GoPathError NotExist(string p) => PathErrSentinel("stat", p, "no such file or directory", ErrNotExistSentinel);
 
-    // os.IsNotExist(err): does err report a missing file? (matched by message suffix).
-    public static bool IsNotExist(object? err) =>
-        err is GoError g && g.Error().ToDotNetString().EndsWith("no such file or directory", System.StringComparison.Ordinal);
+    // Walk the error's Unwrap chain (IGoWrapped), matching either the os sentinel directly
+    // (so a *PathError wrapping it, or errors.Is, is recognized) or the Go errno message suffix
+    // (so a plain message-tagged error still matches).
+    private static bool MatchErr(object? err, GoError sentinel, string suffix)
+    {
+        for (int i = 0; i < 64 && err != null; i++)
+        {
+            if (ReferenceEquals(err, sentinel)) return true;
+            if (err is IGoError ge && ge.Error().ToDotNetString().EndsWith(suffix, System.StringComparison.Ordinal)) return true;
+            err = err is IGoWrapped w ? w.GoUnwrapped() : null;
+        }
+        return false;
+    }
 
-    // os.IsExist(err): does err report that a file already exists? (matched by message suffix,
-    // mirroring IsNotExist). A generic or nil error is not an "exists" error.
-    public static bool IsExist(object? err) =>
-        err is GoError g && g.Error().ToDotNetString().EndsWith("file already exists", System.StringComparison.Ordinal);
-
-    // os.IsTimeout(err): does err report an I/O timeout? goclr models this as the
-    // ErrDeadlineExceeded sentinel ("i/o timeout"); generic/nil errors are not timeouts.
-    public static bool IsTimeout(object? err) =>
-        err is GoError g && g.Error().ToDotNetString().EndsWith("i/o timeout", System.StringComparison.Ordinal);
+    // os.IsNotExist / IsExist / IsTimeout: does err report a missing/existing file or a timeout?
+    public static bool IsNotExist(object? err) => MatchErr(err, ErrNotExistSentinel, "no such file or directory");
+    public static bool IsExist(object? err) => MatchErr(err, ErrExistSentinel, "file exists");
+    public static bool IsTimeout(object? err) => MatchErr(err, ErrDeadlineExceededSentinel, "i/o timeout");
 
     // os.IsPathSeparator(c): is c the OS path separator? On the platforms goclr targets
     // (unix-like), that is '/'.
@@ -462,7 +476,7 @@ public static class Os
     {
         string p = path.ToDotNetString();
         if (System.IO.Directory.Exists(p) || System.IO.File.Exists(p))
-            return new GoError("mkdir " + p + ": file exists");
+            return PathErrSentinel("mkdir", p, "file exists", ErrExistSentinel);
         try { System.IO.Directory.CreateDirectory(p); return null; }
         catch (System.Exception e) { return new GoError("mkdir " + p + ": " + e.Message); }
     }
@@ -635,7 +649,7 @@ public static class Os
         }
         catch (System.Exception ex)
         {
-            return new object?[] { new GoSlice { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 }, new GoError(GoString.FromDotNetString(ex.Message)) };
+            return new object?[] { new GoSlice { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 }, PathErr("open", name.ToDotNetString(), ex) };
         }
     }
 
@@ -655,13 +669,27 @@ public static class Os
     }
 
     // A Go-style errno reason for a .NET filesystem exception (used in PathError messages).
-    private static string Errno(System.Exception e) => e switch
+    private static string Errno(System.Exception e) => ErrnoOf(e).msg;
+
+    // (errno message, the os sentinel it satisfies) for a .NET filesystem exception.
+    private static (string msg, GoError? sentinel) ErrnoOf(System.Exception e) => e switch
     {
-        System.IO.FileNotFoundException => "no such file or directory",
-        System.IO.DirectoryNotFoundException => "no such file or directory",
-        System.UnauthorizedAccessException => "permission denied",
-        _ => e.Message,
+        System.IO.FileNotFoundException => ("no such file or directory", ErrNotExistSentinel),
+        System.IO.DirectoryNotFoundException => ("no such file or directory", ErrNotExistSentinel),
+        System.UnauthorizedAccessException => ("permission denied", ErrPermissionSentinel),
+        _ => (e.Message, null),
     };
+
+    // Build a *os.PathError for op on path from a .NET exception, wrapping a syscall-errno that
+    // carries the right os sentinel (so errors.As / errors.Is / os.IsNotExist all work).
+    private static GoPathError PathErr(string op, string path, System.Exception e)
+    {
+        var (msg, sentinel) = ErrnoOf(e);
+        return new GoPathError { Op = op, Path = path, Err = new GoOsErrno { Msg = msg, Sentinel = sentinel } };
+    }
+    // A *os.PathError for a known sentinel (e.g. EEXIST from O_CREATE|O_EXCL, ENOENT from stat).
+    private static GoPathError PathErrSentinel(string op, string path, string msg, GoError sentinel)
+        => new GoPathError { Op = op, Path = path, Err = new GoOsErrno { Msg = msg, Sentinel = sentinel } };
 
     // os.ReadDir(name) ([]os.DirEntry, error): the directory's entries sorted by filename
     // (byte order, like Go). Entries are GoDirEntry (matches the fs.DirEntry interface).
