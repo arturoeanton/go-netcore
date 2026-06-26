@@ -214,6 +214,8 @@ preserve the zone, and the instant (`Unix`) is zone-independent. **DST and IANA
 transitions are not modeled** — `LoadLocation` returns a fixed zone at the
 location's base offset, so dates in the DST half of the year will be off by an
 hour. Go's `time.Now()`/`time.Local` use UTC (no local zone in the runtime).
+`Parse` reads a zone offset from the input (`Z07:00`/`-0700`) into the value,
+and `ParseInLocation` interprets a zoneless layout in the given location.
 
 `Format`/`Parse` accept fractional-second layout tokens of **any** width — a `.`
 or `,` separator followed by a run of `0`s (fixed width, trailing zeros kept) or

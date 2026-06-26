@@ -394,7 +394,9 @@ public static class Time
     // reference-time layout, consuming the matching run from value for each token.
     // Returns the zero Time and an error if value does not match the layout. The
     // result is in UTC (goclr's time is UTC-only; see docs/LIMITATIONS.md).
-    public static object?[] Parse(GoString layout, GoString value)
+    public static object?[] Parse(GoString layout, GoString value) => ParseImpl(layout, value, null);
+
+    private static object?[] ParseImpl(GoString layout, GoString value, GoLocation? defaultLoc)
     {
         string lay = layout.ToDotNetString(), val = value.ToDotNetString();
         // Go defaults a missing year to 0; goclr's GoTime counts nanoseconds from the
@@ -434,10 +436,18 @@ public static class Time
                 if (d.Length > 0) nsec = int.Parse(d.PadRight(9, '0'), inv);
             }
         }
-        void SkipZone()
+        int? zoneOff = null;
+        void ReadZone()
         {
-            if (vi < val.Length && (val[vi] == 'Z')) { vi++; return; }
-            while (vi < val.Length && (val[vi] == '+' || val[vi] == '-' || val[vi] == ':' || char.IsDigit(val[vi]))) vi++;
+            if (vi < val.Length && val[vi] == 'Z') { vi++; zoneOff = 0; return; }
+            if (vi < val.Length && (val[vi] == '+' || val[vi] == '-'))
+            {
+                int sign = val[vi] == '-' ? -1 : 1; vi++;
+                int hh = ReadInt(2);
+                if (vi < val.Length && val[vi] == ':') vi++;
+                int mm = (vi < val.Length && char.IsDigit(val[vi])) ? ReadInt(2) : 0;
+                zoneOff = sign * (hh * 3600 + mm * 60);
+            }
         }
 
         try
@@ -470,8 +480,8 @@ public static class Time
                     while (li < lay.Length && lay[li] == kind) li++;
                     ReadFrac();
                 }
-                else if (Tok("Z07:00") || Tok("Z0700") || Tok("Z07")) SkipZone();
-                else if (Tok("-07:00") || Tok("-0700") || Tok("-07")) SkipZone();
+                else if (Tok("Z07:00") || Tok("Z0700") || Tok("Z07")) ReadZone();
+                else if (Tok("-07:00") || Tok("-0700") || Tok("-07")) ReadZone();
                 else if (Tok("MST")) { while (vi < val.Length && char.IsLetter(val[vi])) vi++; }
                 else if (Tok("3")) hour = ReadInt(2);
                 else if (Tok("2")) day = ReadInt(2);
@@ -488,6 +498,20 @@ public static class Time
             var dt = new System.DateTime(year, month, day, hour, min, sec, System.DateTimeKind.Utc);
             var t = FromDateTime(dt);
             t.N += nsec;
+            if (zoneOff.HasValue)
+            {
+                // The parsed clock is wall-clock at the input's offset; store the UTC instant
+                // and (for a non-zero offset) carry the zone.
+                t.N -= (long)zoneOff.Value * Second;
+                if (zoneOff.Value != 0) { t.OffsetSeconds = zoneOff.Value; t.ZoneName = ZoneOffset(zoneOff.Value, false); }
+            }
+            else if (defaultLoc != null)
+            {
+                // ParseInLocation with no zone in the layout: interpret in loc.
+                t.N -= (long)defaultLoc.OffsetSeconds * Second;
+                t.OffsetSeconds = defaultLoc.OffsetSeconds;
+                t.ZoneName = defaultLoc.Name;
+            }
             return new object?[] { t, null };
         }
         catch
@@ -621,7 +645,7 @@ public static class Time
 
     // time.ParseInLocation(layout, value, loc): goclr's time is UTC-only, so the
     // location is ignored and this is Parse.
-    public static object?[] ParseInLocation(GoString layout, GoString value, object loc) => Parse(layout, value);
+    public static object?[] ParseInLocation(GoString layout, GoString value, object loc) => ParseImpl(layout, value, loc as GoLocation);
 
     // time.LoadLocation(name) (*Location, error): "" and "UTC" are UTC; otherwise look
     // up the IANA/system zone for its base offset (goclr's time is UTC-only, so the
