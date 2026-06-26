@@ -176,7 +176,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"encoding/csv":    {"NewReader": {"Csv", "NewReader"}, "NewWriter": {"Csv", "NewWriter"}},
 	"encoding/binary": {"Write": {"Binary", "Write"}, "Read": {"Binary", "Read"}, "Size": {"Binary", "Size"}, "PutUvarint": {"Binary", "PutUvarint"}, "Uvarint": {"Binary", "Uvarint"}, "PutVarint": {"Binary", "PutVarint"}, "Varint": {"Binary", "Varint"}, "ReadUvarint": {"Binary", "ReadUvarint"}, "ReadVarint": {"Binary", "ReadVarint"}, "Append": {"Binary", "Append"}, "AppendUvarint": {"Binary", "AppendUvarint"}, "AppendVarint": {"Binary", "AppendVarint"}, "Encode": {"Binary", "Encode"}, "Decode": {"Binary", "Decode"}},
 	"crypto/aes":      {"NewCipher": {"Aes", "NewCipher"}},
-	"crypto/cipher":   {"NewGCM": {"Aes", "NewGCM"}},
+	"crypto/cipher":   {"NewGCM": {"Aes", "NewGCM"}, "NewCBCEncrypter": {"Aes", "NewCBCEncrypter"}, "NewCBCDecrypter": {"Aes", "NewCBCDecrypter"}, "NewCTR": {"Aes", "NewCTR"}},
 	"hash/fnv":        {"New32": {"Hashes", "Fnv32"}, "New32a": {"Hashes", "Fnv32a"}, "New64": {"Hashes", "Fnv64"}, "New64a": {"Hashes", "Fnv64a"}, "New128": {"Hashes", "Fnv128"}, "New128a": {"Hashes", "Fnv128a"}},
 	"hash/crc64":      {"MakeTable": {"Hashes", "Crc64MakeTable"}, "New": {"Hashes", "Crc64New"}, "Checksum": {"Hashes", "Crc64Checksum"}, "Update": {"Hashes", "Crc64Update"}},
 	"index/suffixarray": {"New": {"Suffixarray", "New"}},
@@ -629,6 +629,8 @@ var opaqueShimTypes = map[string]bool{
 	"compress/flate.WriteError":          true,
 	"crypto/cipher.Block":                true,
 	"crypto/cipher.AEAD":                 true,
+	"crypto/cipher.BlockMode":            true,
+	"crypto/cipher.Stream":               true,
 	"hash.Hash32":                        true,
 	"hash.Hash64":                        true,
 	"math/big.Int":                       true,
@@ -1680,6 +1682,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"compress/flate.WriteError":        {"Error": {"Compress", "WriteError_Error"}},
 	"crypto/cipher.AEAD": {
 		"Seal": {"Aes", "GCM_Seal"}, "Open": {"Aes", "GCM_Open"}, "NonceSize": {"Aes", "GCM_NonceSize"}, "Overhead": {"Aes", "GCM_Overhead"},
+	},
+	"crypto/cipher.BlockMode": {
+		"CryptBlocks": {"Aes", "CBC_CryptBlocks"}, "BlockSize": {"Aes", "CBC_BlockSize"},
+	},
+	"crypto/cipher.Stream": {
+		"XORKeyStream": {"Aes", "CTR_XORKeyStream"},
 	},
 	"hash.Hash32": {
 		"Write": {"Hashes", "H32_Write"}, "Sum32": {"Hashes", "H32_Sum32"}, "Size": {"Hashes", "H32_Size"}, "Reset": {"Hashes", "H32_Reset"},
