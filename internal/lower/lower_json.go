@@ -130,17 +130,20 @@ func (l *funcLowerer) jsonDescriptor(t types.Type, seen map[string]bool) string 
 	}
 	switch u := t.Underlying().(type) {
 	case *types.Basic:
+		// "t" carries the Go type's display name (int / int64 / main.Money) so a
+		// json.Unmarshal type mismatch reports Go's exact "...Go value of type T" message.
+		tn := `,"t":"` + typeDescStr(t) + `"}`
 		switch {
 		case u.Info()&types.IsBoolean != 0:
-			return `{"k":"bool"}`
+			return `{"k":"bool"` + tn
 		case u.Info()&types.IsUnsigned != 0:
-			return `{"k":"uint"}`
+			return `{"k":"uint"` + tn
 		case u.Info()&types.IsInteger != 0:
-			return `{"k":"int"}`
+			return `{"k":"int"` + tn
 		case u.Info()&types.IsFloat != 0:
-			return `{"k":"float"}`
+			return `{"k":"float"` + tn
 		case u.Info()&types.IsString != 0:
-			return `{"k":"string"}`
+			return `{"k":"string"` + tn
 		}
 		return `{"k":"any"}`
 	case *types.Pointer:

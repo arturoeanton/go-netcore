@@ -337,6 +337,7 @@ public static class Json
         try
         {
             string json = SliceToString(data);
+            _errStruct = null; _errFields?.Clear(); // reset per-call mismatch context
             using var doc = JsonDocument.Parse(json);
             using var ddoc = JsonDocument.Parse(desc.ToDotNetString());
             object? decoded = Decode(doc.RootElement, ddoc.RootElement);
@@ -388,6 +389,29 @@ public static class Json
     }
 
     // Decode a JSON element into the canonical boxed Go value for a descriptor.
+    // A json.Unmarshal type mismatch, carrying Go's exact error message.
+    private sealed class GoJsonError : System.Exception { public GoJsonError(string m) : base(m) { } }
+    // Error context for the struct-field path in a mismatch message (Go's errorContext):
+    // the innermost struct's unqualified name and the chain of JSON field keys.
+    [System.ThreadStatic] private static string? _errStruct;
+    [System.ThreadStatic] private static System.Collections.Generic.List<string>? _errFields;
+    private static GoJsonError Mismatch(JsonElement j, JsonElement desc)
+    {
+        string jk = j.ValueKind switch
+        {
+            JsonValueKind.String => "string",
+            JsonValueKind.Number => "number",
+            JsonValueKind.True or JsonValueKind.False => "bool",
+            JsonValueKind.Array => "array",
+            JsonValueKind.Object => "object",
+            _ => "value",
+        };
+        string t = desc.TryGetProperty("t", out var tp) ? (tp.GetString() ?? "") : (desc.GetProperty("k").GetString() ?? "");
+        if (_errFields != null && _errFields.Count > 0)
+            return new GoJsonError($"json: cannot unmarshal {jk} into Go struct field {_errStruct}.{string.Join(".", _errFields)} of type {t}");
+        return new GoJsonError($"json: cannot unmarshal {jk} into Go value of type {t}");
+    }
+
     private static object? Decode(JsonElement j, JsonElement desc)
     {
         string k = desc.GetProperty("k").GetString() ?? "any";
@@ -407,11 +431,11 @@ public static class Json
                 for (int i = 0; i < rb.Length; i++) rd[i] = (int)rb[i];
                 return new GoSlice { Data = rd, Off = 0, Len = rb.Length, Cap = rb.Length };
             }
-            case "bool": return j.GetBoolean();
-            case "int": return j.TryGetInt64(out long li) ? li : (long)j.GetDouble();
-            case "uint": return j.TryGetUInt64(out ulong ui) ? ui : (ulong)j.GetDouble();
-            case "float": return j.GetDouble();
-            case "string": return GoString.FromDotNetString(j.GetString() ?? "");
+            case "bool": return j.ValueKind is JsonValueKind.True or JsonValueKind.False ? j.GetBoolean() : throw Mismatch(j, desc);
+            case "int": return j.ValueKind == JsonValueKind.Number ? (j.TryGetInt64(out long li) ? li : (long)j.GetDouble()) : throw Mismatch(j, desc);
+            case "uint": return j.ValueKind == JsonValueKind.Number ? (j.TryGetUInt64(out ulong ui) ? ui : (ulong)j.GetDouble()) : throw Mismatch(j, desc);
+            case "float": return j.ValueKind == JsonValueKind.Number ? j.GetDouble() : throw Mismatch(j, desc);
+            case "string": return j.ValueKind == JsonValueKind.String ? GoString.FromDotNetString(j.GetString() ?? "") : throw Mismatch(j, desc);
             case "bytes":
             {
                 var raw = System.Convert.FromBase64String(j.GetString() ?? "");
@@ -467,14 +491,23 @@ public static class Json
             if (!members.TryGetValue(jkey, out var jv)) continue;
             var ft = fd.GetProperty("t");
             object? val;
-            // ,string option ("q":true): the value is carried as a quoted JSON string whose
-            // content is the real JSON for the field (e.g. "9090" -> 9090, "true" -> true).
-            if (fd.TryGetProperty("q", out var qp) && qp.GetBoolean() && jv.ValueKind == JsonValueKind.String)
+            // Track the struct-field path for a type-mismatch error message (Go's errorContext);
+            // the innermost struct's name wins, the JSON keys accumulate ("Foo.inner.a").
+            _errFields ??= new System.Collections.Generic.List<string>();
+            _errStruct = cname.StartsWith("__anon", System.StringComparison.Ordinal) ? "" : cname;
+            _errFields.Add(jkey);
+            try
             {
-                using var inner = JsonDocument.Parse(jv.GetString() ?? "null");
-                val = Decode(inner.RootElement, ft);
+                // ,string option ("q":true): the value is carried as a quoted JSON string whose
+                // content is the real JSON for the field (e.g. "9090" -> 9090, "true" -> true).
+                if (fd.TryGetProperty("q", out var qp) && qp.GetBoolean() && jv.ValueKind == JsonValueKind.String)
+                {
+                    using var inner = JsonDocument.Parse(jv.GetString() ?? "null");
+                    val = Decode(inner.RootElement, ft);
+                }
+                else { val = Decode(jv, ft); }
             }
-            else { val = Decode(jv, ft); }
+            finally { _errFields.RemoveAt(_errFields.Count - 1); }
             fi.SetValue(inst, Coerce(val, fi.FieldType));
         }
         return inst;
