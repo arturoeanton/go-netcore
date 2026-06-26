@@ -809,6 +809,13 @@ func (l *funcLowerer) shimFuncValue(e ast.Expr) bool {
 		id = x
 	case *ast.SelectorExpr:
 		id = x.Sel
+	// An explicit generic instantiation of a shimmed function used as a value
+	// (cmp.Compare[int], cmp.Less[string]) — wrap the shim; the type args don't change
+	// the runtime dispatch.
+	case *ast.IndexExpr:
+		return l.shimFuncValue(x.X)
+	case *ast.IndexListExpr:
+		return l.shimFuncValue(x.X)
 	default:
 		return false
 	}

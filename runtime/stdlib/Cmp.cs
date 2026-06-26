@@ -6,7 +6,9 @@ using GoCLR.Runtime;
 /// erases to a boxed value, so these reduce to Slices.OrderedCompare.</summary>
 public static class Cmp
 {
-    public static long Compare(object? x, object? y) => Slices.OrderedCompare(x, y);
+    // Go's cmp.Compare returns exactly -1, 0, or +1 (not the raw comparator value, which for
+    // strings can be ±2); normalize to the sign.
+    public static long Compare(object? x, object? y) => System.Math.Sign(Slices.OrderedCompare(x, y));
     public static bool Less(object? x, object? y) => Slices.OrderedCompare(x, y) < 0;
     // cmp.Or(vals...): the first non-zero argument, else the zero value (the last one).
     public static object? Or(GoSlice vals)
