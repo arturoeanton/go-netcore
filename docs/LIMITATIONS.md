@@ -202,6 +202,11 @@ Remaining edges (documented, not silent):
   pads the whole rendering rather than each element; Go pads per element.
   Numeric verbs (`%6d`, `%03d`) already pad per element. `%!(EXTRA …)` for
   surplus args and `%q` precision (rune truncation) match Go.
+- **Integer precision** sets the minimum number of digits (zero-padded), distinct
+  from width: `%.3d` of 5 → `005`, `%.5x` of 255 → `000ff`, `%#.4o` of 8 → `0010`
+  (the `#` prefix is applied after the precision pad), `%.0d` of 0 → empty. The `0`
+  flag is ignored when a precision is given (`%08.3d` of 5 → `␣␣␣␣␣005`). Honored via
+  `.N`, `.*`, and `.[i]*`, per element in a composite, and for `*big.Int`. Fixture 730.
 
 ## Uncaught panic output format
 

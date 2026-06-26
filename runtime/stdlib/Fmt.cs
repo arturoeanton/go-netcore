@@ -386,7 +386,10 @@ public static class Fmt
         if (sp.Width < 0 || core.Length >= sp.Width) return core;
         int n = sp.Width - core.Length;
         if (sp.Minus) return core + new string(' ', n);
-        if (sp.Zero && !IsBadVerb(core))
+        // Go ignores the 0 flag for an integer verb when a precision is given (the precision
+        // already controls the digit count), so such a field is space-padded.
+        bool zeroIgnored = sp.Prec >= 0 && sp.Verb is 'd' or 'b' or 'o' or 'O' or 'x' or 'X';
+        if (sp.Zero && !zeroIgnored && !IsBadVerb(core))
         {
             // zero-pad after a leading sign/0x prefix
             int p = 0;
@@ -622,9 +625,17 @@ public static class Fmt
         else if (v is ulong u) digits = ToBase(u, b);
         else { long l = ToLong(v); neg = l < 0; digits = ToBase(neg ? (ulong)(-l) : (ulong)l, b); }
         if (upper) digits = digits.ToUpperInvariant();
+        // Precision sets the minimum number of digits, zero-padded (Go: %.3d of 5 -> "005"),
+        // and is applied before the prefix. The special case %.0d of 0 produces no digits.
+        if (sp.Prec >= 0)
+        {
+            if (sp.Prec == 0 && digits == "0") digits = "";
+            else if (digits.Length < sp.Prec) digits = new string('0', sp.Prec - digits.Length) + digits;
+        }
         string prefix = "";
         if (hash && b == 16) prefix = upper ? "0X" : "0x";
-        if (hash && b == 8 && digits != "0") prefix = "0";
+        // %#o prepends a single 0 only if the (post-precision) digits don't already start with 0.
+        if (hash && b == 8 && (digits.Length == 0 || digits[0] != '0')) prefix = "0";
         if (sp.Verb == 'O' && b == 8) prefix = "0o"; // %O always carries the 0o prefix (even for 0)
         string sign = neg ? "-" : sp.Plus ? "+" : sp.Space ? " " : "";
         return sign + prefix + digits;
