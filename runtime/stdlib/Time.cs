@@ -532,10 +532,13 @@ public static class Time
             }
             else if (defaultLoc != null)
             {
-                // ParseInLocation with no zone in the layout: interpret in loc.
-                t.N -= (long)defaultLoc.OffsetSeconds * Second;
-                t.OffsetSeconds = defaultLoc.OffsetSeconds;
-                t.ZoneName = defaultLoc.Name;
+                // ParseInLocation with no zone in the layout: interpret the wall-clock in loc,
+                // resolving the offset/abbreviation at that moment (DST-aware for an IANA zone).
+                var (off, name) = ZoneAt(defaultLoc, System.DateTime.SpecifyKind(dt, System.DateTimeKind.Unspecified));
+                t.N -= (long)off * Second;
+                t.OffsetSeconds = off;
+                t.ZoneName = name;
+                t.Tz = defaultLoc.Tz;
             }
             return new object?[] { t, null };
         }

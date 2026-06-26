@@ -3,7 +3,7 @@ namespace GoCLR.Stdlib;
 using SM = System.Math;
 
 /// <summary>Shim for Go's <c>math</c> package, mapping to System.Math.</summary>
-public static class Math
+public static partial class Math
 {
     public static double Abs(double x) => SM.Abs(x);
     public static double Acos(double x) => SM.Acos(x);

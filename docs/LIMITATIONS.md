@@ -234,9 +234,12 @@ needs Payne–Hanek reduction, `math.Erfc(10)` in the far tail). Functions built
 inherit that last-ULP edge on the affected inputs; the value is correct to ~1 ULP.
 `math.Expm1`, `math.Log1p`, `math.Exp2`, `math.Gamma`, `math.Lgamma`, `math.Erf`,
 `math.Erfinv` are faithful fdlibm ports and are byte-exact across the tested range.
-**Not implemented:** the Bessel functions `math.J0`/`J1`/`Y0`/`Y1` (a call is a compile
-error, not a silent wrong answer) — `System.Math` has no equivalent and the fdlibm ports
-are a large deferred piece.
+The Bessel functions `math.J0`/`J1`/`Y0`/`Y1`/`Jn`/`Yn` are now fdlibm ports too:
+**byte-exact for `J0`/`J1` with `|x| < 2`** (pure polynomial) and all the special cases
+(`0`/`±Inf`/`NaN`, order/sign relations, the tiny-argument `Jn` Taylor branch). For
+`|x| >= 2` the asymptotic branch calls `Sin`/`Cos`, and `Y0`/`Y1` call `Log`, so those
+inherit the same last-ULP trig/log edge as `math.Sin`/`Cos`/`Log` above (correct to
+~1 ULP, ~15 significant digits).
 
 `math/rand` with an explicit source — `rand.New(rand.NewSource(seed))` and all its methods
 (`Int`/`Intn`/`Int63`/`Uint64`/`Float64`/`NormFloat64`/`ExpFloat64`/`Perm`/`Shuffle`/`Read`,
