@@ -11,6 +11,8 @@ public sealed class GoScanner
     public byte[] Cur = System.Array.Empty<byte>();
     public GoClosure? Split; // a user SplitFunc when Mode == -1
     public int Empties;      // consecutive empty tokens at EOF without progress
+    public long Max = 64 * 1024; // bufio.MaxScanTokenSize; Buffer(buf, max) overrides it
+    public object? Err;      // ErrTooLong once a token exceeds Max
 }
 
 /// <summary>A bufio.Reader over an underlying runtime reader.</summary>
@@ -370,9 +372,10 @@ public static class Bufio
         sc.Split = split;
         sc.Mode = -1;
     }
-    // Scanner.Buffer(buf, max): the scanner reads a fully-drained in-memory buffer, so
-    // there is nothing to size — a no-op that keeps the call site working.
-    public static void Scanner_Buffer(object s, GoSlice buf, long max) { }
+    // Scanner.Buffer(buf, max): the scanner reads a fully-drained in-memory buffer, so the
+    // initial buf is irrelevant, but `max` caps the token size — a token longer than max
+    // fails Scan() with ErrTooLong, as in Go.
+    public static void Scanner_Buffer(object s, GoSlice buf, long max) { ((GoScanner)s).Max = max; }
     public static long ScanLinesMarker() => 0;
     public static long ScanWordsMarker() => 1;
     public static long ScanRunesMarker() => 2;
@@ -381,6 +384,17 @@ public static class Bufio
     public static bool Scanner_Scan(object so)
     {
         var s = (GoScanner)so;
+        if (s.Err != null) return false;
+        bool ok = ScanInner(s);
+        // Go's ErrTooLong: a token that fills the buffer to its max without room for the
+        // delimiter/lookahead — empirically a token length >= max (a token of exactly max
+        // already cannot fit alongside the byte that ends it).
+        if (ok && s.Cur.Length >= s.Max) { s.Err = ErrTooLong(); s.Cur = System.Array.Empty<byte>(); return false; }
+        return ok;
+    }
+
+    private static bool ScanInner(GoScanner s)
+    {
         if (s.Mode == -1) return ScanCustom(s); // user SplitFunc
         if (s.Mode == 1) // words: skip leading spaces, take until space
         {
@@ -420,8 +434,8 @@ public static class Bufio
     }
 
     public static GoString Scanner_Text(object so) => GoString.FromBytes(((GoScanner)so).Cur);
-    // The scanner reads from a fully-drained in-memory buffer, so it never errors.
-    public static object? Scanner_Err(object so) => null;
+    // The in-memory scanner only errors on ErrTooLong (a token exceeding the max buffer).
+    public static object? Scanner_Err(object so) => ((GoScanner)so).Err;
     public static GoSlice Scanner_Bytes(object so)
     {
         var c = ((GoScanner)so).Cur;
