@@ -324,6 +324,11 @@ or `,` separator followed by a run of `0`s (fixed width, trailing zeros kept) or
 `9`s (trailing zeros trimmed, separator dropped when empty) — not just the canonical
 `.000`/`.000000000`/`.999999999` forms (`.9`, `.99`, `.000000`, `05,000`, … all work).
 
+The **day-of-year** layout tokens are honored on both sides: `002` (zero-padded,
+width 3 — `001`..`366`) and `__2` (space-padded, width 3 — `  1`..`366`). `Parse`
+reconstructs the calendar month/day from the year and day-of-year, and rejects a
+value past the year's length (`366` in a non-leap year → `day-of-year out of range`).
+
 `Parse` error messages match Go: a failed layout token reports the unparsed value
 remainder and the expected token (`cannot parse "9z" as "02"`), an out-of-range numeric
 field reports `parsing time "…": <field> out of range` (month/day/hour/minute/second,

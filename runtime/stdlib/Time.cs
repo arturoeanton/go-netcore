@@ -424,7 +424,7 @@ public static class Time
         // Go defaults a missing year to 0; goclr's GoTime counts nanoseconds from the
         // Unix epoch (representable range ~1678..2262), so a yearless layout uses 1970
         // to keep the parsed clock fields exact without overflowing (see docs/LIMITATIONS.md).
-        int year = 1970, month = 1, day = 1, hour = 0, min = 0, sec = 0, nsec = 0;
+        int year = 1970, month = 1, day = 1, hour = 0, min = 0, sec = 0, nsec = 0, yday = 0;
         bool hasPM = false, pm = false, hour12 = false;
         int li = 0, vi = 0;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -491,6 +491,8 @@ public static class Time
                 else if (Tok("01")) { month = ReadInt(2, true); if (month < 1 || month > 12) throw new RangeError("month"); }
                 else if (Tok("Monday")) ReadName(DaysLong);
                 else if (Tok("Mon")) ReadName(DaysAbbr);
+                else if (Tok("002")) { yday = ReadInt(3, true); if (yday < 1 || yday > 366) throw new RangeError("day-of-year"); }
+                else if (Tok("__2")) { yday = ReadInt(3); if (yday < 1 || yday > 366) throw new RangeError("day-of-year"); }
                 else if (Tok("02")) { day = ReadInt(2, true); if (day < 1 || day > 31) throw new RangeError("day"); }
                 else if (Tok("_2")) { day = ReadInt(2); if (day < 1 || day > 31) throw new RangeError("day"); }
                 else if (Tok("15")) { hour = ReadInt(2); if (hour < 0 || hour > 23) throw new RangeError("hour"); }
@@ -528,6 +530,13 @@ public static class Time
             // Go reports unconsumed input after the layout is exhausted.
             if (vi < val.Length) throw new ExtraTextError(val.Substring(vi));
             if (hasPM) { if (pm && hour < 12) hour += 12; else if (!pm && hour == 12) hour = 0; }
+            // A day-of-year layout (002 / __2) sets the month/day from the year's Jan 1.
+            if (yday > 0)
+            {
+                if (yday > (System.DateTime.IsLeapYear(year) ? 366 : 365)) throw new RangeError("day-of-year");
+                var b = new System.DateTime(year, 1, 1, 0, 0, 0, System.DateTimeKind.Utc).AddDays(yday - 1);
+                month = b.Month; day = b.Day;
+            }
             var dt = new System.DateTime(year, month, day, hour, min, sec, System.DateTimeKind.Utc);
             var t = FromDateTime(dt);
             t.N += nsec;
@@ -611,6 +620,8 @@ public static class Time
             else if (M("01")) { sb.Append(dt.Month.ToString("D2", inv)); }
             else if (M("Monday")) { sb.Append(DaysLong[(int)dt.DayOfWeek]); }
             else if (M("Mon")) { sb.Append(DaysAbbr[(int)dt.DayOfWeek]); }
+            else if (M("002")) { sb.Append(dt.DayOfYear.ToString("D3", inv)); }
+            else if (M("__2")) { sb.Append(dt.DayOfYear.ToString(inv).PadLeft(3)); }
             else if (M("02")) { sb.Append(dt.Day.ToString("D2", inv)); }
             else if (M("_2")) { sb.Append(dt.Day.ToString(inv).PadLeft(2)); }
             else if (M("15")) { sb.Append(dt.Hour.ToString("D2", inv)); }
