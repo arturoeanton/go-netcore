@@ -586,17 +586,43 @@ public static class Net
         return GoString.FromDotNetString(s);
     }
 
-    // net.IPNet field reads (opaque GoNetAddr).
+    // net.IPNet field reads/writes (opaque GoNetAddr). A composite literal sets IP/Mask
+    // through these setters; ParseCIDR instead precomputes Str (and Ip).
     public static GoSlice IPNet_IP(object n) => ((GoNetAddr)n).Ip ?? NilBytes();
+    public static GoSlice IPNet_Mask(object n) => ((GoNetAddr)n).Mask ?? NilBytes();
+    public static void IPNet_SetIP(object n, GoSlice v) { ((GoNetAddr)n).Ip = v; }
+    public static void IPNet_SetMask(object n, GoSlice v) { ((GoNetAddr)n).Mask = v; }
 
     // Zero value for net.IPNet (a composite-literal *net.IPNet starts non-null; its
     // IP/Mask fields are opaque under the shim).
     public static object NewIPNet() => new GoNetAddr();
 
+    // The (ip, mask) of an IPNet with v4/v6 lengths reconciled the way Go's
+    // networkNumberAndMask does. NOTE: like Go, the IP is NOT masked here — IPNet.String
+    // prints the address as-is (ParseCIDR is what stores an already-masked network number).
+    private static (byte[]? ip, byte[]? mask) NetworkNumberAndMask(byte[] n, byte[] m)
+    {
+        byte[] v4 = Raw(IP_To4(Bytes(n)));
+        if (v4.Length != 4) return (n, m); // IPv6 (or invalid): keep both as given
+        byte[] mask = m.Length == 4 ? m : (m.Length == 16 ? m[12..] : m);
+        return (v4, mask);
+    }
+
     // (*net.IPNet).Contains(ip): is ip within this CIDR network?
     public static bool IPNet_Contains(object? n, GoSlice ip)
     {
-        if (n is not GoNetAddr net || net.Str.Length == 0) return false;
+        if (n is not GoNetAddr net) return false;
+        // A composite-literal IPNet carries IP/Mask but no precomputed Str: mask both and compare.
+        if (net.Str.Length == 0)
+        {
+            if (net.Ip == null || net.Mask == null) return false;
+            var (baseN, mask) = NetworkNumberAndMask(Raw(net.Ip.Value), Raw(net.Mask.Value));
+            if (baseN == null || mask == null || baseN.Length != mask.Length) return false;
+            byte[] q = Raw(ip);
+            if (q.Length != baseN.Length) { var v4 = Raw(IP_To4(ip)); if (v4.Length == baseN.Length) q = v4; else return false; }
+            for (int i = 0; i < baseN.Length; i++) if ((q[i] & mask[i]) != (baseN[i] & mask[i])) return false;
+            return true;
+        }
         int slash = net.Str.IndexOf('/');
         if (slash < 0 || !IPAddress.TryParse(net.Str.Substring(0, slash), out var baseAddr) || !int.TryParse(net.Str.Substring(slash + 1), out var bits))
             return false;
@@ -619,7 +645,19 @@ public static class Net
         }
         return true;
     }
-    public static GoString IPNet_String(object n) => GoString.FromDotNetString(((GoNetAddr)n).Str);
+    public static GoString IPNet_String(object n)
+    {
+        var na = (GoNetAddr)n;
+        if (na.Str.Length > 0) return GoString.FromDotNetString(na.Str); // ParseCIDR path
+        if (na.Ip == null || na.Mask == null) return GoString.FromDotNetString("<nil>");
+        var (nn, mask) = NetworkNumberAndMask(Raw(na.Ip.Value), Raw(na.Mask.Value));
+        if (nn == null || mask == null) return GoString.FromDotNetString("<nil>");
+        string ipStr = IP_String(Bytes(nn)).ToDotNetString();
+        int l = SimpleMaskLen(mask);
+        // A canonical (contiguous-ones) mask prints as "/ones"; otherwise as "/<hex mask>".
+        if (l == -1) return GoString.FromDotNetString(ipStr + "/" + IPMask_String(Bytes(mask)).ToDotNetString());
+        return GoString.FromDotNetString(ipStr + "/" + l);
+    }
 
     // net.SplitHostPort(hostport) (host, port string, err error).
     public static object?[] SplitHostPort(GoString hostport)
@@ -695,7 +733,7 @@ public static class Net
 /// <summary>An opaque net address (net.IPNet / net.TCPAddr / net.UDPAddr / …).</summary>
 [GoShim("net.TCPAddr")]
 [GoShim("net.UDPAddr")]
-public sealed class GoNetAddr { public string Str = ""; public long Port; public GoSlice? Ip; }
+public sealed class GoNetAddr { public string Str = ""; public long Port; public GoSlice? Ip; public GoSlice? Mask; }
 
 /// <summary>An opaque net.Resolver handle (DNS is unsupported under goclr's server path).</summary>
 public sealed class GoResolver { }

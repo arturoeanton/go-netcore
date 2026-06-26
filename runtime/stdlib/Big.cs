@@ -219,14 +219,35 @@ public static class Big
 
     public static object?[] Rat_SetString(object z, GoString s)
     {
-        string str = s.ToDotNetString().Trim();
+        string str = s.ToDotNetString();
         var r = R(z);
         try
         {
             int slash = str.IndexOf('/');
-            if (slash >= 0) { r.Num = BigInteger.Parse(str.Substring(0, slash)); r.Den = BigInteger.Parse(str.Substring(slash + 1)); }
-            else { r.Num = BigInteger.Parse(str); r.Den = 1; }
-            if (r.Den.IsZero) return new object?[] { null, false };
+            if (slash >= 0)
+            {
+                // A fraction "num/den"; each side is a plain (possibly signed) integer.
+                r.Num = BigInteger.Parse(str.Substring(0, slash));
+                r.Den = BigInteger.Parse(str.Substring(slash + 1));
+                if (r.Den.IsZero) return new object?[] { null, false };
+                Norm(r);
+                return new object?[] { r, true };
+            }
+            // Otherwise a decimal float: [sign] digits [. digits] [(e|E)[sign]digits].
+            string mant = str.Replace("_", "");
+            int exp10 = 0;
+            int ei = mant.IndexOfAny(new[] { 'e', 'E' });
+            if (ei >= 0) { exp10 = int.Parse(mant.Substring(ei + 1), System.Globalization.CultureInfo.InvariantCulture); mant = mant.Substring(0, ei); }
+            int dot = mant.IndexOf('.');
+            int fracLen = 0;
+            string digits;
+            if (dot >= 0) { fracLen = mant.Length - dot - 1; digits = mant.Substring(0, dot) + mant.Substring(dot + 1); }
+            else digits = mant;
+            if (digits.Length == 0 || digits == "+" || digits == "-") return new object?[] { null, false };
+            BigInteger num = BigInteger.Parse(digits, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture);
+            BigInteger den = BigInteger.Pow(10, fracLen);
+            if (exp10 >= 0) num *= BigInteger.Pow(10, exp10); else den *= BigInteger.Pow(10, -exp10);
+            r.Num = num; r.Den = den;
             Norm(r);
             return new object?[] { r, true };
         }

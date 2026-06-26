@@ -880,7 +880,7 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"User": {"Url", "URL_User"}, "RawPath": {"Url", "URL_Path"}, "Opaque": {"Url", "URL_Opaque"},
 	},
 	"net.IPNet": {
-		"IP": {"Net", "IPNet_IP"},
+		"IP": {"Net", "IPNet_IP"}, "Mask": {"Net", "IPNet_Mask"},
 	},
 	"net.UDPAddr": {
 		"IP": {"Net", "UDPAddr_IP"}, "Port": {"Net", "UDPAddr_Port"}, "Zone": {"Net", "UDPAddr_Zone"},
@@ -1084,6 +1084,9 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	},
 	"net.UDPAddr": {
 		"IP": {"Net", "UDPAddr_SetIP"}, "Port": {"Net", "UDPAddr_SetPort"},
+	},
+	"net.IPNet": {
+		"IP": {"Net", "IPNet_SetIP"}, "Mask": {"Net", "IPNet_SetMask"},
 	},
 	"log/slog.HandlerOptions": {
 		"Level": {"Slog", "HO_SetLevel"}, "AddSource": {"Slog", "HO_SetAddSource"}, "ReplaceAttr": {"Slog", "HO_SetReplaceAttr"},
