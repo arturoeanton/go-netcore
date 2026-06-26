@@ -207,8 +207,9 @@ Remaining edges (documented, not silent):
   `QuoteRuneToASCII`), through strings, runes, `[]byte`, slices and maps. Fixture 741.
   `%#x`/`%#X` of a string or `[]byte` add the `0x`/`0X` prefix (once, or per byte under
   ` ` like Go's `0xde 0xad`), and `%G` uppercases the shortest-form exponent (`1E-05`).
-  Fixture 742. The one residual is **`%#g`/`%#G`** (the `#` flag's "keep trailing zeros to
-  6 significant digits", e.g. `1.00000`), which still prints the shortest form (`1`).
+  `%#g`/`%#G` keep trailing zeros to N significant figures (default 6: `1.00000`, `0.00000`
+  with the leading-zero special case), across the fixed and exponent forms and with an
+  explicit precision. Fixtures 742, 743.
 - **Integer precision** sets the minimum number of digits (zero-padded), distinct
   from width: `%.3d` of 5 → `005`, `%.5x` of 255 → `000ff`, `%#.4o` of 8 → `0010`
   (the `#` prefix is applied after the precision pad), `%.0d` of 0 → empty. The `0`

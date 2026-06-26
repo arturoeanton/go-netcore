@@ -577,8 +577,8 @@ public static class Fmt
             case 'F': return v is GoComplex cf ? ComplexVerb(cf, d => GoFtoa.FormatF(d, sp.Prec < 0 ? 6 : sp.Prec)) : FloatVerb(v, sp, () => GoFtoa.FormatF(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
             case 'e': return v is GoComplex ce ? ComplexVerb(ce, d => GoFtoa.FormatE(d, sp.Prec < 0 ? 6 : sp.Prec)) : FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec), verb);
             case 'E': return v is GoComplex cE ? ComplexVerb(cE, d => GoFtoa.FormatE(d, sp.Prec < 0 ? 6 : sp.Prec, 'E')) : FloatVerb(v, sp, () => GoFtoa.FormatE(ToDouble(v), sp.Prec < 0 ? 6 : sp.Prec, 'E'), verb);
-            case 'g': return v is GoComplex cg ? ComplexVerb(cg, d => sp.Prec < 0 ? GoFtoa.Shortest(d) : GoFtoa.FormatG(d, sp.Prec)) : FloatVerb(v, sp, () => sp.Prec < 0 ? (v is float gf ? GoFtoa.Shortest(gf) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec), verb);
-            case 'G': return v is GoComplex cG ? ComplexVerb(cG, d => UpperExp(sp.Prec < 0 ? GoFtoa.Shortest(d) : GoFtoa.FormatG(d, sp.Prec))) : FloatVerb(v, sp, () => UpperExp(sp.Prec < 0 ? (v is float gF ? GoFtoa.Shortest(gF) : GoFtoa.Shortest(ToDouble(v))) : GoFtoa.FormatG(ToDouble(v), sp.Prec)), verb);
+            case 'g': return v is GoComplex cg ? ComplexVerb(cg, d => GFormat(d, sp, false, false)) : FloatVerb(v, sp, () => GFormat(ToDouble(v), sp, v is float, false), verb);
+            case 'G': return v is GoComplex cG ? ComplexVerb(cG, d => GFormat(d, sp, false, true)) : FloatVerb(v, sp, () => GFormat(ToDouble(v), sp, v is float, true), verb);
             case 'p':
                 if (v == null) return "<nil>";
                 // Go's %p accepts only pointer-like kinds (pointer/slice/map/chan/func);
@@ -767,6 +767,45 @@ public static class Fmt
     // %x/%X of a byte string/slice; the space flag (% x) puts a space between each byte pair.
     // %G uppercases the exponent marker only (e->E), leaving +Inf/NaN as-is.
     private static string UpperExp(string s) => s.IndexOf('e') >= 0 ? s.Replace('e', 'E') : s;
+
+    // %g/%G core: the shortest (or precision-bounded) g form, with the '#' flag restoring
+    // trailing zeros to `digits` significant figures (default 6) like Go's %#g, and %G
+    // uppercasing the exponent.
+    private static string GFormat(double d, Spec sp, bool isF32, bool upper)
+    {
+        string r = sp.Prec < 0 ? (isF32 ? GoFtoa.Shortest((float)d) : GoFtoa.Shortest(d)) : GoFtoa.FormatG(d, sp.Prec);
+        if (sp.Hash) r = SharpG(r, sp.Prec < 0 ? 6 : sp.Prec);
+        return upper ? UpperExp(r) : r;
+    }
+
+    // Go's %#g zero-padding: keep trailing zeros so the result shows `digits` significant
+    // figures. Operates on a finite magnitude (FloatVerb handles Inf/NaN before this).
+    private static string SharpG(string s, int digits)
+    {
+        string sign = "";
+        if (s.Length > 0 && s[0] == '-') { sign = "-"; s = s.Substring(1); }
+        string tail = "";
+        int e = s.IndexOfAny(new[] { 'e', 'E' });
+        if (e >= 0) { tail = s.Substring(e); s = s.Substring(0, e); }
+        bool hasDot = s.IndexOf('.') >= 0;
+        bool sawNonzero = false;
+        int rem = digits;
+        foreach (char c in s)
+        {
+            if (c == '.') continue;
+            if (c != '0') sawNonzero = true;
+            if (sawNonzero) rem--;
+        }
+        var sb = new StringBuilder(s);
+        if (!hasDot)
+        {
+            if (s == "0") rem--; // Go: a leading digit 0 contributes once to the digit count
+            sb.Append('.');
+        }
+        while (rem > 0) { sb.Append('0'); rem--; }
+        sb.Append(tail);
+        return sign + sb.ToString();
+    }
 
     private static string HexStr(GoString s, bool upper, bool space, bool hash = false)
     {
