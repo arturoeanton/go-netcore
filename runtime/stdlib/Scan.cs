@@ -29,7 +29,8 @@ public static class Scan
             if (fc == '%' && fi + 1 < f.Length)
             {
                 fi++;
-                while (fi < f.Length && char.IsDigit(f[fi])) fi++; // skip an optional width
+                int width = 0; // an optional field width (max characters this verb consumes)
+                while (fi < f.Length && char.IsDigit(f[fi])) { width = width * 10 + (f[fi] - '0'); fi++; }
                 char verb = f[fi];
                 fi++;
                 if (verb == '%')
@@ -42,13 +43,13 @@ public static class Scan
                 ai++;
                 // An unsupported verb (e.g. the scanset %[...], which Go's fmt does not
                 // implement either) is reported exactly as Go does: bad verb '%X' for <type>.
-                if ("dsfgetxcqv".IndexOf(verb) < 0)
+                if ("dsfgetxXcqvobU".IndexOf(verb) < 0)
                 { consumed = si; return Fail(count, "bad verb '%" + verb + "' for " + Fmt.TypeName(SafeGet(ptr))); }
                 if (verb != 'c') while (si < s.Length && char.IsWhiteSpace(s[si])) si++;
                 // Input exhausted before this verb could read anything → io.EOF (as Go does);
                 // a non-empty-but-mismatching input gives the verb-specific "expected …" error.
                 if (si >= s.Length) { consumed = si; return FailEOF(count); }
-                if (!ScanOne(verb, s, ref si, ptr)) { consumed = si; return Fail(count, "expected " + VerbDesc(verb)); }
+                if (!ScanOne(verb, s, ref si, ptr, width)) { consumed = si; return Fail(count, "expected " + VerbDesc(verb)); }
                 count++;
                 continue;
             }
@@ -130,12 +131,13 @@ public static class Scan
     }
 
     // Scans one value of the given verb from s at si (advancing si), storing it through ptr.
-    static bool ScanOne(char verb, string s, ref int si, GoPtr? ptr)
+    static bool ScanOne(char verb, string s, ref int si, GoPtr? ptr, int width = 0)
     {
         if (ptr == null) return false;
         long kind = GoPtrs.PointeeKind(ptr);
         if (verb == 'v') verb = kind switch { 1 => 's', 5 => 't', 6 => 'f', 9 => 'f', _ => 'd' };
         if (verb == 'g' || verb == 'e') verb = 'f';
+        if (verb == 'X') verb = 'x';
         switch (verb)
         {
             case 's':
@@ -152,7 +154,7 @@ public static class Scan
                     return true;
                 }
                 int start = si;
-                while (si < s.Length && !char.IsWhiteSpace(s[si])) si++;
+                while (si < s.Length && !char.IsWhiteSpace(s[si]) && (width == 0 || si - start < width)) si++;
                 if (si == start) return false;
                 GoPtrs.Set(ptr, GoString.FromDotNetString(s.Substring(start, si - start)));
                 return true;
@@ -162,7 +164,7 @@ public static class Scan
                 int start = si;
                 if (si < s.Length && (s[si] == '+' || s[si] == '-')) si++;
                 int digits = si;
-                while (si < s.Length && char.IsDigit(s[si])) si++;
+                while (si < s.Length && char.IsDigit(s[si]) && (width == 0 || si - start < width)) si++;
                 if (si == digits) { si = start; return false; }
                 if (!long.TryParse(s.Substring(start, si - start), out long n)) { si = start; return false; }
                 StoreInt(ptr, kind, n);
@@ -171,10 +173,34 @@ public static class Scan
             case 'x':
             {
                 int start = si;
-                while (si < s.Length && IsHex(s[si])) si++;
+                while (si < s.Length && IsHex(s[si]) && (width == 0 || si - start < width)) si++;
                 if (si == start) return false;
                 long n = System.Convert.ToInt64(s.Substring(start, si - start), 16);
                 StoreInt(ptr, kind, n);
+                return true;
+            }
+            case 'o':
+            case 'b':
+            {
+                int radix = verb == 'o' ? 8 : 2; char maxd = verb == 'o' ? '7' : '1';
+                int start = si; bool neg = false;
+                if (si < s.Length && (s[si] == '+' || s[si] == '-')) { neg = s[si] == '-'; si++; }
+                int digits = si;
+                while (si < s.Length && s[si] >= '0' && s[si] <= maxd && (width == 0 || si - start < width)) si++;
+                if (si == digits) { si = start; return false; }
+                long n = 0;
+                for (int k = digits; k < si; k++) n = n * radix + (s[k] - '0');
+                StoreInt(ptr, kind, neg ? -n : n);
+                return true;
+            }
+            case 'U':
+            {
+                if (!Match(s, si, "U+")) return false;
+                int start = si + 2, j = start;
+                while (j < s.Length && IsHex(s[j])) j++;
+                if (j == start) return false;
+                StoreInt(ptr, kind, System.Convert.ToInt64(s.Substring(start, j - start), 16));
+                si = j;
                 return true;
             }
             case 'f':
@@ -222,7 +248,7 @@ public static class Scan
     static object? SafeGet(GoPtr? p) { try { return p == null ? null : GoPtrs.Get(p); } catch { return null; } }
     static bool IsHex(char c) => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     static bool Match(string s, int i, string word) => i + word.Length <= s.Length && s.Substring(i, word.Length) == word;
-    static string VerbDesc(char v) => v switch { 'd' or 'x' => "integer", 'f' or 'g' or 'e' => "float", 't' => "boolean", _ => "input" };
+    static string VerbDesc(char v) => v switch { 'd' or 'x' or 'X' or 'o' or 'b' or 'U' => "integer", 'f' or 'g' or 'e' => "float", 't' => "boolean", _ => "input" };
     static object?[] Fail(int count, string msg) => new object?[] { (long)count, new GoError(GoString.FromDotNetString(msg)) };
     // Running out of input at a value boundary is io.EOF in Go (not "unexpected EOF"); use the
     // shared sentinel so both the printed message and `err == io.EOF` match.
