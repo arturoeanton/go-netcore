@@ -51,6 +51,20 @@ public static class Slog
         _ => "ERROR",
     };
 
+    // (slog.Level).String(): base name plus a signed offset for non-canonical values
+    // ("INFO", "INFO+2", "WARN-1", "DEBUG+4"), matching Go exactly.
+    public static GoString Level_String(long l)
+    {
+        static string Str(string b, long v) => v == 0 ? b : b + (v >= 0 ? "+" : "") + v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string s = l < 0 ? Str("DEBUG", l + 4)
+                 : l < 4 ? Str("INFO", l)
+                 : l < 8 ? Str("WARN", l - 4)
+                 : Str("ERROR", l - 8);
+        return GoString.FromDotNetString(s);
+    }
+    // (slog.Level).Level(): a Level is its own Leveler.
+    public static long Level_Level(long l) => l;
+
     // --- handlers / loggers --------------------------------------------------
     public static object NewTextHandler(object? w, object? opts) => new GoSlogHandler { Writer = w, Json = false };
     public static object NewJSONHandler(object? w, object? opts) => new GoSlogHandler { Writer = w, Json = true };

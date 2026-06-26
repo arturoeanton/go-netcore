@@ -2069,6 +2069,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"time.Location": {
 		"String": {"Time", "Location_String"},
 	},
+	"log/slog.Level": {
+		"String": {"Slog", "Level_String"}, "Level": {"Slog", "Level_Level"},
+	},
 	"time.Month": {
 		"String": {"Time", "Month_String"},
 	},
