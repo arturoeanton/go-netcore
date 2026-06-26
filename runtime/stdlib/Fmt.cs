@@ -5,10 +5,56 @@ using System.Text;
 using System.Globalization;
 using GoCLR.Runtime;
 
+/// <summary>The fmt.State handed to a user type's Format(f fmt.State, verb rune): it captures
+/// the formatted output (IGoWriter, so fmt.Fprintf(f, …) routes its bytes here through
+/// Fmt.WriteTo) and reports the active verb's flags/width/precision. One per Formatter call.</summary>
+[GoShim("fmt.State")]
+public sealed class GoFmtState : IGoWriter
+{
+    public readonly StringBuilder SB = new();
+    public int Width = -1, Prec = -1; // -1 == unset
+    public bool Minus, Plus, Space, Hash, Zero;
+    public void GoWrite(byte[] data) => SB.Append(Encoding.UTF8.GetString(data));
+}
+
 /// <summary>Shim for a subset of Go's <c>fmt</c> package. %v formatting uses .NET
 /// reflection over boxed values, mirroring Go's default formatting.</summary>
 public static class Fmt
 {
+    // fmt.State method shims (receiver-first), dispatched when a user Format body calls
+    // f.Write / f.Width / f.Precision / f.Flag on the State it was handed.
+    public static object?[] State_Write(object st, GoSlice b)
+    {
+        var s = (GoFmtState)st;
+        s.SB.Append(Encoding.UTF8.GetString(SliceToBytes(b)));
+        return new object?[] { (long)b.Len, null };
+    }
+    public static object?[] State_Width(object st) { var s = (GoFmtState)st; return new object?[] { (long)(s.Width < 0 ? 0 : s.Width), s.Width >= 0 }; }
+    public static object?[] State_Precision(object st) { var s = (GoFmtState)st; return new object?[] { (long)(s.Prec < 0 ? 0 : s.Prec), s.Prec >= 0 }; }
+    public static bool State_Flag(object st, long c)
+    {
+        var s = (GoFmtState)st;
+        return (int)c switch { '-' => s.Minus, '+' => s.Plus, ' ' => s.Space, '#' => s.Hash, '0' => s.Zero, _ => false };
+    }
+
+    // fmt.Formatter: a user type's Format(f fmt.State, verb rune) controls every verb. Build
+    // a State carrying this verb's flags/width/precision, drive Format through the callback
+    // bridge, and return what it wrote. The Formatter owns its own padding (via State.Width),
+    // so the caller must not pad the result further.
+    private static bool TryFormatter(object? v, Spec sp, out string result)
+    {
+        result = "";
+        if (v == null || !Bridge.HasMethod(v, "Format")) return false;
+        var st = new GoFmtState
+        {
+            Width = sp.Width, Prec = sp.Prec,
+            Minus = sp.Minus, Plus = sp.Plus, Space = sp.Space, Hash = sp.Hash, Zero = sp.Zero,
+        };
+        Bridge.CallMethod(v, "Format", st, (int)sp.Verb);
+        result = st.SB.ToString();
+        return true;
+    }
+
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     // Stringer/Error dispatch tables, populated at startup by the compiler. A value
@@ -314,7 +360,9 @@ public static class Fmt
     // "[005 042]", not the whole composite), so the pad is skipped at the composite level
     // and applied inside the recursion. Scalars and the non-recursing verbs pad as before.
     private static string FmtElem(object? v, Spec sp) =>
-        RecursesPerElement(v, sp.Verb) ? FormatVerb(v, sp) : Pad(FormatVerb(v, sp), sp);
+        // A fmt.Formatter owns its rendering (including width), so it is not padded here.
+        TryFormatter(v, sp, out var fr) ? fr
+        : RecursesPerElement(v, sp.Verb) ? FormatVerb(v, sp) : Pad(FormatVerb(v, sp), sp);
 
     private static bool RecursesPerElement(object? v, char verb)
     {
@@ -737,6 +785,8 @@ public static class Fmt
     private static string Format(object? v, char verb, bool plus, bool hash)
     {
         v = MaybeRetag(v); // re-tag a []Stringer's bare elements (Sprint/Println path)
+        // fmt.Formatter governs the Print/Println/Sprint path too (verb 'v', no flags).
+        if (TryFormatter(v, new Spec { Verb = verb, Width = -1, Prec = -1, Plus = plus, Hash = hash }, out var ffr)) return ffr;
         if (v is GoBigFloat bfv) v = bfv.V; // *big.Float (double-backed) prints like its value
         // A type's String()/Error() method governs %v and %s output (but not the
         // Go-syntax %#v, nor numeric/bool/pointer-address verbs).

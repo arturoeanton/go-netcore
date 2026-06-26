@@ -154,6 +154,8 @@ var bridgeInterfaces = []string{
 	"encoding.TextUnmarshaler",
 	// so fmt's %#v can call a user type's own GoString() (fmt.GoStringer).
 	"fmt.GoStringer",
+	// so fmt can drive a user type's own Format(fmt.State, rune) (fmt.Formatter) for every verb.
+	"fmt.Formatter",
 }
 
 // collectBridgeMethods generates the method-callback adapters every concrete implementer

@@ -157,9 +157,13 @@ Remaining edges (documented, not silent):
 - **`fmt.GoStringer`** is honored: a user type with a `GoString() string` method
   controls its `%#v` (Go-syntax) rendering — at the top level, through a pointer, and
   nested inside a struct/slice/map (driven through the callback bridge). `%v`/`%s` are
-  unaffected. Fixture 679_fmt_gostringer. **Deferred: `fmt.Formatter`** (a `Format(fmt.State,
-  rune)` method controlling every verb) is not yet honored — it needs a writable `fmt.State`
-  shim and interface-method dispatch on it; the value formats by the default verb rules.
+  unaffected. Fixture 679_fmt_gostringer.
+- **`fmt.Formatter`** is honored: a user type with `Format(f fmt.State, verb rune)` controls
+  every verb's rendering. The `fmt.State` it receives (a `GoFmtState` shim) captures output —
+  `fmt.Fprintf(f, …)` writes to it via the `IGoWriter` path — and reports the verb's
+  `Width()`/`Precision()`/`Flag()`. Honored at the top level, through a pointer receiver, and
+  per element inside a slice/map; the Formatter owns its own width padding. Fixture
+  680_fmt_formatter.
 - A non-numeric verb's **width applied to a composite** (`%6v` of a `[]int`)
   pads the whole rendering rather than each element; Go pads per element.
   Numeric verbs (`%6d`, `%03d`) already pad per element. `%!(EXTRA …)` for

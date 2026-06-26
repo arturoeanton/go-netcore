@@ -1699,6 +1699,12 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Write": {"Crypto", "Hash_Write"}, "Sum": {"Crypto", "Hash_Sum"}, "Reset": {"Crypto", "Hash_Reset"},
 		"Size": {"Crypto", "Hash_Size"}, "BlockSize": {"Crypto", "Hash_BlockSize"},
 	},
+	// fmt.State: handed to a user Format(fmt.State, rune); its methods dispatch to the shim
+	// GoFmtState the formatter builds.
+	"fmt.State": {
+		"Write": {"Fmt", "State_Write"}, "Width": {"Fmt", "State_Width"},
+		"Precision": {"Fmt", "State_Precision"}, "Flag": {"Fmt", "State_Flag"},
+	},
 	"encoding/hex.InvalidByteError": {
 		"Error": {"Hex", "InvalidByteError_Error"},
 	},
