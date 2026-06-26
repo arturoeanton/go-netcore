@@ -175,6 +175,11 @@ public static class Compress
             case GoBuffer buf: buf.B.AddRange(data); break;
             case GoReader gr: { var n = new byte[gr.Data.Length + data.Length]; gr.Data.CopyTo(n, 0); data.CopyTo(n, gr.Data.Length); gr.Data = n; break; }
             case GoConn gc: gc.S.Write(data, 0, data.Length); break; // a net.Conn (fasthttp response) — write to the socket, not stdout
+            case GoBufWriter bw: bw.Buf.AddRange(data); break; // bufio.Writer — append raw, Flush emits
+            case GoBufReadWriter rw when rw.W is GoBufWriter bww: bww.Buf.AddRange(data); break;
+            // A user io.Writer (lowered Write adapter): drive its own Write with the RAW bytes
+            // through the bridge — routing via Fmt.WriteTo(string) would UTF-8-mangle them.
+            case not null when Bridge.HasMethod(w, "Write"): Bridge.CallMethod(w, "Write", Bytes(data)); break;
             default: Fmt.WriteTo(w, System.Text.Encoding.UTF8.GetString(data)); break;
         }
     }

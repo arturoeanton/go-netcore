@@ -66,7 +66,10 @@ public static class Io
 
     public static object?[] WriteString(object? w, GoString s)
     {
-        long n = Fmt.WriteTo(w, s.ToDotNetString());
-        return new object?[] { n, null };
+        // Write the string's raw bytes (a Go string can hold non-UTF-8 bytes, e.g. the PNG
+        // header "\x89PNG…"); ToDotNetString would UTF-8-decode and mangle them to U+FFFD.
+        var by = s.Bytes;
+        Compress.WriteRaw(w, by);
+        return new object?[] { (long)by.Length, null };
     }
 }
