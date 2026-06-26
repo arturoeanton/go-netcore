@@ -348,7 +348,9 @@ delivery), **`net/http/cookiejar`**, **`net/http/httptest`** (live server + reco
 source — the color types/Models/conversions, plus the Rectangle/Point geometry and the
 buffered image types RGBA/NRGBA/Gray/Paletted/YCbCr with SubImage/Palette and the decoder
 registry, all byte-exact; `image.Decode` returns `ErrFormat` since no format decoder
-(png/jpeg/gif) is registered). Still deferred (need a larger feature or external module):
+(png/jpeg/gif) is registered), and **`image/draw`** (Draw/DrawMask with the Src/Over
+operators, Uniform sources, alpha masks and the blending math). Still deferred (need a
+larger feature or external module):
 
 - **`container/heap`** — works, including the idiomatic **named-slice** implementer
   (`type IntHeap []int` reached as `*IntHeap`): `heap.Init/Push/Pop/Fix/Remove` drive
