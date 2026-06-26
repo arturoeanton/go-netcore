@@ -26,8 +26,9 @@ public sealed class GoFlagSet
 }
 
 /// <summary>Shim for flag: define typed flags, parse argv. Parsing is ported from
-/// src/flag/flag.go (parseOne) so behaviour and error strings match go run. PrintDefaults /
-/// usage output, Visit/Lookup (*Flag access) and Func/TextVar are not yet provided.</summary>
+/// src/flag/flag.go (parseOne) so behaviour and error strings match go run, including
+/// failf (print the error + usage to the set's output on a parse failure) and -help.
+/// PrintDefaults, Visit/VisitAll/Lookup (*Flag access) and Func/Var are provided.</summary>
 public static class Flag
 {
     // The package-level default set (flag.CommandLine), ExitOnError like Go.
@@ -270,31 +271,48 @@ public static class Flag
         int numMinuses = 1;
         if (s[1] == '-') { numMinuses++; if (s.Length == 2) { f.Args.RemoveAt(0); return (false, null); } }
         string name = s.Substring(numMinuses);
-        if (name.Length == 0 || name[0] == '-' || name[0] == '=') return (false, Err($"bad flag syntax: {s}"));
+        if (name.Length == 0 || name[0] == '-' || name[0] == '=') return (false, Failf(f, $"bad flag syntax: {s}"));
         f.Args.RemoveAt(0);
         bool hasValue = false; string value = "";
         for (int i = 1; i < name.Length; i++) if (name[i] == '=') { value = name.Substring(i + 1); hasValue = true; name = name.Substring(0, i); break; }
         if (!f.Formal.TryGetValue(name, out var fl))
         {
-            if (name == "help" || name == "h") return (false, ErrHelpSentinel);
-            return (false, Err($"flag provided but not defined: -{name}"));
+            if (name == "help" || name == "h") { Usage(f); return (false, ErrHelpSentinel); } // -help/-h: print usage, return ErrHelp
+            return (false, Failf(f, $"flag provided but not defined: -{name}"));
         }
         if (fl.Kind == 0) // bool: doesn't need an arg
         {
             var e = SetValue(fl, hasValue ? value : "true");
-            if (e != null) return (false, Err(hasValue ? $"invalid boolean value \"{value}\" for -{name}: {e}" : $"invalid boolean flag {name}: {e}"));
+            if (e != null) return (false, Failf(f, hasValue ? $"invalid boolean value \"{value}\" for -{name}: {e}" : $"invalid boolean flag {name}: {e}"));
         }
         else
         {
             if (!hasValue && f.Args.Count > 0) { hasValue = true; value = f.Args[0]; f.Args.RemoveAt(0); }
-            if (!hasValue) return (false, Err($"flag needs an argument: -{name}"));
+            if (!hasValue) return (false, Failf(f, $"flag needs an argument: -{name}"));
             var e = SetValue(fl, value);
-            if (e != null) return (false, Err($"invalid value \"{value}\" for flag -{name}: {e}"));
+            if (e != null) return (false, Failf(f, $"invalid value \"{value}\" for flag -{name}: {e}"));
         }
         f.Actual[name] = fl;
         return (true, null);
     }
     private static object Err(string msg) => new GoError(GoString.FromDotNetString(msg));
+
+    // Go's (*FlagSet).failf: print the error and the usage to the set's output, then return the
+    // error (the caller decides whether to also exit/panic per the error-handling mode).
+    private static object Failf(GoFlagSet f, string msg)
+    {
+        Fmt.WriteTo(f.Out ?? Os.Stderr(), msg + "\n");
+        Usage(f);
+        return Err(msg);
+    }
+
+    // Go's (*FlagSet).defaultUsage: "Usage of NAME:\n" (or "Usage:\n" when unnamed), then the
+    // PrintDefaults block.
+    private static void Usage(GoFlagSet f)
+    {
+        Fmt.WriteTo(f.Out ?? Os.Stderr(), f.Name.Length == 0 ? "Usage:\n" : "Usage of " + f.Name + ":\n");
+        FS_PrintDefaults(f);
+    }
 
     public static bool FS_Parsed(object fs) => FS(fs).Parsed;
     public static GoString FS_Name(object fs) => GoString.FromDotNetString(FS(fs).Name);
