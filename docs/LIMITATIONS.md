@@ -81,6 +81,13 @@ one; these don't yet):
   address is non-deterministic in both runtimes this can't be made byte-exact, and
   goclr's content form is more useful; nil pointer fields and top-level pointers are
   correct.
+- **`fmt` of a nil pointer / nil interface** matches Go's `fmtPointer` byte-for-byte:
+  an untyped `nil` prints `<nil>` for `%v`/`%T` and `%!verb(<nil>)` for every other
+  verb; a typed nil pointer (`var p *int`) prints `<nil>` for `%v`, its type name for
+  `%T`, `0x0` for `%p`, the zero address `0` for the integer verbs `%b/%o/%d/%x/%X`
+  (honoring `#`), `(*int)(nil)` for `%#v`, and `%!verb(*int=<nil>)` for the rest. (A
+  *live* pointer's `%p`/`%d` address is non-deterministic and not byte-exact, as in any
+  runtime.)
 - **`json.Marshal` string escaping** matches Go byte-for-byte: `\b \f \n \r \t`
   short forms (`\u00XX` for other controls), `<`/`>`/`&` → `<`/`>`/
   `&` under the default HTML-escaping (off via `Encoder.SetEscapeHTML(false)`),

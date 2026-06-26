@@ -458,10 +458,41 @@ public static class Fmt
     private static string FormatVerb(object? v, Spec sp)
     {
         if (ReferenceEquals(v, MissingArg)) return "%!" + sp.Verb + "(MISSING)";
+        // An untyped nil interface: %v/%w print "<nil>" and %T prints "<nil>", but every
+        // other verb is a bad verb rendered as "%!verb(<nil>)" — with no "type=value" tail,
+        // since a nil interface carries no dynamic type. (A typed nil *int would print 0 for
+        // integer verbs in Go, but goclr erases a typed nil pointer to a bare null, so it
+        // cannot be told apart here; matching the untyped form is the faithful choice.)
+        if (v is null)
+        {
+            char nv = sp.Verb;
+            if (nv == 'T') return "<nil>";
+            if (nv == 'v' || nv == 'w') return sp.Hash ? FormatGoSyntax(null) : Format(null, 'v', sp.Plus, sp.Hash);
+            return "%!" + nv + "(<nil>)";
+        }
         if (v is string vraw) v = GoString.FromDotNetString(vraw); // a shim struct's raw C# string field
         v = MaybeRetag(v); // re-tag a []Stringer's bare elements before any verb dispatch
         if (v is GoBigFloat bfv) v = bfv.V; // *big.Float (double-backed) formats like its value
         char verb = sp.Verb;
+        // A typed nil pointer/func/chan is a typed box whose underlying value is nil. Go's
+        // fmtPointer formats it as the zero address: %v -> "<nil>", %T -> the type name,
+        // %p -> "0x0", the integer verbs b/o/d/x/X -> the address 0 (honoring # and width),
+        // and any other verb -> "%!verb(T=<nil>)". (v/w/T fall through to the normal paths,
+        // which already render "<nil>", "(*T)(nil)" for %#v, and the type name for %T.)
+        if (v is GoNamed gnil && gnil.Value is null)
+        {
+            switch (verb)
+            {
+                case 'd': return IntVerb(0L, sp, 10, false);
+                case 'b': return IntVerb(0L, sp, 2, false);
+                case 'o': return IntVerb(0L, sp, 8, sp.Hash);
+                case 'x': return IntVerb(0L, sp, 16, sp.Hash);
+                case 'X': return IntVerb(0L, sp, -16, sp.Hash);
+                case 'p': return "0x0";
+                case 'v': case 'w': case 'T': break;
+                default: return "%!" + verb + "(" + GoTypeName(v) + "=<nil>)";
+            }
+        }
         // The typed-box name (if any) before unwrapping, so %x can tell a []byte ("[]uint8",
         // formatted as a hex string) from a []int ("[]int", which recurses element-wise).
         string? wname = v is GoNamed g0 ? Rt.NamedTypeName(g0.TypeId) : null;
