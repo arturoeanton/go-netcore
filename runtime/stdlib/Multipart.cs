@@ -199,12 +199,14 @@ public static class Multipart
     }
     private static string EscapeQuotes(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-    public static object?[] Writer_WriteField(object mw, GoString name, GoString val)
+    // (*Writer).WriteField(name, value string) error — a single error result (goclr emits the
+    // call expecting one object, so this must return object?, not an object?[] tuple).
+    public static object? Writer_WriteField(object mw, GoString name, GoString val)
     {
         var w = (GoMultipartWriter)mw;
         WritePartHeader(w, "Content-Disposition: form-data; name=\"" + EscapeQuotes(name.ToDotNetString()) + "\"\r\n");
         Compress.WriteRaw(w.W, Encoding.UTF8.GetBytes(val.ToDotNetString()));
-        return new object?[] { null };
+        return null;
     }
     // CreateFormField(name) / CreateFormFile(name, filename) (io.Writer, error): write the part
     // header, then return the underlying writer so the caller streams the body into it.
