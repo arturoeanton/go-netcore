@@ -350,7 +350,7 @@ public static partial class Strconv
         bool f32 = bitSize == 32 && p < 0;
         string s = c switch
         {
-            'f' or 'F' => f32 ? GoFtoa.ShortestF((float)f) : GoFtoa.FormatF(f, p),
+            'f' or 'F' => p < 0 ? (f32 ? GoFtoa.ShortestF((float)f) : GoFtoa.ShortestF(f)) : GoFtoa.FormatF(f, p),
             'e' => f32 ? GoFtoa.ShortestE((float)f) : GoFtoa.FormatE(f, p),
             'E' => f32 ? GoFtoa.ShortestE((float)f, 'E') : GoFtoa.FormatE(f, p, 'E'),
             'g' => p < 0 ? (f32 ? GoFtoa.Shortest((float)f) : GoFtoa.Shortest(f)) : GoFtoa.FormatG(f, p),

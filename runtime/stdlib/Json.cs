@@ -210,7 +210,13 @@ public static class Json
             case long l: sb.Append(l.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
             case int i: sb.Append(i.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
             case ulong u: sb.Append(u.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
-            case double d: WriteNumber(sb, d); break;
+            case double d: WriteNumber(sb, d, 64); break;
+            case float fv: WriteNumber(sb, fv, 32); break;
+            case uint ui: sb.Append(ui.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
+            case short sh: sb.Append(sh.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
+            case ushort us: sb.Append(us.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
+            case byte bt: sb.Append(bt.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
+            case sbyte sby: sb.Append(sby.ToString(System.Globalization.CultureInfo.InvariantCulture)); break;
             case GoString gs: WriteString(sb, gs.ToDotNetString()); break;
             // time.Time marshals as its RFC3339 string (Time.MarshalJSON), not the raw struct.
             case GoTime gt: sb.Append(Time.JsonText(gt)); break;
@@ -235,12 +241,22 @@ public static class Json
         }
     }
 
-    private static void WriteNumber(StringBuilder sb, double d)
+    private static void WriteNumber(StringBuilder sb, double d, long bitSize)
     {
-        if (d == System.Math.Floor(d) && !double.IsInfinity(d))
-            sb.Append(((long)d).ToString(System.Globalization.CultureInfo.InvariantCulture));
-        else
-            sb.Append(d.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        // Go's encoding/json float format: shortest 'f' for 1e-6 <= |f| < 1e21, else 'e',
+        // with a single leading zero stripped from a negative exponent (e-09 -> e-9). This
+        // matches strconv exactly and avoids the (long) overflow on large whole-number floats.
+        // A float32 field formats from its 32-bit shortest round-trip (bitSize 32).
+        double abs = System.Math.Abs(d);
+        char fmt = (abs != 0 && (abs < 1e-6 || abs >= 1e21)) ? 'e' : 'f';
+        string s = Strconv.FormatFloat(d, fmt, -1, bitSize).ToDotNetString();
+        if (fmt == 'e')
+        {
+            int n = s.Length;
+            if (n >= 4 && s[n - 4] == 'e' && s[n - 3] == '-' && s[n - 2] == '0')
+                s = s.Substring(0, n - 2) + s[n - 1];
+        }
+        sb.Append(s);
     }
 
     private static void WriteString(StringBuilder sb, string s)

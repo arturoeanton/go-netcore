@@ -428,7 +428,10 @@ larger feature or external module):
   `[GoShim("io/fs.FileInfo")]`, still matches via `IsShimKindStrict`). Fixture
   403_fs_fileinfo_dispatch. (Note: `testing/fstest.MapFS` is standard-library code that is
   not lowered, so its methods can't be bridged — that is a stdlib-coverage gap, not a
-  dispatch gap; a user-defined in-memory `fs.FS` works.)
+  dispatch gap; a user-defined in-memory `fs.FS` works.) `os.Stat`/`ReadDir` now report the
+  Unix permission bits via `FileInfo.Mode()` and a real `ModTime()`, but a **directory's
+  `Size()` is 0** (the OS block size — 64 on macOS, 4096 on Linux ext4 — isn't read; it is
+  platform-specific and not portable even in Go). Regular-file sizes are exact.
 - **`path/filepath.Glob`** — works: returns the files matching a `Match`-syntax pattern
   (`*`, `?`, `[…]`, recursive `*/*.go`), sorted within each directory; file-system errors
   are ignored (a missing/unreadable directory yields no matches), a non-meta pattern checks

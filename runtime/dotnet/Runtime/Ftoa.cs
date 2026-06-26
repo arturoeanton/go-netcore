@@ -62,6 +62,17 @@ public static class GoFtoa
         return neg ? "-" + body : body;
     }
 
+    /// <summary>strconv.FormatFloat(d, 'f', -1, 64) — shortest float64 fixed form (always
+    /// fixed notation, unlike Shortest which switches to 'e' for large/small exponents).</summary>
+    public static string ShortestF(double d)
+    {
+        if (double.IsNaN(d)) return "NaN";
+        if (double.IsInfinity(d)) return d < 0 ? "-Inf" : "+Inf";
+        if (!ShortestDigits(d, out bool neg, out string digits, out int dp)) return neg ? "-0" : "0";
+        string body = FmtF(digits, dp);
+        return neg ? "-" + body : body;
+    }
+
     /// <summary>strconv.FormatFloat(d, 'e', -1, 64) — shortest digits in exponent form.</summary>
     public static string ShortestE(double d, char e = 'e')
     {
