@@ -231,6 +231,17 @@ inherit that last-ULP edge on the affected inputs; the value is correct to ~1 UL
 error, not a silent wrong answer) — `System.Math` has no equivalent and the fdlibm ports
 are a large deferred piece.
 
+## html/template contextual auto-escaping
+
+`html/template` escapes interpolated values by context — HTML text, attribute
+(quoted/unquoted), URL (with the path-vs-query distinction and the `isSafeURL`
+http/https/mailto scheme allowlist → `#ZgotmplZ` for others), CSS, JS value and JS
+string — matching Go including the `ZgotmplZ` neutralization of a dynamic attribute
+**name** and dangerous CSS, and Go's `jsStrReplacementTable`/url-normalizer byte-for-byte.
+**Deferred:** Go elides HTML comments (`<!-- … -->`) from the output entirely; goclr keeps
+them (the contextual tokenizer tracks a comment state but the static delimiters are not
+yet stripped, and a precise `<!--`-vs-`<!DOCTYPE` distinction is needed first).
+
 ## regexp POSIX leftmost-longest
 
 `regexp.CompilePOSIX`/`MustCompilePOSIX` compile and match, but use the default

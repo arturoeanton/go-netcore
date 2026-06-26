@@ -861,6 +861,12 @@ public static class Template
                 return JsValue(v, s.C);
             case Ctx.Css:
                 return safe == "template.CSS" ? raw : CssValueFilter(raw);
+            // An action in attribute-NAME position is a dangerous context Go refuses to
+            // escape — it neutralizes the whole attribute name to the ZgotmplZ sentinel.
+            case Ctx.BeforeAttr:
+            case Ctx.AttrName:
+            case Ctx.AfterAttrName:
+                return "ZgotmplZ";
             case Ctx.BeforeValue: // an action right after `=` is the (unquoted) value
             case Ctx.ValueUQ:
                 if (url) return UqAttrEscape(UrlForPart(raw, s.UrlQuery, safe == "template.URL"));
@@ -1020,33 +1026,41 @@ public static class Template
     {
         if (!trusted)
         {
-            string trimmed = s.TrimStart();
-            int colon = trimmed.IndexOf(':');
-            if (colon > 0)
+            // Go's isSafeURL allowlist: if a ':' appears before any '/', the part before it is a
+            // scheme that must be http/https/mailto, else the whole URL is neutralized to
+            // "#ZgotmplZ" (this blocks javascript:/data:/etc. AND any other unknown scheme).
+            int colon = s.IndexOf(':');
+            if (colon >= 0 && s.Substring(0, colon).IndexOf('/') < 0)
             {
-                string scheme = trimmed.Substring(0, colon).ToLowerInvariant();
-                if (System.Array.IndexOf(new[] { "javascript", "vbscript", "data" }, scheme) >= 0 && !scheme.Contains('/'))
+                string scheme = s.Substring(0, colon).ToLowerInvariant();
+                if (scheme != "http" && scheme != "https" && scheme != "mailto")
                     return "#ZgotmplZ";
             }
         }
+        // Go's urlNormalizer (norm=true): percent-encode every byte that is not unreserved
+        // (alphanumeric / '-' '.' '_' '~'), not a kept reserved char (! # $ & * + , / : ; = ?
+        // @ [ ]), and not part of a valid %XX sequence. Processes UTF-8 bytes, so a non-ASCII
+        // rune becomes several %XX. (The previous version kept '{','}','|','\\', etc., which Go
+        // escapes.)
+        var by = Encoding.UTF8.GetBytes(s);
         var sb = new StringBuilder();
-        foreach (char c in s)
+        for (int i = 0; i < by.Length; i++)
         {
-            switch (c)
+            byte c = by[i];
+            bool keep = (char)c switch
             {
-                case ' ': sb.Append("%20"); break;
-                case '"': sb.Append("%22"); break;
-                case '\'': sb.Append("%27"); break;
-                case '(': sb.Append("%28"); break;
-                case ')': sb.Append("%29"); break;
-                case '<': sb.Append("%3c"); break;
-                case '>': sb.Append("%3e"); break;
-                case '`': sb.Append("%60"); break;
-                default: sb.Append(c); break;
-            }
+                '!' or '#' or '$' or '&' or '*' or '+' or ',' or '/' or ':' or ';' or '=' or '?' or '@' or '[' or ']' => true,
+                '-' or '.' or '_' or '~' => true,
+                '%' => i + 2 < by.Length && IsHexDigit(by[i + 1]) && IsHexDigit(by[i + 2]),
+                _ => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'),
+            };
+            if (keep) sb.Append((char)c);
+            else sb.Append('%').Append(((int)c).ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
         }
         return sb.ToString();
     }
+
+    static bool IsHexDigit(byte b) => (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F');
 
     static bool IsTrue(object? v)
     {
