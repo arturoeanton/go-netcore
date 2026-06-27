@@ -506,12 +506,17 @@ larger feature or external module):
 - **asymmetric crypto** — `crypto/ecdsa` (`GenerateKey`/`Sign`/`Verify` on P-256/P-384/P-521)
   and `crypto/rsa` `SignPKCS1v15`/`VerifyPKCS1v15` (SHA-1/256/384/512) now work, backed by the
   same real .NET key handles `crypto/x509` produces — so JWT ES*/RS* and PKCS1v15 signatures
-  round-trip and verify. Still **fail-closed** (an honest error / `false`, never a bogus
-  accept): **RSA-PSS** (`SignPSS`/`VerifyPSS` — PSS salt-length compatibility with Go is not
-  yet settled), `SignPKCS1v15` with `crypto.Hash(0)` (raw,
-  no DigestInfo), and DER public-key parsing (`x509.ParsePKIXPublicKey`/`ParsePKCS1PublicKey`).
-  `crypto/hmac` (HS*) was already real. Signatures are non-deterministic (random key, and a
-  random nonce for ECDSA), so only verify outcomes are byte-stable across runs.
+  round-trip and verify. **RSA-PSS** (`SignPSS`/`VerifyPSS`) now works too, via a from-scratch
+  EMSA-PSS (RFC 8017 §9.1: MGF1 + the EM layout) over the raw RSA primitive with `BigInteger`
+  — the .NET BCL only offers PSS with salt-length == hash-length, so this hand-rolled padding is
+  what lets goclr honour Go's `PSSOptions.SaltLength` across all three modes (Auto = max salt,
+  `PSSSaltLengthEqualsHash` = −1, and an explicit count) with the same cross-mode accept/reject
+  rules as `go run` (Auto verification recovers the salt length; a fixed verifier rejects a
+  different salt length). Fixture 751. Still **fail-closed** (an honest error / `false`, never a
+  bogus accept): `SignPKCS1v15` with `crypto.Hash(0)` (raw, no DigestInfo), and DER public-key
+  parsing (`x509.ParsePKIXPublicKey`/`ParsePKCS1PublicKey`). `crypto/hmac` (HS*) was already
+  real. Signatures are non-deterministic (random key, a random nonce for ECDSA, and a random
+  salt for PSS), so only verify outcomes are byte-stable across runs.
 
 ## Interface dispatch keys on the boxed representation
 
