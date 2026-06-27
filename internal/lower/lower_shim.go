@@ -284,7 +284,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"IntN": {"Rand2", "IntN"}, "Int64N": {"Rand2", "Int64N"}, "Int32N": {"Rand2", "Int32N"}, "UintN": {"Rand2", "UintN"},
 		"Int": {"Rand2", "Int"}, "Int64": {"Rand2", "Int64"}, "Int32": {"Rand2", "Int32"}, "Uint64": {"Rand2", "Uint64"}, "Uint32": {"Rand2", "Uint32"},
 		"Float64": {"Rand2", "Float64"}, "Float32": {"Rand2", "Float32"}, "Shuffle": {"Rand2", "Shuffle"}, "Perm": {"Rand2", "Perm"},
-		"NewPCG": {"Rand2", "NewPCG"}, "New": {"Rand2", "NewV2"},
+		"NewPCG": {"Rand2", "NewPCG"}, "New": {"Rand2", "NewV2"}, "NewChaCha8": {"Rand2", "NewChaCha8"},
 	},
 	"math/rand": {
 		"NewSource": {"Rand", "NewSource"}, "New": {"Rand", "New"},
@@ -520,6 +520,7 @@ var opaqueShimTypes = map[string]bool{
 	"math/rand.Source":               true,
 	"math/rand/v2.Rand":              true,
 	"math/rand/v2.PCG":               true,
+	"math/rand/v2.ChaCha8":           true,
 	"encoding/base64.Encoding":       true,
 	"encoding/binary.littleEndian":   true,
 	"encoding/binary.bigEndian":      true,
@@ -2029,6 +2030,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"math/rand/v2.PCG": {
 		"Uint64": {"Rand2", "PCG_Uint64"}, "Seed": {"Rand2", "PCG_Seed"},
 		"MarshalBinary": {"Rand2", "PCG_MarshalBinary"}, "AppendBinary": {"Rand2", "PCG_AppendBinary"}, "UnmarshalBinary": {"Rand2", "PCG_UnmarshalBinary"},
+	},
+	"math/rand/v2.ChaCha8": {
+		"Uint64": {"Rand2", "ChaCha8_Uint64"}, "Seed": {"Rand2", "ChaCha8_Seed"},
 	},
 	"math/rand/v2.Rand": {
 		"Uint64": {"Rand2", "RandV2_Uint64"}, "Int64": {"Rand2", "RandV2_Int64"}, "Uint32": {"Rand2", "RandV2_Uint32"},

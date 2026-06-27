@@ -427,9 +427,9 @@ larger feature or external module):
 - **`encoding/gob`** — not implemented (`gob.NewEncoder`/`NewDecoder` are unsupported): the
   self-describing binary format is a large reflection-driven codec; use `encoding/json` (or
   `encoding/binary` for fixed layouts) instead.
-- **`math/rand/v2`** — works with the **PCG** source (`rand.NewPCG`, byte-exact) and the
-  auto-seeded global functions; the **ChaCha8** source (`rand.NewChaCha8`) is not yet ported
-  (it needs Go's `internal/chacha8rand` block function for bit-exact output).
+- **`math/rand/v2`** — works with both the **PCG** (`rand.NewPCG`) and **ChaCha8**
+  (`rand.NewChaCha8`) sources, byte-exact (the latter a faithful port of `internal/
+  chacha8rand`'s block + refill/reseed), plus the auto-seeded global functions.
 - **`container/heap`** — works, including the idiomatic **named-slice** implementer
   (`type IntHeap []int` reached as `*IntHeap`): `heap.Init/Push/Pop/Fix/Remove` drive
   the user type's `Less/Swap/Push/Pop` through the interface method-callback bridge

@@ -81,6 +81,7 @@ public static partial class Rand2
     private static ulong SrcUint64(object? src) => src switch
     {
         GoPCG p => PCG_Uint64(p),
+        GoChaCha8 c => ChaCha8_Uint64(c),
         _ => src != null && Bridge.HasMethod(src, "Uint64")
             ? System.Convert.ToUInt64(Bridge.CallMethod(src, "Uint64"))
             : 0UL,
