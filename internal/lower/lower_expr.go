@@ -1453,11 +1453,60 @@ func (l *funcLowerer) emitArith(tok token.Token, operandType goir.Type) {
 			op = goir.OpRemUn
 		}
 	}
-	if (op == goir.OpDiv || op == goir.OpRem || op == goir.OpDivUn || op == goir.OpRemUn) && isIntegerKind(operandType.Kind) {
+	// Signed integer div/rem: also guard divisor == -1, which the CLR rejects for
+	// MinInt (long.MinValue / -1 throws OverflowException) but Go defines as a wrap.
+	if (op == goir.OpDiv || op == goir.OpRem) && isIntegerKind(operandType.Kind) {
+		l.emitSignedDivRem(op == goir.OpRem, operandType)
+		l.truncateInt(operandType)
+		return
+	}
+	if (op == goir.OpDivUn || op == goir.OpRemUn) && isIntegerKind(operandType.Kind) {
 		l.emitDivByZeroCheck()
 	}
 	l.emit(goir.Op{Code: op})
 	l.truncateInt(operandType)
+}
+
+// emitSignedDivRem lowers a signed integer x/y or x%y (with [dividend, divisor] on the
+// stack), matching Go for the two cases the CLR mishandles: y == 0 panics (recoverable
+// runtime error), and y == -1 wraps — x/-1 is the wrapping negation 0-x (MinInt/-1 ==
+// MinInt) and x%-1 == 0 — where the CLR would throw OverflowException on MinInt.
+func (l *funcLowerer) emitSignedDivRem(isRem bool, opType goir.Type) {
+	divisor := l.addLocal(nil, opType)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: divisor})
+	dividend := l.addLocal(nil, opType)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: dividend})
+
+	okL := l.label()
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: divisor})
+	l.emit(goir.Op{Code: goir.OpBrTrue, Label: okL})
+	l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: integer divide by zero"})
+	l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
+	l.emit(goir.Op{Code: goir.OpCallPanic})
+	l.mark(okL)
+
+	normalL, doneL := l.label(), l.label()
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: divisor})
+	l.emitInt(-1, opType)
+	l.emit(goir.Op{Code: goir.OpCeq})
+	l.emit(goir.Op{Code: goir.OpBrFalse, Label: normalL})
+	if isRem {
+		l.emitZero(opType) // x % -1 == 0
+	} else {
+		l.emitInt(0, opType) // x / -1 == 0 - x (wrapping negate)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: dividend})
+		l.emit(goir.Op{Code: goir.OpSub})
+	}
+	l.emit(goir.Op{Code: goir.OpBr, Label: doneL})
+	l.mark(normalL)
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: dividend})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: divisor})
+	if isRem {
+		l.emit(goir.Op{Code: goir.OpRem})
+	} else {
+		l.emit(goir.Op{Code: goir.OpDiv})
+	}
+	l.mark(doneL)
 }
 
 // isIntegerKind reports whether k is one of the integer representations (signed

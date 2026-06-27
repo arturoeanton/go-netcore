@@ -110,6 +110,11 @@ one; these don't yet):
   (honoring `#`), `(*int)(nil)` for `%#v`, and `%!verb(*int=<nil>)` for the rest. (A
   *live* pointer's `%p`/`%d` address is non-deterministic and not byte-exact, as in any
   runtime.)
+- **Signed integer division/remainder is byte-exact, including the overflow edge.**
+  `MinInt / -1` wraps to `MinInt` and `MinInt % -1` is `0` (matching Go), where the CLR
+  would throw `OverflowException`; division/remainder by zero still panics with a
+  recoverable `runtime error: integer divide by zero`. Holds for all signed widths and the
+  `x /= y` / `x %= y` forms (fixture 768).
 - **A shift by a *negative* count returns `0` instead of panicking.** Go panics
   (`runtime error: negative shift amount`); goclr's shift guard treats the count as
   unsigned, so a negative count is `>= width` and yields `0` (or `-1` for a signed `>>`).
