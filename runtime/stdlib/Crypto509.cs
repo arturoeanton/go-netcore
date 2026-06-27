@@ -10,6 +10,17 @@ using GoCLR.Runtime;
 [GoShim("crypto/elliptic.Curve")]
 public sealed class GoEcCurve { public ECCurve Curve; public string Name = ""; }
 
+/// <summary>A crypto/elliptic.CurveParams — the public domain parameters of a NIST curve.
+/// (*CurveParams) is the value Curve.Params() returns; field reads recover Name/BitSize and
+/// the P/N/B/Gx/Gy *big.Int constants.</summary>
+[GoShim("crypto/elliptic.CurveParams")]
+public sealed class GoCurveParams
+{
+    public System.Numerics.BigInteger P, N, B, Gx, Gy;
+    public long BitSize;
+    public string Name = "";
+}
+
 /// <summary>An *ecdsa.PrivateKey / *ecdsa.PublicKey (the same handle; the public half
 /// exports only the public parameters).</summary>
 [GoShim("crypto/ecdsa.PrivateKey")]
@@ -93,6 +104,8 @@ public static class Crypto509
     public static bool CertPool_AppendCertsFromPEM(object pool, GoSlice pem) => true;
 
     // --- elliptic curves ---
+    // .NET's BCL has no nistP224 named curve, so P-224 key creation is unsupported (the curve
+    // handle carries a placeholder); Curve.Params() still returns the correct P-224 constants.
     public static object P224() => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-224" };
     public static object P256() => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-256" };
     public static object P384() => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP384, Name = "P-384" };
@@ -269,8 +282,81 @@ public static class Crypto509
     public static long RsaKey_E(object k) { var p = ((GoRsaKey)k).Key.ExportParameters(false); return (long)ToBig(p.Exponent!); }
     public static object EcKey_X(object k) { var p = ((GoEcKey)k).Key.ExportParameters(false); return new GoBigInt { V = ToBig(p.Q.X!) }; }
     public static object EcKey_Y(object k) { var p = ((GoEcKey)k).Key.ExportParameters(false); return new GoBigInt { V = ToBig(p.Q.Y!) }; }
-    public static object EcKey_Curve(object k) => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-256" };
+    // The curve a key was generated on, recovered from its .NET key size (the handle does not
+    // otherwise remember which NIST curve it is).
+    public static object EcKey_Curve(object k)
+    {
+        int bits = ((GoEcKey)k).Key.KeySize;
+        return bits switch
+        {
+            224 => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-224" },
+            384 => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP384, Name = "P-384" },
+            521 => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP521, Name = "P-521" },
+            _ => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-256" },
+        };
+    }
     private static System.Numerics.BigInteger ToBig(byte[] b) => new(b, isUnsigned: true, isBigEndian: true);
+
+    // --- crypto/elliptic.Curve.Params() and CurveParams field reads ---
+    private static System.Numerics.BigInteger Hex(string h) =>
+        System.Numerics.BigInteger.Parse("0" + h, System.Globalization.NumberStyles.HexNumber);
+
+    // (elliptic.Curve).Params() *CurveParams — the standard NIST domain parameters (FIPS 186-4).
+    public static object Curve_Params(object curve)
+    {
+        string name = curve is GoEcCurve c ? c.Name : "P-256";
+        switch (name)
+        {
+            case "P-224":
+                return new GoCurveParams
+                {
+                    Name = "P-224", BitSize = 224,
+                    P = Hex("ffffffffffffffffffffffffffffffff000000000000000000000001"),
+                    N = Hex("ffffffffffffffffffffffffffff16a2e0b8f03e13dd29455c5c2a3d"),
+                    B = Hex("b4050a850c04b3abf54132565044b0b7d7bfd8ba270b39432355ffb4"),
+                    Gx = Hex("b70e0cbd6bb4bf7f321390b94a03c1d356c21122343280d6115c1d21"),
+                    Gy = Hex("bd376388b5f723fb4c22dfe6cd4375a05a07476444d5819985007e34"),
+                };
+            case "P-384":
+                return new GoCurveParams
+                {
+                    Name = "P-384", BitSize = 384,
+                    P = Hex("fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000ffffffff"),
+                    N = Hex("ffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973"),
+                    B = Hex("b3312fa7e23ee7e4988e056be3f82d19181d9c6efe8141120314088f5013875ac656398d8a2ed19d2a85c8edd3ec2aef"),
+                    Gx = Hex("aa87ca22be8b05378eb1c71ef320ad746e1d3b628ba79b9859f741e082542a385502f25dbf55296c3a545e3872760ab7"),
+                    Gy = Hex("3617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f"),
+                };
+            case "P-521":
+                return new GoCurveParams
+                {
+                    Name = "P-521", BitSize = 521,
+                    P = Hex("1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+                    N = Hex("1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa51868783bf2f966b7fcc0148f709a5d03bb5c9b8899c47aebb6fb71e91386409"),
+                    B = Hex("0051953eb9618e1c9a1f929a21a0b68540eea2da725b99b315f3b8b489918ef109e156193951ec7e937b1652c0bd3bb1bf073573df883d2c34f1ef451fd46b503f00"),
+                    Gx = Hex("00c6858e06b70404e9cd9e3ecb662395b4429c648139053fb521f828af606b4d3dbaa14b5e77efe75928fe1dc127a2ffa8de3348b3c1856a429bf97e7e31c2e5bd66"),
+                    Gy = Hex("011839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650"),
+                };
+            default: // P-256
+                return new GoCurveParams
+                {
+                    Name = "P-256", BitSize = 256,
+                    P = Hex("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff"),
+                    N = Hex("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551"),
+                    B = Hex("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b"),
+                    Gx = Hex("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"),
+                    Gy = Hex("4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5"),
+                };
+        }
+    }
+
+    public static GoString CurveParams_Name(object p) => GoString.FromDotNetString(((GoCurveParams)p).Name);
+    public static long CurveParams_BitSize(object p) => ((GoCurveParams)p).BitSize;
+    public static object CurveParams_P(object p) => new GoBigInt { V = ((GoCurveParams)p).P };
+    public static object CurveParams_N(object p) => new GoBigInt { V = ((GoCurveParams)p).N };
+    public static object CurveParams_B(object p) => new GoBigInt { V = ((GoCurveParams)p).B };
+    public static object CurveParams_Gx(object p) => new GoBigInt { V = ((GoCurveParams)p).Gx };
+    public static object CurveParams_Gy(object p) => new GoBigInt { V = ((GoCurveParams)p).Gy };
 
     // x509.Certificate methods used by autocert (validation against a self-signed/
     // cached cert; the deep verification is delegated to .NET where the cert is real).

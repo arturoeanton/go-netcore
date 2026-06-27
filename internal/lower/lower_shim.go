@@ -598,6 +598,7 @@ var opaqueShimTypes = map[string]bool{
 	"net/http.HTTP2Config":           true,
 	"net/http.Protocols":             true,
 	"crypto/elliptic.Curve":          true,
+	"crypto/elliptic.CurveParams":    true,
 	"crypto/ecdsa.PrivateKey":        true,
 	"crypto/ecdsa.PublicKey":         true,
 	"crypto/rsa.PrivateKey":          true,
@@ -947,6 +948,11 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"crypto/ecdsa.PublicKey": {
 		"X": {"Crypto509", "EcKey_X"}, "Y": {"Crypto509", "EcKey_Y"}, "Curve": {"Crypto509", "EcKey_Curve"},
+	},
+	"crypto/elliptic.CurveParams": {
+		"Name": {"Crypto509", "CurveParams_Name"}, "BitSize": {"Crypto509", "CurveParams_BitSize"},
+		"P": {"Crypto509", "CurveParams_P"}, "N": {"Crypto509", "CurveParams_N"}, "B": {"Crypto509", "CurveParams_B"},
+		"Gx": {"Crypto509", "CurveParams_Gx"}, "Gy": {"Crypto509", "CurveParams_Gy"},
 	},
 	"crypto/ecdsa.PrivateKey": {
 		"PublicKey": {"Crypto509", "EcdsaPublic"}, "X": {"Crypto509", "EcKey_X"}, "Y": {"Crypto509", "EcKey_Y"}, "Curve": {"Crypto509", "EcKey_Curve"},
@@ -1590,8 +1596,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"crypto/x509.CertPool": {
 		"AppendCertsFromPEM": {"Crypto509", "CertPool_AppendCertsFromPEM"},
 	},
-	"crypto/ecdsa.PrivateKey": {"Public": {"Crypto509", "EcdsaPublic"}},
-	"crypto/rsa.PrivateKey":   {"Public": {"Crypto509", "RsaPublic"}},
+	"crypto/ecdsa.PrivateKey":  {"Public": {"Crypto509", "EcdsaPublic"}},
+	"crypto/rsa.PrivateKey":    {"Public": {"Crypto509", "RsaPublic"}},
+	"crypto/elliptic.Curve":    {"Params": {"Crypto509", "Curve_Params"}},
 	"net/http/httptest.Server": {
 		"Close": {"Httptest", "Server_Close"}, "Client": {"Httptest", "Server_Client"}, "Start": {"Httptest", "Server_Start"},
 	},

@@ -517,6 +517,13 @@ larger feature or external module):
   parsing (`x509.ParsePKIXPublicKey`/`ParsePKCS1PublicKey`). `crypto/hmac` (HS*) was already
   real. Signatures are non-deterministic (random key, a random nonce for ECDSA, and a random
   salt for PSS), so only verify outcomes are byte-stable across runs.
+- **`crypto/elliptic`** — `Curve.Params()` returns the real NIST domain parameters (FIPS
+  186-4): `Name`, `BitSize`, and the `P`/`N`/`B`/`Gx`/`Gy` `*big.Int` constants are byte-exact
+  with `go run` for P-224/P-256/P-384/P-521, and the curve recovered from an `ecdsa` key now
+  reflects its real size (it previously always reported P-256, and `Params()` itself was an
+  unregistered nil-deref). Fixture 753. Caveats: the .NET BCL has no `nistP224`, so **P-224 key
+  generation is unsupported** (its `Params()` are still correct); `Curve.IsOnCurve`/`Add`/
+  `ScalarMult`/`ScalarBaseMult` (the raw point arithmetic) are not yet implemented.
 
 ## Interface dispatch keys on the boxed representation
 
