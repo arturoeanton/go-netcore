@@ -98,6 +98,10 @@ public static class Fmt
         if (v is GoRegexp gre) { s = Regexp.Re_String(gre).ToDotNetString(); return true; }
         // *time.Location prints its zone name (Local/UTC/IST/...).
         if (v is GoLocation gloc) { s = Time.Location_String(gloc).ToDotNetString(); return true; }
+        // go/token.Position and text/scanner.Position share one CLR class but format differently;
+        // dispatch by the IsScanner discriminator the producing shim set.
+        if (v is GoPosition gpos)
+        { s = (gpos.IsScanner ? GoToken.ScannerPosition_String(gpos) : GoToken.Position_String(gpos)).ToDotNetString(); return true; }
         if (v is GoNamed kn && Rt.NamedTypeName(kn.TypeId) == "reflect.Kind")
         { s = GoKind.Name((int)System.Convert.ToInt64(kn.Value ?? 0L)); return true; }
         // Shim named scalar types whose String() is a runtime shim (not a lowered Go

@@ -6,7 +6,11 @@ using GoCLR.Runtime;
 /// line and column).</summary>
 [GoShim("go/token.Position")]
 [GoShim("text/scanner.Position")]
-public sealed class GoPosition { public string Filename = ""; public long Offset, Line, Column; }
+// One CLR class backs both go/token.Position and text/scanner.Position; their String() formats
+// differ ("-"/":" vs "<input>:line:col"). Explicit .String() routes by static type via the
+// method registry, but fmt's auto-Stringer only sees this class, so IsScanner records which Go
+// type produced the value.
+public sealed class GoPosition { public string Filename = ""; public long Offset, Line, Column; public bool IsScanner; }
 
 /// <summary>A go/token.File: a file in a FileSet, with its base Pos, size and line-offset
 /// table (ported from src/go/token/position.go; the line-info adjustment path is omitted).</summary>
@@ -188,6 +192,7 @@ public static class GoToken
 
     // ---- Position / Pos ------------------------------------------------------------------
     public static object PositionZero() => new GoPosition();
+    public static object ScannerPositionZero() => new GoPosition { IsScanner = true };
     public static GoString Position_Filename(object p) => GoString.FromDotNetString(((GoPosition)p).Filename);
     public static long Position_Offset(object p) => ((GoPosition)p).Offset;
     public static long Position_Line(object p) => ((GoPosition)p).Line;

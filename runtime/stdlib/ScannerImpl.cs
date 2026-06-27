@@ -53,7 +53,7 @@ public static class Scanner
     public static ulong Scanner_Mode(object so) => (ulong)((GoTextScanner)so).Mode;
     public static void Scanner_SetMode(object so, ulong v) => ((GoTextScanner)so).Mode = (long)v;
     public static long Scanner_ErrorCount(object so) => ((GoTextScanner)so).ErrorCount;
-    public static object Scanner_Position(object so) { var s = (GoTextScanner)so; return new GoPosition { Filename = s.Filename, Offset = s.POffset, Line = s.PLine, Column = s.PColumn }; }
+    public static object Scanner_Position(object so) { var s = (GoTextScanner)so; return new GoPosition { Filename = s.Filename, Offset = s.POffset, Line = s.PLine, Column = s.PColumn, IsScanner = true }; }
 
     private static int Next(GoTextScanner s)
     {
@@ -98,7 +98,7 @@ public static class Scanner
     public static object Scanner_Pos(object so)
     {
         var s = (GoTextScanner)so;
-        var pos = new GoPosition { Filename = s.Filename, Offset = s.SrcPos - s.LastCharLen };
+        var pos = new GoPosition { Filename = s.Filename, Offset = s.SrcPos - s.LastCharLen, IsScanner = true };
         if (s.SColumn > 0) { pos.Line = s.SLine; pos.Column = s.SColumn; }
         else if (s.LastLineLen > 0) { pos.Line = s.SLine - 1; pos.Column = s.LastLineLen; }
         else { pos.Line = 1; pos.Column = 1; }

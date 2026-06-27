@@ -1276,7 +1276,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"html/template.Error":              {"Template", "HtmlErrorZero"},
 	"compress/flate.ReadError":         {"Compress", "ReadErrorZero"},
 	"compress/flate.WriteError":        {"Compress", "WriteErrorZero"},
-	"text/scanner.Position":            {"GoToken", "PositionZero"},
+	"text/scanner.Position":            {"GoToken", "ScannerPositionZero"},
 	"text/scanner.Scanner":             {"Scanner", "NewScannerZero"},
 	"go/token.FileSet":                {"GoToken", "FileSetZero"},
 	"encoding/asn1.StructuralError":  {"Asn1", "NewStructuralError"},
