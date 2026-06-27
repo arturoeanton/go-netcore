@@ -178,7 +178,17 @@ public static class Multipart
     }
 
     // ---- mime/multipart.Writer ----
-    public static object NewWriter(object? w) => new GoMultipartWriter { W = w };
+    // Go's multipart.NewWriter seeds a random boundary of 30 bytes rendered as 60 hex chars
+    // (multipart.randomBoundary); match that format and length (each writer gets a unique one).
+    public static object NewWriter(object? w) => new GoMultipartWriter { W = w, Boundary = RandomBoundary() };
+    private static string RandomBoundary()
+    {
+        var buf = new byte[30];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(buf);
+        var sb = new StringBuilder(60);
+        foreach (byte b in buf) sb.Append(b.ToString("x2"));
+        return sb.ToString();
+    }
     public static GoString Writer_Boundary(object mw) => GoString.FromDotNetString(((GoMultipartWriter)mw).Boundary);
     public static GoString Writer_FormDataContentType(object mw) =>
         GoString.FromDotNetString("multipart/form-data; boundary=" + ((GoMultipartWriter)mw).Boundary);
