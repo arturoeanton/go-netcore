@@ -429,4 +429,48 @@ public static class Rand
     public static float Rand_Float32(object r) => ((GoRand)r).Float32();
     public static object?[] Rand_Read(object r, GoSlice p) => ((GoRand)r).Read(p);
     public static void Rand_Seed(object r, long seed) => ((GoRand)r).Seed(seed);
+
+    // --- math/rand.Zipf (rejection-inversion, math/rand/zipf.go) ---
+    // A faithful port of Go's Zipf: every FP expression mirrors zipf.go exactly, and Float64()
+    // comes from the same seeded GoRand, so draws are byte-exact with go run.
+    public static object? NewZipf(object r, double s, double v, ulong imax)
+    {
+        if (s <= 1.0 || v < 1) return null; // Go returns a nil *Zipf
+        var z = new GoZipf { R = (GoRand)r, Imax = imax, V = v, Q = s };
+        z.OneMinusQ = 1.0 - z.Q;
+        z.OneMinusQinv = 1.0 / z.OneMinusQ;
+        z.Hxm = ZipfH(z, z.Imax + 0.5);
+        z.Hx0MinusHxm = ZipfH(z, 0.5) - System.Math.Exp(System.Math.Log(z.V) * (-z.Q)) - z.Hxm;
+        z.S = 1 - ZipfHinv(z, ZipfH(z, 1.5) - System.Math.Exp(-z.Q * System.Math.Log(z.V + 1.0)));
+        return z;
+    }
+
+    private static double ZipfH(GoZipf z, double x) =>
+        System.Math.Exp(z.OneMinusQ * System.Math.Log(z.V + x)) * z.OneMinusQinv;
+    private static double ZipfHinv(GoZipf z, double x) =>
+        System.Math.Exp(z.OneMinusQinv * System.Math.Log(z.OneMinusQ * x)) - z.V;
+
+    public static ulong Zipf_Uint64(object zo)
+    {
+        var z = (GoZipf)zo;
+        double k = 0.0;
+        while (true)
+        {
+            double r = z.R!.Float64();
+            double ur = z.Hxm + r * z.Hx0MinusHxm;
+            double x = ZipfHinv(z, ur);
+            k = System.Math.Floor(x + 0.5);
+            if (k - x <= z.S) break;
+            if (ur >= ZipfH(z, k + 0.5) - System.Math.Exp(-System.Math.Log(k + z.V) * z.Q)) break;
+        }
+        return (ulong)k;
+    }
+}
+
+/// <summary>A *math/rand.Zipf generator (rejection-inversion state).</summary>
+[GoShim("math/rand.Zipf")]
+public sealed class GoZipf
+{
+    public GoRand? R;
+    public double Imax, V, Q, S, OneMinusQ, OneMinusQinv, Hxm, Hx0MinusHxm;
 }

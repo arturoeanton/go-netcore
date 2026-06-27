@@ -293,7 +293,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Int63n": {"Rand", "Int63n"}, "Intn": {"Rand", "Intn"}, "Perm": {"Rand", "Perm"}, "Seed": {"Rand", "Seed"},
 		"Uint64": {"Rand", "Uint64"}, "Uint32": {"Rand", "Uint32"}, "Int31": {"Rand", "Int31"}, "Read": {"Rand", "Read"},
 		"Shuffle": {"Rand", "Shuffle"}, "Int31n": {"Rand", "Int31n"}, "Float32": {"Rand", "Float32"},
-		"NormFloat64": {"Rand", "NormFloat64"}, "ExpFloat64": {"Rand", "ExpFloat64"},
+		"NormFloat64": {"Rand", "NormFloat64"}, "ExpFloat64": {"Rand", "ExpFloat64"}, "NewZipf": {"Rand", "NewZipf"},
 	},
 	"sync": {"NewCond": {"Sync", "NewCond"}, "OnceFunc": {"Sync", "OnceFunc"}, "OnceValue": {"Sync", "OnceValue"}, "OnceValues": {"Sync", "OnceValues"}},
 	"sync/atomic": {
@@ -519,6 +519,7 @@ var opaqueShimTypes = map[string]bool{
 	"time.Location":                  true,
 	"math/rand.Rand":                 true,
 	"math/rand.Source":               true,
+	"math/rand.Zipf":                 true,
 	"math/rand/v2.Rand":              true,
 	"math/rand/v2.PCG":               true,
 	"math/rand/v2.ChaCha8":           true,
@@ -2065,6 +2066,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Uint64": {"Rand", "Rand_Uint64"}, "Uint32": {"Rand", "Rand_Uint32"}, "Int31": {"Rand", "Rand_Int31"},
 		"Int31n": {"Rand", "Rand_Int31n"}, "Float32": {"Rand", "Rand_Float32"}, "Read": {"Rand", "Rand_Read"}, "Seed": {"Rand", "Rand_Seed"},
 	},
+	"math/rand.Zipf": {"Uint64": {"Rand", "Zipf_Uint64"}},
 	"net/netip.Addr": {
 		"String": {"Netip", "Addr_String"}, "Is4": {"Netip", "Addr_Is4"}, "Is6": {"Netip", "Addr_Is6"},
 		"Is4In6": {"Netip", "Addr_Is4In6"}, "IsValid": {"Netip", "Addr_IsValid"}, "BitLen": {"Netip", "Addr_BitLen"},
