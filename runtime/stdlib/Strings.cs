@@ -33,6 +33,67 @@ public static class Strings
     public static GoString ToUpper(GoString s) => MapRunes(s, GoUpper);
     public static GoString ToLower(GoString s) => MapRunes(s, GoLower);
 
+    // strings.ToUpper/Lower/TitleSpecial(c unicode.SpecialCase, s string): locale-aware casing
+    // (Turkish/Azeri). unicode is compiled, so the SpecialCase ([]CaseRange) arrives as a real
+    // slice of lowered CaseRange structs; apply Go's unicode.to() per rune (case index
+    // 0=Upper, 1=Lower, 2=Title), falling back to the default mapping when no range matches.
+    public static GoString ToUpperSpecial(GoSlice special, GoString s) => MapSpecial(special, 0, s, GoUpper);
+    public static GoString ToLowerSpecial(GoSlice special, GoString s) => MapSpecial(special, 1, s, GoLower);
+    public static GoString ToTitleSpecial(GoSlice special, GoString s) => MapSpecial(special, 2, s, GoTitle);
+
+    private static GoString MapSpecial(GoSlice special, int caseIdx, GoString s, System.Func<int, int> fallback)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var rune in s.ToDotNetString().EnumerateRunes())
+        {
+            int r = rune.Value;
+            var (m, found) = SpecialTo(special, caseIdx, r);
+            if (!found) m = fallback(r); // Go: fall back to default mapping only when no range matched
+            sb.Append(System.Char.ConvertFromUtf32(m));
+        }
+        return GoString.FromDotNetString(sb.ToString());
+    }
+
+    // unicode.to(_case, r, caseRange): find r's CaseRange and apply its delta. Reflects the
+    // lowered CaseRange struct (fields Lo, Hi uint32 and Delta [3]rune).
+    private static (int, bool) SpecialTo(GoSlice special, int caseIdx, int r)
+    {
+        if (special.Data == null) return (r, false);
+        const int MaxRune = 0x10FFFF;
+        for (int i = 0; i < special.Len; i++)
+        {
+            var cr = special.Data[special.Off + i];
+            if (cr == null) continue;
+            var t = cr.GetType();
+            long lo = ReadField(t, cr, "Lo"), hi = ReadField(t, cr, "Hi");
+            if (lo <= r && r <= hi)
+            {
+                int delta = ReadDelta(t, cr, caseIdx);
+                if (delta > MaxRune)
+                    // Upper-Lower sequence: even offsets are upper, odd are lower; the low bit of
+                    // _case selects (Upper/Title even, Lower odd).
+                    return ((int)(lo + (((r - lo) & ~1) | (caseIdx & 1))), true);
+                return (r + delta, true);
+            }
+        }
+        return (r, false);
+    }
+
+    private static long ReadField(System.Type t, object cr, string name)
+    {
+        var f = t.GetField(name);
+        return f != null ? System.Convert.ToInt64(f.GetValue(cr) ?? 0L) : 0;
+    }
+    private static int ReadDelta(System.Type t, object cr, int idx)
+    {
+        var arr = t.GetField("Delta")?.GetValue(cr);
+        // goclr represents a fixed [N]T array as a GoSlice over its backing object[].
+        if (arr is GoSlice gs && gs.Data != null) return (int)System.Convert.ToInt64(gs.Data[gs.Off + idx] ?? 0L);
+        if (arr is object?[] oa) return (int)System.Convert.ToInt64(oa[idx] ?? 0L);
+        if (arr is System.Array sa) return (int)System.Convert.ToInt64(sa.GetValue(idx) ?? 0L);
+        return 0;
+    }
+
     private static GoString MapRunes(GoString s, System.Func<int, int> f)
     {
         var sb = new System.Text.StringBuilder();

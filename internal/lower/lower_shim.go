@@ -451,6 +451,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"strings": {
 		"ToUpper": {"Strings", "ToUpper"}, "ToLower": {"Strings", "ToLower"}, "Title": {"Strings", "Title"},
+		"ToUpperSpecial": {"Strings", "ToUpperSpecial"}, "ToLowerSpecial": {"Strings", "ToLowerSpecial"}, "ToTitleSpecial": {"Strings", "ToTitleSpecial"},
 		"Contains": {"Strings", "Contains"}, "HasPrefix": {"Strings", "HasPrefix"}, "HasSuffix": {"Strings", "HasSuffix"},
 		"EqualFold": {"Strings", "EqualFold"}, "Index": {"Strings", "Index"}, "LastIndex": {"Strings", "LastIndex"}, "Compare": {"Strings", "Compare"},
 		"IndexByte": {"Strings", "IndexByte"}, "Count": {"Strings", "Count"}, "Repeat": {"Strings", "Repeat"},

@@ -3,7 +3,9 @@ package analysis
 import "testing"
 
 func TestComputeCoverage_ShimmedPackage(t *testing.T) {
-	rep, err := ComputeCoverage([]string{"strings"}, true)
+	// strings is now fully covered (every shimmed func implemented), so use bytes — still a
+	// partially-covered shimmed package — to exercise the partial-coverage reporting path.
+	rep, err := ComputeCoverage([]string{"bytes"}, true)
 	if err != nil {
 		t.Fatalf("ComputeCoverage: %v", err)
 	}
@@ -11,8 +13,8 @@ func TestComputeCoverage_ShimmedPackage(t *testing.T) {
 		t.Fatalf("want 1 package, got %d", len(rep.Packages))
 	}
 	p := rep.Packages[0]
-	if p.ImportPath != "strings" {
-		t.Fatalf("want strings, got %q", p.ImportPath)
+	if p.ImportPath != "bytes" {
+		t.Fatalf("want bytes, got %q", p.ImportPath)
 	}
 	if p.Total == 0 || p.Covered == 0 || p.Covered >= p.Total {
 		t.Fatalf("strings should be partially covered: covered=%d total=%d", p.Covered, p.Total)
