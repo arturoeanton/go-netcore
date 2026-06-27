@@ -396,6 +396,12 @@ accept one), and trailing input is reported as `extra text: "…"`. Fixture
 682_time_parse_errors. **Deferred:** a literal-separator mismatch still names the whole
 remaining layout rather than just the literal chunk.
 
+goclr's `time.Time` is backed by .NET's `DateTime` (year **1–9999**), so dates outside
+that range aren't representable: a `Parse` with **no date fields** (a time-only layout such
+as `time.Kitchen`) defaults the date to `1970-01-01` rather than Go's `0000-01-01` (the
+parsed clock fields are correct). Years before 1 / after 9999 and Go's exact zero-date are
+the documented gap; within the common range everything is byte-exact.
+
 ## Fixed-size arrays — value semantics edge
 
 `[N]T` fixed-size arrays are supported (slice-backed). They carry Go value
