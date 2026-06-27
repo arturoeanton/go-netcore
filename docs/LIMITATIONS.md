@@ -478,9 +478,12 @@ larger feature or external module):
   (`*`, `?`, `[…]`, recursive `*/*.go`), sorted within each directory; file-system errors
   are ignored (a missing/unreadable directory yields no matches), a non-meta pattern checks
   existence, no matches returns a nil slice, and a malformed pattern returns `ErrBadPattern`.
-  Fixture 731. (`filepath.Walk` is still a no-op that returns nil without walking, and
-  `WalkDir` is unsupported — both need to invoke a Go walk callback from the shim, the same
-  callback-bridge gap noted for a few other APIs.)
+  Fixture 731. **`filepath.Walk` (fs.FileInfo) and `filepath.WalkDir` (fs.DirEntry) now work**:
+  lexical-order tree walks that invoke the Go callback per entry, with `SkipDir` (skip a
+  subtree, or the rest of a directory when returned from a file) and `SkipAll` honored exactly
+  like `go run`. Fixture 762. (One caveat inherited from `Stat`: a *directory's*
+  `FileInfo.Size()` is filesystem-specific and reports `0` rather than the OS's directory size —
+  .NET exposes no portable directory byte size; file sizes are exact.)
 - **`x/sync/errgroup`** — works: compiles from source and runs (concurrent goroutines +
   first-error propagation), now that `context.WithCancelCause`/`context.Cause` are shimmed.
   See `examples/demo_errgroup` (requires `go mod vendor`). Cancellation now cascades to

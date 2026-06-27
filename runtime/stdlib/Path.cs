@@ -22,7 +22,91 @@ public static class Path
     // shim, and the only consumer (universal-translator's translation import/export)
     // is dead code for a service. This returns nil without walking; if a program
     // genuinely needs Walk, it must be lowered from a goclr-safe overlay.
-    public static object? Walk(GoString root, GoClosure? fn) => null;
+    // filepath.Walk(root, fn) — lexical-order tree walk passing fs.FileInfo. SkipDir from a
+    // directory skips its subtree; from a file skips the rest of its directory; SkipAll stops.
+    public static object? Walk(GoString root, GoClosure? fn)
+    {
+        if (fn == null) return null;
+        string r = root.ToDotNetString();
+        object? info = StatInfo(r);
+        object? err = info == null
+            ? GoRuntime.InvokeArgs(fn, root, null, LstatErr(r))
+            : WalkRec(r, info, fn);
+        return (ReferenceEquals(err, Fs.SkipDirSentinel) || ReferenceEquals(err, Fs.SkipAllSentinel)) ? null : err;
+    }
+
+    private static object? WalkRec(string path, object? info, GoClosure fn)
+    {
+        if (!System.IO.Directory.Exists(path))
+            return GoRuntime.InvokeArgs(fn, GoString.FromDotNetString(path), info, null);
+        var names = ReadDirNames(path);
+        object? err1 = GoRuntime.InvokeArgs(fn, GoString.FromDotNetString(path), info, null);
+        if (err1 != null) return err1;
+        foreach (var name in names)
+        {
+            string filename = path + "/" + name;
+            object? e2 = WalkRec(filename, StatInfo(filename), fn);
+            if (e2 != null && (!System.IO.Directory.Exists(filename) || !ReferenceEquals(e2, Fs.SkipDirSentinel)))
+                return e2;
+        }
+        return null;
+    }
+
+    // filepath.WalkDir(root, fn) — like Walk but passing the lighter fs.DirEntry.
+    public static object? WalkDir(GoString root, GoClosure? fn)
+    {
+        if (fn == null) return null;
+        string r = root.ToDotNetString();
+        bool exists = System.IO.Directory.Exists(r) || System.IO.File.Exists(r);
+        object? err = exists
+            ? WalkDirRec(r, new GoDirEntry { EntryName = Base(root), Dir = System.IO.Directory.Exists(r), FullPath = r }, fn)
+            : GoRuntime.InvokeArgs(fn, root, null, LstatErr(r));
+        return (ReferenceEquals(err, Fs.SkipDirSentinel) || ReferenceEquals(err, Fs.SkipAllSentinel)) ? null : err;
+    }
+
+    private static object? WalkDirRec(string path, GoDirEntry d, GoClosure fn)
+    {
+        object? err = GoRuntime.InvokeArgs(fn, GoString.FromDotNetString(path), d, null);
+        if (err != null || !d.Dir)
+            return (ReferenceEquals(err, Fs.SkipDirSentinel) && d.Dir) ? null : err;
+        foreach (var d1 in ReadDirEntries(path))
+        {
+            object? e2 = WalkDirRec(path + "/" + d1.EntryName.ToDotNetString(), d1, fn);
+            if (e2 != null)
+            {
+                if (ReferenceEquals(e2, Fs.SkipDirSentinel)) break;
+                return e2;
+            }
+        }
+        return null;
+    }
+
+    private static object? StatInfo(string path)
+    {
+        if (!System.IO.Directory.Exists(path) && !System.IO.File.Exists(path)) return null;
+        var res = Os.Stat(GoString.FromDotNetString(path));
+        return res.Length > 0 ? res[0] : null;
+    }
+    private static object LstatErr(string path) =>
+        new GoPathError { Op = "lstat", Path = path, Err = new GoError(GoString.FromDotNetString("no such file or directory")) };
+    private static System.Collections.Generic.List<string> ReadDirNames(string path)
+    {
+        var names = new System.Collections.Generic.List<string>();
+        try { foreach (var p in System.IO.Directory.EnumerateFileSystemEntries(path)) names.Add(System.IO.Path.GetFileName(p)); }
+        catch { return names; }
+        names.Sort(System.StringComparer.Ordinal);
+        return names;
+    }
+    private static System.Collections.Generic.List<GoDirEntry> ReadDirEntries(string path)
+    {
+        var list = new System.Collections.Generic.List<GoDirEntry>();
+        foreach (var name in ReadDirNames(path))
+        {
+            string full = path + "/" + name;
+            list.Add(new GoDirEntry { EntryName = GoString.FromDotNetString(name), Dir = System.IO.Directory.Exists(full), FullPath = full });
+        }
+        return list;
+    }
 
     public static GoString Base(GoString p)
     {

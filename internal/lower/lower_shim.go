@@ -223,7 +223,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"path/filepath": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
 		"Ext": {"Path", "Ext"}, "Clean": {"Path", "Clean"}, "Split": {"Path", "Split"}, "IsAbs": {"Path", "IsAbs"},
-		"ToSlash": {"Path", "ToSlash"}, "FromSlash": {"Path", "FromSlash"}, "Walk": {"Path", "Walk"}, "Abs": {"Path", "Abs"},
+		"ToSlash": {"Path", "ToSlash"}, "FromSlash": {"Path", "FromSlash"}, "Walk": {"Path", "Walk"}, "WalkDir": {"Path", "WalkDir"}, "Abs": {"Path", "Abs"},
 		"Match": {"Path", "Match"}, "Glob": {"Path", "Glob"},
 		"Rel": {"Path", "Rel"}, "SplitList": {"Path", "SplitList"}, "VolumeName": {"Path", "VolumeName"},
 		"IsLocal": {"Path", "IsLocal"}, "HasPrefix": {"Path", "HasPrefix"},
