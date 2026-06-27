@@ -358,6 +358,92 @@ public static class Crypto509
     public static object CurveParams_Gx(object p) => new GoBigInt { V = ((GoCurveParams)p).Gx };
     public static object CurveParams_Gy(object p) => new GoBigInt { V = ((GoCurveParams)p).Gy };
 
+    // --- crypto/elliptic point arithmetic (short Weierstrass y² = x³ - 3x + b, a = -3) ---
+    // Affine coordinates over the prime field, the point at infinity represented as (0,0) —
+    // the convention Go's deprecated Curve methods use. Backed by BigInteger so IsOnCurve, Add,
+    // Double, ScalarMult and ScalarBaseMult are byte-exact with go run.
+    private static System.Numerics.BigInteger BigOf(object? o) =>
+        o is GoBigInt g ? g.V :
+        (o is GoPtr p && GoPtrs.Get(p) is GoBigInt g2 ? g2.V : System.Numerics.BigInteger.Zero);
+    private static object BiBox(System.Numerics.BigInteger v) => new GoBigInt { V = v };
+    private static System.Numerics.BigInteger ModP(System.Numerics.BigInteger a, System.Numerics.BigInteger p)
+    { var r = a % p; return r.Sign < 0 ? r + p : r; }
+    private static System.Numerics.BigInteger InvP(System.Numerics.BigInteger a, System.Numerics.BigInteger p) =>
+        System.Numerics.BigInteger.ModPow(ModP(a, p), p - 2, p);
+
+    private static (System.Numerics.BigInteger, System.Numerics.BigInteger) PointAdd(
+        System.Numerics.BigInteger x1, System.Numerics.BigInteger y1,
+        System.Numerics.BigInteger x2, System.Numerics.BigInteger y2, System.Numerics.BigInteger p)
+    {
+        if (x1.IsZero && y1.IsZero) return (x2, y2);
+        if (x2.IsZero && y2.IsZero) return (x1, y1);
+        System.Numerics.BigInteger lam;
+        if (x1 == x2)
+        {
+            if (ModP(y1 + y2, p).IsZero) return (System.Numerics.BigInteger.Zero, System.Numerics.BigInteger.Zero);
+            lam = ModP((3 * x1 * x1 - 3) * InvP(2 * y1, p), p); // tangent (a = -3)
+        }
+        else
+        {
+            lam = ModP((y2 - y1) * InvP(x2 - x1, p), p);
+        }
+        var x3 = ModP(lam * lam - x1 - x2, p);
+        var y3 = ModP(lam * (x1 - x3) - y1, p);
+        return (x3, y3);
+    }
+
+    private static (System.Numerics.BigInteger, System.Numerics.BigInteger) ScalarMul(
+        System.Numerics.BigInteger px, System.Numerics.BigInteger py, byte[] k, System.Numerics.BigInteger p)
+    {
+        System.Numerics.BigInteger rx = 0, ry = 0; // infinity
+        foreach (byte kb in k)
+            for (int bit = 7; bit >= 0; bit--)
+            {
+                (rx, ry) = PointAdd(rx, ry, rx, ry, p);
+                if (((kb >> bit) & 1) == 1) (rx, ry) = PointAdd(rx, ry, px, py, p);
+            }
+        return (rx, ry);
+    }
+
+    public static bool Curve_IsOnCurve(object curve, object xo, object yo)
+    {
+        var cp = (GoCurveParams)Curve_Params(curve);
+        var x = BigOf(xo); var y = BigOf(yo);
+        if (x.Sign < 0 || x >= cp.P || y.Sign < 0 || y >= cp.P) return false;
+        var lhs = ModP(y * y, cp.P);
+        var rhs = ModP(x * x % cp.P * x - 3 * x + cp.B, cp.P);
+        return lhs == rhs;
+    }
+
+    public static object?[] Curve_Add(object curve, object x1, object y1, object x2, object y2)
+    {
+        var cp = (GoCurveParams)Curve_Params(curve);
+        var (rx, ry) = PointAdd(BigOf(x1), BigOf(y1), BigOf(x2), BigOf(y2), cp.P);
+        return new object?[] { BiBox(rx), BiBox(ry) };
+    }
+
+    public static object?[] Curve_Double(object curve, object x1, object y1)
+    {
+        var cp = (GoCurveParams)Curve_Params(curve);
+        var px = BigOf(x1); var py = BigOf(y1);
+        var (rx, ry) = PointAdd(px, py, px, py, cp.P);
+        return new object?[] { BiBox(rx), BiBox(ry) };
+    }
+
+    public static object?[] Curve_ScalarMult(object curve, object x1, object y1, GoSlice k)
+    {
+        var cp = (GoCurveParams)Curve_Params(curve);
+        var (rx, ry) = ScalarMul(BigOf(x1), BigOf(y1), Raw(k), cp.P);
+        return new object?[] { BiBox(rx), BiBox(ry) };
+    }
+
+    public static object?[] Curve_ScalarBaseMult(object curve, GoSlice k)
+    {
+        var cp = (GoCurveParams)Curve_Params(curve);
+        var (rx, ry) = ScalarMul(cp.Gx, cp.Gy, Raw(k), cp.P);
+        return new object?[] { BiBox(rx), BiBox(ry) };
+    }
+
     // x509.Certificate methods used by autocert (validation against a self-signed/
     // cached cert; the deep verification is delegated to .NET where the cert is real).
     public static object? Cert_VerifyHostname(object c, GoString host)

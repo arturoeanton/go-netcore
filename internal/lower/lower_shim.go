@@ -1598,7 +1598,11 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"crypto/ecdsa.PrivateKey":  {"Public": {"Crypto509", "EcdsaPublic"}},
 	"crypto/rsa.PrivateKey":    {"Public": {"Crypto509", "RsaPublic"}},
-	"crypto/elliptic.Curve":    {"Params": {"Crypto509", "Curve_Params"}},
+	"crypto/elliptic.Curve": {
+		"Params": {"Crypto509", "Curve_Params"}, "IsOnCurve": {"Crypto509", "Curve_IsOnCurve"},
+		"Add": {"Crypto509", "Curve_Add"}, "Double": {"Crypto509", "Curve_Double"},
+		"ScalarMult": {"Crypto509", "Curve_ScalarMult"}, "ScalarBaseMult": {"Crypto509", "Curve_ScalarBaseMult"},
+	},
 	"net/http/httptest.Server": {
 		"Close": {"Httptest", "Server_Close"}, "Client": {"Httptest", "Server_Client"}, "Start": {"Httptest", "Server_Start"},
 	},
