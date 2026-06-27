@@ -85,7 +85,11 @@ func (c *lowerCtx) collectStringers() {
 		c.needsInvoker = true
 		c.invokeMethod()
 		c.stringers = append(c.stringers,
-			stringerReg{byNamedId: true, id: id, closureID: c.buildStringerClosure(m, namedUnwrap)})
+			// The value itself (GoNamed-tagged) dispatches by named id; a *T to it derefs and
+			// dispatches by the same id (TagPtrOrNil stamps GoPtr.TypeId with the pointee id),
+			// so fmt of a &namedScalarStringer prints String() like Go, not the address.
+			stringerReg{byNamedId: true, id: id, closureID: c.buildStringerClosure(m, namedUnwrap)},
+			stringerReg{byPtr: true, id: id, closureID: c.buildStringerClosure(m, ptrDeref)})
 	}
 }
 
