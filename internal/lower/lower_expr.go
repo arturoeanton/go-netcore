@@ -1221,11 +1221,19 @@ func (l *funcLowerer) emitCallArgs(args []ast.Expr, params []goir.Type, variadic
 			}
 			for i := 0; i < nFixed; i++ {
 				ldElem(i)
-				l.emitUnbox(params[i])
+				// A tuple element flowing into an interface{} parameter keeps its named-type
+				// identity (so f(g()) where g returns a time.Month prints "July", not 7);
+				// a concrete parameter unboxes to its representation as before.
+				if params[i].Kind == goir.KObject {
+					l.maybeWrapNamed(tup.At(i).Type())
+				} else {
+					l.emitUnbox(params[i])
+				}
 			}
 			if variadic {
 				// Pack the remaining tuple elements (already boxed) into the slice.
 				rest := tup.Len() - nFixed
+				elemIsIface := params[nFixed].Elem.Kind == goir.KObject
 				sliceTmp := l.addLocal(nil, params[nFixed])
 				l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(rest)})
 				l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(rest)})
@@ -1236,6 +1244,11 @@ func (l *funcLowerer) emitCallArgs(args []ast.Expr, params []goir.Type, variadic
 					l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
 					l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(k)})
 					ldElem(nFixed + k) // element is already boxed
+					// Into a ...any/...interface tail (fmt's args), tag named elements with
+					// their identity so fmt dispatches String()/Error() and %T.
+					if elemIsIface {
+						l.maybeWrapNamed(tup.At(nFixed + k).Type())
+					}
 					l.emit(goir.Op{Code: goir.OpSliceSet})
 				}
 				l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
