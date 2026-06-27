@@ -117,7 +117,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/sha1":     {"New": {"Crypto", "Sha1New"}, "Sum": {"Crypto", "Sha1Sum"}},
 	"crypto/elliptic": {"P224": {"Crypto509", "P224"}, "P256": {"Crypto509", "P256"}, "P384": {"Crypto509", "P384"}, "P521": {"Crypto509", "P521"}},
 	"crypto/ecdsa":    {"GenerateKey": {"Crypto509", "EcdsaGenerateKey"}, "Verify": {"CryptoSign", "EcdsaVerify"}, "Sign": {"CryptoSign", "EcdsaSign"}},
-	"crypto/ed25519":  {"Verify": {"CryptoSign", "Ed25519Verify"}},
+	"crypto/ed25519":  {"Verify": {"CryptoSign", "Ed25519Verify"}, "Sign": {"CryptoSign", "Ed25519Sign"}, "NewKeyFromSeed": {"CryptoSign", "Ed25519NewKeyFromSeed"}, "GenerateKey": {"CryptoSign", "Ed25519GenerateKey"}},
 	"encoding/asn1":   {"Marshal": {"Asn1", "Marshal"}, "Unmarshal": {"Asn1", "Unmarshal"}},
 	"encoding/pem":    {"Decode": {"Pem", "Decode"}, "EncodeToMemory": {"Pem", "EncodeToMemory"}, "Encode": {"Pem", "Encode"}},
 	"crypto/rsa": {"GenerateKey": {"Crypto509", "RsaGenerateKey"},
@@ -1850,6 +1850,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"os.File": {
 		"Fd": {"Os", "File_Fd"}, "Close": {"Os", "File_Close"}, "Write": {"Os", "File_Write"}, "WriteString": {"Os", "File_WriteString"}, "Read": {"Os", "File_Read"}, "Name": {"Os", "File_Name"}, "Sync": {"Os", "File_Sync"}, "WriteAt": {"Os", "File_WriteAt"}, "ReadAt": {"Os", "File_ReadAt"}, "Seek": {"Os", "File_Seek"}, "Truncate": {"Os", "File_Truncate"}, "Stat": {"Os", "File_Stat"},
+	},
+	"crypto/ed25519.PrivateKey": {
+		"Public": {"CryptoSign", "Ed25519PrivateKey_Public"}, "Seed": {"CryptoSign", "Ed25519PrivateKey_Seed"}, "Sign": {"CryptoSign", "Ed25519PrivateKey_Sign"},
 	},
 	"net.IP": {
 		"To4": {"Net", "IP_To4"}, "To16": {"Net", "IP_To16"}, "Equal": {"Net", "IP_Equal"}, "String": {"Net", "IP_String"},

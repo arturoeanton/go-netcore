@@ -497,12 +497,18 @@ larger feature or external module):
   error (`xml: decoding is not supported under goclr`) and `Decoder.Token` reports `io.EOF`
   immediately (an empty token stream) — a reflection-driven decoder / tokenizer is the
   larger deferred piece.
+- **`crypto/ed25519`** — fully working via a pure RFC 8032 implementation (the .NET BCL has
+  no Ed25519): `NewKeyFromSeed`, `Sign`, `Verify`, `GenerateKey`, and the `PrivateKey`
+  `Public`/`Seed`/`Sign` methods. Deterministic, so the derived public key and signatures are
+  byte-exact with `go run`. Fixture 750. (One edge: a `priv.Public().(ed25519.PublicKey)`
+  assertion through the `crypto.PublicKey` interface isn't supported — use `ed25519.PublicKey(
+  priv[32:])` or `GenerateKey`'s typed return instead.)
 - **asymmetric crypto** — `crypto/ecdsa` (`GenerateKey`/`Sign`/`Verify` on P-256/P-384/P-521)
   and `crypto/rsa` `SignPKCS1v15`/`VerifyPKCS1v15` (SHA-1/256/384/512) now work, backed by the
   same real .NET key handles `crypto/x509` produces — so JWT ES*/RS* and PKCS1v15 signatures
   round-trip and verify. Still **fail-closed** (an honest error / `false`, never a bogus
   accept): **RSA-PSS** (`SignPSS`/`VerifyPSS` — PSS salt-length compatibility with Go is not
-  yet settled), **Ed25519** (no .NET primitive), `SignPKCS1v15` with `crypto.Hash(0)` (raw,
+  yet settled), `SignPKCS1v15` with `crypto.Hash(0)` (raw,
   no DigestInfo), and DER public-key parsing (`x509.ParsePKIXPublicKey`/`ParsePKCS1PublicKey`).
   `crypto/hmac` (HS*) was already real. Signatures are non-deterministic (random key, and a
   random nonce for ECDSA), so only verify outcomes are byte-stable across runs.

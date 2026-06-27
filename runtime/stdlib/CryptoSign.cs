@@ -83,8 +83,50 @@ public static class CryptoSign
     public static object?[] SignPSS(object? rand, object? priv, ulong hash, GoSlice digest, object? opts) =>
         new object?[] { default(GoSlice), NotSupported("RSA-PSS") };
 
-    // ed25519.Verify(pub, message, sig) bool — no .NET primitive; fail closed.
-    public static bool Ed25519Verify(GoSlice pub, GoSlice message, GoSlice sig) => false;
+    // crypto/ed25519 — backed by the pure RFC 8032 Ed25519 (the BCL has no primitive).
+    public static bool Ed25519Verify(GoSlice pub, GoSlice message, GoSlice sig) =>
+        Ed25519.VerifyRaw(Raw(pub), Raw(message), Raw(sig));
+
+    // NewKeyFromSeed(seed) PrivateKey: 64-byte key = seed(32) || public(32).
+    public static GoSlice Ed25519NewKeyFromSeed(GoSlice seed)
+    {
+        byte[] s = Raw(seed);
+        if (s.Length != 32) throw new GoPanicException(GoString.FromDotNetString("ed25519: bad seed length: " + s.Length));
+        byte[] pub = Ed25519.PublicFromSeed(s);
+        var priv = new byte[64];
+        System.Array.Copy(s, 0, priv, 0, 32);
+        System.Array.Copy(pub, 0, priv, 32, 32);
+        return Bytes(priv);
+    }
+
+    // Sign(priv, message) []byte.
+    public static GoSlice Ed25519Sign(GoSlice priv, GoSlice message)
+    {
+        byte[] p = Raw(priv);
+        if (p.Length != 64) throw new GoPanicException(GoString.FromDotNetString("ed25519: bad private key length: " + p.Length));
+        return Bytes(Ed25519.SignRaw(p, Raw(message)));
+    }
+
+    // GenerateKey(rand) (PublicKey, PrivateKey, error): draw a 32-byte seed from the reader.
+    public static object?[] Ed25519GenerateKey(object? rand)
+    {
+        var seedSlice = Bytes(new byte[32]);
+        var res = Io.ReadFull(rand ?? Crypto.RandReader(), seedSlice);
+        if (res.Length > 1 && res[1] != null)
+            return new object?[] { default(GoSlice), default(GoSlice), res[1] };
+        var priv = Raw(Ed25519NewKeyFromSeed(seedSlice));
+        var pub = new byte[32];
+        System.Array.Copy(priv, 32, pub, 0, 32);
+        return new object?[] { Bytes(pub), Bytes(priv), null };
+    }
+
+    // (ed25519.PrivateKey).Public() crypto.PublicKey (an interface, so boxed) — the last 32 bytes.
+    public static object Ed25519PrivateKey_Public(GoSlice priv) { byte[] p = Raw(priv); var pub = new byte[32]; System.Array.Copy(p, 32, pub, 0, 32); return Bytes(pub); }
+    // (ed25519.PrivateKey).Seed() []byte — the leading 32 bytes.
+    public static GoSlice Ed25519PrivateKey_Seed(GoSlice priv) { byte[] p = Raw(priv); var sd = new byte[32]; System.Array.Copy(p, 0, sd, 0, 32); return Bytes(sd); }
+    // (ed25519.PrivateKey).Sign(rand, message, opts) (signature, error) — the crypto.Signer form.
+    public static object?[] Ed25519PrivateKey_Sign(GoSlice priv, object? rand, GoSlice message, object? opts) =>
+        new object?[] { Ed25519Sign(priv, message), null };
 
     // x509.ParsePKIXPublicKey / ParsePKCS1PublicKey (der) (key, err): goclr does not parse
     // these DER public keys (the asymmetric JWT paths that need them are unsupported), so
