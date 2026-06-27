@@ -512,11 +512,16 @@ larger feature or external module):
   what lets goclr honour Go's `PSSOptions.SaltLength` across all three modes (Auto = max salt,
   `PSSSaltLengthEqualsHash` = −1, and an explicit count) with the same cross-mode accept/reject
   rules as `go run` (Auto verification recovers the salt length; a fixed verifier rejects a
-  different salt length). Fixture 751. Still **fail-closed** (an honest error / `false`, never a
-  bogus accept): `SignPKCS1v15` with `crypto.Hash(0)` (raw, no DigestInfo), and DER public-key
-  parsing (`x509.ParsePKIXPublicKey`/`ParsePKCS1PublicKey`). `crypto/hmac` (HS*) was already
-  real. Signatures are non-deterministic (random key, a random nonce for ECDSA, and a random
-  salt for PSS), so only verify outcomes are byte-stable across runs.
+  different salt length). Fixture 751. **DER public-key marshal/parse now works** too —
+  `x509.MarshalPKIXPublicKey`/`ParsePKIXPublicKey` (SubjectPublicKeyInfo) and
+  `MarshalPKCS1PublicKey`/`ParsePKCS1PublicKey`, backed by .NET's Export/Import, round-trip RSA
+  and ECDSA keys and a parsed key verifies real signatures (the JWT RS*/ES* path). Fixture 755.
+  Still **fail-closed** (an honest error / `false`, never a bogus accept): `SignPKCS1v15` with
+  `crypto.Hash(0)` (raw, no DigestInfo); **ed25519 PKIX** marshal/parse (the .NET BCL has no
+  ed25519 SPKI, and a parsed `ed25519.PublicKey` would hit the named-`[]byte` assertion limit) —
+  `MarshalPKIXPublicKey` of an ed25519 key returns `x509: unsupported public key type`.
+  `crypto/hmac` (HS*) was already real. Signatures are non-deterministic (random key, a random
+  nonce for ECDSA, and a random salt for PSS), so only verify outcomes are byte-stable across runs.
 - **`crypto/elliptic`** — `Curve.Params()` returns the real NIST domain parameters (FIPS
   186-4): `Name`, `BitSize`, and the `P`/`N`/`B`/`Gx`/`Gy` `*big.Int` constants are byte-exact
   with `go run` for P-224/P-256/P-384/P-521, and the curve recovered from an `ecdsa` key now

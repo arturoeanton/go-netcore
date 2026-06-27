@@ -314,14 +314,6 @@ public static class CryptoSign
     public static object?[] Ed25519PrivateKey_Sign(GoSlice priv, object? rand, GoSlice message, object? opts) =>
         new object?[] { Ed25519Sign(priv, message), null };
 
-    // x509.ParsePKIXPublicKey / ParsePKCS1PublicKey (der) (key, err): goclr does not parse
-    // these DER public keys (the asymmetric JWT paths that need them are unsupported), so
-    // report an error rather than a bogus key.
-    public static object?[] ParsePKIXPublicKey(GoSlice der) =>
-        new object?[] { null, NotSupported("x509 public-key parsing") };
-    public static object?[] ParsePKCS1PublicKey(GoSlice der) =>
-        new object?[] { null, NotSupported("x509 public-key parsing") };
-
     // x509.DecryptPEMBlock(block, password) ([]byte, error): legacy encrypted PEM — unsupported.
     public static object?[] DecryptPEMBlock(object? block, GoSlice password) =>
         new object?[] { default(GoSlice), NotSupported("x509.DecryptPEMBlock") };

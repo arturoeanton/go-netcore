@@ -153,6 +153,43 @@ public static class Crypto509
         catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString(e.Message)) }; }
     }
 
+    // --- public-key DER (PKIX / SubjectPublicKeyInfo and PKCS#1 RSAPublicKey) ---
+    // (x509.MarshalPKIXPublicKey(pub) ([]byte, error): pub is any of *rsa.PublicKey /
+    // *ecdsa.PublicKey, arriving boxed as the GoRsaKey/GoEcKey handle.
+    public static object?[] MarshalPKIXPublicKey(object? pub)
+    {
+        try
+        {
+            byte[] der = pub switch
+            {
+                GoRsaKey r => r.Key.ExportSubjectPublicKeyInfo(),
+                GoEcKey e => e.Key.ExportSubjectPublicKeyInfo(),
+                _ => throw new System.Exception("x509: unsupported public key type"),
+            };
+            return new object?[] { Bytes(der), null };
+        }
+        catch (System.Exception ex) { return new object?[] { null, new GoError(GoString.FromDotNetString(ex.Message)) }; }
+    }
+    // x509.MarshalPKCS1PublicKey(*rsa.PublicKey) []byte — no error (panics on a bad key like Go).
+    public static GoSlice MarshalPKCS1PublicKey(object pub) => Bytes(((GoRsaKey)pub).Key.ExportRSAPublicKey());
+
+    // x509.ParsePKIXPublicKey(der) (any, error): try RSA then EC SubjectPublicKeyInfo, returning
+    // the public-only key handle (a *rsa.PublicKey / *ecdsa.PublicKey via the same wrapper).
+    public static object?[] ParsePKIXPublicKey(GoSlice der)
+    {
+        byte[] raw = Raw(der);
+        try { var k = RSA.Create(); k.ImportSubjectPublicKeyInfo(raw, out _); return new object?[] { new GoRsaKey { Key = k, PublicOnly = true }, null }; }
+        catch { }
+        try { var k = ECDsa.Create(); k.ImportSubjectPublicKeyInfo(raw, out _); return new object?[] { new GoEcKey { Key = k, PublicOnly = true }, null }; }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+    // x509.ParsePKCS1PublicKey(der) (*rsa.PublicKey, error).
+    public static object?[] ParsePKCS1PublicKey(GoSlice der)
+    {
+        try { var k = RSA.Create(); k.ImportRSAPublicKey(Raw(der), out _); return new object?[] { new GoRsaKey { Key = k, PublicOnly = true }, null }; }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+
     // --- certificates ---
     public static object?[] CreateCertificate(object? rand, object template, object parent, object? pub, object? priv)
     {
