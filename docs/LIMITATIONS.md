@@ -433,6 +433,12 @@ larger feature or external module):
 - **`encoding/gob`** — not implemented (`gob.NewEncoder`/`NewDecoder` are unsupported): the
   self-describing binary format is a large reflection-driven codec; use `encoding/json` (or
   `encoding/binary` for fixed layouts) instead.
+- **`archive/tar`** — a USTAR writer/reader for regular files: `Writer.WriteHeader`/`Write`/
+  `Close` and `Reader.Next`/`Read` round-trip the common `Header` fields (`Name`, `Size`, `Mode`,
+  `Typeflag`, `ModTime`, `Linkname`, `Uid`/`Gid`, `Uname`/`Gname`), and the writer is
+  **byte-identical to `go run`** for explicit fields (so goclr archives are Go-readable).
+  Fixture 760. Not yet emitted: PAX/GNU extensions, so names longer than 100 bytes and
+  sub-second `ModTime` are out of range. `archive/zip` remains unsupported.
 - **`math/rand/v2`** — works with both the **PCG** (`rand.NewPCG`) and **ChaCha8**
   (`rand.NewChaCha8`) sources, byte-exact (the latter a faithful port of `internal/
   chacha8rand`'s block + refill/reseed), plus the auto-seeded global functions.

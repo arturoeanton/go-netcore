@@ -295,6 +295,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Shuffle": {"Rand", "Shuffle"}, "Int31n": {"Rand", "Int31n"}, "Float32": {"Rand", "Float32"},
 		"NormFloat64": {"Rand", "NormFloat64"}, "ExpFloat64": {"Rand", "ExpFloat64"}, "NewZipf": {"Rand", "NewZipf"},
 	},
+	"archive/tar": {"NewWriter": {"Tar", "NewWriter"}, "NewReader": {"Tar", "NewReader"}},
 	"sync": {"NewCond": {"Sync", "NewCond"}, "OnceFunc": {"Sync", "OnceFunc"}, "OnceValue": {"Sync", "OnceValue"}, "OnceValues": {"Sync", "OnceValues"}},
 	"sync/atomic": {
 		"AddInt64": {"Atomic", "AddInt64"}, "AddInt32": {"Atomic", "AddInt32"}, "AddUint64": {"Atomic", "AddUint64"},
@@ -521,6 +522,9 @@ var opaqueShimTypes = map[string]bool{
 	"math/rand.Rand":                 true,
 	"math/rand.Source":               true,
 	"math/rand.Zipf":                 true,
+	"archive/tar.Header":             true,
+	"archive/tar.Writer":             true,
+	"archive/tar.Reader":             true,
 	"math/rand/v2.Rand":              true,
 	"math/rand/v2.PCG":               true,
 	"math/rand/v2.ChaCha8":           true,
@@ -957,6 +961,11 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"P": {"Crypto509", "CurveParams_P"}, "N": {"Crypto509", "CurveParams_N"}, "B": {"Crypto509", "CurveParams_B"},
 		"Gx": {"Crypto509", "CurveParams_Gx"}, "Gy": {"Crypto509", "CurveParams_Gy"},
 	},
+	"archive/tar.Header": {
+		"Name": {"Tar", "Header_Name"}, "Linkname": {"Tar", "Header_Linkname"}, "Uname": {"Tar", "Header_Uname"}, "Gname": {"Tar", "Header_Gname"},
+		"Size": {"Tar", "Header_Size"}, "Mode": {"Tar", "Header_Mode"}, "Uid": {"Tar", "Header_Uid"}, "Gid": {"Tar", "Header_Gid"},
+		"Typeflag": {"Tar", "Header_Typeflag"}, "ModTime": {"Tar", "Header_ModTime"},
+	},
 	"crypto/ecdsa.PrivateKey": {
 		"PublicKey": {"Crypto509", "EcdsaPublic"}, "X": {"Crypto509", "EcKey_X"}, "Y": {"Crypto509", "EcKey_Y"}, "Curve": {"Crypto509", "EcKey_Curve"},
 	},
@@ -1167,6 +1176,11 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"compress/flate.WriteError": {"Offset": {"Compress", "WriteError_SetOffset"}, "Err": {"Compress", "WriteError_SetErr"}},
 	"text/scanner.Position": {"Filename": {"GoToken", "Position_SetFilename"}, "Offset": {"GoToken", "Position_SetOffset"}, "Line": {"GoToken", "Position_SetLine"}, "Column": {"GoToken", "Position_SetColumn"}},
 	"text/scanner.Scanner": {"Filename": {"Scanner", "Scanner_SetFilename"}, "Mode": {"Scanner", "Scanner_SetMode"}},
+	"archive/tar.Header": {
+		"Name": {"Tar", "Header_SetName"}, "Linkname": {"Tar", "Header_SetLinkname"}, "Uname": {"Tar", "Header_SetUname"}, "Gname": {"Tar", "Header_SetGname"},
+		"Size": {"Tar", "Header_SetSize"}, "Mode": {"Tar", "Header_SetMode"}, "Uid": {"Tar", "Header_SetUid"}, "Gid": {"Tar", "Header_SetGid"},
+		"Typeflag": {"Tar", "Header_SetTypeflag"}, "ModTime": {"Tar", "Header_SetModTime"},
+	},
 	"encoding/asn1.StructuralError": {"Msg": {"Asn1", "StructuralError_SetMsg"}},
 	"encoding/asn1.SyntaxError":     {"Msg": {"Asn1", "SyntaxError_SetMsg"}},
 	"encoding/asn1.BitString":       {"Bytes": {"Asn1", "BitString_SetBytes"}, "BitLength": {"Asn1", "BitString_SetBitLength"}},
@@ -1280,6 +1294,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"compress/flate.WriteError":        {"Compress", "WriteErrorZero"},
 	"text/scanner.Position":            {"GoToken", "ScannerPositionZero"},
 	"text/scanner.Scanner":             {"Scanner", "NewScannerZero"},
+	"archive/tar.Header":              {"Tar", "NewHeaderZero"},
 	"go/token.FileSet":                {"GoToken", "FileSetZero"},
 	"encoding/asn1.StructuralError":  {"Asn1", "NewStructuralError"},
 	"encoding/asn1.SyntaxError":      {"Asn1", "NewSyntaxError"},
@@ -2068,6 +2083,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Int31n": {"Rand", "Rand_Int31n"}, "Float32": {"Rand", "Rand_Float32"}, "Read": {"Rand", "Rand_Read"}, "Seed": {"Rand", "Rand_Seed"},
 	},
 	"math/rand.Zipf": {"Uint64": {"Rand", "Zipf_Uint64"}},
+	"archive/tar.Writer": {"WriteHeader": {"Tar", "Writer_WriteHeader"}, "Write": {"Tar", "Writer_Write"}, "Close": {"Tar", "Writer_Close"}, "Flush": {"Tar", "Writer_Flush"}},
+	"archive/tar.Reader": {"Next": {"Tar", "Reader_Next"}, "Read": {"Tar", "Reader_Read"}},
 	"net/netip.Addr": {
 		"String": {"Netip", "Addr_String"}, "Is4": {"Netip", "Addr_Is4"}, "Is6": {"Netip", "Addr_Is6"},
 		"Is4In6": {"Netip", "Addr_Is4In6"}, "IsValid": {"Netip", "Addr_IsValid"}, "BitLen": {"Netip", "Addr_BitLen"},
