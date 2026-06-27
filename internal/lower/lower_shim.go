@@ -296,6 +296,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"NormFloat64": {"Rand", "NormFloat64"}, "ExpFloat64": {"Rand", "ExpFloat64"}, "NewZipf": {"Rand", "NewZipf"},
 	},
 	"archive/tar": {"NewWriter": {"Tar", "NewWriter"}, "NewReader": {"Tar", "NewReader"}},
+	"archive/zip": {"NewWriter": {"Zip", "NewWriter"}, "NewReader": {"Zip", "NewReader"}},
 	"sync": {"NewCond": {"Sync", "NewCond"}, "OnceFunc": {"Sync", "OnceFunc"}, "OnceValue": {"Sync", "OnceValue"}, "OnceValues": {"Sync", "OnceValues"}},
 	"sync/atomic": {
 		"AddInt64": {"Atomic", "AddInt64"}, "AddInt32": {"Atomic", "AddInt32"}, "AddUint64": {"Atomic", "AddUint64"},
@@ -525,6 +526,9 @@ var opaqueShimTypes = map[string]bool{
 	"archive/tar.Header":             true,
 	"archive/tar.Writer":             true,
 	"archive/tar.Reader":             true,
+	"archive/zip.Writer":             true,
+	"archive/zip.Reader":             true,
+	"archive/zip.File":               true,
 	"math/rand/v2.Rand":              true,
 	"math/rand/v2.PCG":               true,
 	"math/rand/v2.ChaCha8":           true,
@@ -966,6 +970,8 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"Size": {"Tar", "Header_Size"}, "Mode": {"Tar", "Header_Mode"}, "Uid": {"Tar", "Header_Uid"}, "Gid": {"Tar", "Header_Gid"},
 		"Typeflag": {"Tar", "Header_Typeflag"}, "ModTime": {"Tar", "Header_ModTime"},
 	},
+	"archive/zip.Reader": {"File": {"Zip", "Reader_File"}},
+	"archive/zip.File":   {"Name": {"Zip", "File_Name"}},
 	"crypto/ecdsa.PrivateKey": {
 		"PublicKey": {"Crypto509", "EcdsaPublic"}, "X": {"Crypto509", "EcKey_X"}, "Y": {"Crypto509", "EcKey_Y"}, "Curve": {"Crypto509", "EcKey_Curve"},
 	},
@@ -2085,6 +2091,8 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"math/rand.Zipf": {"Uint64": {"Rand", "Zipf_Uint64"}},
 	"archive/tar.Writer": {"WriteHeader": {"Tar", "Writer_WriteHeader"}, "Write": {"Tar", "Writer_Write"}, "Close": {"Tar", "Writer_Close"}, "Flush": {"Tar", "Writer_Flush"}},
 	"archive/tar.Reader": {"Next": {"Tar", "Reader_Next"}, "Read": {"Tar", "Reader_Read"}},
+	"archive/zip.Writer": {"Create": {"Zip", "Writer_Create"}, "Close": {"Zip", "Writer_Close"}, "Flush": {"Zip", "Writer_Flush"}},
+	"archive/zip.File":   {"Open": {"Zip", "File_Open"}},
 	"net/netip.Addr": {
 		"String": {"Netip", "Addr_String"}, "Is4": {"Netip", "Addr_Is4"}, "Is6": {"Netip", "Addr_Is6"},
 		"Is4In6": {"Netip", "Addr_Is4In6"}, "IsValid": {"Netip", "Addr_IsValid"}, "BitLen": {"Netip", "Addr_BitLen"},

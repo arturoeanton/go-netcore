@@ -438,7 +438,14 @@ larger feature or external module):
   `Typeflag`, `ModTime`, `Linkname`, `Uid`/`Gid`, `Uname`/`Gname`), and the writer is
   **byte-identical to `go run`** for explicit fields (so goclr archives are Go-readable).
   Fixture 760. Not yet emitted: PAX/GNU extensions, so names longer than 100 bytes and
-  sub-second `ModTime` are out of range. `archive/zip` remains unsupported.
+  sub-second `ModTime` are out of range.
+- **`archive/zip`** — a writer/reader backed by .NET's `ZipArchive` (standard Deflate):
+  `Writer.Create`/`Close` and `Reader.File`/`File.Open`/`File.Name` round-trip every entry name
+  and its content byte-exact with `go run`. The compressed bytes are **not** reproducible (the
+  compressor differs from Go's), so only the round-trip is byte-stable, not the raw archive.
+  `Create` returns a `bytes.Buffer` the caller streams into; `File.Open` returns a
+  `bytes.Reader` (its `Close` is the standard no-op). Fixture 761. Not yet wired:
+  `Writer.CreateHeader`/`zip.FileHeader` metadata (method, modified time, comments).
 - **`math/rand/v2`** — works with both the **PCG** (`rand.NewPCG`) and **ChaCha8**
   (`rand.NewChaCha8`) sources, byte-exact (the latter a faithful port of `internal/
   chacha8rand`'s block + refill/reseed), plus the auto-seeded global functions.
