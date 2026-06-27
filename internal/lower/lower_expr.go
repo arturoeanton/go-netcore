@@ -528,6 +528,73 @@ func (l *funcLowerer) binaryExpr(e *ast.BinaryExpr) {
 	l.emitArith(e.Op, opType)
 }
 
+// shiftUnsigned reports whether a shift operand's Go type is unsigned. isUnsigned only
+// covers KUint32/KUint64; the narrow uint8/uint16 use a KInt32 representation tagged by a
+// zero-extending narrow op, so detect those too (their >> must be logical / zero-fill).
+func shiftUnsigned(t goir.Type) bool {
+	return t.Kind == goir.KUint64 || t.Kind == goir.KUint32 ||
+		t.TruncOp == goir.OpConvU1 || t.TruncOp == goir.OpConvU2
+}
+
+// shiftWidth is the Go bit-width of a shift operand's type (8/16/32/64), recovered
+// from its narrowing op or representation kind.
+func shiftWidth(t goir.Type) int64 {
+	switch t.TruncOp {
+	case goir.OpConvI1, goir.OpConvU1:
+		return 8
+	case goir.OpConvI2, goir.OpConvU2:
+		return 16
+	}
+	if t.Kind == goir.KInt64 || t.Kind == goir.KUint64 {
+		return 64
+	}
+	return 32
+}
+
+// emitShiftGuard lowers a shift with [value, count] already on the stack, applying Go's
+// semantics, which differ from the CLR's count-masking: a count that reaches the operand's
+// bit-width yields 0 (or an arithmetic sign-fill for a signed >>), where the CLR would mask
+// the count and e.g. compute 1<<64 == 1. Called from emitArith so every shift context (x<<n
+// and x<<=n alike) is covered uniformly. A negative signed count yields 0 here rather than
+// Go's panic — a benign divergence on already-buggy input (the count's signedness isn't
+// known at this point). The caller applies truncateInt afterward as for any arith op.
+func (l *funcLowerer) emitShiftGuard(shr bool, opType goir.Type) {
+	width := shiftWidth(opType)
+	cntTmp := l.addLocal(nil, goir.TInt64)
+	l.emit(goir.Op{Code: goir.OpConvI8}) // widen the count for the bound check
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: cntTmp})
+	valTmp := l.addLocal(nil, opType)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
+
+	shiftL, doneL := l.label(), l.label()
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: cntTmp})
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: width})
+	l.emit(goir.Op{Code: goir.OpCltUn}) // unsigned: a huge/negative count is correctly >= width
+	l.emit(goir.Op{Code: goir.OpBrTrue, Label: shiftL})
+	if shr && !shiftUnsigned(opType) {
+		// arithmetic sign-fill: value >> (width-1) is 0 for >=0, -1 for <0.
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp})
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: width - 1})
+		l.emit(goir.Op{Code: goir.OpShr})
+	} else {
+		l.emitZero(opType)
+	}
+	l.emit(goir.Op{Code: goir.OpBr, Label: doneL})
+	l.mark(shiftL)
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp})
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: cntTmp})
+	l.emit(goir.Op{Code: goir.OpConvI4}) // CLR shift amount is int32
+	op := goir.OpShl
+	if shr {
+		op = goir.OpShr
+		if shiftUnsigned(opType) {
+			op = goir.OpShrUn
+		}
+	}
+	l.emit(goir.Op{Code: op})
+	l.mark(doneL)
+}
+
 // emitShimVar calls a shimmed-package-variable accessor (Ret is always object) and unboxes
 // the result to the variable's actual type when that type is a value type (a slice like
 // os.Args, a struct) — reference-typed vars (os.Stdout) are left as the object handle.
@@ -1361,6 +1428,18 @@ func (l *funcLowerer) emitArith(tok token.Token, operandType goir.Type) {
 		l.truncateInt(operandType)
 		return
 	}
+	// Shifts need Go's count semantics (count >= width -> 0 / sign-fill), unlike the CLR's
+	// count masking. Route every shift (including x <<= n) through the guard.
+	if tok == token.SHL {
+		l.emitShiftGuard(false, operandType)
+		l.truncateInt(operandType)
+		return
+	}
+	if tok == token.SHR {
+		l.emitShiftGuard(true, operandType)
+		l.truncateInt(operandType)
+		return
+	}
 	op, ok := arithOp(tok)
 	if !ok {
 		l.fail(0, "operator "+tok.String())
@@ -1372,8 +1451,6 @@ func (l *funcLowerer) emitArith(tok token.Token, operandType goir.Type) {
 			op = goir.OpDivUn
 		case goir.OpRem:
 			op = goir.OpRemUn
-		case goir.OpShr:
-			op = goir.OpShrUn
 		}
 	}
 	if (op == goir.OpDiv || op == goir.OpRem || op == goir.OpDivUn || op == goir.OpRemUn) && isIntegerKind(operandType.Kind) {

@@ -110,6 +110,13 @@ one; these don't yet):
   (honoring `#`), `(*int)(nil)` for `%#v`, and `%!verb(*int=<nil>)` for the rest. (A
   *live* pointer's `%p`/`%d` address is non-deterministic and not byte-exact, as in any
   runtime.)
+- **A shift by a *negative* count returns `0` instead of panicking.** Go panics
+  (`runtime error: negative shift amount`); goclr's shift guard treats the count as
+  unsigned, so a negative count is `>= width` and yields `0` (or `-1` for a signed `>>`).
+  This is a benign divergence on already-buggy input — for non-negative counts, including
+  counts `>=` the operand width (where Go yields `0`, fixed vs the CLR's count-masking),
+  goclr matches `go run` exactly across all widths and both the `x<<n` and `x<<=n` forms
+  (fixture 767).
 - **`json.Marshal` string escaping** matches Go byte-for-byte: `\b \f \n \r \t`
   short forms (`\u00XX` for other controls), `<`/`>`/`&` → `<`/`>`/
   `&` under the default HTML-escaping (off via `Encoder.SetEscapeHTML(false)`),
