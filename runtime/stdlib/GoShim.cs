@@ -25,6 +25,28 @@ public static class ShimTypes
     private static bool _scanned;
     private static readonly object _lock = new();
 
+    // Normalize a Go type name to its short "pkgbase.Type" form, dropping any import-path
+    // prefix: "encoding/xml.StartElement" -> "xml.StartElement". [GoShim] annotations are
+    // written inconsistently (some short, some full import path) and the lowering always
+    // queries with the full path, so all comparisons normalize through this — which is also
+    // exactly the form Go's %T prints.
+    private static string Short(string n)
+    {
+        int dot = n.LastIndexOf('.');
+        if (dot < 0) return n;
+        string pkg = n.Substring(0, dot);
+        int slash = pkg.LastIndexOf('/');
+        if (slash >= 0) pkg = pkg.Substring(slash + 1);
+        return pkg + n.Substring(dot);
+    }
+
+    private static bool Has(HashSet<string> names, string goName)
+    {
+        string q = Short(goName);
+        foreach (var n in names) if (Short(n) == q) return true;
+        return false;
+    }
+
     private static void EnsureScanned()
     {
         if (_scanned) return;
@@ -38,7 +60,7 @@ public static class ShimTypes
                 {
                     if (!_clrToGo.TryGetValue(t, out var set)) _clrToGo[t] = set = new();
                     set.Add(a.GoName);
-                    _goNames.Add(a.GoName);
+                    _goNames.Add(Short(a.GoName));
                 }
             }
             _scanned = true;
@@ -52,8 +74,8 @@ public static class ShimTypes
     public static bool Is(object v, string goName)
     {
         EnsureScanned();
-        if (_clrToGo.TryGetValue(v.GetType(), out var names)) return names.Contains(goName);
-        return !_goNames.Contains(goName);
+        if (_clrToGo.TryGetValue(v.GetType(), out var names)) return Has(names, goName);
+        return !_goNames.Contains(Short(goName));
     }
 
     /// <summary>Whether v is *precisely* the shim value of goName: its CLR class must be
@@ -62,7 +84,7 @@ public static class ShimTypes
     public static bool IsStrict(object v, string goName)
     {
         EnsureScanned();
-        return _clrToGo.TryGetValue(v.GetType(), out var names) && names.Contains(goName);
+        return _clrToGo.TryGetValue(v.GetType(), out var names) && Has(names, goName);
     }
 
     /// <summary>Whether v's CLR class is a registered shim type at all.</summary>

@@ -684,6 +684,30 @@ func (l *funcLowerer) typeAssert(e *ast.TypeAssertExpr) {
 		l.emitUnbox(t)
 		return
 	}
+	// x.(T) where T is an opaque shim handle: isinst against System.Object matches every
+	// boxed value, so discriminate by the [GoShim] registry (Rt.IsShimKind) before unboxing.
+	if t.Kind == goir.KObject && t.Shim != "" {
+		valTmp := l.addLocal(nil, goir.TObject)
+		l.expr(e.X)
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
+		good := l.label()
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: t.Shim})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: shimIsKindExtern()})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: good})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: typeDescStr(l.pkg.TypesInfo.TypeOf(e.X))})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: typeDescStr(l.pkg.TypesInfo.TypeOf(e.Type))})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "AssertFail",
+			Params: []goir.Type{goir.TObject, goir.TString, goir.TString}, Ret: goir.TVoid,
+		}})
+		l.mark(good)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp})
+		l.emitUnbox(t)
+		return
+	}
+
 	// A concrete-representation assertion (int, string, struct, *T): check the dynamic
 	// type and panic like Go ("interface conversion: ... is X, not Y") on mismatch,
 	// rather than letting the CLR unbox throw a raw InvalidCastException.
@@ -953,6 +977,29 @@ func (l *funcLowerer) typeAssertOK(s *ast.AssignStmt) {
 		return
 	}
 
+	// v, ok := x.(T) where T is an opaque shim handle (KObject with a Shim name): all such
+	// handles share the System.Object CLR type, so isinst would match every boxed value.
+	// Discriminate by the [GoShim] registry via Rt.IsShimKind instead.
+	if t.Kind == goir.KObject && t.Shim != "" {
+		valTmp := l.addLocal(nil, goir.TObject)
+		l.expr(ta.X)
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: valTmp})
+		matched, done := l.label(), l.label()
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: t.Shim})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: shimIsKindExtern()})
+		l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
+		l.emit(goir.Op{Code: goir.OpLdNull})
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: isTmp})
+		l.emit(goir.Op{Code: goir.OpBr, Label: done})
+		l.mark(matched)
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: valTmp})
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: isTmp})
+		l.mark(done)
+		l.bindAssertResults(s, isTmp, t)
+		return
+	}
+
 	l.expr(ta.X)
 	l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: t})
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: isTmp})
@@ -1055,6 +1102,17 @@ func pointeeKindExtern() *goir.Extern {
 	return &goir.Extern{
 		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "PtrPointeeKind",
 		Params: []goir.Type{goir.TObject}, Ret: goir.TInt64,
+	}
+}
+
+// shimIsKindExtern resolves Rt.IsShimKind(v, goName) — whether a boxed value is the opaque
+// shim handle of goName. An opaque shim type lowers to System.Object, so `isinst` alone in a
+// type assertion would match every boxed value (a *rsa.PublicKey would satisfy x.(*ecdsa.
+// PublicKey)); this consults the self-declared [GoShim] registry instead.
+func shimIsKindExtern() *goir.Extern {
+	return &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "IsShimKind",
+		Params: []goir.Type{goir.TObject, goir.TString}, Ret: goir.TBool,
 	}
 }
 

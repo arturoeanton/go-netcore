@@ -549,6 +549,19 @@ mechanism keyed on `types.Implements` + a self-declared `[GoShim]` CLR-class reg
 no Go type hardcoded in the compiler. A shim type participates once its value class carries
 the `[GoShim("pkg.Type")]` attribute.
 
+### Type assertions over opaque shim handles are precise
+
+A type assertion to an opaque shim type — `x.(*rsa.PublicKey)`, `tok.(xml.StartElement)`,
+the comma-ok and panic forms alike — now discriminates by the concrete `[GoShim]` CLR class
+(`Rt.IsShimKind`), exactly like a type switch already did. Because every shim handle lowers to
+`System.Object`, a plain `isinst` would have matched *any* boxed value: a `*rsa.PublicKey`
+wrongly satisfied `x.(*ecdsa.PublicKey)`. The registry comparison normalizes both the queried
+name and the registered `[GoShim]` name to Go's short `pkg.Type` form, so it is robust to the
+attribute being written either short (`xml.StartElement`) or as a full import path
+(`crypto/rsa.PublicKey`). Fixture 752. (Assertions to a *named non-shim* type — e.g.
+`x.(ed25519.PublicKey)`, a named `[]byte` — go through the typed-box tag path instead and have
+their own limitation, documented above under crypto/ed25519.)
+
 ### Shimmed-package error types in a type switch
 
 `encoding/json`/`encoding/xml` are shimmed, and their error types
