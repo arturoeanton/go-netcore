@@ -154,6 +154,9 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 			b.u8(0x6C)
 		case goir.OpConvR4:
 			b.u8(0x6B)
+		case goir.OpConvRUn:
+			b.u8(0x76) // conv.r.un
+
 		case goir.OpConvU8:
 			b.u8(0x6E)
 		case goir.OpConvU4:

@@ -1167,8 +1167,17 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 	case goir.KUint32:
 		l.emit(goir.Op{Code: goir.OpConvU4})
 	case goir.KFloat64:
+		// conv.r8 treats the integer as signed, so a uint with the high bit set would convert
+		// negative (float64(^uint64(0)) == -1). Precede with conv.r.un for an unsigned source
+		// (uint8/uint16 are always positive in their KInt32 representation, so need no prefix).
+		if isUnsigned(srcT) {
+			l.emit(goir.Op{Code: goir.OpConvRUn})
+		}
 		l.emit(goir.Op{Code: goir.OpConvR8})
 	case goir.KFloat32:
+		if isUnsigned(srcT) {
+			l.emit(goir.Op{Code: goir.OpConvRUn})
+		}
 		l.emit(goir.Op{Code: goir.OpConvR4})
 	case goir.KString:
 		l.fail(e.Pos(), "string conversion")

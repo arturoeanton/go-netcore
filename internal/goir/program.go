@@ -202,8 +202,9 @@ const (
 
 	OpConvI8
 	OpConvI4
-	OpConvR8 // conv.r8 (to float64)
-	OpConvR4 // conv.r4 (to float32)
+	OpConvR8  // conv.r8 (to float64)
+	OpConvR4  // conv.r4 (to float32)
+	OpConvRUn // conv.r.un (unsigned integer -> F; precedes conv.r8/r4 for uint sources)
 	OpConvU8 // conv.u8 (to uint64)
 	OpConvU4 // conv.u4 (to uint32)
 	OpConvI1 // conv.i1 (truncate + sign-extend to int8 width)

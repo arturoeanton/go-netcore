@@ -110,6 +110,11 @@ one; these don't yet):
   (honoring `#`), `(*int)(nil)` for `%#v`, and `%!verb(*int=<nil>)` for the rest. (A
   *live* pointer's `%p`/`%d` address is non-deterministic and not byte-exact, as in any
   runtime.)
+- **Converting an unsigned integer to a float is byte-exact.** `float64`/`float32` of a
+  `uint32`/`uint64`/`uint`/`uintptr` whose high bit is set converts as unsigned (e.g.
+  `float64(^uint64(0))` ≈ `1.8446744073709552e+19`), not the signed `-1` the CLR's `conv.r8`
+  alone would produce — goclr precedes it with `conv.r.un` for unsigned sources. Signed
+  sources and the always-positive `uint8`/`uint16` are unchanged (fixture 769).
 - **Signed integer division/remainder is byte-exact, including the overflow edge.**
   `MinInt / -1` wraps to `MinInt` and `MinInt % -1` is `0` (matching Go), where the CLR
   would throw `OverflowException`; division/remainder by zero still panics with a
