@@ -50,6 +50,8 @@ public sealed class GoTypeDesc
     public int ArrayLen;
     public System.Collections.Generic.List<GoFieldDesc> Fields = new();
     public System.Collections.Generic.List<string> Methods = new(); // method-set names (or an interface's requirements)
+    public System.Collections.Generic.List<int> InIds = new();  // a func signature's parameter type ids
+    public System.Collections.Generic.List<int> OutIds = new(); // a func signature's result type ids
     // Direct element/key descriptors for a runtime-synthesized composite (reflect.
     // MapOf/SliceOf/PtrTo/ArrayOf), used in preference to the id when set.
     public GoTypeDesc? ElemDesc;
@@ -93,6 +95,16 @@ public static class TypeReg
     public static void RegisterMethod(int typeId, GoString name)
     {
         if (_byId.TryGetValue(typeId, out var d)) d.Methods.Add(name.ToDotNetString());
+    }
+
+    /// <summary>Appends a parameter / result type id to a func type's signature.</summary>
+    public static void RegisterIn(int typeId, int inTypeId)
+    {
+        if (_byId.TryGetValue(typeId, out var d)) d.InIds.Add(inTypeId);
+    }
+    public static void RegisterOut(int typeId, int outTypeId)
+    {
+        if (_byId.TryGetValue(typeId, out var d)) d.OutIds.Add(outTypeId);
     }
 
     public static GoTypeDesc? ById(int id) => id >= 0 && _byId.TryGetValue(id, out var d) ? d : null;

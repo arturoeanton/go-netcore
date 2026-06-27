@@ -654,10 +654,10 @@ public static class Reflect
         if (idx < 0) return new object?[] { new GoReflectMethod(), false };
         return new object?[] { new GoReflectMethod { Name = ms[idx], Index = idx }, true };
     }
-    public static long Type_NumIn(object t) => 0;
-    public static long Type_NumOut(object t) => 0;
-    public static object Type_In(object t, long i) => new GoReflectType { Sample = null };
-    public static object Type_Out(object t, long i) => new GoReflectType { Sample = null };
+    public static long Type_NumIn(object t) => TDesc(t)?.InIds.Count ?? 0;
+    public static long Type_NumOut(object t) => TDesc(t)?.OutIds.Count ?? 0;
+    public static object Type_In(object t, long i) { var d = TDesc(t); return d != null && i >= 0 && i < d.InIds.Count ? RTypeById(d.InIds[(int)i]) : RType(null, null); }
+    public static object Type_Out(object t, long i) { var d = TDesc(t); return d != null && i >= 0 && i < d.OutIds.Count ? RTypeById(d.OutIds[(int)i]) : RType(null, null); }
     public static GoString Type_PkgPath(object t) { var d = TDesc(t); return GoString.FromDotNetString(d != null ? d.PkgPath : ""); }
     public static bool Type_Comparable(object t)
     {

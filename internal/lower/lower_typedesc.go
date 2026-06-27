@@ -67,6 +67,8 @@ type typeDescEntry struct {
 	arrayLen int
 	fields   []typeFieldEntry
 	methods  []string // method names in this type's method set (or an interface's requirements)
+	inIds    []int    // a func signature's parameter type ids (reflect NumIn/In)
+	outIds   []int    // a func signature's result type ids (reflect NumOut/Out)
 	// Dynamic-identity links: clrName is the emitted struct type name (for a struct
 	// value reached through an interface) and namedId is the typed-box id (for an
 	// identity-bearing named type); 0/"" when not applicable.
@@ -299,6 +301,20 @@ func (c *lowerCtx) descId(t types.Type) int {
 			})
 		}
 		c.typeDescs[id].fields = fields
+	case *types.Signature:
+		var inIds, outIds []int
+		if p := u.Params(); p != nil {
+			for i := 0; i < p.Len(); i++ {
+				inIds = append(inIds, c.descId(p.At(i).Type()))
+			}
+		}
+		if r := u.Results(); r != nil {
+			for i := 0; i < r.Len(); i++ {
+				outIds = append(outIds, c.descId(r.At(i).Type()))
+			}
+		}
+		c.typeDescs[id].inIds = inIds
+		c.typeDescs[id].outIds = outIds
 	}
 	return id
 }
@@ -342,6 +358,18 @@ func (l *funcLowerer) emitOneTypeDesc(e typeDescEntry) {
 			Params: []goir.Type{goir.TInt32, goir.TString}, Ret: goir.TVoid,
 		}})
 	}
+	regSig := func(method string, ids []int) {
+		for _, tid := range ids {
+			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(e.id)})
+			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(tid)})
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "TypeReg", Method: method,
+				Params: []goir.Type{goir.TInt32, goir.TInt32}, Ret: goir.TVoid,
+			}})
+		}
+	}
+	regSig("RegisterIn", e.inIds)
+	regSig("RegisterOut", e.outIds)
 	if e.clrName != "" {
 		l.emit(goir.Op{Code: goir.OpStrConst, Str: e.clrName})
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(e.id)})

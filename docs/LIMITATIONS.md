@@ -40,6 +40,9 @@ Remaining gaps (tracked):
   keeps the qualified element type. `reflect.Zero`/`reflect.New(...).Elem()` build the zero
   of scalars, slices, maps **and structs** (a Go-zeroed CLR instance — numeric/bool 0/false,
   slices/maps/pointers nil, string fields `""`, recursing into nested struct fields).
+  A **func type's signature** is reflectable: `NumIn`/`NumOut` and `In(i)`/`Out(i)` report
+  the parameter/result types (the descriptor records them at startup), alongside the working
+  `Value.Call`/`MethodByName`/`MakeFunc`. Fixture 746.
 
 ## Type-info erasure (runtime is non-generic)
 
