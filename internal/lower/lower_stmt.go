@@ -315,6 +315,15 @@ func (l *funcLowerer) promotedFieldWriteVal(sel *ast.SelectorExpr, bt goir.Type,
 
 // fieldAssign lowers p.f = v: address of the struct, value, stfld.
 func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
+	// (*p).field = v — an explicit pointer dereference selector. p.field already auto-derefs;
+	// route the explicit form through the same pointer-struct field write on the underlying
+	// pointer expression (which may itself be a deref, e.g. (**pp).field).
+	if star, ok := unparen(sel.X).(*ast.StarExpr); ok {
+		if pt := l.exprType(star.X); pt.Kind == goir.KPtr && pt.Elem != nil && pt.Elem.Kind == goir.KStruct {
+			l.ptrStructFieldWrite(&ast.SelectorExpr{X: star.X, Sel: sel.Sel}, pt, rhs)
+			return
+		}
+	}
 	bt := l.exprType(sel.X)
 	if bt.Kind == goir.KPtr && bt.Elem.Kind == goir.KStruct {
 		l.ptrStructFieldWrite(sel, bt, rhs)
@@ -1234,6 +1243,14 @@ func (l *funcLowerer) compoundAssignLValue(lhs ast.Expr, binTok token.Token, rhs
 // field, where emitOperand pushes the right-hand operand (coerced to the field
 // type).
 func (l *funcLowerer) modifyField(sel *ast.SelectorExpr, binTok token.Token, emitOperand func(ft goir.Type)) {
+	// (*p).field op= v — explicit pointer dereference: recurse on the underlying pointer
+	// expression so the read-modify-write goes through the pointer (matching p.field op= v).
+	if star, ok := unparen(sel.X).(*ast.StarExpr); ok {
+		if pt := l.exprType(star.X); pt.Kind == goir.KPtr && pt.Elem != nil && pt.Elem.Kind == goir.KStruct {
+			l.modifyField(&ast.SelectorExpr{X: star.X, Sel: sel.Sel}, binTok, emitOperand)
+			return
+		}
+	}
 	bt := l.exprType(sel.X)
 	// Promoted field op-assign (u.ID += v) through embedded fields: navigate to the
 	// container (handling cells + pointer embeds via promotedFieldWriteVal) and do
