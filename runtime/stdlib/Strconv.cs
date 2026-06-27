@@ -253,21 +253,24 @@ public static partial class Strconv
             return new object?[] { GoString.FromDotNetString(inner), null };
         }
         if (q != '"' && q != '\'') return new object?[] { GoString.FromDotNetString(""), ErrSyntaxErr };
-        var sb = new System.Text.StringBuilder();
+        var bytes = new System.Collections.Generic.List<byte>();
         string cur = inner;
         int runes = 0;
         while (cur.Length > 0)
         {
-            var (value, _, tail, ok) = UnquoteCharImpl(cur, q);
+            var (value, multibyte, tail, ok) = UnquoteCharImpl(cur, q);
             if (!ok) return new object?[] { GoString.FromDotNetString(""), ErrSyntaxErr };
-            sb.Append(char.ConvertFromUtf32(value));
+            // Go appends a single byte for ASCII and \x escapes (multibyte == false), and the
+            // rune's UTF-8 otherwise — so `\xc3\xa9` yields the two bytes of "é", not U+00C3 U+00A9.
+            if (value < 0x80 || !multibyte) bytes.Add((byte)value);
+            else bytes.AddRange(System.Text.Encoding.UTF8.GetBytes(char.ConvertFromUtf32(value)));
             cur = tail;
             runes++;
         }
         // A single-quoted literal holds at most one rune; Go accepts the empty form '' (-> "")
         // but rejects two or more characters.
         if (q == '\'' && runes > 1) return new object?[] { GoString.FromDotNetString(""), ErrSyntaxErr };
-        return new object?[] { GoString.FromDotNetString(sb.ToString()), null };
+        return new object?[] { GoString.FromBytesOwned(bytes.ToArray()), null };
     }
     // QuotedPrefix returns the quoted string (including delimiters) at the start of s.
     public static object?[] QuotedPrefix(GoString gs)
