@@ -54,7 +54,18 @@ one; these don't yet):
   instead of the concrete element type (`[]int{…}`). Scalars, structs, pointers
   are exact.
 - **`%T` of a slice/map** prints `[]interface {}` / `map[string]interface {}`
-  rather than the precise element types.
+  rather than the precise element types (a *named* slice/map prints its name exactly).
+- **`%T` of a method-less named scalar/string, `int64`, and a sized int** loses the
+  Go name: a method-less `type MyInt int` / `type MyStr string` reports its underlying
+  (`int`/`string`), `int64` reports `int` (both share the wide representation), and a
+  sized int (`int8`/`int16`/`uint8`/`uint16`) reports `int32`/`uint32`. Named types **with
+  a method set** and named composites are exact (the typed box carries identity); the
+  method-less-scalar case is the deliberate typed-box gap above (lower_named.go), kept to
+  avoid wrapping every named int/string and perturbing `==`/map-key/JSON behavior. The `%T`
+  cases that are exact are regression-locked by fixture 766.
+- **`%T` of a channel or func value** prints the internal runtime class
+  (`main.GoChan`/`main.GoClosure`) rather than `chan int` / `func()` — the element/signature
+  type isn't carried on the boxed value.
 - **A width flag on a non-numeric recursing verb is not per-element.** Numeric verbs
   (`%03d`, `%6.2f`, `%04b`, …) now pad each element of a recursed slice/map/struct like
   Go (`[005 042]`); the residual is `%s`/`%q`/`%x` width and the bad-verb operand pad of
