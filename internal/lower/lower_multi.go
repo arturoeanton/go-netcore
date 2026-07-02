@@ -14,6 +14,25 @@ func (l *funcLowerer) assignToTarget(s *ast.AssignStmt, lhs ast.Expr, t goir.Typ
 	// Field target (r.f = <multi-result element>).
 	if sel, ok := unparen(lhs).(*ast.SelectorExpr); ok {
 		bt := l.exprType(sel.X)
+		// Opaque-shim field target (e.g. tlsConfig.ServerName, _ = host.(string)):
+		// route to the field-setter extern, like fieldAssign does for the plain form.
+		shimBase := ""
+		if bt.Kind == goir.KObject {
+			shimBase = bt.Shim
+		} else if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KObject {
+			shimBase = bt.Elem.Shim
+		}
+		if shimBase != "" {
+			if ext, ok := shimFieldSetExtern(shimBase, sel.Sel.Name, l.exprType(sel)); ok {
+				l.expr(sel.X)
+				emitVal()
+				if len(ext.Params) > 1 && ext.Params[1].Kind == goir.KObject && t.Kind != goir.KObject {
+					l.emitBox(t)
+				}
+				l.emit(goir.Op{Code: goir.OpCallExtern, Extern: ext})
+				return
+			}
+		}
 		if bt.Kind == goir.KStruct {
 			fi := bt.Struct.FieldIndex(sel.Sel.Name)
 			if fi < 0 {

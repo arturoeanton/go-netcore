@@ -289,6 +289,14 @@ public static class Net
     public static GoSlice UDPAddr_IP(object a) => ((GoNetAddr)a).Ip ?? NilBytes();
     public static long UDPAddr_Port(object a) => ((GoNetAddr)a).Port;
     public static GoString UDPAddr_Zone(object a) => GoString.FromDotNetString("");
+    // net.IPAddr.String(): the IP literal (no port). IPAddrs only arise from DNS lookups,
+    // which return an error under goclr, so this is exercised only for compilation.
+    public static GoString IPAddr_String(object a)
+    {
+        var g = a switch { GoNetAddr n => n, GoPtr p => GoPtrs.Get(p) as GoNetAddr, _ => a as GoNetAddr };
+        if (g?.Ip is GoSlice s && s.Len > 0) return GoString.FromDotNetString(new IPAddress(SliceToBytes(s)).ToString());
+        return GoString.FromDotNetString(g?.Str ?? "");
+    }
     // net.Dialer field setters — no-ops (the dialer is dead code on goclr's server path).
     public static void Dialer_SetLocalAddr(object d, object? v) { }
     public static void UDPAddr_SetIP(object a, GoSlice ip) { ((GoNetAddr)a).Ip = ip; }

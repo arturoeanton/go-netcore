@@ -59,6 +59,15 @@ func (l *funcLowerer) expr(e ast.Expr) {
 			return
 		}
 	}
+	// A generic function referenced as a value with INFERRED type args (a bare
+	// ast.InternedTerm passed to a generic SplitMap) monomorphizes the same way;
+	// genericFuncValue is a no-op unless the reference actually carries an instance.
+	switch e.(type) {
+	case *ast.Ident, *ast.SelectorExpr:
+		if l.genericFuncValue(e) {
+			return
+		}
+	}
 	switch e := e.(type) {
 	case *ast.Ident:
 		if e.Name == "nil" {
@@ -883,6 +892,34 @@ func (l *funcLowerer) explicitGenericFun(fun ast.Expr) (*ast.Ident, *types.Func,
 	}
 	if sig, ok := fn.Type().(*types.Signature); !ok || sig.Recv() != nil {
 		return nil, nil, false // methods dispatch through methodCall
+	}
+	return id, fn, true
+}
+
+// implicitGenericFun matches a bare reference to a generic function used as a value
+// with INFERRED type arguments (no explicit [T]) — e.g. ast.InternedTerm passed to a
+// generic util.SplitMap, where the type args are inferred from the target parameter.
+// TypesInfo.Instances carries the inferred args, which genericCallee then reads.
+func (l *funcLowerer) implicitGenericFun(fun ast.Expr) (*ast.Ident, *types.Func, bool) {
+	var id *ast.Ident
+	switch x := fun.(type) {
+	case *ast.Ident:
+		id = x
+	case *ast.SelectorExpr:
+		id = x.Sel
+	default:
+		return nil, nil, false
+	}
+	fn, ok := l.pkg.TypesInfo.Uses[id].(*types.Func)
+	if !ok || fn.Pkg() == nil {
+		return nil, nil, false
+	}
+	if sig, ok := fn.Type().(*types.Signature); !ok || sig.Recv() != nil {
+		return nil, nil, false
+	}
+	inst, ok := l.pkg.TypesInfo.Instances[id]
+	if !ok || inst.TypeArgs == nil || inst.TypeArgs.Len() == 0 {
+		return nil, nil, false
 	}
 	return id, fn, true
 }

@@ -301,6 +301,9 @@ func (l *funcLowerer) funcValue(fn *types.Func) (goir.Type, bool) {
 func (l *funcLowerer) genericFuncValue(e ast.Expr) bool {
 	id, fn, ok := l.explicitGenericFun(e)
 	if !ok {
+		id, fn, ok = l.implicitGenericFun(e)
+	}
+	if !ok {
 		return false
 	}
 	if _, isShim := l.shimExtern(fn); isShim {

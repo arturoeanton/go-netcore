@@ -99,6 +99,15 @@ public static class Regexp
         catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("error parsing regexp: " + e.Message)) }; }
     }
     public static object MustCompile(GoString pattern) { string p = pattern.ToDotNetString(); return new GoRegexp { Re = new Regex(Translate(p)), Orig = p }; }
+    // regexp/syntax.Parse(s, flags) (*syntax.Regexp, error): OPA uses this only to validate
+    // that a pattern parses (the AST result is discarded), so it reports the parse error via
+    // the same translation as Compile and returns the compiled regexp as an opaque stand-in.
+    public static object?[] Syntax_Parse(GoString pattern, long flags)
+    {
+        string p = pattern.ToDotNetString();
+        try { return new object?[] { new GoRegexp { Re = new Regex(Translate(p)), Orig = p }, null }; }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("error parsing regexp: " + e.Message)) }; }
+    }
     public static object?[] MatchString(GoString pattern, GoString s)
     {
         try { return new object?[] { Regex.IsMatch(s.ToDotNetString(), Translate(pattern.ToDotNetString())), null }; }

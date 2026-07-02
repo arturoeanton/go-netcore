@@ -207,6 +207,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Parse": {"Url", "Parse"}, "ParseRequestURI": {"Url", "ParseRequestURI"},
 		"User": {"Url", "User"}, "UserPassword": {"Url", "UserPassword"}, "JoinPath": {"Url", "JoinPath"}, "ParseQuery": {"Url", "ParseQuery"},
 	},
+	"regexp/syntax": {"Parse": {"Regexp", "Syntax_Parse"}},
 	"regexp": {
 		"Compile": {"Regexp", "Compile"}, "MustCompile": {"Regexp", "MustCompile"},
 		"MatchString": {"Regexp", "MatchString"}, "QuoteMeta": {"Regexp", "QuoteMeta"},
@@ -1526,6 +1527,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"net.Dialer": { // client dialer — dead code on goclr's server path; dial returns an error.
 		"DialContext": {"HttpTypes", "Dialer_DialContext"}, "Dial": {"HttpTypes", "Dialer_Dial"},
 	},
+	"net.IPAddr": {"String": {"Net", "IPAddr_String"}},
 	"net.Resolver": { // DNS — dead code on goclr's server path; lookups return an error.
 		"LookupIPAddr": {"Net", "Resolver_LookupIPAddr"},
 	},
