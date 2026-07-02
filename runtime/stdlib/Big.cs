@@ -111,6 +111,7 @@ public static class Big
     public static object Float_SetFloat64(object z, double x) { ((GoBigFloat)z).V = x; return z; }
     public static object Float_SetInt64(object z, long x) { ((GoBigFloat)z).V = x; return z; }
     public static object Float_SetUint64(object z, ulong x) { ((GoBigFloat)z).V = x; return z; }
+    public static object Float_SetRat(object z, object x) { var r = R(x); ((GoBigFloat)z).V = (double)r.Num / (double)r.Den; return z; }
     public static object?[] Float_Float64(object z) => new object?[] { F(z), 0 }; // (float64, Accuracy=Exact)
     public static bool Float_IsInf(object z) => double.IsInfinity(F(z));
     // Precision/mode are not modeled beyond the double backing (53-bit mantissa): SetPrec/

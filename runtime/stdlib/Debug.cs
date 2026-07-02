@@ -14,6 +14,10 @@ public static class Debug
     public static GoSlice Stack() => new() { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
     public static void PrintStack() { }
     public static void FreeOSMemory() { }
+    // ReadGCStats(*GCStats) fills the struct from runtime GC internals the CLR has
+    // no equivalent for. A no-op leaves the caller's zero-valued GCStats intact,
+    // which is what a program that only reports metrics observes (no GC history).
+    public static void ReadGCStats(object? stats) { }
 
     // Tunables: each setter returns the PREVIOUS value (Go's default on first call).
     private static long _gcPercent = 100;

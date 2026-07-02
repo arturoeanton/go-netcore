@@ -152,6 +152,22 @@ public static class Crypto509
         try { var k = RSA.Create(); k.ImportPkcs8PrivateKey(raw, out _); return new object?[] { new GoRsaKey { Key = k }, null }; }
         catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString(e.Message)) }; }
     }
+    // x509.MarshalPKCS8PrivateKey(key any) ([]byte, error): key is an *rsa.PrivateKey
+    // or *ecdsa.PrivateKey (the GoRsaKey/GoEcKey handle), exported as PKCS#8 DER.
+    public static object?[] MarshalPKCS8PrivateKey(object? key)
+    {
+        try
+        {
+            byte[] der = key switch
+            {
+                GoRsaKey r => r.Key.ExportPkcs8PrivateKey(),
+                GoEcKey e => e.Key.ExportPkcs8PrivateKey(),
+                _ => throw new System.Exception("x509: unsupported private key type"),
+            };
+            return new object?[] { Bytes(der), null };
+        }
+        catch (System.Exception ex) { return new object?[] { null, new GoError(GoString.FromDotNetString(ex.Message)) }; }
+    }
 
     // --- public-key DER (PKIX / SubjectPublicKeyInfo and PKCS#1 RSAPublicKey) ---
     // (x509.MarshalPKIXPublicKey(pub) ([]byte, error): pub is any of *rsa.PublicKey /

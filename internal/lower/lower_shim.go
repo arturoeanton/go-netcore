@@ -121,6 +121,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"crypto/sha1":     {"New": {"Crypto", "Sha1New"}, "Sum": {"Crypto", "Sha1Sum"}},
 	"crypto/elliptic": {"P224": {"Crypto509", "P224"}, "P256": {"Crypto509", "P256"}, "P384": {"Crypto509", "P384"}, "P521": {"Crypto509", "P521"}},
 	"crypto/ecdsa":    {"GenerateKey": {"Crypto509", "EcdsaGenerateKey"}, "Verify": {"CryptoSign", "EcdsaVerify"}, "Sign": {"CryptoSign", "EcdsaSign"}},
+	"crypto/ecdh":     {"P256": {"Cryptoecdh", "P256"}, "P384": {"Cryptoecdh", "P384"}, "P521": {"Cryptoecdh", "P521"}, "X25519": {"Cryptoecdh", "X25519"}},
 	"crypto/ed25519":  {"Verify": {"CryptoSign", "Ed25519Verify"}, "Sign": {"CryptoSign", "Ed25519Sign"}, "NewKeyFromSeed": {"CryptoSign", "Ed25519NewKeyFromSeed"}, "GenerateKey": {"CryptoSign", "Ed25519GenerateKey"}},
 	"encoding/asn1":   {"Marshal": {"Asn1", "Marshal"}, "Unmarshal": {"Asn1", "Unmarshal"}},
 	"encoding/pem":    {"Decode": {"Pem", "Decode"}, "EncodeToMemory": {"Pem", "EncodeToMemory"}, "Encode": {"Pem", "Encode"}},
@@ -133,7 +134,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"CreateCertificate": {"Crypto509", "CreateCertificate"}, "ParseCertificate": {"Crypto509", "ParseCertificate"}, "ParseCertificates": {"Crypto509", "ParseCertificates"},
 		"MarshalECPrivateKey": {"Crypto509", "MarshalECPrivateKey"}, "ParseECPrivateKey": {"Crypto509", "ParseECPrivateKey"},
 		"MarshalPKCS1PrivateKey": {"Crypto509", "MarshalPKCS1PrivateKey"}, "ParsePKCS1PrivateKey": {"Crypto509", "ParsePKCS1PrivateKey"},
-		"ParsePKCS8PrivateKey": {"Crypto509", "ParsePKCS8PrivateKey"}, "CreateCertificateRequest": {"Crypto509", "CreateCertificateRequest"},
+		"ParsePKCS8PrivateKey": {"Crypto509", "ParsePKCS8PrivateKey"}, "MarshalPKCS8PrivateKey": {"Crypto509", "MarshalPKCS8PrivateKey"}, "CreateCertificateRequest": {"Crypto509", "CreateCertificateRequest"},
 		"ParsePKIXPublicKey": {"Crypto509", "ParsePKIXPublicKey"}, "ParsePKCS1PublicKey": {"Crypto509", "ParsePKCS1PublicKey"}, "DecryptPEMBlock": {"CryptoSign", "DecryptPEMBlock"},
 		"MarshalPKIXPublicKey": {"Crypto509", "MarshalPKIXPublicKey"}, "MarshalPKCS1PublicKey": {"Crypto509", "MarshalPKCS1PublicKey"},
 	},
@@ -146,7 +147,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"NewSHAKE128": {"Crypto", "NewSHAKE128"}, "NewSHAKE256": {"Crypto", "NewSHAKE256"}, "NewCSHAKE128": {"Crypto", "NewCSHAKE128"}, "NewCSHAKE256": {"Crypto", "NewCSHAKE256"},
 	},
 	"crypto/rand":    {"Read": {"Crypto", "RandRead"}, "Int": {"Crypto", "RandInt"}, "Text": {"Crypto", "RandText"}},
-	"runtime/debug":  {"ReadBuildInfo": {"Debug", "ReadBuildInfo"}, "Stack": {"Debug", "Stack"}, "PrintStack": {"Debug", "PrintStack"}, "SetGCPercent": {"Debug", "SetGCPercent"}, "FreeOSMemory": {"Debug", "FreeOSMemory"}, "SetMaxStack": {"Debug", "SetMaxStack"}, "SetMaxThreads": {"Debug", "SetMaxThreads"}, "SetMemoryLimit": {"Debug", "SetMemoryLimit"}, "SetPanicOnFault": {"Debug", "SetPanicOnFault"}, "SetTraceback": {"Debug", "SetTraceback"}, "WriteHeapDump": {"Debug", "WriteHeapDump"}, "SetCrashOutput": {"Debug", "SetCrashOutput"}},
+	"runtime/debug":  {"ReadBuildInfo": {"Debug", "ReadBuildInfo"}, "ReadGCStats": {"Debug", "ReadGCStats"}, "Stack": {"Debug", "Stack"}, "PrintStack": {"Debug", "PrintStack"}, "SetGCPercent": {"Debug", "SetGCPercent"}, "FreeOSMemory": {"Debug", "FreeOSMemory"}, "SetMaxStack": {"Debug", "SetMaxStack"}, "SetMaxThreads": {"Debug", "SetMaxThreads"}, "SetMemoryLimit": {"Debug", "SetMemoryLimit"}, "SetPanicOnFault": {"Debug", "SetPanicOnFault"}, "SetTraceback": {"Debug", "SetTraceback"}, "WriteHeapDump": {"Debug", "WriteHeapDump"}, "SetCrashOutput": {"Debug", "SetCrashOutput"}},
 	"crypto/hmac":    {"New": {"Crypto", "HmacNew"}, "Equal": {"Crypto", "HmacEqual"}},
 	"crypto/subtle":  {"ConstantTimeCompare": {"Subtle", "ConstantTimeCompare"}, "ConstantTimeByteEq": {"Subtle", "ConstantTimeByteEq"}, "ConstantTimeEq": {"Subtle", "ConstantTimeEq"}, "ConstantTimeSelect": {"Subtle", "ConstantTimeSelect"}, "XORBytes": {"Subtle", "XORBytes"}, "ConstantTimeCopy": {"Subtle", "ConstantTimeCopy"}, "ConstantTimeLessOrEq": {"Subtle", "ConstantTimeLessOrEq"}, "WithDataIndependentTiming": {"Subtle", "WithDataIndependentTiming"}},
 	"mime":           {"TypeByExtension": {"Mime", "TypeByExtension"}, "ParseMediaType": {"Mime", "ParseMediaType"}, "FormatMediaType": {"Mime", "FormatMediaType"}, "AddExtensionType": {"Mime", "AddExtensionType"}},
@@ -235,6 +236,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"fmt": {
 		"Sprint": {"Fmt", "Sprint"}, "Sprintln": {"Fmt", "Sprintln"}, "Sprintf": {"Fmt", "Sprintf"},
+		"Append": {"Fmt", "Append"}, "Appendln": {"Fmt", "Appendln"}, "Appendf": {"Fmt", "Appendf"},
 		"Sscanf": {"Scan", "Sscanf"}, "Sscan": {"Scan", "Sscan"}, "Sscanln": {"Scan", "Sscanln"},
 		"Fscanf": {"Scan", "Fscanf"}, "Fscan": {"Scan", "Fscan"}, "Fscanln": {"Scan", "Fscanln"},
 		"Print": {"Fmt", "Print"}, "Println": {"Fmt", "Println"}, "Printf": {"Fmt", "Printf"},
@@ -662,6 +664,9 @@ var opaqueShimTypes = map[string]bool{
 	"math/big.Int":                       true,
 	"math/big.Float":                     true,
 	"math/big.Rat":                       true,
+	"crypto/ecdh.Curve":                  true,
+	"crypto/ecdh.PrivateKey":             true,
+	"crypto/ecdh.PublicKey":              true,
 	"hash/maphash.Hash":                  true,
 	"hash/maphash.Seed":                  true,
 	"encoding/base32.Encoding":           true,
@@ -1391,6 +1396,19 @@ var binaryMethods = map[string]shimFunc{
 
 var shimMethodRegistry = map[string]map[string]shimFunc{
 	"reflect.Method": {"IsExported": {"Reflect", "Method_IsExported"}},
+	"crypto/ecdh.Curve": {
+		"GenerateKey": {"Cryptoecdh", "Curve_GenerateKey"}, "NewPrivateKey": {"Cryptoecdh", "Curve_NewPrivateKey"},
+		"NewPublicKey": {"Cryptoecdh", "Curve_NewPublicKey"},
+	},
+	"crypto/ecdh.PrivateKey": {
+		"Bytes": {"Cryptoecdh", "PrivateKey_Bytes"}, "Curve": {"Cryptoecdh", "PrivateKey_Curve"},
+		"PublicKey": {"Cryptoecdh", "PrivateKey_PublicKey"}, "ECDH": {"Cryptoecdh", "PrivateKey_ECDH"},
+		"Equal": {"Cryptoecdh", "PrivateKey_Equal"},
+	},
+	"crypto/ecdh.PublicKey": {
+		"Bytes": {"Cryptoecdh", "PublicKey_Bytes"}, "Curve": {"Cryptoecdh", "PublicKey_Curve"},
+		"Equal": {"Cryptoecdh", "PublicKey_Equal"},
+	},
 	"reflect.MapIter": {
 		"Next": {"Reflect", "MapIter_Next"}, "Key": {"Reflect", "MapIter_Key"},
 		"Value": {"Reflect", "MapIter_Value"}, "Reset": {"Reflect", "MapIter_Reset"},
@@ -1859,6 +1877,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Add": {"Big", "Float_Add"}, "Mul": {"Big", "Float_Mul"}, "Quo": {"Big", "Float_Quo"},
 		"Neg": {"Big", "Float_Neg"}, "Abs": {"Big", "Float_Abs"}, "Set": {"Big", "Float_Set"}, "Copy": {"Big", "Float_Copy"},
 		"SetFloat64": {"Big", "Float_SetFloat64"}, "SetInt64": {"Big", "Float_SetInt64"}, "SetUint64": {"Big", "Float_SetUint64"},
+		"SetRat":  {"Big", "Float_SetRat"},
 		"Float64": {"Big", "Float_Float64"}, "IsInf": {"Big", "Float_IsInf"}, "SetInf": {"Big", "Float_SetInf"}, "Signbit": {"Big", "Float_Signbit"},
 		"Int64": {"Big", "Float_Int64"}, "Uint64": {"Big", "Float_Uint64"}, "Float32": {"Big", "Float_Float32"},
 		"Rat": {"Big", "Float_Rat"}, "Sqrt": {"Big", "Float_Sqrt"}, "MantExp": {"Big", "Float_MantExp"}, "SetMantExp": {"Big", "Float_SetMantExp"},

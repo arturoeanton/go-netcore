@@ -555,6 +555,69 @@ func (l *funcLowerer) interfaceMethodValue(sel *ast.SelectorExpr, fn *types.Func
 	return goir.TFunc
 }
 
+// interfaceMethodExpr lowers an interface method expression `Iface.M` (unbound):
+// a func value whose FIRST argument is the receiver and whose remaining arguments
+// are M's parameters, dispatched dynamically at call time. It mirrors
+// interfaceMethodValue, but the receiver arrives as args[0] instead of a captured
+// env slot (there is nothing to capture — the receiver is supplied per call).
+func (l *funcLowerer) interfaceMethodExpr(fn *types.Func, iface *types.Interface) (goir.Type, bool) {
+	l.needsInvoker = true
+	l.invokeMethod()
+	sig := fn.Type().(*types.Signature)
+
+	id := len(l.closures)
+	method := &goir.Method{
+		Name:    "__ievalue_" + itoa(id),
+		GoName:  "__ievalue_" + itoa(id),
+		Params:  []goir.Type{goir.TObjectArray, goir.TObjectArray}, // env (unused), args
+		Ret:     goir.TObject,
+		Results: []goir.Type{goir.TObject},
+	}
+	ci := &closureInfo{id: id, method: method}
+	l.closures = append(l.closures, ci)
+	l.prog.Methods = append(l.prog.Methods, method)
+
+	cl := &funcLowerer{lowerCtx: l.lowerCtx, m: method, ok: true}
+	cl.typeSubst = l.typeSubst
+	cl.locals = map[types.Object]int{}
+	cl.cells = map[int]goir.Type{}
+
+	// args[1:] -> temps coerced to M's parameter types (args[0] is the receiver).
+	argTmps := make([]int, sig.Params().Len())
+	for i := 0; i < sig.Params().Len(); i++ {
+		pt, _ := cl.goType(sig.Params().At(i).Type())
+		tmp := cl.addLocal(nil, pt)
+		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
+		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i + 1)})
+		cl.emit(goir.Op{Code: goir.OpLdElemRef})
+		cl.emitUnbox(pt)
+		cl.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+		argTmps[i] = tmp
+	}
+	ret := cl.interfaceDispatchCore(func() {
+		// args[0] is the boxed interface receiver.
+		cl.emit(goir.Op{Code: goir.OpLdArg, Arg: 1})
+		cl.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+		cl.emit(goir.Op{Code: goir.OpLdElemRef})
+	}, fn, iface, argTmps)
+	if ret == goir.TVoid {
+		cl.emit(goir.Op{Code: goir.OpLdNull})
+	} else {
+		cl.emitBox(ret)
+	}
+	cl.emit(goir.Op{Code: goir.OpRet})
+	if !cl.ok {
+		l.ok = false
+	}
+
+	// At the site: empty env; GoClosures.New(id, env).
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(id)})
+	l.emit(goir.Op{Code: goir.OpLdcI4, Int: 0})
+	l.emit(goir.Op{Code: goir.OpNewObjArray})
+	l.emit(goir.Op{Code: goir.OpClosNew})
+	return goir.TFunc, true
+}
+
 // emitMethodReceiver pushes the receiver for a method value, adapting the base
 // expression to the method's value/pointer receiver (then leaving it boxed).
 func (l *funcLowerer) emitMethodReceiver(sel *ast.SelectorExpr, fn *types.Func, recvType goir.Type) {

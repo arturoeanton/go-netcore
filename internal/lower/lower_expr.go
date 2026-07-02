@@ -108,6 +108,14 @@ func (l *funcLowerer) expr(e ast.Expr) {
 					if _, ok := l.funcValue(fn); ok {
 						return
 					}
+					// An interface method expression `Iface.M` has no concrete body;
+					// synthesize a dispatch thunk that takes the receiver as its first
+					// argument (e.g. slices.SortFunc(xs, Value.Compare)).
+					if iface, ok := seln.Recv().Underlying().(*types.Interface); ok && iface.NumMethods() > 0 {
+						if _, ok := l.interfaceMethodExpr(fn, iface); ok {
+							return
+						}
+					}
 				}
 			}
 		} else if fn, ok := l.pkg.TypesInfo.ObjectOf(e.Sel).(*types.Func); ok {

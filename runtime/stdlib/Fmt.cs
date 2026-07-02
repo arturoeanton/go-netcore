@@ -170,6 +170,24 @@ public static class Fmt
     public static GoString Sprintf(GoString format, GoSlice args) =>
         GoString.FromDotNetString(DoSprintf(format.ToDotNetString(), Args(args)));
 
+    // fmt.Appendf/Append/Appendln: format like Sprintf/Sprint/Sprintln, then append
+    // the result's UTF-8 bytes to b and return the extended []byte.
+    public static GoSlice Appendf(GoSlice b, GoString format, GoSlice args) =>
+        AppendString(b, DoSprintf(format.ToDotNetString(), Args(args)));
+    public static GoSlice Append(GoSlice b, GoSlice args) =>
+        AppendString(b, Sprint(args).ToDotNetString());
+    public static GoSlice Appendln(GoSlice b, GoSlice args) =>
+        AppendString(b, Sprintln(args).ToDotNetString());
+
+    private static GoSlice AppendString(GoSlice dst, string s)
+    {
+        var extra = Encoding.UTF8.GetBytes(s);
+        var d = new object?[dst.Len + extra.Length];
+        for (int i = 0; i < dst.Len; i++) d[i] = dst.Data![dst.Off + i];
+        for (int i = 0; i < extra.Length; i++) d[dst.Len + i] = Boxes.I4(extra[i]);
+        return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
+    }
+
     private static void Out(string s) { System.Console.Out.Write(s); System.Console.Out.Flush(); }
     public static object?[] Print(GoSlice args) { var s = Sprint(args); Out(s.ToDotNetString()); return new object?[] { (long)s.Len, null }; }
     public static object?[] Println(GoSlice args) { var s = Sprintln(args); Out(s.ToDotNetString()); return new object?[] { (long)s.Len, null }; }
