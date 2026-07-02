@@ -29,6 +29,17 @@ public sealed class GoSlogLogger { public GoSlogHandler Handler = null!; }
 /// <summary>A slog.Attr (key + value), produced by slog.String/Int/Any/… .</summary>
 public sealed class GoSlogAttr { public string Key = ""; public object? Value; }
 
+/// <summary>A slog.Record: the level, message and attributes a Handler receives. Custom
+/// slog.Handler implementations (e.g. OPA's slog→logging bridge) read Message/Level and
+/// iterate Attrs.</summary>
+public sealed class GoSlogRecord
+{
+    public long TimeN;
+    public GoString Message = GoString.FromDotNetString("");
+    public long Level;
+    public System.Collections.Generic.List<GoSlogAttr> Attrs = new();
+}
+
 /// <summary>A slog.HandlerOptions: the output omits the timestamp/source unconditionally,
 /// so the options are accepted (to compile real configs) but not otherwise applied.</summary>
 public sealed class GoSlogHandlerOptions { }
@@ -85,6 +96,40 @@ public static class Slog
     public static object NewAttr() => new GoSlogAttr();
     public static GoString Attr_Key(object a) => GoString.FromDotNetString(((GoSlogAttr)a).Key);
     public static object? Attr_Value(object a) => ((GoSlogAttr)a).Value;
+    // slog.Value is carried as its raw boxed payload, so (slog.Value).Any() is identity.
+    public static object? Value_Any(object? v) => v;
+
+    // slog.Record: zero value, field reads, and the Attrs/AddAttrs/Add methods a custom
+    // Handler uses. slog.NewRecord builds one from a level and message.
+    public static object NewRecordZero() => new GoSlogRecord();
+    public static object NewRecord(object? t, long level, GoString msg, ulong pc) =>
+        new GoSlogRecord { Message = msg, Level = level };
+    public static GoString Record_Message(object r) => ((GoSlogRecord)r).Message;
+    public static long Record_Level(object r) => ((GoSlogRecord)r).Level;
+    public static long Record_NumAttrs(object r) => ((GoSlogRecord)r).Attrs.Count;
+    public static void Record_SetMessage(object r, GoString v) => ((GoSlogRecord)r).Message = v;
+    public static void Record_SetLevel(object r, long v) => ((GoSlogRecord)r).Level = v;
+    // Record.Attrs(f func(Attr) bool): iterate attributes, stopping if f returns false.
+    public static void Record_Attrs(object r, GoClosure? f)
+    {
+        foreach (var a in ((GoSlogRecord)r).Attrs)
+            if (GoRuntime.InvokeArgs(f, a) is bool cont && !cont) return;
+    }
+    // Record.AddAttrs(attrs ...Attr): append the given slog.Attr values.
+    public static void Record_AddAttrs(object r, GoSlice attrs)
+    {
+        var rec = (GoSlogRecord)r;
+        for (int i = 0; i < attrs.Len; i++)
+            if (attrs.Data![attrs.Off + i] is GoSlogAttr a) rec.Attrs.Add(a);
+    }
+    // Record.Add(args ...any): args are loose key/value pairs or slog.Attr values.
+    public static void Record_Add(object r, GoSlice args)
+    {
+        var rec = (GoSlogRecord)r;
+        var collected = new List<GoSlogGAttr>();
+        CollectArgs(collected, args, new List<string>());
+        foreach (var g in collected) rec.Attrs.Add(new GoSlogAttr { Key = g.Key, Value = g.Value });
+    }
 
     // slog.HandlerOptions zero value and (no-op) field setters.
     public static object NewHandlerOptions() => new GoSlogHandlerOptions();
@@ -100,7 +145,8 @@ public static class Slog
     public static object Float64(GoString k, double v) => new GoSlogAttr { Key = k.ToDotNetString(), Value = v };
     public static object Bool(GoString k, bool v) => new GoSlogAttr { Key = k.ToDotNetString(), Value = v };
     public static object Any(GoString k, object? v) => new GoSlogAttr { Key = k.ToDotNetString(), Value = v };
-    public static object Duration(GoString k, long v) => new GoSlogAttr { Key = k.ToDotNetString(), Value = Time.Duration_String(v) };
+    public static object Duration(GoString k, long v) => new GoSlogAttr { Key = k.ToDotNetString(), Value = GoCLR.Stdlib.Time.Duration_String(v) };
+    public static object Time(GoString k, object? v) => new GoSlogAttr { Key = k.ToDotNetString(), Value = v };
     // slog.Group(key, args...): an Attr whose value is a sub-group of attrs; rendered nested
     // (JSON) or dotted (text) under key. The children are pre-collected with an empty relative
     // group path and expanded under key at collect time.

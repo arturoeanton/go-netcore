@@ -348,6 +348,13 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 	}
 	fi := bt.Struct.FieldIndex(sel.Sel.Name)
 	if fi < 0 {
+		// A promoted field whose container is reached through a pointer
+		// (p.field.promoted, e.g. a parser's `p.pt.col = 0` where pt embeds position):
+		// walk to the pointer root and write the full index path (rhs evaluated first,
+		// preserving Go order). Returns false when the base is not pointer-rooted.
+		if l.pointerRootedFieldWriteValPre(sel, rhs, func(parent *goir.Struct, pfi int) {}) {
+			return
+		}
 		// Promoted field write through embedded fields (u.ID = v).
 		if path, ok := l.promotedFieldPath(sel); ok {
 			l.promotedFieldWrite(sel, bt, path, rhs)
@@ -1414,6 +1421,20 @@ func (l *funcLowerer) modifyField(sel *ast.SelectorExpr, binTok token.Token, emi
 	// container (handling cells + pointer embeds via promotedFieldWriteVal) and do
 	// the read-modify-write against the duplicated container pointer.
 	if bt.Kind == goir.KStruct && bt.Struct.FieldIndex(sel.Sel.Name) < 0 {
+		// The promoted field's container may itself be reached through a pointer
+		// (p.field.promoted, e.g. a parser's `p.pt.offset` where pt embeds position):
+		// walk to the pointer root and read-modify-write the full index path. This
+		// returns false when the base is not pointer-rooted, falling through to the
+		// directly-addressable promoted-field path below.
+		if l.pointerRootedFieldWriteVal(sel, func(parent *goir.Struct, pfi int) {
+			pft := parent.Fields[pfi].Type
+			l.emit(goir.Op{Code: goir.OpDup})
+			l.emit(goir.Op{Code: goir.OpLdFld, Struct: parent, Field: pfi})
+			emitOperand(pft)
+			l.emitArith(binTok, pft)
+		}) {
+			return
+		}
 		if path, ok := l.promotedFieldPath(sel); ok {
 			last := path[len(path)-1]
 			l.promotedFieldWriteVal(sel, bt, path, func(parent goir.Type) {

@@ -166,7 +166,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"Info": {"Slog", "Info"}, "Debug": {"Slog", "Debug"}, "Warn": {"Slog", "Warn"}, "Error": {"Slog", "Error"},
 		"String": {"Slog", "String"}, "Int": {"Slog", "Int"}, "Int64": {"Slog", "Int64"}, "Uint64": {"Slog", "Uint64"},
 		"Float64": {"Slog", "Float64"}, "Bool": {"Slog", "Bool"}, "Any": {"Slog", "Any"}, "Duration": {"Slog", "Duration"},
-		"Group": {"Slog", "Group"},
+		"Group": {"Slog", "Group"}, "NewRecord": {"Slog", "NewRecord"}, "Time": {"Slog", "Time"},
 	},
 	"net/http/cookiejar": {"New": {"Cookiejar", "New"}},
 	"net/http/httptest": {
@@ -690,6 +690,8 @@ var opaqueShimTypes = map[string]bool{
 	"log/slog.Logger":                    true,
 	"log/slog.Attr":                      true,
 	"log/slog.Handler":                   true,
+	"log/slog.Record":                    true,
+	"log/slog.Value":                     true,
 	"log/slog.HandlerOptions":            true,
 	"log/slog.TextHandler":               true,
 	"log/slog.JSONHandler":               true,
@@ -944,6 +946,9 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	},
 	"log/slog.Attr": {
 		"Key": {"Slog", "Attr_Key"}, "Value": {"Slog", "Attr_Value"},
+	},
+	"log/slog.Record": {
+		"Message": {"Slog", "Record_Message"}, "Level": {"Slog", "Record_Level"},
 	},
 	"crypto/x509.Certificate": {
 		"Subject": {"Crypto509", "Cert_Subject"}, "DNSNames": {"Crypto509", "Cert_DNSNames"},
@@ -1215,7 +1220,7 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"encoding/asn1.BitString":       {"Bytes": {"Asn1", "BitString_SetBytes"}, "BitLength": {"Asn1", "BitString_SetBitLength"}},
 	"net/http.Request": {
 		"ContentLength": {"Http", "Req_SetContentLength"}, "Trailer": {"Http", "Req_SetTrailer"}, "TLS": {"Http", "Req_SetTLS"}, "Body": {"Http", "Req_SetBody"},
-		"Host": {"Http", "Req_SetHost"},
+		"Host": {"Http", "Req_SetHost"}, "Header": {"Http", "Req_SetHeader"},
 	},
 	"net/http.Response": {
 		"StatusCode": {"Http", "Resp_SetStatusCode"}, "Status": {"Http", "Resp_SetStatus"}, "ContentLength": {"Http", "Resp_SetContentLength"}, "Body": {"Http", "Resp_SetBody"},
@@ -1380,6 +1385,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"net.IPNet":                      {"Net", "NewIPNet"},
 	"net.UDPAddr":                    {"Net", "NewUDPAddr"},
 	"log/slog.Attr":                  {"Slog", "NewAttr"},
+	"log/slog.Record":                {"Slog", "NewRecordZero"},
 	"log/slog.HandlerOptions":        {"Slog", "NewHandlerOptions"},
 	"encoding/pem.Block":             {"Pem", "NewBlock"},
 	"crypto/x509/pkix.Name":          {"Crypto509", "NewPkixName"},
@@ -1677,6 +1683,11 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Error": {"Slog", "Logger_Error"}, "With": {"Slog", "Logger_With"},
 		"WithGroup": {"Slog", "Logger_WithGroup"},
 	},
+	"log/slog.Record": {
+		"Attrs": {"Slog", "Record_Attrs"}, "AddAttrs": {"Slog", "Record_AddAttrs"}, "Add": {"Slog", "Record_Add"},
+		"NumAttrs": {"Slog", "Record_NumAttrs"},
+	},
+	"log/slog.Value": {"Any": {"Slog", "Value_Any"}},
 	"syscall.Signal": {
 		"String": {"Ossignal", "Signal_String"}, "Signal": {"Ossignal", "Signal_Signal"},
 	},
@@ -1689,7 +1700,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"crypto/x509.CertPool": {
 		"AppendCertsFromPEM": {"Crypto509", "CertPool_AppendCertsFromPEM"},
 	},
-	"crypto/ecdsa.PrivateKey": {"Public": {"Crypto509", "EcdsaPublic"}, "ECDH": {"Crypto509", "EcdsaPrivate_ECDH"}},
+	"crypto/ecdsa.PrivateKey": {"Public": {"Crypto509", "EcdsaPublic"}, "ECDH": {"Crypto509", "EcdsaPrivate_ECDH"}, "Sign": {"CryptoSign", "EcdsaKey_Sign"}},
 	"crypto/ecdsa.PublicKey":  {"ECDH": {"Crypto509", "EcdsaPublic_ECDH"}},
 	"crypto/rsa.PrivateKey":   {"Public": {"Crypto509", "RsaPublic"}, "Size": {"Crypto509", "RsaKey_Size"}},
 	"crypto/rsa.PublicKey":    {"Size": {"Crypto509", "RsaKey_Size"}},

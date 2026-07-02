@@ -334,6 +334,15 @@ public static class CryptoSign
         else System.Array.Copy(b, b.Length - len, p, 0, len);
         return p;
     }
+    // (*ecdsa.PrivateKey).Sign(rand, digest, opts) — the crypto.Signer method: returns the
+    // ASN.1 DER-encoded (r,s) signature, exactly as crypto/ecdsa produces for a Signer.
+    public static object?[] EcdsaKey_Sign(object? priv, object? rand, GoSlice digest, object? opts)
+    {
+        if (priv is not GoEcKey k) return new object?[] { default(GoSlice), NotSupported("ECDSA Sign") };
+        try { return new object?[] { Bytes(k.Key.SignHash(Raw(digest), DSASignatureFormat.Rfc3279DerSequence)), null }; }
+        catch (System.Exception e) { return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+
     // --- rsa.EncryptPKCS1v15 / DecryptPKCS1v15 / DecryptPKCS1v15SessionKey / OAEP ---
     // The key-transport primitives JWE (jwx) uses to wrap a content-encryption key.
     public static object?[] EncryptPKCS1v15(object? rand, object? pub, GoSlice msg)

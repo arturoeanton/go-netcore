@@ -486,6 +486,7 @@ public static class Http
         var rq = (GoRequest)r;
         return rq.Header ??= GoMaps.Make();
     }
+    public static void Req_SetHeader(object r, GoMap v) => ((GoRequest)r).Header = v;
 
     // (*http.Request).Context(): goclr has no per-request cancellation, so this is a
     // fresh background context.

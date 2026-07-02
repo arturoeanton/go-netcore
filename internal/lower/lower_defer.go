@@ -277,6 +277,20 @@ func (l *funcLowerer) deferBuiltin(call *ast.CallExpr, name string) {
 			cl.emit(goir.Op{Code: goir.OpChanClose})
 		})
 		l.emit(goir.Op{Code: goir.OpDeferPush})
+	case "delete":
+		// defer delete(m, k): capture the map reference and the boxed key now, run the
+		// map delete at unwind (Go evaluates the args at the defer, deletes at return).
+		mt := l.exprType(call.Args[0])
+		captures := []thunkCapture{
+			{emit: func() { l.expr(call.Args[0]) }, typ: mt},
+			{emit: func() { l.emitBoxedElem(call.Args[1]) }, typ: goir.TObject},
+		}
+		l.buildThunk(captures, func(cl *funcLowerer) {
+			cl.emitEnvArg(0, mt)
+			cl.emitEnvArg(1, goir.TObject)
+			cl.emit(goir.Op{Code: goir.OpMapDelete})
+		})
+		l.emit(goir.Op{Code: goir.OpDeferPush})
 	default:
 		l.fail(call.Pos(), "defer of builtin "+name)
 	}
