@@ -596,6 +596,20 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 			return l.jsonDecoderDecode(e, sel)
 		}
 	}
+	// gob.Encoder.Encode(v) / gob.Decoder.Decode(&v): like json, the static type is
+	// passed as a descriptor (gob additionally needs it on the ENCODE side, since the
+	// wire format transmits full type definitions the runtime representation erased).
+	if (fn.Name() == "Encode" || fn.Name() == "Decode") && len(e.Args) == 1 {
+		if recv := namedOf(seln.Recv()); recv != nil && recv.Obj() != nil && recv.Obj().Pkg() != nil &&
+			recv.Obj().Pkg().Path() == "encoding/gob" {
+			if fn.Name() == "Encode" && recv.Obj().Name() == "Encoder" {
+				return l.gobEncoderEncode(e, sel)
+			}
+			if fn.Name() == "Decode" && recv.Obj().Name() == "Decoder" {
+				return l.gobDecoderDecode(e, sel)
+			}
+		}
+	}
 
 	// Method on a shimmed stdlib type (reflect.Type.Kind, …) -> external call.
 	if ext, ok := l.shimMethodExtern(seln); ok {
