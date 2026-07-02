@@ -56,6 +56,7 @@ public sealed class GoTypeDesc
     // MapOf/SliceOf/PtrTo/ArrayOf), used in preference to the id when set.
     public GoTypeDesc? ElemDesc;
     public GoTypeDesc? KeyDesc;
+    public long DispatchId; // the goir struct Id used by interface dispatch (0 if none)
 
     public GoTypeDesc? Elem() => ElemDesc ?? TypeReg.ById(ElemId);
     public GoTypeDesc? Key() => KeyDesc ?? TypeReg.ById(KeyId);
@@ -71,6 +72,8 @@ public static class TypeReg
     /// RegisterField so recursive struct types can reference each other).</summary>
     public static void RegisterType(int id, int kind, GoString name, GoString pkgPath, GoString str, int elemId, int keyId, int arrayLen)
     {
+        var strS = str.ToDotNetString();
+        if (strS.Length > 0 && !_byStr.ContainsKey(strS)) _byStr[strS] = id;
         _byId[id] = new GoTypeDesc
         {
             Id = id,
@@ -125,7 +128,36 @@ public static class TypeReg
     // typed-box id.
     private static readonly System.Collections.Generic.Dictionary<string, int> _byClr = new();
     private static readonly System.Collections.Generic.Dictionary<long, int> _byNamed = new();
+    // Type-string -> descriptor id (the Go display string, e.g. "anypb.Any"), for
+    // recovering pointer types from their %T-registered names.
+    private static readonly System.Collections.Generic.Dictionary<string, int> _byStr = new();
+    public static GoTypeDesc? ByStr(string str) => _byStr.TryGetValue(str, out var id) ? ById(id) : null;
+
+    // The interned *T descriptor for a pointee descriptor (deduped through Synth so
+    // reflect.Type comparison across producers is identity-stable).
+    public static GoTypeDesc PtrDesc(GoTypeDesc elem) =>
+        Synth(GoKind.Ptr, "*" + elem.Str, elem, null, 0);
     public static void LinkClr(GoString clrName, int id) => _byClr[clrName.ToDotNetString()] = id;
+    /// <summary>Record a struct descriptor's goir dispatch id, so reflect.New can
+    /// stamp an allocated pointer with the id interface dispatch matches on.</summary>
+    public static void LinkStructId(int descId, long structId) { if (_byId.TryGetValue(descId, out var d)) d.DispatchId = structId; }
+
+    // The CLR System.Type for a struct descriptor, resolved from its emitted CLR
+    // type name (recorded via LinkClr's reverse: the descriptor's ClrName). Used by
+    // reflect.New/Zero to allocate a real zeroed struct instance.
+    private static readonly System.Collections.Generic.Dictionary<int, string> _descClr = new();
+    public static void LinkDescClr(int descId, GoString clrName) => _descClr[descId] = clrName.ToDotNetString();
+    public static System.Type? ResolveClr(GoTypeDesc d)
+    {
+        if (!_descClr.TryGetValue(d.Id, out var clr)) return null;
+        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            var t = asm.GetType(clr) ?? asm.GetType("GoCLR.Stdlib." + clr) ?? asm.GetType(clr, false);
+            if (t != null) return t;
+            foreach (var tt in asm.GetTypes()) if (tt.Name == clr) return tt;
+        }
+        return null;
+    }
     public static void LinkNamed(long namedId, int id) => _byNamed[namedId] = id;
 
     /// <summary>The descriptor for a runtime value's dynamic type, or null.</summary>
@@ -136,7 +168,39 @@ public static class TypeReg
             case null: return null;
             case GoNamed nm:
                 if (_byNamed.TryGetValue(nm.TypeId, out var nid)) return ById(nid);
+                // A typed-nil pointer carrier (GoNamed{ptrTypeId, null}): resolve the
+                // registered "*T" display name to an interned pointer descriptor, so
+                // reflect.TypeOf((*T)(nil)) == reflect.TypeOf(liveTPtr).
+                if (nm.Value == null)
+                {
+                    var pn = Rt.NamedTypeName(nm.TypeId);
+                    if (pn.StartsWith("*"))
+                    {
+                        var el = ByStr(pn.Substring(1));
+                        if (el != null) return PtrDesc(el);
+                    }
+                    else if (pn.Length > 0 && ByStr(pn) is GoTypeDesc dn) return dn;
+                    return null;
+                }
                 return FromValue(nm.Value);
+            case GoPtr gp:
+            {
+                // A live pointer: derive *ElemDesc from the pointee (interned).
+                GoTypeDesc? el = null;
+                if (gp.PtrName != 0)
+                {
+                    var pn = Rt.NamedTypeName(gp.PtrName);
+                    if (pn.StartsWith("*")) el = ByStr(pn.Substring(1));
+                }
+                if (el == null && gp.TypeId != 0 && _byNamed.TryGetValue(gp.TypeId, out var eid)) el = ById(eid);
+                if (el == null)
+                {
+                    object? pv = null;
+                    try { pv = GoCLR.Runtime.GoPtrs.Get(gp); } catch { }
+                    if (pv != null) el = FromValue(pv is GoNamed pnm ? pnm : pv);
+                }
+                return el != null ? PtrDesc(el) : null;
+            }
             case GoString: return Predeclared(GoKind.String);
             case bool: return Predeclared(GoKind.Bool);
             case long: return Predeclared(GoKind.Int);

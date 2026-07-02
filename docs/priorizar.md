@@ -3,6 +3,20 @@
 Leyenda: ✅ hecho · 🟡 parcial · ⬜ pendiente. Cada ✅ se cierra con fixture/validación
 byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.md).
 
+## NuGet targets (compilar una librería Go y consumirla desde C#)
+
+1. ✅ **CEL (`google/cel-go`) como NuGet `Cel.GoCLR`** — el `cel-go` de producción
+   (parser ANTLR + sistema de tipos protobuf) compila con goclr y se llama desde C#
+   por un puente JSON. Toda expresión CEL evalúa byte-exacta vs `go run` (aritmética,
+   `in`, ternario, comprehensions `.map`/`.filter`, regex, acceso a map). Ejemplo en
+   [`examples/cel_nuget`](../examples/cel_nuget/). Cerró la cadena de reflection dinámica
+   pesada: `reflect.New`/`reflect.Zero` de punteros con identidad, satisfacción de
+   interface por embed-puntero, mutación de método pointer-receiver promovido, library
+   mode (`__goclr_init` invocable + invoker registrado en init), y el límite CLR de
+   65535 métodos/tipo (cache de closures `__facc`). protobuf pineado a v1.34.2 (purego).
+2. ⬜ HCL (HashiCorp config) como NuGet — candidato #2, evita protobuf/ANTLR.
+3. ⬜ OPA/Rego como NuGet — policy engine completo, más grande.
+
 ## Orden 2 (nuevo foco, serializado — uno a la vez)
 
 1. ✅ Testify mínimo — tag `0.0.64.testify` (`goclr test` + testify/assert corren en el CLR)

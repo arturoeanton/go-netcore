@@ -126,6 +126,28 @@ need `go mod vendor` first.
 
 ---
 
+## Highlight — Google CEL, consumed from C# as a NuGet
+
+[`examples/cel_nuget`](examples/cel_nuget/) packages [Google CEL](https://github.com/google/cel-go)
+(the Common Expression Language behind Kubernetes admission policies and IAM
+conditions) as a C# library: the production `cel-go` — ANTLR-generated parser,
+protobuf-based type system and all — is compiled to a .NET assembly with goclr and
+called from C# through a small JSON bridge. No sidecar, no P/Invoke; CEL parses,
+type-checks and evaluates **in-process on the CLR**:
+
+```csharp
+var authz = Cel.Compile("user.role in ['admin','mod'] || user.id == doc.owner",
+                        "user", "doc");
+bool ok = authz.EvaluateBool(new { user = new { role = "guest", id = 7 },
+                                   doc  = new { owner = 7 } });   // => true
+```
+
+Every CEL form works from C# — arithmetic, string methods, `in`, ternaries,
+comprehensions (`.map`/`.filter`), regex `.matches`, map access — byte-identical to
+`go run`. This exercises the full reflection-heavy path (dynamic `reflect.New`
+allocation, interface satisfaction through pointer embeds, promoted pointer-receiver
+mutation) that a real Go library needs.
+
 ## Highlight — goja evaluates JavaScript as a .NET assembly
 
 [goja](https://github.com/dop251/goja), a JavaScript interpreter written in pure Go,
@@ -286,6 +308,7 @@ bin/goclr run ./examples/demo_gin       # Gin router on :8080  (/health, /ping, 
 | [`demo_uuid`](examples/demo_uuid/) | `google/uuid` v4/v5, parse/format | yes |
 | [`demo_jwt`](examples/demo_jwt/) | `golang-jwt/v5` HS256 sign + verify | yes |
 | [`demo_testify`](examples/demo_testify/) | `testify/assert` under `goclr test` | yes |
+| [`cel_nuget`](examples/cel_nuget/) | Google CEL (`cel-go`) as a C# NuGet — compiled, called from C# | yes (see its `build.sh`) |
 
 > **Why `go mod vendor`?** Demos that depend on third-party packages needing a goclr
 > overlay must be **vendored**: the overlays in [`goclr.overlays/`](goclr.overlays/)

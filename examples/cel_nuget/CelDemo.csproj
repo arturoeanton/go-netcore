@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>CelDemo</AssemblyName>
+    <!-- The goclr-compiled cel-go host and the GoCLR runtime, referenced as -->
+    <!-- ordinary managed assemblies. GOCLR_OUT is set by build.sh. -->
+    <GoclrOut Condition="'$(GoclrOut)' == ''">bin/goclr</GoclrOut>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="host">
+      <HintPath>$(GoclrOut)/host.dll</HintPath>
+    </Reference>
+    <Reference Include="GoCLR.Runtime">
+      <HintPath>$(GoclrOut)/GoCLR.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="GoCLR.Stdlib">
+      <HintPath>$(GoclrOut)/GoCLR.Stdlib.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

@@ -403,7 +403,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"os": {
 		"Getenv": {"Os", "Getenv"}, "LookupEnv": {"Os", "LookupEnv"}, "Setenv": {"Os", "Setenv"}, "Getwd": {"Os", "Getwd"}, "Environ": {"Os", "Environ"}, "FindProcess": {"Os", "FindProcess"}, "DirFS": {"Os", "DirFS"},
 		"Hostname": {"Os", "Hostname"}, "IsPermission": {"Os", "IsPermission"}, "NewSyscallError": {"Os", "NewSyscallError"}, "Expand": {"Os", "Expand"}, "ExpandEnv": {"Os", "ExpandEnv"},
-		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"},
+		"Unsetenv": {"Os", "Unsetenv"}, "Exit": {"Os", "Exit"}, "Getpid": {"Os", "Getpid"}, "Executable": {"Os", "Executable"},
 		"Getuid": {"Os", "Getuid"}, "Getgid": {"Os", "Getgid"}, "Getppid": {"Os", "Getppid"},
 		"ReadFile": {"Os", "ReadFile"}, "WriteFile": {"Os", "WriteFile"}, "Open": {"Os", "Open"},
 		"Create": {"Os", "Create"}, "OpenFile": {"Os", "OpenFile"}, "Remove": {"Os", "Remove"}, "RemoveAll": {"Os", "RemoveAll"}, "Rename": {"Os", "Rename"}, "UserCacheDir": {"Os", "UserCacheDir"}, "UserConfigDir": {"Os", "UserConfigDir"}, "UserHomeDir": {"Os", "UserHomeDir"}, "NewFile": {"Os", "NewFile"}, "CreateTemp": {"Os", "CreateTemp"}, "MkdirTemp": {"Os", "MkdirTemp"}, "TempDir": {"Os", "TempDir"},
@@ -1071,6 +1071,7 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"reflect.Method": {
 		"Name": {"Reflect", "Method_Name"}, "Index": {"Reflect", "Method_Index"},
 		"PkgPath": {"Reflect", "Method_PkgPath"},
+		"Func":    {"Reflect", "Method_FuncValue"}, "Type": {"Reflect", "Method_TypeOf"},
 	},
 	"mime/multipart.Form": {
 		"Value": {"Multipart", "Form_Value"}, "File": {"Multipart", "Form_File"},

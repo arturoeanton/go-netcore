@@ -19,8 +19,40 @@ import (
 // evaluated now into the env. Leaves a GoClosure on the stack. Mirrors buildThunk
 // but yields a value instead of null.
 func (l *funcLowerer) buildAccessorClosure(captures []thunkCapture, emitBody func(cl *funcLowerer)) {
+	l.buildAccessorClosureKeyed("", captures, emitBody)
+}
+
+// buildAccessorClosureKeyed is buildAccessorClosure with an optional dedup key:
+// when key != "", the lifted __facc method body is generated only once per key and
+// reused (only the per-site capture env is re-emitted). The body must depend solely
+// on its env/args, not on the specific captured value — true for field-alias
+// getters/setters, whose body is fixed by (root type, field path, role). This keeps
+// a reflection-heavy program (goja: thousands of promoted-pointer dispatch sites)
+// from generating a fresh method pair per site and blowing the CLR 65535-methods-
+// per-type limit.
+func (l *funcLowerer) buildAccessorClosureKeyed(key string, captures []thunkCapture, emitBody func(cl *funcLowerer)) {
 	l.needsInvoker = true
 	l.invokeMethod()
+	if key != "" {
+		if l.accessorCache == nil {
+			l.accessorCache = map[string]int{}
+		}
+		if cachedID, ok := l.accessorCache[key]; ok {
+			// Reuse the existing lifted method: emit only the closure env for this site.
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(cachedID)})
+			l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(captures))})
+			l.emit(goir.Op{Code: goir.OpNewObjArray})
+			for i, c := range captures {
+				l.emit(goir.Op{Code: goir.OpDup})
+				l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(i)})
+				c.emit()
+				l.emitBox(c.typ)
+				l.emit(goir.Op{Code: goir.OpStelemRef})
+			}
+			l.emit(goir.Op{Code: goir.OpClosNew})
+			return
+		}
+	}
 	id := len(l.closures)
 	method := &goir.Method{
 		Name:    "__facc_" + itoa(id),
@@ -31,6 +63,9 @@ func (l *funcLowerer) buildAccessorClosure(captures []thunkCapture, emitBody fun
 	}
 	l.closures = append(l.closures, &closureInfo{id: id, method: method})
 	l.prog.Methods = append(l.prog.Methods, method)
+	if key != "" {
+		l.accessorCache[key] = id
+	}
 
 	l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(id)})
 	l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(captures))})
@@ -228,14 +263,20 @@ func (l *funcLowerer) emitLdfldaChain(root goir.Type, path []int) goir.Type {
 func (l *funcLowerer) emitFieldAliasPtr(emitPtr func(), ptrType, root goir.Type, path []int, ft goir.Type) {
 	cap := []thunkCapture{{emit: emitPtr, typ: ptrType}}
 	last := path[len(path)-1]
-	l.buildAccessorClosure(cap, func(cl *funcLowerer) {
+	// Dedup key: the getter/setter body is fixed by the root struct + field path,
+	// so identical aliases across many dispatch sites share one lifted method pair.
+	pathKey := root.Struct.Name
+	for _, fi := range path {
+		pathKey += "." + itoa(fi)
+	}
+	l.buildAccessorClosureKeyed("fget:"+pathKey, cap, func(cl *funcLowerer) {
 		cl.emitEnvArg(0, ptrType)
 		cl.emit(goir.Op{Code: goir.OpPtrGet})
 		cl.emitUnbox(root)
 		cl.emitFieldChain("", ft, token.NoPos, root, path)
 		cl.emitBox(ft)
 	})
-	l.buildAccessorClosure(cap, func(cl *funcLowerer) {
+	l.buildAccessorClosureKeyed("fset:"+pathKey, cap, func(cl *funcLowerer) {
 		tmp := cl.addLocal(nil, root)
 		cl.emitEnvArg(0, ptrType)
 		cl.emit(goir.Op{Code: goir.OpPtrGet})

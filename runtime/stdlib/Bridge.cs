@@ -71,6 +71,30 @@ public static class Bridge
     /// <summary>Call Go method <paramref name="name"/> on an interface value, passing it
     /// as the (receiver-first) argument list. Throws if no adapter is registered — a hard
     /// failure surfacing a missing bridge registration rather than a silent no-op.</summary>
+    /// <summary>Whether an adapter exists for value.method (public wrapper of the
+    /// (id,name) probe used by the interface-dispatch no-match fallback).</summary>
+    public static bool CanDispatch(object? value, string name)
+    {
+        lock (Methods) return Methods.ContainsKey((TypeIdOf(value), name));
+    }
+
+    /// <summary>Interface-dispatch fallback: invoke value.method(args) through the
+    /// bridge when the static isinst chain matched no enumerated implementer (a rare
+    /// gap: the same named type reached via two package views can carry two struct
+    /// ids). Returns the boxed result, or throws Go's nil-method panic if no adapter
+    /// is registered either.</summary>
+    public static object? DynDispatch(object? value, GoString method, GoSlice args)
+    {
+        string m = method.ToDotNetString();
+        if (!CanDispatch(value, m))
+            throw new GoCLR.Runtime.GoPanicException(GoString.FromDotNetString(
+                "runtime error: invalid memory address or nil pointer dereference"));
+        int n = args.Data == null ? 0 : args.Len;
+        var a = new object?[n];
+        for (int i = 0; i < n; i++) a[i] = args.Data![args.Off + i];
+        return CallMethod(value, m, a);
+    }
+
     public static object? CallMethod(object? value, string name, params object?[] args)
     {
         long id = TypeIdOf(value);

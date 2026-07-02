@@ -310,6 +310,7 @@ func (l *funcLowerer) promotedFieldWriteVal(sel *ast.SelectorExpr, bt goir.Type,
 	last := path[len(path)-1]
 	emitVal(parent)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: parent.Struct, Field: last})
+	l.flushLvalueWB()
 	finish()
 }
 
@@ -382,7 +383,7 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 				l.emitUnbox(sliceTy)
 			}
 			l.emit(goir.Op{Code: goir.OpStLoc, Local: sliceTmp})
-			l.expr(ix.Index)
+			l.emitIndexI8(ix.Index)
 			l.emit(goir.Op{Code: goir.OpStLoc, Local: idxTmp})
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxTmp})
@@ -417,9 +418,15 @@ func (l *funcLowerer) fieldAssign(sel *ast.SelectorExpr, rhs ast.Expr) {
 		l.globalFieldModify(gi, bt, fi, func(ft goir.Type) { l.exprCoerced(rhs, ft) })
 		return
 	}
-	l.lvalueAddr(sel.X)
+	// RHS first (it may mutate the same cell-held container lvalueAddr will
+	// snapshot — the protobuf fd.X = fd.alloc(n) shape).
+	rhsTmp := l.addLocal(nil, bt.Struct.Fields[fi].Type)
 	l.exprCoerced(rhs, bt.Struct.Fields[fi].Type)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: rhsTmp})
+	l.lvalueAddr(sel.X)
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: rhsTmp})
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+	l.flushLvalueWB()
 }
 
 // sliceElemRootedFieldWrite handles `s[i].A.B.x = v` — a (possibly nested) field of a
@@ -471,7 +478,7 @@ func (l *funcLowerer) emitSliceElemRootedWrite(ix *ast.IndexExpr, sliceTy goir.T
 		l.emitUnbox(sliceTy)
 	}
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: sliceTmp})
-	l.expr(ix.Index)
+	l.emitIndexI8(ix.Index)
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: idxTmp})
 
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
@@ -506,9 +513,11 @@ func (l *funcLowerer) emitSliceElemRootedWrite(ix *ast.IndexExpr, sliceTy goir.T
 // value-struct selectors rooted at a *struct (e.g. p.A.B.x = v). It returns false
 // if the chain is not so rooted (handled by the normal addressable path).
 func (l *funcLowerer) pointerRootedFieldWrite(sel *ast.SelectorExpr, rhs ast.Expr) bool {
-	return l.pointerRootedFieldWriteVal(sel, func(parent *goir.Struct, fi int) {
-		l.exprCoerced(rhs, parent.Fields[fi].Type)
-	})
+	// The RHS is evaluated BEFORE the container is snapshotted out of its cell
+	// (inside pointerRootedFieldWriteVal once the chain is confirmed rooted): a
+	// self-mutating RHS (fd.X = fd.alloc(n) — protobuf's filedesc) would
+	// otherwise have its update clobbered by the stale write-back.
+	return l.pointerRootedFieldWriteValPre(sel, rhs, nil)
 }
 
 // pointerRootedFieldWriteVal is pointerRootedFieldWrite with the stored value
@@ -516,6 +525,12 @@ func (l *funcLowerer) pointerRootedFieldWrite(sel *ast.SelectorExpr, rhs ast.Exp
 // pushed (so a compound op can Dup + LdFld the old value). Returns false if the
 // chain is not rooted at a *struct.
 func (l *funcLowerer) pointerRootedFieldWriteVal(sel *ast.SelectorExpr, emitVal func(parent *goir.Struct, fi int)) bool {
+	return l.pointerRootedFieldWriteValPre(sel, nil, emitVal)
+}
+
+// pointerRootedFieldWriteValPre: rhsPre (when non-nil) is evaluated to a temp
+// right before the container snapshot, and stored by a synthesized emitVal.
+func (l *funcLowerer) pointerRootedFieldWriteValPre(sel *ast.SelectorExpr, rhsPre ast.Expr, emitVal func(parent *goir.Struct, fi int)) bool {
 	var path []int
 	cur := ast.Expr(sel)
 	for {
@@ -532,6 +547,15 @@ func (l *funcLowerer) pointerRootedFieldWriteVal(sel *ast.SelectorExpr, emitVal 
 		path = append(append([]int{}, seln.Index()...), path...)
 		bt := l.exprType(s.X)
 		if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct {
+			if rhsPre != nil {
+				ft := l.exprType(sel)
+				tmp := l.addLocal(nil, ft)
+				l.exprCoerced(rhsPre, ft)
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+				emitVal = func(parent *goir.Struct, fi int) {
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+				}
+			}
 			l.emitPtrRootedWrite(s.X, *bt.Elem, path, emitVal)
 			return true
 		}
@@ -560,19 +584,54 @@ func (l *funcLowerer) emitPtrRootedWrite(ptrExpr ast.Expr, root goir.Type, path 
 
 	l.emit(goir.Op{Code: goir.OpLdLocA, Local: rTmp})
 	cur := root
+	// A hop through a POINTER embed switches to the pointee's own cell (see
+	// ptrStructFieldWrite): unbox it into a temp, continue the chain there, and
+	// write the pointee back through its pointer after the store.
+	type ptrHop struct {
+		p, s int
+		st   goir.Type
+	}
+	var hops []ptrHop
 	for i := 0; i < len(path)-1; i++ {
 		fi := path[i]
-		if fi >= len(cur.Struct.Fields) || cur.Struct.Fields[fi].Type.Kind != goir.KStruct {
+		if fi >= len(cur.Struct.Fields) {
 			l.fail(ptrExpr.Pos(), "nested field write through a non-struct field")
 			return
 		}
-		l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: fi})
-		cur = cur.Struct.Fields[fi].Type
+		ft := cur.Struct.Fields[fi].Type
+		if ft.Kind == goir.KStruct {
+			l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: fi})
+			cur = ft
+			continue
+		}
+		if ft.Kind == goir.KPtr && ft.Elem != nil && ft.Elem.Kind == goir.KStruct {
+			inner := *ft.Elem
+			l.emit(goir.Op{Code: goir.OpLdFld, Struct: cur.Struct, Field: fi})
+			pIn := l.addLocal(nil, ft)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: pIn})
+			sIn := l.addLocal(nil, inner)
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: pIn})
+			l.emit(goir.Op{Code: goir.OpPtrGet})
+			l.emitUnbox(inner)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: sIn})
+			l.emit(goir.Op{Code: goir.OpLdLocA, Local: sIn})
+			hops = append(hops, ptrHop{p: pIn, s: sIn, st: inner})
+			cur = inner
+			continue
+		}
+		l.fail(ptrExpr.Pos(), "nested field write through a non-struct field")
+		return
 	}
 	last := path[len(path)-1]
 	emitVal(cur.Struct, last)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: cur.Struct, Field: last})
 
+	for i := len(hops) - 1; i >= 0; i-- {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: hops[i].p})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: hops[i].s})
+		l.emitBox(hops[i].st)
+		l.emit(goir.Op{Code: goir.OpPtrSet})
+	}
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: pTmp})
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: rTmp})
 	l.emitBox(root)
@@ -618,28 +677,83 @@ func (l *funcLowerer) globalFieldModify(gi int, st goir.Type, fi int, pushValue 
 // lvalueAddr emits the managed address of an addressable expression (a local or
 // a chain of struct field selectors rooted at a local).
 func (l *funcLowerer) lvalueAddr(e ast.Expr) {
+	wb := l.lvalueAddrWB(e)
+	if wb != nil {
+		l.pendingWB = append(l.pendingWB, wb)
+	}
+}
+
+// flushLvalueWB runs (and clears) the write-backs lvalueAddr queued for
+// cell-held roots: the struct was copied out of its GoPtr cell to take an
+// address, so the mutated copy must be stored back after the field write.
+func (l *funcLowerer) flushLvalueWB() {
+	for i := len(l.pendingWB) - 1; i >= 0; i-- {
+		l.pendingWB[i]()
+	}
+	l.pendingWB = nil
+}
+
+// lvalueAddrWB emits the address of an addressable expression and returns a
+// write-back (nil when none is needed). A root variable that lives in a GoPtr
+// cell (address-taken or closure-captured) cannot be addressed in place — the
+// struct is copied to a temp whose address is used, and the returned write-back
+// stores the temp back through the cell.
+func (l *funcLowerer) lvalueAddrWB(e ast.Expr) func() {
 	switch e := e.(type) {
 	case *ast.Ident:
-		if idx, _, ok := l.lookupVar(e); ok {
+		if idx, vt, ok := l.lookupVar(e); ok {
+			if _, isCell := l.cells[idx]; isCell && vt.Kind == goir.KStruct {
+				tmp := l.addLocal(nil, vt)
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: idx})
+				l.emit(goir.Op{Code: goir.OpPtrGet})
+				l.emitUnbox(vt)
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
+				l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
+				return func() {
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: idx})
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
+					l.emitBox(vt)
+					l.emit(goir.Op{Code: goir.OpPtrSet})
+				}
+			}
 			l.emit(goir.Op{Code: goir.OpLdLocA, Local: idx})
 		}
+		return nil
 	case *ast.ParenExpr:
-		l.lvalueAddr(e.X)
+		return l.lvalueAddrWB(e.X)
 	case *ast.SelectorExpr:
 		bt := l.exprType(e.X)
 		if bt.Kind != goir.KStruct {
 			l.fail(e.Pos(), "addressable field on non-struct")
-			return
+			return nil
 		}
 		fi := bt.Struct.FieldIndex(e.Sel.Name)
 		if fi < 0 {
+			// A promoted field (fd.L0 where L0 lives in an embedded struct): chain
+			// ldflda through the value embeds along the promotion path.
+			if path, ok := l.promotedFieldPath(e); ok {
+				wb := l.lvalueAddrWB(e.X)
+				cur := bt
+				for i, idx := range path {
+					ft := cur.Struct.Fields[idx].Type
+					if ft.Kind != goir.KStruct && i != len(path)-1 {
+						l.fail(e.Pos(), "promoted lvalue through a non-struct embed")
+						return nil
+					}
+					l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: idx})
+					cur = ft
+				}
+				return wb
+			}
 			l.fail(e.Pos(), "unknown field "+e.Sel.Name)
-			return
+			return nil
 		}
-		l.lvalueAddr(e.X)
+		wb := l.lvalueAddrWB(e.X)
 		l.emit(goir.Op{Code: goir.OpLdFldA, Struct: bt.Struct, Field: fi})
+		return wb
 	default:
 		l.fail(e.Pos(), "addressable expression")
+		return nil
 	}
 }
 
@@ -660,6 +774,18 @@ func (l *funcLowerer) declStmt(s *ast.DeclStmt) {
 	}
 	for _, spec := range gd.Specs {
 		vs := spec.(*ast.ValueSpec)
+		// `var a, b = expr` with one tuple-producing initializer (a type assertion,
+		// map index, channel receive or multi-result call) is the same shape as
+		// `a, b := expr` — route it through assign, which already handles every
+		// comma-ok/tuple form.
+		if len(vs.Names) > 1 && len(vs.Values) == 1 {
+			lhs := make([]ast.Expr, len(vs.Names))
+			for i, n := range vs.Names {
+				lhs[i] = n
+			}
+			l.assign(&ast.AssignStmt{Lhs: lhs, Tok: token.DEFINE, TokPos: vs.Pos(), Rhs: vs.Values})
+			continue
+		}
 		for i, name := range vs.Names {
 			obj := l.pkg.TypesInfo.Defs[name]
 			t, ok := l.goType(obj.Type())
@@ -1375,6 +1501,7 @@ func (l *funcLowerer) modifyField(sel *ast.SelectorExpr, binTok token.Token, emi
 	emitOperand(ft)
 	l.emitArith(binTok, ft)
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+	l.flushLvalueWB()
 }
 
 // sliceElemFieldModify read-modify-writes field fi of the struct element s[i]:
@@ -1389,7 +1516,7 @@ func (l *funcLowerer) sliceElemFieldModify(ix *ast.IndexExpr, st goir.Type, fi i
 	sTmp := l.addLocal(nil, st)
 	l.expr(ix.X)
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: xTmp})
-	l.expr(ix.Index)
+	l.emitIndexI8(ix.Index)
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: iTmp})
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: xTmp})
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
@@ -1416,7 +1543,7 @@ func (l *funcLowerer) modifyIndex(ix *ast.IndexExpr, binTok token.Token, emitOpe
 		iTmp := l.addLocal(nil, goir.TInt64)
 		l.expr(ix.X)
 		l.emit(goir.Op{Code: goir.OpStLoc, Local: xTmp})
-		l.expr(ix.Index)
+		l.emitIndexI8(ix.Index)
 		l.emit(goir.Op{Code: goir.OpStLoc, Local: iTmp})
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: xTmp})
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})

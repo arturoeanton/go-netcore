@@ -23,7 +23,24 @@ type ifaceImpl struct {
 // every package — not just the one being lowered — is what lets an interface
 // defined in one package (e.g. sort.Interface) dispatch to an implementer defined
 // in another (the caller's type), which cross-package generic functions require.
+// recordDispatchedIface remembers an interface a method is dispatched on, for the
+// no-match bridge fallback's adapter registration.
+func (c *lowerCtx) recordDispatchedIface(iface *types.Interface) {
+	if iface.NumMethods() == 0 {
+		return
+	}
+	key := iface.String()
+	if c.dispatchedSeen == nil {
+		c.dispatchedSeen = map[string]bool{}
+	}
+	if !c.dispatchedSeen[key] {
+		c.dispatchedSeen[key] = true
+		c.dispatchedIfaces = append(c.dispatchedIfaces, iface)
+	}
+}
+
 func (c *lowerCtx) implementers(iface *types.Interface) []ifaceImpl {
+	c.recordDispatchedIface(iface)
 	var out []ifaceImpl
 	seen := map[*types.Named]bool{}
 	scopes := []*types.Scope{c.pkg.Types.Scope()}
@@ -312,6 +329,22 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		l.emit(goir.Op{Code: goir.OpCeq})
 		l.emit(goir.Op{Code: goir.OpBrTrue, Label: labels[i]})
 		l.mark(skip)
+		// A typed-nil *T carrier: dispatch with a nil receiver (Go allows it).
+		skip2 := l.label()
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.namedIdExtern()})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: l.tagPointerType(types.NewPointer(impl.named))})
+		l.emit(goir.Op{Code: goir.OpCeq})
+		l.emit(goir.Op{Code: goir.OpBrFalse, Label: skip2})
+		l.emit(goir.Op{Code: goir.OpLdNull})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(ctypes[i].Struct.Id)})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "BoxNilPtr",
+			Params: []goir.Type{goir.PtrType(ctypes[i]), goir.TInt64}, Ret: goir.TObject,
+		}})
+		l.emit(goir.Op{Code: goir.OpStLoc, Local: iTmp})
+		l.emit(goir.Op{Code: goir.OpBr, Label: labels[i]})
+		l.mark(skip2)
 	}
 	if goErrLabel >= 0 {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
@@ -360,10 +393,51 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		}})
 		l.emit(goir.Op{Code: goir.OpBr, Label: end})
 	} else {
-		// No match => nil interface method call.
-		l.emit(goir.Op{Code: goir.OpStrConst, Str: "runtime error: invalid memory address or nil pointer dereference"})
-		l.emit(goir.Op{Code: goir.OpBox, BoxTy: goir.TString})
-		l.emit(goir.Op{Code: goir.OpCallPanic})
+		// No static implementer matched. This is normally a genuine nil-interface
+		// call, but it also covers a rare enumeration gap: the same named type
+		// reached through two package views can carry two distinct emitted struct
+		// ids, so its pointer's runtime id may not equal the id the isinst chain
+		// checked. Fall back to the callback bridge (keyed by the receiver's runtime
+		// id + method name); Bridge.DynDispatch invokes the method if an adapter is
+		// registered, else raises Go's nil-method panic.
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: ifaceMethod.Name()})
+		// Pack the args (boxed by their parameter type) into an object[]-backed
+		// GoSlice for the bridge. argTmps hold values typed per parameter (an int
+		// param is an unboxed long), so each must be boxed before the object store.
+		paramTy := func(k int) goir.Type {
+			ps := sig.Params()
+			if sig.Variadic() && k == len(argTmps)-1 {
+				t, _ := l.goType(ps.At(ps.Len() - 1).Type())
+				return t
+			}
+			if k < ps.Len() {
+				t, _ := l.goType(ps.At(k).Type())
+				return t
+			}
+			return goir.TObject
+		}
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(len(argTmps))})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(len(argTmps))})
+		l.emit(goir.Op{Code: goir.OpLdNull})
+		l.emit(goir.Op{Code: goir.OpSliceMake})
+		for k, at := range argTmps {
+			l.emit(goir.Op{Code: goir.OpDup})
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(k)})
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: at})
+			l.emitBox(paramTy(k))
+			l.emit(goir.Op{Code: goir.OpSliceSet})
+		}
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Bridge", Method: "DynDispatch",
+			Params: []goir.Type{goir.TObject, goir.TString, {Kind: goir.KSlice, Elem: &goir.Type{Kind: goir.KObject}}}, Ret: goir.TObject,
+		}})
+		if resultTmp >= 0 {
+			l.emitUnbox(retType)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: resultTmp})
+		} else {
+			l.emit(goir.Op{Code: goir.OpPop})
+		}
 		l.emit(goir.Op{Code: goir.OpBr, Label: end})
 	}
 
@@ -421,10 +495,22 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 		// (gin's *responseWriter embedding http.ResponseWriter) holds a GoPtr, so deref
 		// to the struct before reading the embedded field.
 		if embedField[i] >= 0 {
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
 			if impl.viaPtr {
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
 				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])})
 				l.emit(goir.Op{Code: goir.OpPtrGet})
+			} else {
+				notPtr, done := l.label(), l.label()
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: goir.PtrType(ctypes[i])})
+				l.emit(goir.Op{Code: goir.OpBrFalse, Label: notPtr})
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])})
+				l.emit(goir.Op{Code: goir.OpPtrGet})
+				l.emit(goir.Op{Code: goir.OpBr, Label: done})
+				l.mark(notPtr)
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.mark(done)
 			}
 			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
 			l.emit(goir.Op{Code: goir.OpLdFld, Struct: ctypes[i].Struct, Field: embedField[i]})
@@ -433,14 +519,33 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 			continue
 		}
 		if impl.viaPtr {
-			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
-			l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])}) // the GoPtr receiver
-			// A value-receiver method promoted from an embedded field, reached through a
-			// pointer implementer: deref to the struct and navigate to the embedded value.
-			if len(recvPath[i]) > 0 {
-				l.emit(goir.Op{Code: goir.OpPtrGet})
-				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
-				l.emitEmbedNav(ctypes[i], recvPath[i], callees[i].Params[0])
+			// A POINTER-receiver method promoted from a VALUE embedded field, reached
+			// through a pointer implementer (ANTLR's *BasicBlockStartState.setEndState
+			// promoted from a BaseBlockStartState value embed): the embedded receiver
+			// must ALIAS the live pointee, not a copy — otherwise the mutation is lost.
+			// Build a field-alias into the original GoPtr's target. This does NOT apply
+			// to a POINTER embed (CELParser embeds *BaseParser): there the field IS the
+			// pointer receiver, read directly by emitEmbedNav.
+			if len(recvPath[i]) > 0 && callees[i].Params[0].Kind == goir.KPtr &&
+				embedFieldIsValueStruct(ctypes[i], recvPath[i]) {
+				ii := i
+				emitPtr := func() {
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+					l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[ii])})
+				}
+				// The embedded field's type is the receiver's pointee.
+				ft := *callees[i].Params[0].Elem
+				l.emitFieldAliasPtr(emitPtr, goir.PtrType(ctypes[i]), ctypes[i], recvPath[i], ft)
+			} else {
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
+				l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ctypes[i])}) // the GoPtr receiver
+				// A value-receiver method promoted from an embedded field, reached
+				// through a pointer implementer: deref and navigate to the embedded value.
+				if len(recvPath[i]) > 0 {
+					l.emit(goir.Op{Code: goir.OpPtrGet})
+					l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
+					l.emitEmbedNav(ctypes[i], recvPath[i], callees[i].Params[0])
+				}
 			}
 		} else if namedId[i] != 0 {
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: iTmp})
@@ -768,6 +873,13 @@ func (l *funcLowerer) emitInterfaceAssert(valEmit func(), iface *types.Interface
 			l.emit(goir.Op{Code: goir.OpCeq})
 			l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
 			l.mark(skip)
+			// A typed-nil *T carrier (GoNamed{"*T", null}) still satisfies the
+			// interface (nil pointer receivers are valid): match its pointer-name id.
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: l.namedIdExtern()})
+			l.emit(goir.Op{Code: goir.OpLdcI8, Int: l.tagPointerType(types.NewPointer(impl.named))})
+			l.emit(goir.Op{Code: goir.OpCeq})
+			l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
 		default:
 			if id, ok := l.namedIdentity(impl.named); ok {
 				l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
@@ -779,6 +891,23 @@ func (l *funcLowerer) emitInterfaceAssert(valEmit func(), iface *types.Interface
 				l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
 				l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: ct})
 				l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
+				// A value struct implementer that also satisfies via a *T (value
+				// method set, or promotion from a pointer embed) can flow as a GoPtr
+				// to the struct — match it too (mutableList{*baseList} satisfying
+				// ref.Val as *mutableList). Mirrors interfaceDispatchCore.
+				if ct.Kind == goir.KStruct {
+					skip := l.label()
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
+					l.emit(goir.Op{Code: goir.OpIsInst, BoxTy: goir.PtrType(ct)})
+					l.emit(goir.Op{Code: goir.OpBrFalse, Label: skip})
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: resTmp})
+					l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: goir.PtrType(ct)})
+					l.emit(goir.Op{Code: goir.OpPtrTypeId})
+					l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(ct.Struct.Id)})
+					l.emit(goir.Op{Code: goir.OpCeq})
+					l.emit(goir.Op{Code: goir.OpBrTrue, Label: matched})
+					l.mark(skip)
+				}
 			}
 		}
 	}
@@ -801,6 +930,28 @@ func (l *funcLowerer) emitInterfaceAssert(valEmit func(), iface *types.Interface
 // the promoted method has a pointer receiver (recvType is a pointer), the embedded
 // value is boxed into a fresh cell so a GoPtr is passed (correct for the read-only
 // promoted methods dispatched here; a mutating one would see a copy).
+// embedFieldIsValueStruct reports whether the final field in path (from struct
+// start) is a VALUE struct (not a pointer). A value embed needs a field alias so a
+// promoted pointer-receiver method mutates the live object; a pointer embed's field
+// IS the receiver and is read directly.
+func embedFieldIsValueStruct(start goir.Type, path []int) bool {
+	cur := start
+	for i, fi := range path {
+		if cur.Kind == goir.KPtr {
+			cur = *cur.Elem
+		}
+		if cur.Kind != goir.KStruct || fi >= len(cur.Struct.Fields) {
+			return false
+		}
+		ft := cur.Struct.Fields[fi].Type
+		if i == len(path)-1 {
+			return ft.Kind == goir.KStruct
+		}
+		cur = ft
+	}
+	return false
+}
+
 func (l *funcLowerer) emitEmbedNav(start goir.Type, path []int, recvType goir.Type) {
 	cur := start
 	for _, fi := range path {

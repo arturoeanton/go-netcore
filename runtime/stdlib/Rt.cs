@@ -27,6 +27,25 @@ public static class Rt
     /// <summary>The build's type id for a named type known by display name, or 0.</summary>
     public static long NamedIdByName(string name) => _namedIds.TryGetValue(name, out var id) ? id : 0;
 
+    // Runtime-allocated ids for type names first seen dynamically (reflect building a
+    // "*T" pointer type at runtime). Kept above any compile-time id (which are small).
+    private static long _nextDynId = 1L << 40;
+    /// <summary>The id for a type display name, registering a fresh one if unseen, so a
+    /// dynamically-built type name (reflect.Zero(PtrTo(t)) → "*pkg.T") has a stable
+    /// identity fmt/%T and reflect.TypeOf can resolve.</summary>
+    public static long InternTypeName(GoString name)
+    {
+        var n = name.ToDotNetString();
+        lock (_namedIds)
+        {
+            if (_namedIds.TryGetValue(n, out var id)) return id;
+            long nid = _nextDynId++;
+            _namedNames[nid] = n;
+            _namedIds[n] = nid;
+            return nid;
+        }
+    }
+
     /// <summary>Wraps a value as a typed box for a named type known only by display
     /// name; pass-through (no box) if that name was never registered this build.</summary>
     public static object? MakeNamedByName(string name, object? value) =>
@@ -164,6 +183,19 @@ public static class Rt
     // boxes instead of allocating (boxed values are never mutated in place, and
     // equality is value-based via IfaceEq, so sharing is unobservable). The caches
     // live in GoCLR.Runtime.Boxes so runtime-side byte-slice creation shares them.
+    /// <summary>//go:embed content for a []byte global: decode the compiler's
+    /// base64 payload into the canonical byte slice (binary-safe).</summary>
+    public static GoSlice EmbedBytes(GoString b64) =>
+        Boxes.ByteSlice(System.Convert.FromBase64String(b64.ToDotNetString()));
+
+    /// <summary>//go:embed content for a string global.</summary>
+    public static GoString EmbedString(GoString b64) =>
+        GoString.FromBytes(System.Convert.FromBase64String(b64.ToDotNetString()));
+
+    /// <summary>Casts a boxed multi-result tuple back to object[] (the emitted
+    /// metadata has no TypeSpec for array casts, so the cast lives here).</summary>
+    public static object?[] AsTuple(object? v) => (object?[])v!;
+
     public static object BoxI8(long v) => Boxes.I8(v);
     public static object BoxI4(int v) => Boxes.I4(v);
     public static object BoxBool(bool b) => Boxes.Bool(b);
@@ -321,6 +353,16 @@ public static class Rt
             throw new GoPanicException(GoString.FromDotNetString(
                 $"runtime error: index out of range [{i}] with length {s.Len}"));
         return new GoPtr { Arr = s.Data, Idx = (int)(s.Off + i) };
+    }
+
+    /// <summary>&amp;s[i] for a struct-element slice: the alias pointer carries the
+    /// pointee's type id so interface dispatch and type assertions through the
+    /// element pointer resolve (like Rt.FieldPtr does for field aliases).</summary>
+    public static GoPtr ElemAddrT(GoSlice s, long i, long typeId)
+    {
+        var p = ElemAddr(s, i);
+        p.TypeId = typeId;
+        return p;
     }
 
     /// <summary>The nil slice value (zero value of every slice type): a GoSlice with

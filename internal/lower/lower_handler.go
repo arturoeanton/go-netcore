@@ -422,3 +422,65 @@ func (l *funcLowerer) emitHandlerRegistrations() {
 		}})
 	}
 }
+
+// collectDispatchFallbackMethods registers a callback-bridge adapter for every
+// method of every struct/named type that satisfies an interface the program
+// dispatches on — the safety net behind interfaceDispatch's no-match branch
+// (Bridge.DynDispatch). It closes a rare enumeration gap: the same named type
+// reached through two package views can be emitted as two distinct struct ids,
+// so a value's runtime id may not equal the id the static isinst chain checked.
+// Registering by the value's own runtime id makes the fallback resolve it.
+//
+// Scoped to types that implement a dispatched interface (not every type), so a
+// reflect-light program pays little; a very large closure (goja) that already
+// relies on precise static dispatch is unaffected because its types still match
+// statically — the fallback only fires when the static chain misses.
+func (c *lowerCtx) collectDispatchFallbackMethods() {
+	if len(c.dispatchedIfaces) == 0 {
+		return
+	}
+	// The no-match bridge fallback only matters for programs where static dispatch
+	// can miss (the same named type emitted under two names via different package
+	// views — protobuf's filedesc). A very large program (goja) both never needs it
+	// — its dispatches all match statically — and cannot afford the extra adapter
+	// methods: a CLR type caps at 65535 methods, and goja is already near it. Gate
+	// on the current method count so small reflection-heavy programs (CEL) get the
+	// safety net while huge ones are left to their (working) static dispatch.
+	const fallbackMethodBudget = 30000
+	if len(c.prog.Methods) > fallbackMethodBudget {
+		return
+	}
+	for named, st := range c.structReg {
+		if _, isIface := named.Underlying().(*types.Interface); isIface {
+			continue
+		}
+		if !c.implementsAnyDispatched(named) {
+			continue
+		}
+		if c.registerReflectMethods(named, st.Id) {
+			if c.bridgeClrLinks == nil {
+				c.bridgeClrLinks = map[string]int64{}
+			}
+			c.bridgeClrLinks[st.Name] = int64(st.Id)
+		}
+	}
+	for named, id := range c.namedIds {
+		if _, isIface := named.Underlying().(*types.Interface); isIface {
+			continue
+		}
+		if c.implementsAnyDispatched(named) {
+			c.registerReflectMethods(named, int(id))
+		}
+	}
+}
+
+// implementsAnyDispatched reports whether named (or *named) satisfies any
+// interface the program actually dispatches a method on.
+func (c *lowerCtx) implementsAnyDispatched(named *types.Named) bool {
+	for _, iface := range c.dispatchedIfaces {
+		if types.Implements(named, iface) || types.Implements(types.NewPointer(named), iface) {
+			return true
+		}
+	}
+	return false
+}

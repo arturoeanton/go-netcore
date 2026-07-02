@@ -72,8 +72,9 @@ type typeDescEntry struct {
 	// Dynamic-identity links: clrName is the emitted struct type name (for a struct
 	// value reached through an interface) and namedId is the typed-box id (for an
 	// identity-bearing named type); 0/"" when not applicable.
-	clrName string
-	namedId int64
+	clrName  string
+	structId int // the goir struct Id (dispatch id), so reflect.New can stamp a pointer
+	namedId  int64
 }
 
 type typeFieldEntry struct {
@@ -260,6 +261,7 @@ func (c *lowerCtx) descId(t types.Type) int {
 	// (boxed into an interface) recovers this descriptor from value.GetType().
 	if gt, ok := c.goType(t); ok && gt.Kind == goir.KStruct && gt.Struct != nil {
 		entry.clrName = gt.Struct.Name
+		entry.structId = gt.Struct.Id
 	}
 	// Method set: an interface's required methods, or a concrete type's value-receiver
 	// method set (a *T descriptor, built separately, gets *T's full method set). Names
@@ -376,6 +378,20 @@ func (l *funcLowerer) emitOneTypeDesc(e typeDescEntry) {
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
 			Assembly: shimAssembly, Namespace: shimAssembly, Type: "TypeReg", Method: "LinkClr",
 			Params: []goir.Type{goir.TString, goir.TInt32}, Ret: goir.TVoid,
+		}})
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(e.id)})
+		l.emit(goir.Op{Code: goir.OpStrConst, Str: e.clrName})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "TypeReg", Method: "LinkDescClr",
+			Params: []goir.Type{goir.TInt32, goir.TString}, Ret: goir.TVoid,
+		}})
+	}
+	if e.structId > 0 {
+		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(e.id)})
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(e.structId)})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "TypeReg", Method: "LinkStructId",
+			Params: []goir.Type{goir.TInt32, goir.TInt64}, Ret: goir.TVoid,
 		}})
 	}
 	if e.namedId != 0 {

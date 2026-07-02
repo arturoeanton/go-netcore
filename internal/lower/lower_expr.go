@@ -392,7 +392,7 @@ func (l *funcLowerer) indexExpr(e *ast.IndexExpr) {
 	switch xt.Kind {
 	case goir.KString:
 		l.expr(e.X)
-		l.expr(e.Index)
+		l.emitIndexI8(e.Index)
 		l.emit(goir.Op{Code: goir.OpStrIndex})
 	case goir.KSlice:
 		l.sliceIndexRead(e, xt)
@@ -405,7 +405,7 @@ func (l *funcLowerer) indexExpr(e *ast.IndexExpr) {
 			l.expr(e.X)
 			l.emit(goir.Op{Code: goir.OpPtrGet})
 			l.emitUnbox(st)
-			l.expr(e.Index)
+			l.emitIndexI8(e.Index)
 			l.emit(goir.Op{Code: goir.OpSliceGet})
 			l.emitUnbox(*st.Elem)
 			return

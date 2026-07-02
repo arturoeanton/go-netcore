@@ -191,6 +191,22 @@ func (l *funcLowerer) identCell(e ast.Expr) (idx int, elem goir.Type, ok bool) {
 }
 
 // emitAddr pushes the GoPtr cell of an addressable identifier.
+// emitElemAddr emits the &slice[i] alias-pointer extern, stamping the
+// element's struct type id (0 for non-struct elements) so interface dispatch
+// and type assertions through the element pointer resolve the pointee's
+// methods (the same tagging Rt.FieldPtr gives field aliases).
+func (l *funcLowerer) emitElemAddr(sliceTy goir.Type) {
+	var id int64
+	if sliceTy.Elem != nil && sliceTy.Elem.Kind == goir.KStruct && sliceTy.Elem.Struct != nil {
+		id = int64(sliceTy.Elem.Struct.Id)
+	}
+	l.emit(goir.Op{Code: goir.OpLdcI8, Int: id})
+	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ElemAddrT",
+		Params: []goir.Type{sliceTy, goir.TInt64, goir.TInt64}, Ret: goir.PtrType(*sliceTy.Elem),
+	}})
+}
+
 func (l *funcLowerer) emitAddr(e ast.Expr) bool {
 	id, ok := unparen(e).(*ast.Ident)
 	if !ok {
@@ -224,6 +240,14 @@ func (l *funcLowerer) emitAddressable(e ast.Expr) bool {
 		}
 		return false
 	case *ast.SelectorExpr:
+		if base, ok := unparen(x.X).(*ast.Ident); ok {
+			if _, isPkg := l.pkg.TypesInfo.ObjectOf(base).(*types.PkgName); isPkg {
+				if gi, gok := l.globalRef(x); gok {
+					l.emitGlobalAlias(gi, l.exprType(x))
+					return true
+				}
+			}
+		}
 		return l.buildFieldAlias(x)
 	case *ast.IndexExpr:
 		xt := l.exprType(x.X)
@@ -231,11 +255,8 @@ func (l *funcLowerer) emitAddressable(e ast.Expr) bool {
 			return false
 		}
 		l.expr(x.X)
-		l.expr(x.Index)
-		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ElemAddr",
-			Params: []goir.Type{xt, goir.TInt64}, Ret: goir.PtrType(*xt.Elem),
-		}})
+		l.emitIndexI8(x.Index)
+		l.emitElemAddr(xt)
 		return true
 	}
 	return false
@@ -260,6 +281,17 @@ func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 		}
 		l.fail(e.Pos(), "address of "+x.Name)
 	case *ast.SelectorExpr:
+		// &pkg.Var: a package-qualified global — alias its static slot (the same
+		// accessor pair &localGlobal uses). Checked before the field path, which
+		// would try to type the package name.
+		if base, ok := unparen(x.X).(*ast.Ident); ok {
+			if _, isPkg := l.pkg.TypesInfo.ObjectOf(base).(*types.PkgName); isPkg {
+				if gi, gok := l.globalRef(x); gok {
+					l.emitGlobalAlias(gi, l.exprType(x))
+					return
+				}
+			}
+		}
 		// &s.field: a struct field has no standalone storage, so build a field-alias
 		// pointer that reads/writes the field through its stable container.
 		if l.buildFieldAlias(x) {
@@ -304,11 +336,8 @@ func (l *funcLowerer) addrOf(e *ast.UnaryExpr) {
 			l.emit(goir.Op{Code: goir.OpPtrGet})
 			l.emitUnbox(sliceTy)
 		}
-		l.expr(x.Index)
-		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ElemAddr",
-			Params: []goir.Type{sliceTy, goir.TInt64}, Ret: goir.PtrType(*sliceTy.Elem),
-		}})
+		l.emitIndexI8(x.Index)
+		l.emitElemAddr(sliceTy)
 	default:
 		l.fail(e.Pos(), "address-of (only &variable and &T{...} are supported)")
 	}
@@ -489,6 +518,34 @@ func (l *funcLowerer) ptrStructFieldWrite(e *ast.SelectorExpr, pt goir.Type, rhs
 	l.expr(e.X)
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: pTmp})
 
+	// Evaluate the RHS BEFORE snapshotting the struct out of the cell: the RHS
+	// may itself mutate the pointee (fd.X = fd.alloc(n) — protobuf's filedesc),
+	// and a stale snapshot written back afterwards would silently drop that
+	// update. Go's order (RHS first, then assign) is also the correct one.
+	var rhsField goir.Type
+	{
+		ft := st
+		fiProbe := st.Struct.FieldIndex(e.Sel.Name)
+		if fiProbe >= 0 {
+			rhsField = st.Struct.Fields[fiProbe].Type
+		} else if path, ok := l.promotedFieldPath(e); ok {
+			cur := st
+			for _, idx := range path[:len(path)-1] {
+				t := cur.Struct.Fields[idx].Type
+				if t.Kind == goir.KPtr && t.Elem != nil {
+					t = *t.Elem
+				}
+				cur = t
+			}
+			rhsField = cur.Struct.Fields[path[len(path)-1]].Type
+		} else {
+			rhsField = ft // unreachable; promoted path re-checked below
+		}
+	}
+	rhsTmp := l.addLocal(nil, rhsField)
+	l.exprCoerced(rhs, rhsField)
+	l.emit(goir.Op{Code: goir.OpStLoc, Local: rhsTmp})
+
 	sTmp := l.addLocal(nil, st)
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: pTmp})
 	l.emit(goir.Op{Code: goir.OpPtrGet})
@@ -497,24 +554,52 @@ func (l *funcLowerer) ptrStructFieldWrite(e *ast.SelectorExpr, pt goir.Type, rhs
 
 	l.emit(goir.Op{Code: goir.OpLdLocA, Local: sTmp})
 	cur := st
+	// A promotion hop through a POINTER embed switches to the pointee's own cell:
+	// unbox it into a temp, continue the field chain there, and write the pointee
+	// back through its pointer after the store (innermost-first). The outer struct
+	// still holds the same pointer, so its own write-back stays correct.
+	type ptrHop struct {
+		p, s int
+		st   goir.Type
+	}
+	var hops []ptrHop
 	if path != nil {
-		// Navigate value embeds to the struct that directly holds the field.
 		for _, idx := range path[:len(path)-1] {
 			ft := cur.Struct.Fields[idx].Type
-			if ft.Kind != goir.KStruct {
-				l.fail(e.Pos(), "promoted field write through a pointer embed")
-				return
+			if ft.Kind == goir.KStruct {
+				l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: idx})
+				cur = ft
+				continue
 			}
-			l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: idx})
-			cur = ft
+			if ft.Kind == goir.KPtr && ft.Elem != nil && ft.Elem.Kind == goir.KStruct {
+				inner := *ft.Elem
+				l.emit(goir.Op{Code: goir.OpLdFld, Struct: cur.Struct, Field: idx}) // the embedded pointer
+				pIn := l.addLocal(nil, ft)
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: pIn})
+				sIn := l.addLocal(nil, inner)
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: pIn})
+				l.emit(goir.Op{Code: goir.OpPtrGet})
+				l.emitUnbox(inner)
+				l.emit(goir.Op{Code: goir.OpStLoc, Local: sIn})
+				l.emit(goir.Op{Code: goir.OpLdLocA, Local: sIn})
+				hops = append(hops, ptrHop{p: pIn, s: sIn, st: inner})
+				cur = inner
+				continue
+			}
+			l.fail(e.Pos(), "promoted field write through a non-struct embed")
+			return
 		}
 		fi = path[len(path)-1]
 	}
-	// Coerce so a nil into a GoSlice/GoMap field becomes the value-type nil (NilSlice),
-	// not a null reference (which the JIT rejects for a valuetype field).
-	l.exprCoerced(rhs, cur.Struct.Fields[fi].Type)
+	l.emit(goir.Op{Code: goir.OpLdLoc, Local: rhsTmp})
 	l.emit(goir.Op{Code: goir.OpStFld, Struct: cur.Struct, Field: fi})
 
+	for i := len(hops) - 1; i >= 0; i-- {
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: hops[i].p})
+		l.emit(goir.Op{Code: goir.OpLdLoc, Local: hops[i].s})
+		l.emitBox(hops[i].st)
+		l.emit(goir.Op{Code: goir.OpPtrSet})
+	}
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: pTmp})
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: sTmp})
 	l.emitBox(st)
@@ -539,6 +624,15 @@ func (l *funcLowerer) emitEmbeddedIfaceValue(sel *ast.SelectorExpr, embedPath []
 // parameter resolved (during monomorphization) to a concrete type. It looks up
 // the method on the concrete type and emits a direct call.
 func (l *funcLowerer) concreteMethodCall(e *ast.CallExpr, sel *ast.SelectorExpr, concrete types.Type, name string) goir.Type {
+	// A type parameter can be instantiated with an INTERFACE type (antlr's
+	// ObjEqComparator[SemanticContext]): the "concrete" receiver is then an
+	// interface value, so the method call is a normal interface dispatch.
+	if iface, isIface := concrete.Underlying().(*types.Interface); isIface {
+		obj, _, _ := types.LookupFieldOrMethod(concrete, true, l.pkg.Types, name)
+		if fn, isFn := obj.(*types.Func); isFn {
+			return l.interfaceDispatch(e, func() { l.expr(sel.X) }, fn, iface)
+		}
+	}
 	obj, _, _ := types.LookupFieldOrMethod(concrete, true, l.pkg.Types, name)
 	cfn, _ := obj.(*types.Func)
 	if cfn == nil {
@@ -698,11 +792,8 @@ func (l *funcLowerer) methodCall(e *ast.CallExpr, sel *ast.SelectorExpr, seln *t
 		if ix, ok := unparen(sel.X).(*ast.IndexExpr); ok && l.exprType(ix.X).Kind == goir.KSlice {
 			xt := l.exprType(ix.X)
 			l.expr(ix.X)
-			l.expr(ix.Index)
-			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
-				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ElemAddr",
-				Params: []goir.Type{xt, goir.TInt64}, Ret: goir.PtrType(*xt.Elem),
-			}})
+			l.emitIndexI8(ix.Index)
+			l.emitElemAddr(xt)
 			break
 		}
 		l.fail(e.Pos(), "pointer-receiver method on a non-addressable value")
@@ -791,6 +882,7 @@ func (l *funcLowerer) ptrRootedReceiver(recv ast.Expr) (int, func(), bool) {
 				l.lvalueAddr(sel.X)
 				pushFromCell(p)
 				l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+				l.flushLvalueWB()
 			}
 		}
 	}

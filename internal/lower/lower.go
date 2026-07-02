@@ -8,10 +8,13 @@
 package lower
 
 import (
+	"encoding/base64"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,11 +35,21 @@ type lowerCtx struct {
 	anonStructs   []anonStructInfo        // anon structs with their Go type, for field-identity registration
 	structByName  map[string]*goir.Struct // dedup by emitted name (distinct *Named for one instantiation)
 	structOrder   []*goir.Struct
-	bag           *diagnostics.Bag
-	prog          *goir.Program // for appending lifted closure methods
-	closures      []*closureInfo
-	invoke        *goir.Method // the generated function-value dispatcher
-	needsInvoker  bool         // a `go` statement or deferred thunk uses the dispatcher -> register it at startup
+	// dispatchedIfaces records every interface a method is dispatched on, so the
+	// no-match bridge fallback (collectDispatchFallbackMethods) can register
+	// adapters for their implementers. Deduped by interface type string.
+	dispatchedIfaces []*types.Interface
+	dispatchedSeen   map[string]bool
+	// accessorCache dedups field-alias getter/setter __facc methods by
+	// (root type, field path, role): a promoted-pointer dispatch site reuses the
+	// lifted body instead of emitting a fresh pair (see buildAccessorClosureKeyed).
+	accessorCache map[string]int
+
+	bag          *diagnostics.Bag
+	prog         *goir.Program // for appending lifted closure methods
+	closures     []*closureInfo
+	invoke       *goir.Method // the generated function-value dispatcher
+	needsInvoker bool         // a `go` statement or deferred thunk uses the dispatcher -> register it at startup
 	// Generics: generic function templates (by name) are not shelled directly;
 	// each concrete instantiation discovered at a call site is monomorphized into
 	// its own method (monoInsts, keyed by name+type-args) and queued in monoTodo.
@@ -113,10 +126,11 @@ type lowerCtx struct {
 // idxs/gtypes hold one entry for a single var, or N for a tuple initializer
 // (var a, b = f()). value nil => zero-initialize each target.
 type varInit struct {
-	pkg    *frontend.Package
-	idxs   []int
-	gtypes []goir.Type
-	value  ast.Expr // nil => zero-initialize
+	pkg      *frontend.Package
+	idxs     []int
+	gtypes   []goir.Type
+	value    ast.Expr // nil => zero-initialize
+	embedB64 string   // //go:embed []byte/string content, base64 (value == nil)
 }
 
 // monoJob is a queued generic-function instantiation whose body is lowered after
@@ -293,6 +307,7 @@ func Lower(pkg *frontend.Package, bag *diagnostics.Bag) (*goir.Program, bool) {
 	c.collectHandlers()
 	c.collectBridgeMethods()
 	c.collectReflectMethods()
+	c.collectDispatchFallbackMethods()
 	c.collectErrorChainMethods()
 
 	// Startup: run package-var initializers and init() functions before main.
@@ -443,6 +458,13 @@ func (c *lowerCtx) collectGlobals(p *frontend.Package) {
 					}
 					idx, ok := c.globals[obj]
 					if !ok {
+						continue
+					}
+					// //go:embed on a []byte/string var: read the file at compile
+					// time and carry it (base64) into the initializer. Without this
+					// the var silently zero-inits (protobuf's edition defaults).
+					if b64, eok := c.embedContent(p, gd, vs, name.Pos()); eok {
+						c.varInits = append(c.varInits, varInit{pkg: p, idxs: []int{idx}, gtypes: []goir.Type{c.prog.Globals[idx].Type}, embedB64: b64})
 						continue
 					}
 					c.varInits = append(c.varInits, varInit{pkg: p, idxs: []int{idx}, gtypes: []goir.Type{c.prog.Globals[idx].Type}, value: nil})
@@ -614,6 +636,20 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 		}
 		c.pkg = vi.pkg
 		switch {
+		case vi.embedB64 != "":
+			// //go:embed content: decode the base64 payload into the []byte or
+			// string global via the runtime helper (binary-safe; a raw string
+			// literal would be UTF-16/UTF-8 mangled).
+			method := "EmbedBytes"
+			if vi.gtypes[0].Kind == goir.KString {
+				method = "EmbedString"
+			}
+			cl.emit(goir.Op{Code: goir.OpStrConst, Str: vi.embedB64})
+			cl.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: method,
+				Params: []goir.Type{goir.TString}, Ret: vi.gtypes[0],
+			}})
+			cl.emit(goir.Op{Code: goir.OpStGlobal, Int: int64(vi.idxs[0])})
 		case vi.value == nil:
 			for k, idx := range vi.idxs {
 				cl.emitZeroValue(vi.gtypes[k])
@@ -647,6 +683,14 @@ func (c *lowerCtx) buildInit() (*goir.Method, bool) {
 	top := &funcLowerer{lowerCtx: c, m: m, ok: true}
 	top.locals = map[types.Object]int{}
 	top.cells = map[int]goir.Type{}
+	// Register the goroutine/closure invoker at the START of init (not only in the
+	// entry wrapper): package var initializers and init() bodies may already invoke
+	// closures (a sync.Pool's New func, a deferred thunk), and a library consumer
+	// (C#/goclr as a NuGet) calls __goclr_init directly, bypassing the entry wrapper.
+	// Registration is idempotent, so the entry wrapper's own call is harmless.
+	if c.needsInvoker {
+		top.emit(goir.Op{Code: goir.OpRegisterInvoker})
+	}
 	for _, chunk := range chunks {
 		top.emit(goir.Op{Code: goir.OpCallMethod, Callee: chunk})
 	}
@@ -1087,6 +1131,7 @@ type funcLowerer struct {
 	m         *goir.Method
 	ok        bool
 	locals    map[types.Object]int
+	pendingWB []func() // cell write-backs queued by lvalueAddr (see flushLvalueWB)
 	nextLbl   int
 	breaks    []int
 	continues []int
@@ -1227,4 +1272,39 @@ func (l *funcLowerer) addLocal(obj types.Object, t goir.Type) int {
 func (l *funcLowerer) fail(pos token.Pos, what string) {
 	l.ok = false
 	l.unsupported(pos, what)
+}
+
+// embedContent detects a //go:embed directive on a package-level []byte or
+// string var, reads the embedded file at compile time, and returns its content
+// base64-encoded. Only the single-file []byte/string form is supported —
+// embed.FS and glob patterns report an unsupported diagnostic.
+func (c *lowerCtx) embedContent(p *frontend.Package, gd *ast.GenDecl, vs *ast.ValueSpec, pos token.Pos) (string, bool) {
+	doc := vs.Doc
+	if doc == nil {
+		doc = gd.Doc
+	}
+	if doc == nil {
+		return "", false
+	}
+	pattern := ""
+	for _, cm := range doc.List {
+		if strings.HasPrefix(cm.Text, "//go:embed ") {
+			pattern = strings.TrimSpace(strings.TrimPrefix(cm.Text, "//go:embed "))
+			break
+		}
+	}
+	if pattern == "" {
+		return "", false
+	}
+	if strings.ContainsAny(pattern, "*? ") {
+		c.unsupported(pos, "go:embed pattern "+pattern+" (only a single file into []byte/string is supported)")
+		return "", false
+	}
+	dir := filepath.Dir(p.Fset.Position(vs.Pos()).Filename)
+	data, err := os.ReadFile(filepath.Join(dir, pattern))
+	if err != nil {
+		c.unsupported(pos, "go:embed "+pattern+": "+err.Error())
+		return "", false
+	}
+	return base64.StdEncoding.EncodeToString(data), true
 }

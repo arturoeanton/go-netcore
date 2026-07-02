@@ -32,7 +32,7 @@ func (l *funcLowerer) assignToTarget(s *ast.AssignStmt, lhs ast.Expr, t goir.Typ
 				structTmp := l.addLocal(nil, bt)
 				l.expr(ix.X)
 				l.emit(goir.Op{Code: goir.OpStLoc, Local: sliceTmp})
-				l.expr(ix.Index)
+				l.emitIndexI8(ix.Index)
 				l.emit(goir.Op{Code: goir.OpStLoc, Local: idxTmp})
 				l.emit(goir.Op{Code: goir.OpLdLoc, Local: sliceTmp})
 				l.emit(goir.Op{Code: goir.OpLdLoc, Local: idxTmp})
@@ -55,20 +55,76 @@ func (l *funcLowerer) assignToTarget(s *ast.AssignStmt, lhs ast.Expr, t goir.Typ
 			l.lvalueAddr(sel.X)
 			emitVal()
 			l.emit(goir.Op{Code: goir.OpStFld, Struct: bt.Struct, Field: fi})
+			l.flushLvalueWB()
 			return
 		}
 		if bt.Kind == goir.KPtr && bt.Elem != nil && bt.Elem.Kind == goir.KStruct {
 			st := *bt.Elem
 			fi := st.Struct.FieldIndex(sel.Sel.Name)
-			tmp := l.addLocal(nil, st)
+			var path []int
+			if fi < 0 {
+				// A PROMOTED field (e.L0 where L0 lives in an embedded struct):
+				// navigate the promotion path; a direct miss would emit a bogus
+				// field token (silent memory corruption).
+				p, ok := l.promotedFieldPath(sel)
+				if !ok {
+					l.fail(sel.Pos(), "unknown field "+sel.Sel.Name)
+					return
+				}
+				path = p
+			}
+			pTmp := l.addLocal(nil, bt)
 			l.expr(sel.X)
+			l.emit(goir.Op{Code: goir.OpStLoc, Local: pTmp})
+			tmp := l.addLocal(nil, st)
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: pTmp})
 			l.emit(goir.Op{Code: goir.OpPtrGet})
 			l.emitUnbox(st)
 			l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
 			l.emit(goir.Op{Code: goir.OpLdLocA, Local: tmp})
+			cur := st
+			type ptrHop struct {
+				p, s int
+				st   goir.Type
+			}
+			var hops []ptrHop
+			if path != nil {
+				for _, idx := range path[:len(path)-1] {
+					ft := cur.Struct.Fields[idx].Type
+					if ft.Kind == goir.KStruct {
+						l.emit(goir.Op{Code: goir.OpLdFldA, Struct: cur.Struct, Field: idx})
+						cur = ft
+						continue
+					}
+					if ft.Kind == goir.KPtr && ft.Elem != nil && ft.Elem.Kind == goir.KStruct {
+						inner := *ft.Elem
+						l.emit(goir.Op{Code: goir.OpLdFld, Struct: cur.Struct, Field: idx})
+						pIn := l.addLocal(nil, ft)
+						l.emit(goir.Op{Code: goir.OpStLoc, Local: pIn})
+						sIn := l.addLocal(nil, inner)
+						l.emit(goir.Op{Code: goir.OpLdLoc, Local: pIn})
+						l.emit(goir.Op{Code: goir.OpPtrGet})
+						l.emitUnbox(inner)
+						l.emit(goir.Op{Code: goir.OpStLoc, Local: sIn})
+						l.emit(goir.Op{Code: goir.OpLdLocA, Local: sIn})
+						hops = append(hops, ptrHop{p: pIn, s: sIn, st: inner})
+						cur = inner
+						continue
+					}
+					l.fail(sel.Pos(), "promoted assign through a non-struct embed")
+					return
+				}
+				fi = path[len(path)-1]
+			}
 			emitVal()
-			l.emit(goir.Op{Code: goir.OpStFld, Struct: st.Struct, Field: fi})
-			l.expr(sel.X)
+			l.emit(goir.Op{Code: goir.OpStFld, Struct: cur.Struct, Field: fi})
+			for i := len(hops) - 1; i >= 0; i-- {
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: hops[i].p})
+				l.emit(goir.Op{Code: goir.OpLdLoc, Local: hops[i].s})
+				l.emitBox(hops[i].st)
+				l.emit(goir.Op{Code: goir.OpPtrSet})
+			}
+			l.emit(goir.Op{Code: goir.OpLdLoc, Local: pTmp})
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 			l.emitBox(st)
 			l.emit(goir.Op{Code: goir.OpPtrSet})
@@ -80,7 +136,7 @@ func (l *funcLowerer) assignToTarget(s *ast.AssignStmt, lhs ast.Expr, t goir.Typ
 		xt := l.exprType(ix.X)
 		if xt.Kind == goir.KSlice {
 			l.expr(ix.X)
-			l.expr(ix.Index)
+			l.emitIndexI8(ix.Index)
 			emitVal()
 			l.emitBox(t)
 			l.emit(goir.Op{Code: goir.OpSliceSet})
@@ -95,6 +151,15 @@ func (l *funcLowerer) assignToTarget(s *ast.AssignStmt, lhs ast.Expr, t goir.Typ
 			l.emit(goir.Op{Code: goir.OpMapSet})
 			return
 		}
+	}
+	// Pointer-deref target (*p = v inside a parallel assign, e.g. protoregistry's
+	// `name, *s = ..., ...`): write the boxed value through the cell.
+	if star, ok := unparen(lhs).(*ast.StarExpr); ok {
+		l.expr(star.X)
+		emitVal()
+		l.emitBox(t)
+		l.emit(goir.Op{Code: goir.OpPtrSet})
+		return
 	}
 	id, ok := lhs.(*ast.Ident)
 	if !ok {

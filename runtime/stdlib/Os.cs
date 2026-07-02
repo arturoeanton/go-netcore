@@ -107,7 +107,7 @@ public static class Os
         try
         {
             var bytes = System.IO.File.ReadAllBytes(name.ToDotNetString());
-            return new object?[] { new GoReader { Data = bytes }, null };
+            return new object?[] { new GoReader { Data = bytes, SrcPath = name.ToDotNetString() }, null };
         }
         catch (System.Exception e)
         {
@@ -201,6 +201,14 @@ public static class Os
     // return io.EOF (the io.ReaderAt contract).
     public static object?[] File_ReadAt(object f, GoSlice p, long off)
     {
+        // A file opened for reading (drained GoReader): serve the range in memory.
+        if (f is GoReader gr)
+        {
+            int avail = (int)System.Math.Max(0, gr.Data.Length - off);
+            int want = System.Math.Min(p.Len, avail);
+            for (int i = 0; i < want; i++) p.Data![p.Off + i] = Boxes.I4(gr.Data[off + i]);
+            return new object?[] { (long)want, want < p.Len ? Io.EOFSentinel : null };
+        }
         var gf = (GoFile)f;
         if (gf.Wr == null) return new object?[] { 0L, Io.EOFSentinel };
         gf.Wr.Seek(off, System.IO.SeekOrigin.Begin);
@@ -233,6 +241,14 @@ public static class Os
     // (*os.File).Stat() (FileInfo, error).
     public static object?[] File_Stat(object f)
     {
+        // A file opened for reading is a drained GoReader carrying its source path.
+        if (f is GoReader gr)
+        {
+            string p = gr.SrcPath ?? "";
+            bool isDirR = p.Length > 0 && System.IO.Directory.Exists(p);
+            uint modeR = p.Length > 0 && (System.IO.File.Exists(p) || isDirR) ? GoFileMode(p, isDirR) : 0u;
+            return new object?[] { new GoFileInfo { FileName = GoString.FromDotNetString(System.IO.Path.GetFileName(p)), Size = gr.Data.Length, Dir = isDirR, Mode = modeR, ModTimeN = p.Length > 0 ? FileMTimeN(p) : 0 }, null };
+        }
         var gf = (GoFile)f;
         long size = gf.Wr?.Length ?? 0;
         bool isDir = gf.Path != null && System.IO.Directory.Exists(gf.Path);
@@ -653,6 +669,13 @@ public static class Os
     }
 
     public static long Getpid() => System.Environment.ProcessId;
+
+    // os.Executable(): the path of the running host executable.
+    public static object?[] Executable()
+    {
+        string path = System.Environment.ProcessPath ?? System.Reflection.Assembly.GetEntryAssembly()?.Location ?? "";
+        return new object?[] { GoString.FromDotNetString(path), null };
+    }
     // .NET has no portable getuid/getgid; report a stable non-root value (these feed rarely
     // used paths such as google/uuid's DCE UUIDs). On Unix the real ids are read when
     // available, else a fixed fallback so the value is deterministic.

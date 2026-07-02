@@ -58,6 +58,17 @@ func (l *funcLowerer) emitBox(t goir.Type) {
 
 // emitUnbox unboxes the object on top of the stack into a value of type t.
 func (l *funcLowerer) emitUnbox(t goir.Type) {
+	// An object[] tuple (multi-result values) has no castable TypeRef in the
+	// emitted metadata (arrays need a TypeSpec); route the cast through the
+	// runtime so the stack is properly object[]-typed — unbox.any(object) left
+	// it typed as bare object, which is invalid IL for a following ldelem.ref.
+	if t.Kind == goir.KObjectArray {
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "AsTuple",
+			Params: []goir.Type{goir.TObject}, Ret: goir.TObjectArray,
+		}})
+		return
+	}
 	l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: t})
 }
 
@@ -247,7 +258,7 @@ func (l *funcLowerer) makeCall(e *ast.CallExpr) goir.Type {
 	}
 	if st.Kind == goir.KChan {
 		if len(e.Args) >= 2 {
-			l.expr(e.Args[1]) // buffer capacity
+			l.emitIndexI8(e.Args[1]) // buffer capacity (widened)
 		} else {
 			l.emit(goir.Op{Code: goir.OpLdcI8, Int: 0}) // unbuffered
 		}
@@ -263,12 +274,12 @@ func (l *funcLowerer) makeCall(e *ast.CallExpr) goir.Type {
 		return goir.TVoid
 	}
 	lenLocal := l.addLocal(nil, goir.TInt64)
-	l.expr(e.Args[1])
+	l.emitIndexI8(e.Args[1]) // widened: make([]T, n) with an int32 n is common
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: lenLocal})
 
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: lenLocal}) // len
 	if len(e.Args) >= 3 {
-		l.expr(e.Args[2]) // cap
+		l.emitIndexI8(e.Args[2]) // cap
 	} else {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: lenLocal}) // cap = len
 	}
@@ -339,10 +350,20 @@ func (l *funcLowerer) sliceLit(e *ast.CompositeLit, st goir.Type) goir.Type {
 	return st
 }
 
+// emitIndexI8 lowers an index/bound expression and widens it to int64 on the
+// stack — the slice/string runtime helpers take int64, and a narrow index
+// (properties[uint8(r)]) left as int32 is invalid (unverifiable) IL.
+func (l *funcLowerer) emitIndexI8(e ast.Expr) {
+	l.expr(e)
+	if t := l.exprType(e); t.Kind == goir.KInt32 || t.Kind == goir.KUint32 {
+		l.emit(goir.Op{Code: goir.OpConvI8})
+	}
+}
+
 // sliceIndexRead lowers s[i] where s is a slice, leaving the element value.
 func (l *funcLowerer) sliceIndexRead(e *ast.IndexExpr, st goir.Type) {
 	l.expr(e.X)
-	l.expr(e.Index)
+	l.emitIndexI8(e.Index)
 	l.emit(goir.Op{Code: goir.OpSliceGet})
 	l.emitUnbox(*st.Elem)
 }
@@ -354,14 +375,14 @@ func (l *funcLowerer) ptrArrayIndexWrite(e *ast.IndexExpr, arr goir.Type, rhs as
 	l.expr(e.X)
 	l.emit(goir.Op{Code: goir.OpPtrGet})
 	l.emitUnbox(arr)
-	l.expr(e.Index)
+	l.emitIndexI8(e.Index)
 	l.emitBoxedElemInto(rhs, *arr.Elem)
 	l.emit(goir.Op{Code: goir.OpSliceSet})
 }
 
 func (l *funcLowerer) sliceIndexWrite(e *ast.IndexExpr, st goir.Type, rhs ast.Expr) {
 	l.expr(e.X)
-	l.expr(e.Index)
+	l.emitIndexI8(e.Index)
 	// Box by the element type so a named value stored into an interface-element slice
 	// (e.g. code[pc] = jne(target), where code is []instruction and jne is a named
 	// int32) is tagged with its typed-box identity — otherwise interface dispatch on
@@ -380,12 +401,12 @@ func (l *funcLowerer) sliceExpr(e *ast.SliceExpr) {
 		l.emit(goir.Op{Code: goir.OpStLoc, Local: tmp})
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		if e.Low != nil {
-			l.expr(e.Low)
+			l.emitIndexI8(e.Low)
 		} else {
 			l.emit(goir.Op{Code: goir.OpLdcI8, Int: 0})
 		}
 		if e.High != nil {
-			l.expr(e.High)
+			l.emitIndexI8(e.High)
 		} else {
 			l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 			l.emit(goir.Op{Code: goir.OpStrLen})
@@ -416,12 +437,12 @@ func (l *funcLowerer) sliceExpr(e *ast.SliceExpr) {
 
 	l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 	if e.Low != nil {
-		l.expr(e.Low)
+		l.emitIndexI8(e.Low)
 	} else {
 		l.emit(goir.Op{Code: goir.OpLdcI8, Int: 0})
 	}
 	if e.High != nil {
-		l.expr(e.High)
+		l.emitIndexI8(e.High)
 	} else {
 		l.emit(goir.Op{Code: goir.OpLdLoc, Local: tmp})
 		l.emit(goir.Op{Code: goir.OpSliceLen})
@@ -429,7 +450,7 @@ func (l *funcLowerer) sliceExpr(e *ast.SliceExpr) {
 	if e.Max != nil {
 		// s[lo:hi:max] — the full-slice expression caps the result's capacity at max-lo,
 		// so a later append past it reallocates instead of writing into s's tail.
-		l.expr(e.Max)
+		l.emitIndexI8(e.Max)
 		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
 			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "Slice3",
 			Params: []goir.Type{sliceTy, goir.TInt64, goir.TInt64, goir.TInt64}, Ret: sliceTy,

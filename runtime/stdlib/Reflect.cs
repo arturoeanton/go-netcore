@@ -164,6 +164,21 @@ public static class Reflect
     }
 
     // The boxed zero value for a type descriptor's kind.
+    private static bool IsGoStruct(System.Type t) =>
+        t.IsValueType && !t.IsPrimitive && !t.IsEnum && t != typeof(GoSlice) && t != typeof(GoComplex) && t != typeof(GoString);
+
+    // ZeroForDesc but, for a struct descriptor, resolve its CLR type (by clrName /
+    // DispatchId link) and build a Go-zeroed instance rather than null.
+    private static object? ZeroForDescOrStruct(GoTypeDesc? d)
+    {
+        if (d != null && d.Kind == GoKind.Struct)
+        {
+            var ct = TypeReg.ResolveClr(d);
+            if (ct != null) { try { return ZeroStruct(ct); } catch { } }
+        }
+        return ZeroForDesc(d);
+    }
+
     private static object? ZeroForDesc(GoTypeDesc? d)
     {
         if (d == null) return null;
@@ -227,7 +242,14 @@ public static class Reflect
     {
         if (v is GoReflectValue rv && rv.RO)
             throw new GoPanicException(GoString.FromDotNetString("reflect.Value.Interface: cannot return value obtained from unexported field or method"));
-        return RVal(v);
+        var x = RVal(v);
+        // A nil pointer/interface Value carries no runtime value, but .Interface()
+        // must still round-trip its TYPE (reflect.TypeOf(reflect.Zero(PtrTo(t))
+        // .Interface()) == *t). Emit a typed-nil carrier: GoNamed{"*T" id, null},
+        // which FromValue resolves back to the pointer descriptor and %T names "*T".
+        if (x == null && v is GoReflectValue rv2 && rv2.Desc != null && rv2.Desc.Kind == GoKind.Ptr && rv2.Desc.Str.Length > 0)
+            return new GoNamed(Rt.InternTypeName(GoString.FromDotNetString(rv2.Desc.Str)), null);
+        return x;
     }
     public static long Value_Int(object? v) => Convert.ToInt64(RVal(v) ?? 0L);
     public static ulong Value_Uint(object? v) => Convert.ToUInt64(RVal(v) ?? (ulong)0);
@@ -400,11 +422,24 @@ public static class Reflect
                 ulong => (ulong)0,
                 double => (double)0,
                 GoString => GoString.FromDotNetString(""),
+                // A struct sample zeroes to a Go-zeroed CLR instance (string fields "",
+                // nested structs recursively zeroed) — NOT null, or reflect.New(struct)
+                // yields a pointer to nil and a field alias (&p.field) nil-derefs
+                // (protobuf's MessageInfo.init reads &mi.initDone atomically).
+                _ when sample.GetType().IsValueType && IsGoStruct(sample.GetType()) => ZeroStruct(sample.GetType()),
                 _ => sample.GetType().IsValueType ? System.Activator.CreateInstance(sample.GetType()) : null,
             }
-            : ZeroForDesc(td);
+            : ZeroForDescOrStruct(td);
         var ptrDesc = td != null ? TypeReg.Synth(GoKind.Ptr, "*" + td.Str, td, null, 0) : null;
-        return new GoReflectValue { V = new GoPtr { Value = zero }, Desc = ptrDesc };
+        // Stamp the pointee's struct type id and the pointer's "*T" display id so the
+        // pointer satisfies interface assertions / type switches (a *Msg from
+        // reflect.New must dispatch its methods) and %T names it — exactly like a
+        // pointer taken with &. Without this, reflect-allocated messages (protobuf's
+        // decoder) fail `mp.Interface().(SomeIface)`.
+        var gp = new GoPtr { Value = zero };
+        if (td != null && td.DispatchId > 0) gp.TypeId = td.DispatchId;
+        if (ptrDesc != null) gp.PtrName = Rt.InternTypeName(GoString.FromDotNetString(ptrDesc.Str));
+        return new GoReflectValue { V = gp, Desc = ptrDesc };
     }
     public static GoSlice Value_MapKeys(object? v)
     {
@@ -594,6 +629,14 @@ public static class Reflect
 
     // --- reflect.Method field reads (handle; methods are not retained) ------
     public static GoString Method_Name(object m) => GoString.FromDotNetString(((GoReflectMethod)m).Name);
+
+    // Method.Func / Method.Type: the standalone func-value form of a reflected
+    // method. Only the legacy protobuf oneof scan touches these (dead at runtime
+    // for supported types): the Value carries a nil func (a Call on it fails
+    // loudly), and the Type is a bare func-kind descriptor.
+    public static object Method_FuncValue(object m) => new GoReflectValue { V = null };
+    public static object? Method_TypeOf(object m) =>
+        new GoTypeDesc { Kind = 18, Str = "func()" }; // reflect.Func
     public static long Method_Index(object m) => ((GoReflectMethod)m).Index;
     public static GoString Method_PkgPath(object m) => GoString.FromDotNetString("");
     public static bool Method_IsExported(object m)
