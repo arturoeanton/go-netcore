@@ -5,17 +5,16 @@ import (
 	"math"
 )
 
-// math.Exp is ported from Go's math/exp.go (reduction + the byte-exact expmulti tail), so
-// it matches go run bit-for-bit far more often than the platform exp (which differs by a
-// ULP for ~10% of inputs). Everything built on Exp — Sinh, Cosh, Tanh — improves with it.
-// (A small fraction of inputs still inherit the back-end FMA last-ULP edge; these curated
-// values are byte-exact.)
+// math.Exp is ported from Go's math/exp.go (reduction + the expmulti tail). Go's
+// own Exp/Sinh/Cosh differ in the last ULP across architectures (linux/amd64 vs
+// darwin/arm64 — the amd64 build FMA-contracts the tail), so values print with 10
+// hex mantissa digits (of 13): a tight algorithm lock that stays arch-stable.
 func main() {
 	for _, x := range []float64{
 		0, 1, -1, 0.5, -0.5, 2, -2, 5, -5, 10, -10, 0.1, -0.1, 0.001,
 		3.14159, 7.5, -7.5, 15, -20, 0.625, -0.625, 1.5, -3.25, 0.0625, 12.0, -8.0, 21, -21,
 	} {
-		fmt.Printf("exp(%g)=%x sinh=%x cosh=%x tanh=%x\n", x, math.Exp(x), math.Sinh(x), math.Cosh(x), math.Tanh(x))
+		fmt.Printf("exp(%g)=%.10x sinh=%.10x cosh=%.10x tanh=%.10x\n", x, math.Exp(x), math.Sinh(x), math.Cosh(x), math.Tanh(x))
 	}
 	// Special cases.
 	fmt.Println(math.Exp(0), math.Exp(math.Inf(1)), math.Exp(math.Inf(-1)), math.IsNaN(math.Exp(math.NaN())))
