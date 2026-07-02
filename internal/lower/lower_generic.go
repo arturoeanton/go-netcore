@@ -22,13 +22,25 @@ func substType(t types.Type, subst map[*types.TypeParam]types.Type) types.Type {
 			return c
 		}
 	case *types.Slice:
-		return types.NewSlice(substType(u.Elem(), subst))
+		// Return the ORIGINAL type when the element is unchanged: types.NewSlice/NewPointer/…
+		// always allocate a fresh instance, and callers compare the result by identity
+		// (structForLocalMono's `changed` check) — a spurious new instance would wrongly flag
+		// a non-generic field (*Location) as substituted and clone its named struct.
+		if e := substType(u.Elem(), subst); e != u.Elem() {
+			return types.NewSlice(e)
+		}
 	case *types.Map:
-		return types.NewMap(substType(u.Key(), subst), substType(u.Elem(), subst))
+		if k, v := substType(u.Key(), subst), substType(u.Elem(), subst); k != u.Key() || v != u.Elem() {
+			return types.NewMap(k, v)
+		}
 	case *types.Pointer:
-		return types.NewPointer(substType(u.Elem(), subst))
+		if e := substType(u.Elem(), subst); e != u.Elem() {
+			return types.NewPointer(e)
+		}
 	case *types.Chan:
-		return types.NewChan(u.Dir(), substType(u.Elem(), subst))
+		if e := substType(u.Elem(), subst); e != u.Elem() {
+			return types.NewChan(u.Dir(), e)
+		}
 	case *types.Named:
 		// Re-instantiate a generic named type under the substitution, e.g.
 		// Stack[T] -> Stack[int], so its concrete struct registers correctly.
@@ -78,6 +90,16 @@ func (l *funcLowerer) goType(t types.Type) (goir.Type, bool) {
 		return l.lowerCtx.goType(t)
 	}
 	t = substType(t, l.typeSubst)
+	// A pointer to an opaque value-type shim IS that shim's handle (*bytes.Buffer and
+	// bytes.Buffer share one runtime object), so resolve it via lowerCtx.goType — which
+	// special-cases it to KObject. Without this the Pointer case below would wrap the shim
+	// as KPtr→KObject and a shim field write inside a generic method (res.Body = … in
+	// httprc's ResourceBase[T].Sync) would fail to lower as "field assignment to non-struct".
+	if pt, ok := t.Underlying().(*types.Pointer); ok {
+		if named, ok := types.Unalias(pt.Elem()).(*types.Named); ok && isOpaqueShimType(named) {
+			return l.lowerCtx.goType(t)
+		}
+	}
 	// A non-generic named struct can still reference the enclosing function's type
 	// parameters in its fields (a local `type pair struct{ k K; v V }`). substType leaves
 	// it unchanged (no type args), and lowerCtx.structFor erases the type-param fields to
