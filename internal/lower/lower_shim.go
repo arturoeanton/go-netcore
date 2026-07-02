@@ -133,11 +133,11 @@ var shimRegistry = map[string]map[string]shimFunc{
 		"EncryptOAEP":               {"CryptoSign", "EncryptOAEP"}, "DecryptOAEP": {"CryptoSign", "DecryptOAEP"}},
 	"crypto/tls": {"Server": {"HttpTypes", "TlsServer"}, "Client": {"HttpTypes", "TlsClient"}, "X509KeyPair": {"HttpTypes", "X509KeyPair"}, "LoadX509KeyPair": {"HttpTypes", "LoadX509KeyPair"}, "NewListener": {"HttpTypes", "NewListener"}, "Listen": {"HttpTypes", "TlsListen"}, "CipherSuiteName": {"HttpTypes", "CipherSuiteName"}, "VersionName": {"HttpTypes", "VersionName"}},
 	"crypto/x509": {
-		"NewCertPool":       {"Crypto509", "NewCertPool"},
+		"NewCertPool": {"Crypto509", "NewCertPool"}, "SystemCertPool": {"Crypto509", "SystemCertPool"},
 		"CreateCertificate": {"Crypto509", "CreateCertificate"}, "ParseCertificate": {"Crypto509", "ParseCertificate"}, "ParseCertificates": {"Crypto509", "ParseCertificates"},
 		"MarshalECPrivateKey": {"Crypto509", "MarshalECPrivateKey"}, "ParseECPrivateKey": {"Crypto509", "ParseECPrivateKey"},
 		"MarshalPKCS1PrivateKey": {"Crypto509", "MarshalPKCS1PrivateKey"}, "ParsePKCS1PrivateKey": {"Crypto509", "ParsePKCS1PrivateKey"},
-		"ParsePKCS8PrivateKey": {"Crypto509", "ParsePKCS8PrivateKey"}, "MarshalPKCS8PrivateKey": {"Crypto509", "MarshalPKCS8PrivateKey"}, "CreateCertificateRequest": {"Crypto509", "CreateCertificateRequest"},
+		"ParsePKCS8PrivateKey": {"Crypto509", "ParsePKCS8PrivateKey"}, "MarshalPKCS8PrivateKey": {"Crypto509", "MarshalPKCS8PrivateKey"}, "CreateCertificateRequest": {"Crypto509", "CreateCertificateRequest"}, "ParseCertificateRequest": {"Crypto509", "ParseCertificateRequest"},
 		"ParsePKIXPublicKey": {"Crypto509", "ParsePKIXPublicKey"}, "ParsePKCS1PublicKey": {"Crypto509", "ParsePKCS1PublicKey"}, "DecryptPEMBlock": {"CryptoSign", "DecryptPEMBlock"},
 		"MarshalPKIXPublicKey": {"Crypto509", "MarshalPKIXPublicKey"}, "MarshalPKCS1PublicKey": {"Crypto509", "MarshalPKCS1PublicKey"},
 	},
@@ -726,6 +726,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"crypto/rand.Reader":                {"Crypto", "RandReader"},
 	"io.Discard":                        {"Io", "Discard"},
 	"net/http.DefaultClient":            {"Http", "DefaultClient"},
+	"net/http.DefaultTransport":         {"HttpTypes", "NewTransport"},
 	"os.Interrupt":                      {"Os", "Interrupt"},
 	"os.Kill":                           {"Os", "Kill"},
 	"syscall.SIGHUP":                    {"Syscall", "SIGHUP"},
@@ -796,6 +797,7 @@ var shimVarRegistry = map[string]shimFunc{
 	"net/http.ErrNotSupported":          {"Http", "ErrNotSupported"},
 	"net/http.ErrSkipAltProtocol":       {"Http", "ErrSkipAltProtocol"},
 	"net/http.ErrServerClosed":          {"Http", "ErrServerClosed"},
+	"net/http.ErrUseLastResponse":       {"Http", "ErrUseLastResponse"},
 	"net/http.ErrHandlerTimeout":        {"Http", "ErrHandlerTimeout"},
 	"net/http.ErrNoCookie":              {"Http", "ErrNoCookie"},
 	"net/http.NoBody":                   {"Http", "NoBody"},
@@ -956,6 +958,10 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 		"Version": {"Crypto509", "Cert_Version"}, "Issuer": {"Crypto509", "Cert_Issuer"}, "KeyUsage": {"Crypto509", "Cert_KeyUsage"},
 		"ExtKeyUsage": {"Crypto509", "Cert_ExtKeyUsage"}, "ExtraExtensions": {"Crypto509", "Cert_ExtraExtensions"},
 		"IPAddresses": {"Crypto509", "Cert_IPAddresses"}, "PublicKey": {"Crypto509", "Cert_PublicKey"},
+		"URIs": {"Crypto509", "Cert_URIs"},
+	},
+	"net/url.Error": {
+		"Op": {"Url", "URLError_Op"}, "URL": {"Url", "URLError_URL"}, "Err": {"Url", "URLError_Err"},
 	},
 	"encoding/pem.Block": {
 		"Type": {"Pem", "Block_Type"}, "Bytes": {"Pem", "Block_Bytes"}, "Headers": {"Pem", "Block_Headers"},
@@ -1233,11 +1239,13 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	},
 	"net/http.Transport": {
 		"TLSNextProto": {"HttpTypes", "Transport_SetTLSNextProto"}, "TLSClientConfig": {"HttpTypes", "Transport_SetTLSClientConfig"}, "HTTP2": {"HttpTypes", "Transport_SetHTTP2"},
+		"DialContext": {"HttpTypes", "Transport_SetDialContext"}, "DisableKeepAlives": {"HttpTypes", "Transport_SetDisableKeepAlives"},
 	},
 	"crypto/tls.Config": {
 		"NextProtos": {"HttpTypes", "Config_SetNextProtos"}, "PreferServerCipherSuites": {"HttpTypes", "Config_SetPreferServerCipherSuites"},
 		"ServerName": {"HttpTypes", "Config_SetServerName"}, "MinVersion": {"HttpTypes", "Config_SetMinVersion"}, "MaxVersion": {"HttpTypes", "Config_SetMaxVersion"}, "InsecureSkipVerify": {"HttpTypes", "Config_SetInsecureSkipVerify"},
 		"Certificates": {"HttpTypes", "Config_SetCertificates"}, "GetCertificate": {"HttpTypes", "Config_SetGetCertificate"},
+		"RootCAs": {"HttpTypes", "Config_SetRootCAs"},
 	},
 	"crypto/tls.Certificate": {
 		"PrivateKey": {"HttpTypes", "Cert_SetPrivateKey"}, "Leaf": {"HttpTypes", "Cert_SetLeaf"}, "Certificate": {"HttpTypes", "Cert_SetCertificate"}, "OCSPStaple": {"HttpTypes", "Cert_SetOCSPStaple"},
@@ -1696,9 +1704,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	},
 	"crypto/x509.Certificate": {
 		"VerifyHostname": {"Crypto509", "Cert_VerifyHostname"}, "CheckSignatureFrom": {"Crypto509", "Cert_CheckSignatureFrom"},
+		"Verify": {"Crypto509", "Cert_Verify"},
 	},
 	"crypto/x509.CertPool": {
-		"AppendCertsFromPEM": {"Crypto509", "CertPool_AppendCertsFromPEM"},
+		"AppendCertsFromPEM": {"Crypto509", "CertPool_AppendCertsFromPEM"}, "AddCert": {"Crypto509", "CertPool_AddCert"},
 	},
 	"crypto/ecdsa.PrivateKey": {"Public": {"Crypto509", "EcdsaPublic"}, "ECDH": {"Crypto509", "EcdsaPrivate_ECDH"}, "Sign": {"CryptoSign", "EcdsaKey_Sign"}},
 	"crypto/ecdsa.PublicKey":  {"ECDH": {"Crypto509", "EcdsaPublic_ECDH"}},

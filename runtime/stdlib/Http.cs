@@ -159,6 +159,9 @@ public static class Http
     public static object ErrServerClosed() => ErrServerClosedSentinel;
     public static readonly GoError ErrHandlerTimeoutSentinel = new(GoString.FromDotNetString("http: Handler timeout"));
     public static object ErrHandlerTimeout() => ErrHandlerTimeoutSentinel;
+    // Returned by a Client.CheckRedirect to stop following redirects and use the last response.
+    public static readonly GoError ErrUseLastResponseSentinel = new(GoString.FromDotNetString("net/http: use last response"));
+    public static object ErrUseLastResponse() => ErrUseLastResponseSentinel;
     // http.ErrNoCookie: the sentinel (*Request).Cookie returns for a missing cookie.
     public static readonly GoError ErrNoCookieSentinel = new(GoString.FromDotNetString("http: named cookie not present"));
     public static object ErrNoCookie() => ErrNoCookieSentinel;
@@ -1368,6 +1371,8 @@ public static class HttpTypes
     public static long Transport_ResponseHeaderTimeout(object t) => TF(t).GetL("ResponseHeaderTimeout");
     public static void Transport_SetTLSClientConfig(object t, object? v) => TF(t).Set("TLSClientConfig", v);
     public static void Transport_SetHTTP2(object t, object? v) => TF(t).Set("HTTP2", v);
+    public static void Transport_SetDialContext(object t, object? v) => TF(t).Set("DialContext", v);
+    public static void Transport_SetDisableKeepAlives(object t, bool v) => TF(t).Set("DisableKeepAlives", v);
     public static void Transport_RegisterProtocol(object t, GoString scheme, object? rt) { } // dead path (client never runs)
     public static void Transport_CloseIdleConnections(object t) { }
     public static object Transport_Clone(object t) => new GoHttpTransport();
@@ -1392,6 +1397,7 @@ public static class HttpTypes
     public static void Config_SetGetCertificate(object c, GoClosure? v) => CF(c).Set("GetCertificate", v);
     public static object? Config_RootCAs(object c) => CF(c).Get("RootCAs");
     public static GoSlice Config_Certificates(object c) => CF(c).Get("Certificates") is GoSlice s ? s : default;
+    public static void Config_SetRootCAs(object c, object? v) => CF(c).Set("RootCAs", v);
     public static void Config_SetCertificates(object c, GoSlice v) => CF(c).Set("Certificates", v);
     // tls.Certificate field reads/writes (autocert paths; empty under plain serving).
     public static object? Cert_PrivateKey(object c) => ((GoTlsCert)c).F.Get("PrivateKey");

@@ -119,7 +119,7 @@ public sealed class GoCert
 public sealed class GoCertReq { public byte[] Der = System.Array.Empty<byte>(); public GoPkixName Subject = new(); public GoSlice? DNSNames; }
 
 /// <summary>An opaque x509.CertPool (TLS trust store — dead code on goclr's HTTP path).</summary>
-public sealed class GoCertPool { }
+public sealed class GoCertPool { public readonly System.Collections.Generic.List<GoCert> Certs = new(); }
 
 /// <summary>Shim for the crypto/x509 + ecdsa/rsa/elliptic + pkix surface that
 /// acme/autocert and TLS need: EC/RSA key generation, self-signed certificate creation,
@@ -153,6 +153,14 @@ public static class Crypto509
 
     // --- cert pool (TLS trust store; goclr serves plain HTTP, so it's an inert handle) ---
     public static object NewCertPool() => new GoCertPool();
+    // x509.SystemCertPool() (*CertPool, error): the OS trust store is represented by an
+    // empty goclr pool (TLS validation defers to the platform), returned without error.
+    public static object?[] SystemCertPool() => new object?[] { new GoCertPool(), null };
+    public static void CertPool_AddCert(object p, object? cert) { if (cert is GoCert c) ((GoCertPool)p).Certs.Add(c); }
+    // (*x509.Certificate).Verify(opts) ([][]*Certificate, error): full path/name/usage chain
+    // verification is not yet modeled, so it fails loud rather than fabricating a chain.
+    public static object?[] Cert_Verify(object cert, object? opts) =>
+        new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString("x509: certificate chain verification is not implemented under goclr")) };
     public static bool CertPool_AppendCertsFromPEM(object pool, GoSlice pem) => true;
 
     // --- elliptic curves ---
@@ -290,6 +298,22 @@ public static class Crypto509
         catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("x509: " + e.Message)) }; }
     }
 
+    // x509.ParseCertificateRequest(der) (*CertificateRequest, error): parse a PKCS#10 CSR,
+    // recovering the subject common name (enough for OPA's crypto.x509.parse_certificate_request).
+    public static object?[] ParseCertificateRequest(GoSlice der)
+    {
+        try
+        {
+            byte[] raw = Raw(der);
+            var req = CertificateRequest.LoadSigningRequest(raw, HashAlgorithmName.SHA256,
+                System.Security.Cryptography.X509Certificates.CertificateRequestLoadOptions.Default);
+            string cn = "";
+            try { cn = req.SubjectName.Name; } catch { }
+            return new object?[] { new GoCertReq { Der = raw, Subject = new GoPkixName { CommonName = cn } }, null };
+        }
+        catch (System.Exception e) { return new object?[] { null, new GoError(GoString.FromDotNetString("x509: " + e.Message)) }; }
+    }
+
     // x509.CreateCertificateRequest(rand, template, priv) ([]byte, error) — a CSR.
     public static object?[] CreateCertificateRequest(object? rand, object template, object? priv)
     {
@@ -349,6 +373,37 @@ public static class Crypto509
                             if (tag.TagClass == System.Formats.Asn1.TagClass.ContextSpecific && tag.TagValue == 2)
                                 list.Add(GoString.FromDotNetString(seq.ReadCharacterString(System.Formats.Asn1.UniversalTagNumber.IA5String,
                                     new System.Formats.Asn1.Asn1Tag(System.Formats.Asn1.TagClass.ContextSpecific, 2))));
+                            else seq.ReadEncodedValue();
+                        }
+                    }
+                    catch { }
+                }
+        return new GoSlice { Data = list.ToArray(), Off = 0, Len = list.Count, Cap = list.Count };
+    }
+
+    // x509.Certificate.URIs ([]*url.URL): the URI entries (SAN tag 6), each parsed to a
+    // *url.URL. OPA's crypto.x509 builtins read these and call (*url.URL).String().
+    public static GoSlice Cert_URIs(object c)
+    {
+        var g = (GoCert)c;
+        var list = new System.Collections.Generic.List<object?>();
+        if (g.Cert != null)
+            foreach (var ext in g.Cert.Extensions)
+                if (ext.Oid?.Value == "2.5.29.17")
+                {
+                    try
+                    {
+                        var seq = new System.Formats.Asn1.AsnReader(ext.RawData, System.Formats.Asn1.AsnEncodingRules.DER).ReadSequence();
+                        while (seq.HasData)
+                        {
+                            var tag = seq.PeekTag();
+                            if (tag.TagClass == System.Formats.Asn1.TagClass.ContextSpecific && tag.TagValue == 6)
+                            {
+                                string uri = seq.ReadCharacterString(System.Formats.Asn1.UniversalTagNumber.IA5String,
+                                    new System.Formats.Asn1.Asn1Tag(System.Formats.Asn1.TagClass.ContextSpecific, 6));
+                                var pr = Url.Parse(GoString.FromDotNetString(uri));
+                                if (pr[1] == null && pr[0] != null) list.Add(pr[0]);
+                            }
                             else seq.ReadEncodedValue();
                         }
                     }

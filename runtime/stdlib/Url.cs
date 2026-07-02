@@ -448,6 +448,9 @@ public static class Url
 
     // url.Error / EscapeError / InvalidHostError methods.
     public static GoString URLError_Error(object e) => ((GoUrlError)e).Error();
+    public static GoString URLError_Op(object e) => GoString.FromDotNetString(((GoUrlError)e).Op);
+    public static GoString URLError_URL(object e) => GoString.FromDotNetString(((GoUrlError)e).Url);
+    public static object? URLError_Err(object e) => ((GoUrlError)e).Err;
     public static object? URLError_Unwrap(object e) => ((GoUrlError)e).Err;
     public static bool URLError_Timeout(object e) { var err = ((GoUrlError)e).Err; return err != null && Bridge.HasMethod(err, "Timeout") && Bridge.CallMethod(err, "Timeout") is bool b && b; }
     public static bool URLError_Temporary(object e) { var err = ((GoUrlError)e).Err; return err != null && Bridge.HasMethod(err, "Temporary") && Bridge.CallMethod(err, "Temporary") is bool b && b; }
