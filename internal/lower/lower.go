@@ -675,25 +675,25 @@ func funcDecls(p *frontend.Package) []*ast.FuncDecl {
 // native surface. They must import nothing outside this set and contain only code
 // goclr can lower (structs, slices, maps, package-level table initializers).
 var compileFromSource = map[string]bool{
-	"unicode":             true,
-	"sort":                true, // via a goclr source overlay (drops internal/reflectlite)
-	"cmp":                 true, // tiny generic package (Less/Compare/Or over the Ordered set)
-	"slices":              true, // generic slice helpers (depends only on cmp)
-	"net/http/httptrace":  true, // via a goclr overlay (drops crypto/tls + internal/nettrace)
-	"database/sql":        true, // pure Go; pairs with a compiled-from-source driver
-	"database/sql/driver": true, // driver interfaces + value types
-	"maps":                true, // generic map helpers (iterators)
-	"iter":                true, // iter.Seq[K] range-over-func
-	"container/ring":      true, // circular list — pure pointer/struct code, no deps
-	"image/color":         true, // leaf package (no imports): RGBA/NRGBA/Gray/YCbCr/CMYK + Models, pure arithmetic
-	"image":               true, // geometry (Rectangle/Point) + image buffer types (RGBA/NRGBA/Gray/Paletted/YCbCr…); depends only on image/color + shimmed math/bits/strconv/bufio/sync
+	"unicode":                  true,
+	"sort":                     true, // via a goclr source overlay (drops internal/reflectlite)
+	"cmp":                      true, // tiny generic package (Less/Compare/Or over the Ordered set)
+	"slices":                   true, // generic slice helpers (depends only on cmp)
+	"net/http/httptrace":       true, // via a goclr overlay (drops crypto/tls + internal/nettrace)
+	"database/sql":             true, // pure Go; pairs with a compiled-from-source driver
+	"database/sql/driver":      true, // driver interfaces + value types
+	"maps":                     true, // generic map helpers (iterators)
+	"iter":                     true, // iter.Seq[K] range-over-func
+	"container/ring":           true, // circular list — pure pointer/struct code, no deps
+	"image/color":              true, // leaf package (no imports): RGBA/NRGBA/Gray/YCbCr/CMYK + Models, pure arithmetic
+	"image":                    true, // geometry (Rectangle/Point) + image buffer types (RGBA/NRGBA/Gray/Paletted/YCbCr…); depends only on image/color + shimmed math/bits/strconv/bufio/sync
 	"image/internal/imageutil": true, // DrawYCbCr helper (imports only image); gen.go is //go:build ignore
 	"image/draw":               true, // compositing (Draw/DrawMask, Src/Over ops, Uniform); depends on image + image/color + image/internal/imageutil
 	// image/png NOT yet: Encode works (after the io.WriteString binary fix), but Decode
 	// nil-derefs in the lowered (*decoder).decode scanline path (a lowering bug, not zlib).
 	// Compress.DecompReader eagerly drains, which doesn't compose with png's IDAT reader).
-	"io":                  true, // pure Go (errors+sync); shims still win for Copy/ReadAll/… (shimExtern precedes byFunc), but MultiWriter/MultiReader/TeeReader/Pipe come from real source so their per-writer/-reader Write/Read go through normal interface dispatch
-	"text/tabwriter":      true, // compiles from source (a runtime use may still NRE — see LIMITATIONS); lets fiber's test-only assert helper lower
+	"io":             true, // pure Go (errors+sync); shims still win for Copy/ReadAll/… (shimExtern precedes byFunc), but MultiWriter/MultiReader/TeeReader/Pipe come from real source so their per-writer/-reader Write/Read go through normal interface dispatch
+	"text/tabwriter": true, // compiles from source (a runtime use may still NRE — see LIMITATIONS); lets fiber's test-only assert helper lower
 	// `goclr test` only: a minimal real-Go `testing` + testdeps overlay (see
 	// internal/frontend/overlays/testing); lowered so t.Errorf/Fatal/Run/... are real
 	// method calls. Outside a test build neither package is imported.

@@ -357,7 +357,7 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	wTypeDefOrRef := codedWide(maxRows(nTypeDef, nTypeRef, 0), 2)
 	// MemberRefParent (3 bits): TypeDef, TypeRef, ModuleRef(0), MethodDef, TypeSpec(0).
 	wMemberRefParent := codedWide(maxRows(nTypeDef, nTypeRef, 0, nMethodDef, 0), 3)
-	wFieldIdx := simpleWide(nField)     // FieldList -> Field
+	wFieldIdx := simpleWide(nField)      // FieldList -> Field
 	wMethodIdx := simpleWide(nMethodDef) // MethodList -> MethodDef
 	wParamIdx := simpleWide(0)           // ParamList -> Param (empty)
 
@@ -488,7 +488,7 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.idx(1, wFieldIdx)  // FieldList (owns none; structs' fields start at 1)
 	w.idx(1, wMethodIdx) // MethodList -> MethodDef[1] (owns all methods)
 	// [3..] struct value types, extending System.ValueType.
-	extendsValueType := uint32(8<<2 | 1)             // TypeDefOrRef -> TypeRef[8]
+	extendsValueType := uint32(8<<2 | 1)              // TypeDefOrRef -> TypeRef[8]
 	structMethodList := uint32(len(prog.Methods) + 1) // structs own no methods
 	for i := range prog.Structs {
 		w.u32(0x00100109) // Public | SequentialLayout | Sealed | BeforeFieldInit
@@ -631,7 +631,7 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	w.heap(h.addString("Run"))
 	w.heap(h.addBlob([]byte{0x00, 0x01, 0x01, 0x0A})) // void(i8)
 	// [61] GoErrors.Error(GoError) -> GoString.
-	w.idx(uint32(31<<3 | 1), wMemberRefParent) // MemberRefParent -> TypeRef[31] GoErrors
+	w.idx(uint32(31<<3|1), wMemberRefParent) // MemberRefParent -> TypeRef[31] GoErrors
 	w.heap(h.addString("Error"))
 	w.heap(h.addBlob([]byte{0x00, 0x01, 0x11, goStringCoded, 0x12, goErrorCoded})) // GoString(GoError)
 	// [62..64] GoStrings.FromRune/FromBytes/FromRunes.
@@ -647,8 +647,8 @@ func buildTables(prog *goir.Program, h *heaps, methodRVAs []uint32, sigBlobOffse
 	// [65] GoStrings.FromLiteralBytes(string) -> GoString (byte-lossless string const).
 	w.idx(parentGoStrings, wMemberRefParent)
 	w.heap(h.addString("FromLiteralBytes"))
-	w.heap(h.addBlob(sigStrFromLit))                                               // GoString(string)
-	for _, em := range extMembers {                                                // [66+] shim methods
+	w.heap(h.addBlob(sigStrFromLit)) // GoString(string)
+	for _, em := range extMembers {  // [66+] shim methods
 		w.idx(em.parent, wMemberRefParent)
 		w.heap(em.name)
 		w.heap(em.sig)

@@ -205,12 +205,12 @@ const (
 	OpConvR8  // conv.r8 (to float64)
 	OpConvR4  // conv.r4 (to float32)
 	OpConvRUn // conv.r.un (unsigned integer -> F; precedes conv.r8/r4 for uint sources)
-	OpConvU8 // conv.u8 (to uint64)
-	OpConvU4 // conv.u4 (to uint32)
-	OpConvI1 // conv.i1 (truncate + sign-extend to int8 width)
-	OpConvI2 // conv.i2 (truncate + sign-extend to int16 width)
-	OpConvU1 // conv.u1 (truncate + zero-extend to uint8 width)
-	OpConvU2 // conv.u2 (truncate + zero-extend to uint16 width)
+	OpConvU8  // conv.u8 (to uint64)
+	OpConvU4  // conv.u4 (to uint32)
+	OpConvI1  // conv.i1 (truncate + sign-extend to int8 width)
+	OpConvI2  // conv.i2 (truncate + sign-extend to int16 width)
+	OpConvU1  // conv.u1 (truncate + zero-extend to uint8 width)
+	OpConvU2  // conv.u2 (truncate + zero-extend to uint16 width)
 
 	OpNewObjArray
 	OpDup

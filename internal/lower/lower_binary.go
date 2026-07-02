@@ -88,9 +88,9 @@ func (l *funcLowerer) binaryWriteCall(e *ast.CallExpr) goir.Type {
 		}})
 		return goir.TObject
 	}
-	l.expr(e.Args[0])           // w
-	l.expr(e.Args[1])           // order
-	l.emitBoxedElem(e.Args[2])  // data (boxed)
+	l.expr(e.Args[0])          // w
+	l.expr(e.Args[1])          // order
+	l.emitBoxedElem(e.Args[2]) // data (boxed)
 	l.emit(goir.Op{Code: goir.OpStrConst, Str: desc})
 	l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
 		Assembly: shimAssembly, Namespace: shimAssembly, Type: "Binary", Method: "WriteDesc",

@@ -10,7 +10,7 @@ type CoverageData struct {
 	Funcs              map[string]map[string]bool // import path -> {func name}
 	Methods            map[string]map[string]bool // import path -> {"Type.Method"}
 	Vars               map[string]map[string]bool // import path -> {var/const name}
-	CompiledFromSource map[string]bool             // import path lowered from source (full)
+	CompiledFromSource map[string]bool            // import path lowered from source (full)
 }
 
 // Coverage snapshots the backend's shim registries and compiled-from-source set.

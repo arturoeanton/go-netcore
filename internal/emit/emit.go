@@ -116,8 +116,8 @@ const (
 	tokStrFromLitBytes uint32 = 0x0A000041
 	methodBase         uint32 = 0x06000000
 	sigBase            uint32 = 0x11000000
-	typeDefBase     uint32 = 0x02000000
-	fieldTableBase  uint32 = 0x04000000
+	typeDefBase        uint32 = 0x02000000
+	fieldTableBase     uint32 = 0x04000000
 )
 
 // mvid is a fixed module version GUID for deterministic output.
