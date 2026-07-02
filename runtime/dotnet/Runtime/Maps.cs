@@ -25,6 +25,14 @@ public sealed class GoKeyComparer : IEqualityComparer<object>
     {
         if (ReferenceEquals(a, b)) return true;
         if (a is null || b is null) return false;
+        // A named value (GoNamed) and its raw underlying form must compare equal: the same
+        // named-int (e.g. a Token) can be boxed as a GoNamed on one side and as its bare
+        // long on the other when it crosses a generic monomorphization (slices.Contains,
+        // a map key). Unwrap named values first so the comparison is by value.
+        if (a is GoNamed na0 && b is GoNamed nb0)
+            return na0.TypeId == nb0.TypeId && Equals(na0.Value, nb0.Value);
+        if (a is GoNamed na1) return Equals(na1.Value, b);
+        if (b is GoNamed nb1) return Equals(a, nb1.Value);
         switch (a)
         {
             case GoSlice sa when b is GoSlice sb:
@@ -32,8 +40,6 @@ public sealed class GoKeyComparer : IEqualityComparer<object>
                 for (int i = 0; i < sa.Len; i++)
                     if (!Equals(sa.Data?[sa.Off + i], sb.Data?[sb.Off + i])) return false;
                 return true;
-            case GoNamed na when b is GoNamed nb:
-                return na.TypeId == nb.TypeId && Equals(na.Value, nb.Value);
             case GoComplex ca when b is GoComplex cb:
                 return ca.Re == cb.Re && ca.Im == cb.Im;
         }
