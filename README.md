@@ -27,7 +27,7 @@ special cases in the compiler.
 | | |
 | --- | --- |
 | **Version** | `0.1.0-mvp` |
-| **Conformance** | **418 fixtures** pass byte-for-byte vs `go run` ([`tests/conformance`](tests/conformance/)) |
+| **Conformance** | **587 fixtures** pass byte-for-byte vs `go run` ([`tests/conformance`](tests/conformance/)) |
 | **stdlib coverage** | ~51% of the exported standard-library API across 95 packages (`goclr coverage`, snapshot in [docs/COVERAGE.md](docs/COVERAGE.md)) |
 | **CLI** | `build` · `run` · `analyze` · `coverage` · `test` · `doctor` · `clean` · `version` |
 | **Runs end to end on the CLR** | goja (JS engine) · Gin · Gin + `database/sql` + pure-Go SQLite · Echo · errgroup · uuid · jwt (HS256) · testify |
@@ -118,7 +118,7 @@ dotnet bin/hello.dll                        # run it directly
 
 ```bash
 bash scripts/validate_demos.sh   # smoke-test every demo (servers + run-once)
-go test ./tests/conformance/     # run all 418 conformance fixtures vs `go run`
+go test ./tests/conformance/     # run all 587 conformance fixtures vs `go run`
 ```
 
 See **[Running the demos](#running-the-demos)** for what each demo does and which ones
@@ -147,6 +147,41 @@ comprehensions (`.map`/`.filter`), regex `.matches`, map access — byte-identic
 `go run`. This exercises the full reflection-heavy path (dynamic `reflect.New`
 allocation, interface satisfaction through pointer embeds, promoted pointer-receiver
 mutation) that a real Go library needs.
+
+CEL is one of **three policy/config engines packaged the same way** — the production
+Go library compiled to a .NET assembly with goclr and called from C# over a
+string-only JSON bridge, no sidecar and no P/Invoke:
+[`hcl_nuget`](examples/hcl_nuget/) parses [HashiCorp HCL](https://github.com/hashicorp/hcl)
+(Terraform's language) and [`opa_nuget`](examples/opa_nuget/) evaluates
+[Open Policy Agent](https://www.openpolicyagent.org/) Rego policies — both
+byte-identical to `go run` (see [docs/HCL.md](docs/HCL.md) and [docs/OPA.md](docs/OPA.md)).
+
+## Highlight — Open Policy Agent (Rego), consumed from C# as a NuGet
+
+[`examples/opa_nuget`](examples/opa_nuget/) packages the
+[Open Policy Agent](https://www.openpolicyagent.org/) engine — the CNCF policy
+project behind Kubernetes admission control and Envoy authorization — as a C#
+library: the production `open-policy-agent/opa` (Rego scanner, parser, compiler and
+topdown evaluator) is compiled to a .NET assembly with goclr and called from C#
+**in-process on the CLR**:
+
+```csharp
+var opa = new OpaPolicy(@"
+package example
+default allow = false
+allow { input.role == ""admin"" }
+allow { input.role == ""user""; input.action == ""read"" }
+");
+bool ok = opa.EvalBool("data.example.allow",
+                       new { role = "admin", action = "delete" });   // => true
+```
+
+The whole Rego pipeline — `PrepareForEval` (parse + compile) and `Eval` (topdown) —
+runs on the CLR and produces OPA's own result-set JSON **byte-identical to `go run`**.
+Getting there landed five general Go-semantics fixes (named-scalar identity through
+map/slice keys and `append`, slice-to-array-pointer conversion, type identity under
+generic monomorphization, shim-field writes inside generic methods), each locked by a
+conformance fixture. See [docs/OPA.md](docs/OPA.md).
 
 ## Highlight — goja evaluates JavaScript as a .NET assembly
 
@@ -234,7 +269,7 @@ can later be re-targeted at `cmd/compile/internal/ssa` without rewriting the loa
 ## What's supported
 
 The compiler runs end-to-end: frontend + the ECMA-335 emitter + the .NET runtime + a
-standard-library overlay. **418 conformance fixtures pass byte-for-byte vs `go run`.**
+standard-library overlay. **587 conformance fixtures pass byte-for-byte vs `go run`.**
 
 | Area | State |
 | --- | --- |
@@ -323,7 +358,7 @@ Smoke-test every demo at once, and run the conformance suite:
 
 ```bash
 bash scripts/validate_demos.sh   # servers get a browser-shaped request; run-once demos must not crash
-go test ./tests/conformance/     # 418 fixtures, each compared byte-for-byte vs `go run`
+go test ./tests/conformance/     # 587 fixtures, each compared byte-for-byte vs `go run`
 ```
 
 ---
@@ -377,7 +412,7 @@ The standard inner loop:
 
 ```bash
 go build -o bin/goclr ./cmd/goclr     # rebuild the CLI after a frontend/lower/emit change
-go test ./tests/conformance/          # all 418 fixtures vs `go run`
+go test ./tests/conformance/          # all 587 fixtures vs `go run`
 go test ./internal/...                # backend unit tests (emit/lower/linker/analysis)
 bash scripts/validate_demos.sh        # smoke-test the demos
 ```
