@@ -22,14 +22,66 @@ public sealed class GoCurveParams
 }
 
 /// <summary>An *ecdsa.PrivateKey / *ecdsa.PublicKey (the same handle; the public half
-/// exports only the public parameters).</summary>
+/// exports only the public parameters). A key may arrive already built (from a .NET
+/// ECDsa, e.g. GenerateKey/Parse) OR be assembled field-by-field the way pure-Go code
+/// constructs one (`var k ecdsa.PrivateKey; k.Curve=…; k.X=…; k.Y=…; k.D=…`). In the
+/// latter case the components are stashed and the .NET ECDsa is materialized lazily on
+/// first use (Sign, Marshal, a field read that isn't already a stashed component).</summary>
 [GoShim("crypto/ecdsa.PrivateKey")]
 [GoShim("crypto/ecdsa.PublicKey")]
-public sealed class GoEcKey { public ECDsa Key = null!; public bool PublicOnly; }
+public sealed class GoEcKey
+{
+    private ECDsa? _key;
+    public bool PublicOnly;
 
+    // Field-assigned components (null until set). When Dirty, _key is rebuilt from them.
+    public GoEcCurve? CurveComp;
+    public System.Numerics.BigInteger? X, Y, D;
+    public bool Dirty;
+
+    public GoEcKey() { }
+    public GoEcKey(ECDsa k) { _key = k; }
+
+    public ECDsa Key
+    {
+        get { if (_key == null || Dirty) Crypto509.MaterializeEc(this); return _key!; }
+        set { _key = value; Dirty = false; }
+    }
+    internal void SetKey(ECDsa k) { _key = k; Dirty = false; }
+}
+
+/// <summary>An *rsa.PrivateKey / *rsa.PublicKey. Like <see cref="GoEcKey"/>, either wraps a
+/// built .NET RSA or is assembled field-by-field (`k.N=…; k.E=…; k.D=…; k.Primes=…`) and
+/// materialized lazily, computing the CRT parameters from the primes.</summary>
 [GoShim("crypto/rsa.PrivateKey")]
 [GoShim("crypto/rsa.PublicKey")]
-public sealed class GoRsaKey { public RSA Key = null!; public bool PublicOnly; }
+public sealed class GoRsaKey
+{
+    private RSA? _key;
+    public bool PublicOnly;
+
+    public System.Numerics.BigInteger? N, D;
+    public long E;
+    public System.Numerics.BigInteger? P, Q; // first two primes, when provided
+    public GoRsaPrecomputed? PrecomputedComp; // stored so `k.Precomputed.Dp = …` persists
+    public bool Dirty;
+
+    public GoRsaKey() { }
+    public GoRsaKey(RSA k) { _key = k; }
+
+    public RSA Key
+    {
+        get { if (_key == null || Dirty) Crypto509.MaterializeRsa(this); return _key!; }
+        set { _key = value; Dirty = false; }
+    }
+    internal void SetKey(RSA k) { _key = k; Dirty = false; }
+}
+
+/// <summary>An rsa.PrecomputedValues — the CRT acceleration values (Dp, Dq, Qinv) that
+/// pure-Go code reads off an rsa.PrivateKey after Precompute(). Materialized on demand
+/// from the key's primes.</summary>
+[GoShim("crypto/rsa.PrecomputedValues")]
+public sealed class GoRsaPrecomputed { public System.Numerics.BigInteger Dp, Dq, Qinv; }
 
 /// <summary>A crypto/x509/pkix.Name (the distinguished-name fields x509 uses).</summary>
 [GoShim("crypto/x509/pkix.Name")]
@@ -330,16 +382,93 @@ public static class Crypto509
     public static void Cert_SetIPAddresses(object c, GoSlice v) => ((GoCert)c).IPAddresses = v;
     public static void Cert_SetPublicKey(object c, object? v) => ((GoCert)c).PublicKey = v;
 
-    // rsa.PublicKey / ecdsa.PublicKey field reads (JWK encoding in acme's jws).
-    public static object RsaKey_N(object k) { var p = ((GoRsaKey)k).Key.ExportParameters(false); return new GoBigInt { V = ToBig(p.Modulus!) }; }
-    public static long RsaKey_E(object k) { var p = ((GoRsaKey)k).Key.ExportParameters(false); return (long)ToBig(p.Exponent!); }
-    public static object EcKey_X(object k) { var p = ((GoEcKey)k).Key.ExportParameters(false); return new GoBigInt { V = ToBig(p.Q.X!) }; }
-    public static object EcKey_Y(object k) { var p = ((GoEcKey)k).Key.ExportParameters(false); return new GoBigInt { V = ToBig(p.Q.Y!) }; }
-    // The curve a key was generated on, recovered from its .NET key size (the handle does not
-    // otherwise remember which NIST curve it is).
+    // rsa.PublicKey / ecdsa.PublicKey field reads (JWK encoding in acme's jws / jwx).
+    // A component-assembled key answers from its stashed components; a built key exports.
+    public static object RsaKey_N(object k) { var r = (GoRsaKey)k; if (r.N != null) return BiBox(r.N.Value); var p = r.Key.ExportParameters(false); return new GoBigInt { V = ToBig(p.Modulus!) }; }
+    public static long RsaKey_E(object k) { var r = (GoRsaKey)k; if (r.N != null) return r.E; var p = r.Key.ExportParameters(false); return (long)ToBig(p.Exponent!); }
+    public static object RsaKey_D(object k) { var r = (GoRsaKey)k; if (r.D != null) return BiBox(r.D.Value); var p = r.Key.ExportParameters(true); return new GoBigInt { V = ToBig(p.D!) }; }
+    public static GoSlice RsaKey_Primes(object k)
+    {
+        var r = (GoRsaKey)k;
+        System.Numerics.BigInteger p, q;
+        if (r.P != null && r.Q != null) { p = r.P.Value; q = r.Q.Value; }
+        else { var pr = r.Key.ExportParameters(true); p = ToBig(pr.P!); q = ToBig(pr.Q!); }
+        return new GoSlice { Data = new object?[] { BiBox(p), BiBox(q) }, Off = 0, Len = 2, Cap = 2 };
+    }
+    // rsa.PrivateKey.Precomputed (the CRT values) and its Dp/Dq/Qinv/CRTValues reads.
+    // Returns the key's stored PrecomputedValues, deriving it from the primes on first
+    // access so a subsequent `k.Precomputed.Dp = …` writes through the same object.
+    public static object RsaKey_Precomputed(object k)
+    {
+        var r = (GoRsaKey)k;
+        if (r.PrecomputedComp == null)
+        {
+            var pc = new GoRsaPrecomputed();
+            if (r.P != null && r.Q != null && r.D != null)
+            {
+                System.Numerics.BigInteger p = r.P.Value, q = r.Q.Value, d = r.D.Value;
+                pc.Dp = PosMod(d, p - 1); pc.Dq = PosMod(d, q - 1); pc.Qinv = ModInverse(q, p);
+            }
+            else if (r.N != null) { try { var pr = r.Key.ExportParameters(true); pc.Dp = ToBig(pr.DP!); pc.Dq = ToBig(pr.DQ!); pc.Qinv = ToBig(pr.InverseQ!); } catch { } }
+            r.PrecomputedComp = pc;
+        }
+        return r.PrecomputedComp;
+    }
+    // rsa.PublicKey.Size() (promoted to PrivateKey): the modulus length in bytes.
+    public static long RsaKey_Size(object k)
+    {
+        var r = (GoRsaKey)k;
+        System.Numerics.BigInteger n = r.N ?? ToBig(r.Key.ExportParameters(false).Modulus!);
+        return ((long)n.GetBitLength() + 7) / 8;
+    }
+    public static object Precomp_Dp(object p) => BiBox(((GoRsaPrecomputed)p).Dp);
+    public static object Precomp_Dq(object p) => BiBox(((GoRsaPrecomputed)p).Dq);
+    public static object Precomp_Qinv(object p) => BiBox(((GoRsaPrecomputed)p).Qinv);
+    public static GoSlice Precomp_CRTValues(object p) => new GoSlice { Data = System.Array.Empty<object?>(), Off = 0, Len = 0, Cap = 0 };
+    public static void Precomp_SetDp(object p, object? v) { ((GoRsaPrecomputed)p).Dp = BigOf(v); }
+    public static void Precomp_SetDq(object p, object? v) { ((GoRsaPrecomputed)p).Dq = BigOf(v); }
+    public static void Precomp_SetQinv(object p, object? v) { ((GoRsaPrecomputed)p).Qinv = BigOf(v); }
+    public static void Precomp_SetCRTValues(object p, GoSlice v) { }
+    // (*ecdsa.PublicKey).ECDH() / (*ecdsa.PrivateKey).ECDH() (Go 1.20): convert an ecdsa
+    // key to the crypto/ecdh representation (same curve; public point as 0x04||X||Y).
+    public static object?[] EcdsaPublic_ECDH(object k)
+    {
+        var e = (GoEcKey)k;
+        string name = ((GoEcCurve)EcKey_Curve(k)).Name;
+        var cv = Cryptoecdh.NistCurveByName(name);
+        if (cv == null) return new object?[] { null, new GoError(GoString.FromDotNetString("crypto/ecdsa: unsupported curve for ECDH")) };
+        int size = CurveSize(new GoEcCurve { Name = name });
+        var p = e.Key.ExportParameters(false);
+        return new object?[] { new GoEcdhPublicKey { Curve = cv, Pub = Uncompressed(p.Q, size) }, null };
+    }
+    public static object?[] EcdsaPrivate_ECDH(object k)
+    {
+        var e = (GoEcKey)k;
+        string name = ((GoEcCurve)EcKey_Curve(k)).Name;
+        var cv = Cryptoecdh.NistCurveByName(name);
+        if (cv == null) return new object?[] { null, new GoError(GoString.FromDotNetString("crypto/ecdsa: unsupported curve for ECDH")) };
+        int size = CurveSize(new GoEcCurve { Name = name });
+        var p = e.Key.ExportParameters(true);
+        return new object?[] { new GoEcdhPrivateKey { Curve = cv, Priv = FixedBE(ToBig(p.D!), size), Pub = Uncompressed(p.Q, size) }, null };
+    }
+    private static byte[] Uncompressed(ECPoint q, int size)
+    {
+        var pub = new byte[1 + 2 * size];
+        pub[0] = 0x04;
+        System.Array.Copy(FixedBE(ToBig(q.X!), size), 0, pub, 1, size);
+        System.Array.Copy(FixedBE(ToBig(q.Y!), size), 0, pub, 1 + size, size);
+        return pub;
+    }
+    public static object EcKey_X(object k) { var e = (GoEcKey)k; if (e.X != null) return BiBox(e.X.Value); var p = e.Key.ExportParameters(false); return new GoBigInt { V = ToBig(p.Q.X!) }; }
+    public static object EcKey_Y(object k) { var e = (GoEcKey)k; if (e.Y != null) return BiBox(e.Y.Value); var p = e.Key.ExportParameters(false); return new GoBigInt { V = ToBig(p.Q.Y!) }; }
+    public static object EcKey_D(object k) { var e = (GoEcKey)k; if (e.D != null) return BiBox(e.D.Value); var p = e.Key.ExportParameters(true); return new GoBigInt { V = ToBig(p.D!) }; }
+    // The curve a key was generated on. A component-assembled key remembers it directly;
+    // a built key recovers it from its .NET key size.
     public static object EcKey_Curve(object k)
     {
-        int bits = ((GoEcKey)k).Key.KeySize;
+        var e = (GoEcKey)k;
+        if (e.CurveComp != null) return e.CurveComp;
+        int bits = e.Key.KeySize;
         return bits switch
         {
             224 => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-224" },
@@ -347,6 +476,103 @@ public static class Crypto509
             521 => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP521, Name = "P-521" },
             _ => new GoEcCurve { Curve = ECCurve.NamedCurves.nistP256, Name = "P-256" },
         };
+    }
+
+    // --- field WRITES: assemble a key the way pure-Go code does (k.Curve=…, k.D=…). ---
+    // Zero-value constructors: `var k ecdsa.PrivateKey` starts an empty, assemblable handle.
+    public static object NewEcdsaPrivateKey() => new GoEcKey();
+    public static object NewEcdsaPublicKey() => new GoEcKey { PublicOnly = true };
+    public static object NewRsaPrivateKey() => new GoRsaKey();
+    public static object NewRsaPublicKey() => new GoRsaKey { PublicOnly = true };
+
+    public static void EcKey_SetCurve(object k, object? c) { var e = (GoEcKey)k; e.CurveComp = c as GoEcCurve; e.Dirty = true; }
+    public static void EcKey_SetX(object k, object? x) { var e = (GoEcKey)k; e.X = BigOf(x); e.Dirty = true; }
+    public static void EcKey_SetY(object k, object? y) { var e = (GoEcKey)k; e.Y = BigOf(y); e.Dirty = true; }
+    public static void EcKey_SetD(object k, object? d) { var e = (GoEcKey)k; e.D = BigOf(d); e.PublicOnly = false; e.Dirty = true; }
+    public static void EcKey_SetPublicKey(object k, object? pub)
+    {
+        var e = (GoEcKey)k;
+        if (pub is GoEcKey p)
+        {
+            e.CurveComp = p.CurveComp ?? (p.CurveComp == null && p.X == null ? (GoEcCurve)EcKey_Curve(p) : p.CurveComp);
+            if (p.X != null) e.X = p.X; else e.X = BigOf(EcKey_X(p));
+            if (p.Y != null) e.Y = p.Y; else e.Y = BigOf(EcKey_Y(p));
+            e.Dirty = true;
+        }
+    }
+
+    public static void RsaKey_SetN(object k, object? n) { var r = (GoRsaKey)k; r.N = BigOf(n); r.Dirty = true; }
+    public static void RsaKey_SetE(object k, long e) { var r = (GoRsaKey)k; r.E = e; r.Dirty = true; }
+    public static void RsaKey_SetD(object k, object? d) { var r = (GoRsaKey)k; r.D = BigOf(d); r.PublicOnly = false; r.Dirty = true; }
+    public static void RsaKey_SetPrimes(object k, GoSlice primes)
+    {
+        var r = (GoRsaKey)k;
+        if (primes.Len >= 1) r.P = BigOf(primes.Data![primes.Off]);
+        if (primes.Len >= 2) r.Q = BigOf(primes.Data![primes.Off + 1]);
+        r.Dirty = true;
+    }
+    public static void RsaKey_SetPublicKey(object k, object? pub)
+    {
+        var r = (GoRsaKey)k;
+        if (pub is GoRsaKey p) { r.N = p.N ?? BigOf(RsaKey_N(p)); r.E = p.N != null ? p.E : RsaKey_E(p); r.Dirty = true; }
+    }
+
+    // Build the .NET key from field-assigned components (called lazily on first use).
+    internal static void MaterializeEc(GoEcKey e)
+    {
+        if (e.CurveComp == null) throw new System.Exception("crypto/ecdsa: key has no curve");
+        int size = CurveSize(e.CurveComp);
+        var p = new ECParameters { Curve = e.CurveComp.Curve };
+        if (e.X != null && e.Y != null)
+            p.Q = new ECPoint { X = FixedBE(e.X.Value, size), Y = FixedBE(e.Y.Value, size) };
+        if (e.D != null) p.D = FixedBE(e.D.Value, size);
+        var k = ECDsa.Create();
+        k.ImportParameters(p);
+        e.SetKey(k);
+    }
+    internal static void MaterializeRsa(GoRsaKey r)
+    {
+        if (r.N == null) throw new System.Exception("crypto/rsa: key has no modulus");
+        var mod = ToUBE(r.N.Value);
+        var pars = new RSAParameters { Modulus = mod, Exponent = ToUBE(new System.Numerics.BigInteger(r.E == 0 ? 65537 : r.E)) };
+        if (r.D != null && r.P != null && r.Q != null)
+        {
+            System.Numerics.BigInteger pp = r.P.Value, qq = r.Q.Value, dd = r.D.Value;
+            int half = (mod.Length + 1) / 2;
+            pars.D = FixedBE(dd, mod.Length);
+            pars.P = FixedBE(pp, half);
+            pars.Q = FixedBE(qq, half);
+            pars.DP = FixedBE(PosMod(dd, pp - 1), half);
+            pars.DQ = FixedBE(PosMod(dd, qq - 1), half);
+            pars.InverseQ = FixedBE(ModInverse(qq, pp), half);
+        }
+        var k = RSA.Create();
+        k.ImportParameters(pars);
+        r.SetKey(k);
+    }
+
+    private static int CurveSize(GoEcCurve c) => c.Name switch { "P-224" => 28, "P-384" => 48, "P-521" => 66, _ => 32 };
+    private static byte[] ToUBE(System.Numerics.BigInteger v) => v.ToByteArray(isUnsigned: true, isBigEndian: true);
+    private static byte[] FixedBE(System.Numerics.BigInteger v, int n)
+    {
+        var b = ToUBE(v);
+        if (b.Length == n) return b;
+        var o = new byte[n];
+        if (b.Length < n) System.Array.Copy(b, 0, o, n - b.Length, b.Length);
+        else System.Array.Copy(b, b.Length - n, o, 0, n);
+        return o;
+    }
+    private static System.Numerics.BigInteger PosMod(System.Numerics.BigInteger a, System.Numerics.BigInteger m) { var r = a % m; return r < 0 ? r + m : r; }
+    private static System.Numerics.BigInteger ModInverse(System.Numerics.BigInteger a, System.Numerics.BigInteger m)
+    {
+        System.Numerics.BigInteger g = m, x = 0, x1 = 1, aa = PosMod(a, m);
+        while (aa > 1)
+        {
+            var q = aa / g;
+            (aa, g) = (g, aa - q * g);
+            (x1, x) = (x, x1 - q * x);
+        }
+        return PosMod(x1, m);
     }
     private static System.Numerics.BigInteger ToBig(byte[] b) => new(b, isUnsigned: true, isBigEndian: true);
 

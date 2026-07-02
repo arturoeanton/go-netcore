@@ -365,8 +365,14 @@ func (l *funcLowerer) deferMethod(call *ast.CallExpr, sel *ast.SelectorExpr, sel
 	fn, _ := seln.Obj().(*types.Func)
 	m := l.byFunc[fn]
 	if m == nil {
-		l.fail(call.Pos(), "defer of method "+sel.Sel.Name)
-		return
+		// A method on a generic type instantiation (e.g. defer pool.Pool[*bytes.Buffer].Put)
+		// is monomorphized on demand, exactly as methodValue does for the non-deferred form.
+		if gm, ok := l.instantiateMethod(fn, seln); ok {
+			m = gm
+		} else {
+			l.fail(call.Pos(), "defer of method "+sel.Sel.Name)
+			return
+		}
 	}
 	sig := fn.Type().(*types.Signature)
 	recvIsPtr := isPointerType(sig.Recv().Type())

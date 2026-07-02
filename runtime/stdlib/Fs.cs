@@ -95,6 +95,89 @@ public static class Fs
         return new object?[] { NilSlice(), Os.ErrNotExistSentinel };
     }
 
+    // fs.ReadFile(fsys, name) ([]byte, error): read a whole file from the fs.FS. A DirFS
+    // reads the real file; a ReadFileFS uses its own ReadFile; otherwise Open + drain.
+    public static object?[] ReadFile(object? fsys, GoString name)
+    {
+        if (fsys is GoDirFS dfs)
+        {
+            string path = System.IO.Path.Combine(dfs.Root, name.ToDotNetString());
+            try { return new object?[] { BytesToSlice(System.IO.File.ReadAllBytes(path)), null }; }
+            catch { return new object?[] { NilSlice(), Os.ErrNotExistSentinel }; }
+        }
+        if (Bridge.HasMethod(fsys, "ReadFile") && Bridge.CallMethod(fsys, "ReadFile", name) is object?[] rf)
+            return rf;
+        if (Bridge.HasMethod(fsys, "Open") && Bridge.CallMethod(fsys, "Open", name) is object?[] op && op.Length == 2)
+        {
+            if (op[1] != null) return new object?[] { NilSlice(), op[1] };
+            return new object?[] { BytesToSlice(Readers.Drain(op[0])), null };
+        }
+        return new object?[] { NilSlice(), Os.ErrNotExistSentinel };
+    }
+
+    private static GoSlice BytesToSlice(byte[] b)
+    {
+        var d = new object?[b.Length];
+        for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]);
+        return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
+    }
+
+    // fs.WalkDir(fsys, root, fn): walk the fs.FS tree rooted at root, calling fn for root
+    // and every descendant (a directory before its contents, entries sorted by ReadDir),
+    // honoring the SkipDir / SkipAll sentinels. Mirrors io/fs.WalkDir over fs.ReadDir.
+    public static object? WalkDir(object? fsys, GoString root, GoClosure? fn)
+    {
+        string rootS = root.ToDotNetString();
+        var st = Stat(fsys, root);
+        object? err = st[1] != null
+            ? GoRuntime.InvokeArgs(fn, root, null, st[1])
+            : FsWalkRec(fsys, rootS, new GoDirEntry { EntryName = GoString.FromDotNetString(BaseName(rootS)), Dir = st[0] is GoFileInfo fi && fi.Dir }, fn);
+        if (ReferenceEquals(err, SkipDirSentinel) || ReferenceEquals(err, SkipAllSentinel)) return null;
+        return err;
+    }
+
+    private static object? FsWalkRec(object? fsys, string name, GoDirEntry d, GoClosure? fn)
+    {
+        object? err = GoRuntime.InvokeArgs(fn, GoString.FromDotNetString(name), d, null);
+        if (err != null || !d.Dir)
+        {
+            if (ReferenceEquals(err, SkipDirSentinel) && d.Dir) err = null;
+            return err;
+        }
+        var rd = ReadDir(fsys, GoString.FromDotNetString(name));
+        if (rd[1] != null)
+        {
+            err = GoRuntime.InvokeArgs(fn, GoString.FromDotNetString(name), d, rd[1]);
+            if (err != null)
+            {
+                if (ReferenceEquals(err, SkipDirSentinel) && d.Dir) err = null;
+                return err;
+            }
+        }
+        if (rd[0] is GoSlice dirs && dirs.Data != null)
+        {
+            for (int i = 0; i < dirs.Len; i++)
+            {
+                var d1 = (GoDirEntry)dirs.Data[dirs.Off + i]!;
+                string name1 = name.Length == 0 ? d1.EntryName.ToDotNetString() : name + "/" + d1.EntryName.ToDotNetString();
+                object? e2 = FsWalkRec(fsys, name1, d1, fn);
+                if (e2 != null)
+                {
+                    if (ReferenceEquals(e2, SkipDirSentinel)) break;
+                    return e2;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static string BaseName(string p)
+    {
+        p = p.TrimEnd('/');
+        int i = p.LastIndexOf('/');
+        return i >= 0 ? p.Substring(i + 1) : p;
+    }
+
     private static GoSlice NilSlice() => new() { Data = null, Off = 0, Len = 0, Cap = 0 };
     private static GoSlice Slice(System.Collections.Generic.List<object?> items)
     {

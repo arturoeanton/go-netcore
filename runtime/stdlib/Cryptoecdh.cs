@@ -50,6 +50,13 @@ public static class Cryptoecdh
     public static object P521() => P521c;
     public static object X25519() => X25519c;
 
+    // The ecdh NIST curve matching an elliptic-curve name ("P-256" …), for the
+    // (*ecdsa.PublicKey).ECDH / (*ecdsa.PrivateKey).ECDH conversions. null if unknown.
+    internal static GoEcdhCurve? NistCurveByName(string name) => name switch
+    {
+        "P-256" => P256c, "P-384" => P384c, "P-521" => P521c, _ => null,
+    };
+
     // --- ecdh.Curve methods ---
 
     public static object?[] Curve_GenerateKey(object c, object? rand)

@@ -127,7 +127,10 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"encoding/pem":    {"Decode": {"Pem", "Decode"}, "EncodeToMemory": {"Pem", "EncodeToMemory"}, "Encode": {"Pem", "Encode"}},
 	"crypto/rsa": {"GenerateKey": {"Crypto509", "RsaGenerateKey"},
 		"VerifyPKCS1v15": {"CryptoSign", "VerifyPKCS1v15"}, "SignPKCS1v15": {"CryptoSign", "SignPKCS1v15"},
-		"VerifyPSS": {"CryptoSign", "VerifyPSS"}, "SignPSS": {"CryptoSign", "SignPSS"}},
+		"VerifyPSS": {"CryptoSign", "VerifyPSS"}, "SignPSS": {"CryptoSign", "SignPSS"},
+		"EncryptPKCS1v15": {"CryptoSign", "EncryptPKCS1v15"}, "DecryptPKCS1v15": {"CryptoSign", "DecryptPKCS1v15"},
+		"DecryptPKCS1v15SessionKey": {"CryptoSign", "DecryptPKCS1v15SessionKey"},
+		"EncryptOAEP":               {"CryptoSign", "EncryptOAEP"}, "DecryptOAEP": {"CryptoSign", "DecryptOAEP"}},
 	"crypto/tls": {"Server": {"HttpTypes", "TlsServer"}, "Client": {"HttpTypes", "TlsClient"}, "X509KeyPair": {"HttpTypes", "X509KeyPair"}, "LoadX509KeyPair": {"HttpTypes", "LoadX509KeyPair"}, "NewListener": {"HttpTypes", "NewListener"}, "Listen": {"HttpTypes", "TlsListen"}, "CipherSuiteName": {"HttpTypes", "CipherSuiteName"}, "VersionName": {"HttpTypes", "VersionName"}},
 	"crypto/x509": {
 		"NewCertPool":       {"Crypto509", "NewCertPool"},
@@ -175,7 +178,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	"html/template":  {"New": {"Template", "NewHtml"}, "Must": {"Template", "Must"}, "IsTrue": {"Template", "IsTrueFunc"}, "JSEscapeString": {"Template", "JSEscapeString"}, "HTMLEscapeString": {"Template", "HTMLEscapeString"}, "HTMLEscaper": {"Template", "HTMLEscaper"}, "JSEscaper": {"Template", "JSEscaper"}, "URLQueryEscaper": {"Template", "URLQueryEscaper"}, "HTMLEscape": {"Template", "HTMLEscape"}, "JSEscape": {"Template", "JSEscape"}},
 	"html":           {"EscapeString": {"Html", "EscapeString"}, "UnescapeString": {"Html", "UnescapeString"}},
 	"text/template":  {"New": {"Template", "New"}, "Must": {"Template", "Must"}, "IsTrue": {"Template", "IsTrueFunc"}, "JSEscapeString": {"Template", "JSEscapeString"}, "HTMLEscapeString": {"Template", "HTMLEscapeString"}, "HTMLEscaper": {"Template", "HTMLEscaper"}, "JSEscaper": {"Template", "JSEscaper"}, "URLQueryEscaper": {"Template", "URLQueryEscaper"}, "HTMLEscape": {"Template", "HTMLEscape"}, "JSEscape": {"Template", "JSEscape"}},
-	"os/exec":        {"Command": {"Exec", "Command"}},
+	"os/exec":        {"Command": {"Exec", "Command"}, "CommandContext": {"Exec", "CommandContext"}, "LookPath": {"Exec", "LookPath"}},
 	"container/list": {"New": {"List", "New"}},
 	"container/heap": {
 		"Init": {"Heap", "Init"}, "Push": {"Heap", "Push"}, "Pop": {"Heap", "Pop"},
@@ -257,7 +260,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"io/fs": {
 		"Stat": {"Fs", "Stat"}, "Sub": {"Fs", "Sub"}, "ValidPath": {"Fs", "ValidPath"}, "ReadDir": {"Fs", "ReadDir"},
-		"FormatDirEntry": {"Fs", "FormatDirEntry"},
+		"FormatDirEntry": {"Fs", "FormatDirEntry"}, "WalkDir": {"Fs", "WalkDir"}, "ReadFile": {"Fs", "ReadFile"},
 	},
 	"net/netip": {
 		"AddrFrom4": {"Netip", "AddrFrom4"}, "AddrFrom16": {"Netip", "AddrFrom16"}, "AddrFromSlice": {"Netip", "AddrFromSlice"},
@@ -621,6 +624,7 @@ var opaqueShimTypes = map[string]bool{
 	"crypto/ecdsa.PublicKey":         true,
 	"crypto/rsa.PrivateKey":          true,
 	"crypto/rsa.PublicKey":           true,
+	"crypto/rsa.PrecomputedValues":   true,
 	"crypto/x509.Certificate":        true,
 	"crypto/x509.CertificateRequest": true,
 	"crypto/x509.CertPool":           true,
@@ -985,10 +989,16 @@ var shimFieldRegistry = map[string]map[string]shimFunc{
 	"archive/zip.Reader": {"File": {"Zip", "Reader_File"}},
 	"archive/zip.File":   {"Name": {"Zip", "File_Name"}},
 	"crypto/ecdsa.PrivateKey": {
-		"PublicKey": {"Crypto509", "EcdsaPublic"}, "X": {"Crypto509", "EcKey_X"}, "Y": {"Crypto509", "EcKey_Y"}, "Curve": {"Crypto509", "EcKey_Curve"},
+		"PublicKey": {"Crypto509", "EcdsaPublic"}, "X": {"Crypto509", "EcKey_X"}, "Y": {"Crypto509", "EcKey_Y"}, "Curve": {"Crypto509", "EcKey_Curve"}, "D": {"Crypto509", "EcKey_D"},
 	},
 	"crypto/rsa.PrivateKey": {
-		"PublicKey": {"Crypto509", "RsaPublic"}, "N": {"Crypto509", "RsaKey_N"}, "E": {"Crypto509", "RsaKey_E"},
+		"PublicKey": {"Crypto509", "RsaPublic"}, "N": {"Crypto509", "RsaKey_N"}, "E": {"Crypto509", "RsaKey_E"}, "D": {"Crypto509", "RsaKey_D"}, "Primes": {"Crypto509", "RsaKey_Primes"}, "Precomputed": {"Crypto509", "RsaKey_Precomputed"},
+	},
+	"crypto/rsa.PrecomputedValues": {
+		"Dp": {"Crypto509", "Precomp_Dp"}, "Dq": {"Crypto509", "Precomp_Dq"}, "Qinv": {"Crypto509", "Precomp_Qinv"}, "CRTValues": {"Crypto509", "Precomp_CRTValues"},
+	},
+	"net/http.Client": {
+		"Timeout": {"Http", "Client_Timeout"}, "CheckRedirect": {"Http", "Client_CheckRedirect"}, "Transport": {"Http", "Client_Transport"}, "Jar": {"Http", "Client_Jar"},
 	},
 	"sync.Cond": {
 		"L": {"Sync", "Cond_L"},
@@ -1205,6 +1215,7 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 	"encoding/asn1.BitString":       {"Bytes": {"Asn1", "BitString_SetBytes"}, "BitLength": {"Asn1", "BitString_SetBitLength"}},
 	"net/http.Request": {
 		"ContentLength": {"Http", "Req_SetContentLength"}, "Trailer": {"Http", "Req_SetTrailer"}, "TLS": {"Http", "Req_SetTLS"}, "Body": {"Http", "Req_SetBody"},
+		"Host": {"Http", "Req_SetHost"},
 	},
 	"net/http.Response": {
 		"StatusCode": {"Http", "Resp_SetStatusCode"}, "Status": {"Http", "Resp_SetStatus"}, "ContentLength": {"Http", "Resp_SetContentLength"}, "Body": {"Http", "Resp_SetBody"},
@@ -1231,6 +1242,25 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 		"Host": {"Url", "URL_SetHost"}, "RawQuery": {"Url", "URL_SetRawQuery"},
 		"Fragment": {"Url", "URL_SetFragment"}, "User": {"Url", "URL_SetUser"},
 		"Opaque": {"Url", "URL_SetOpaque"},
+	},
+	// Crypto keys assembled field-by-field the way pure-Go code builds them
+	// (jwx, x/crypto): the setters stash the component and rebuild the .NET key lazily.
+	"crypto/ecdsa.PublicKey": {
+		"Curve": {"Crypto509", "EcKey_SetCurve"}, "X": {"Crypto509", "EcKey_SetX"}, "Y": {"Crypto509", "EcKey_SetY"},
+	},
+	"crypto/ecdsa.PrivateKey": {
+		"Curve": {"Crypto509", "EcKey_SetCurve"}, "X": {"Crypto509", "EcKey_SetX"}, "Y": {"Crypto509", "EcKey_SetY"},
+		"D": {"Crypto509", "EcKey_SetD"}, "PublicKey": {"Crypto509", "EcKey_SetPublicKey"},
+	},
+	"crypto/rsa.PublicKey": {
+		"N": {"Crypto509", "RsaKey_SetN"}, "E": {"Crypto509", "RsaKey_SetE"},
+	},
+	"crypto/rsa.PrecomputedValues": {
+		"Dp": {"Crypto509", "Precomp_SetDp"}, "Dq": {"Crypto509", "Precomp_SetDq"}, "Qinv": {"Crypto509", "Precomp_SetQinv"}, "CRTValues": {"Crypto509", "Precomp_SetCRTValues"},
+	},
+	"crypto/rsa.PrivateKey": {
+		"N": {"Crypto509", "RsaKey_SetN"}, "E": {"Crypto509", "RsaKey_SetE"}, "D": {"Crypto509", "RsaKey_SetD"},
+		"Primes": {"Crypto509", "RsaKey_SetPrimes"}, "PublicKey": {"Crypto509", "RsaKey_SetPublicKey"},
 	},
 }
 
@@ -1356,6 +1386,10 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"crypto/x509/pkix.Extension":     {"Crypto509", "NewPkixExt"},
 	"crypto/x509.Certificate":        {"Crypto509", "NewCertificate"},
 	"crypto/x509.CertificateRequest": {"Crypto509", "NewCertReq"},
+	"crypto/ecdsa.PrivateKey":        {"Crypto509", "NewEcdsaPrivateKey"},
+	"crypto/ecdsa.PublicKey":         {"Crypto509", "NewEcdsaPublicKey"},
+	"crypto/rsa.PrivateKey":          {"Crypto509", "NewRsaPrivateKey"},
+	"crypto/rsa.PublicKey":           {"Crypto509", "NewRsaPublicKey"},
 	"syscall.Flock_t":                {"Syscall", "NewFlockT"},
 	"encoding/xml.Name":              {"Xml", "NewXmlName"},
 	"encoding/xml.StartElement":      {"Xml", "NewXmlStart"},
@@ -1655,8 +1689,10 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"crypto/x509.CertPool": {
 		"AppendCertsFromPEM": {"Crypto509", "CertPool_AppendCertsFromPEM"},
 	},
-	"crypto/ecdsa.PrivateKey": {"Public": {"Crypto509", "EcdsaPublic"}},
-	"crypto/rsa.PrivateKey":   {"Public": {"Crypto509", "RsaPublic"}},
+	"crypto/ecdsa.PrivateKey": {"Public": {"Crypto509", "EcdsaPublic"}, "ECDH": {"Crypto509", "EcdsaPrivate_ECDH"}},
+	"crypto/ecdsa.PublicKey":  {"ECDH": {"Crypto509", "EcdsaPublic_ECDH"}},
+	"crypto/rsa.PrivateKey":   {"Public": {"Crypto509", "RsaPublic"}, "Size": {"Crypto509", "RsaKey_Size"}},
+	"crypto/rsa.PublicKey":    {"Size": {"Crypto509", "RsaKey_Size"}},
 	"crypto/elliptic.Curve": {
 		"Params": {"Crypto509", "Curve_Params"}, "IsOnCurve": {"Crypto509", "Curve_IsOnCurve"},
 		"Add": {"Crypto509", "Curve_Add"}, "Double": {"Crypto509", "Curve_Double"},
@@ -1727,6 +1763,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"os/exec.Cmd": {
 		"Output": {"Exec", "Cmd_Output"}, "CombinedOutput": {"Exec", "Cmd_CombinedOutput"}, "Run": {"Exec", "Cmd_Run"},
 		"Start": {"Exec", "Cmd_Start"}, "Wait": {"Exec", "Cmd_Wait"},
+		"StdinPipe": {"Exec", "Cmd_StdinPipe"}, "StdoutPipe": {"Exec", "Cmd_StdoutPipe"},
 	},
 	"os.Process": {
 		"Kill": {"Exec", "Process_Kill"}, "Wait": {"Exec", "Process_Wait"},
@@ -2129,6 +2166,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 	"math/rand.Zipf":     {"Uint64": {"Rand", "Zipf_Uint64"}},
 	"archive/tar.Writer": {"WriteHeader": {"Tar", "Writer_WriteHeader"}, "Write": {"Tar", "Writer_Write"}, "Close": {"Tar", "Writer_Close"}, "Flush": {"Tar", "Writer_Flush"}},
 	"archive/tar.Reader": {"Next": {"Tar", "Reader_Next"}, "Read": {"Tar", "Reader_Read"}},
+	"archive/tar.Header": {"FileInfo": {"Tar", "Header_FileInfo"}},
 	"archive/zip.Writer": {"Create": {"Zip", "Writer_Create"}, "Close": {"Zip", "Writer_Close"}, "Flush": {"Zip", "Writer_Flush"}},
 	"archive/zip.File":   {"Open": {"Zip", "File_Open"}},
 	"net/netip.Addr": {

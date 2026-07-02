@@ -334,6 +334,60 @@ public static class CryptoSign
         else System.Array.Copy(b, b.Length - len, p, 0, len);
         return p;
     }
+    // --- rsa.EncryptPKCS1v15 / DecryptPKCS1v15 / DecryptPKCS1v15SessionKey / OAEP ---
+    // The key-transport primitives JWE (jwx) uses to wrap a content-encryption key.
+    public static object?[] EncryptPKCS1v15(object? rand, object? pub, GoSlice msg)
+    {
+        if (pub is not GoRsaKey k) return new object?[] { default(GoSlice), NotSupported("RSA-PKCS1v15 encrypt") };
+        try { return new object?[] { Bytes(k.Key.Encrypt(Raw(msg), RSAEncryptionPadding.Pkcs1)), null }; }
+        catch (System.Exception e) { return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+    public static object?[] DecryptPKCS1v15(object? rand, object? priv, GoSlice ct)
+    {
+        if (priv is not GoRsaKey k) return new object?[] { default(GoSlice), NotSupported("RSA-PKCS1v15 decrypt") };
+        try { return new object?[] { Bytes(k.Key.Decrypt(Raw(ct), RSAEncryptionPadding.Pkcs1)), null }; }
+        catch (System.Exception e) { return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+    // DecryptPKCS1v15SessionKey(rand, priv, ct, key) error — on a successful decrypt of the
+    // expected length copy into key; otherwise leave key untouched (the caller pre-fills it
+    // with random), mirroring Go's constant-time anti-Bleichenbacher behaviour.
+    public static object? DecryptPKCS1v15SessionKey(object? rand, object? priv, GoSlice ct, GoSlice key)
+    {
+        if (priv is not GoRsaKey k) return NotSupported("RSA-PKCS1v15 session key");
+        try
+        {
+            byte[] dec = k.Key.Decrypt(Raw(ct), RSAEncryptionPadding.Pkcs1);
+            if (dec.Length == key.Len)
+                for (int i = 0; i < dec.Length; i++) key.Data![key.Off + i] = Boxes.I4(dec[i]);
+        }
+        catch { /* leave key as-is */ }
+        return null;
+    }
+    public static object?[] EncryptOAEP(object hash, object? rand, object? pub, GoSlice msg, GoSlice label)
+    {
+        if (pub is not GoRsaKey k) return new object?[] { default(GoSlice), NotSupported("RSA-OAEP encrypt") };
+        var pad = OaepPad(hash);
+        if (pad == null || label.Len != 0) return new object?[] { default(GoSlice), NotSupported("RSA-OAEP (unsupported hash or non-empty label)") };
+        try { return new object?[] { Bytes(k.Key.Encrypt(Raw(msg), pad)), null }; }
+        catch (System.Exception e) { return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+    public static object?[] DecryptOAEP(object hash, object? rand, object? priv, GoSlice ct, GoSlice label)
+    {
+        if (priv is not GoRsaKey k) return new object?[] { default(GoSlice), NotSupported("RSA-OAEP decrypt") };
+        var pad = OaepPad(hash);
+        if (pad == null || label.Len != 0) return new object?[] { default(GoSlice), NotSupported("RSA-OAEP (unsupported hash or non-empty label)") };
+        try { return new object?[] { Bytes(k.Key.Decrypt(Raw(ct), pad)), null }; }
+        catch (System.Exception e) { return new object?[] { default(GoSlice), new GoError(GoString.FromDotNetString(e.Message)) }; }
+    }
+    private static RSAEncryptionPadding? OaepPad(object hash) => (hash as GoHash)?.Algo switch
+    {
+        "SHA1" => RSAEncryptionPadding.OaepSHA1,
+        "SHA256" => RSAEncryptionPadding.OaepSHA256,
+        "SHA384" => RSAEncryptionPadding.OaepSHA384,
+        "SHA512" => RSAEncryptionPadding.OaepSHA512,
+        _ => null,
+    };
+
     private static byte[] Raw(GoSlice s)
     {
         var b = new byte[s.Len];

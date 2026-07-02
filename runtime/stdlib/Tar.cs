@@ -35,6 +35,19 @@ public static class Tar
     public static object NewHeaderZero() => new GoTarHeader();
 
     // --- Header field get/set (byte Typeflag -> int per goclr's uint8 lowering) ---
+    // tar.Header.FileInfo() fs.FileInfo — the header as a stat result (base name, size,
+    // dir bit and perm bits), used by bundle loaders that filter archive entries.
+    public static object Header_FileInfo(object h)
+    {
+        var t = (GoTarHeader)h;
+        bool isDir = t.Typeflag == 53; // tar.TypeDir '5'
+        string name = t.Name.TrimEnd('/');
+        int slash = name.LastIndexOf('/');
+        if (slash >= 0) name = name.Substring(slash + 1);
+        uint mode = (uint)(t.Mode & 0x1FF);
+        if (isDir) mode |= 0x80000000u; // fs.ModeDir (1<<31)
+        return new GoFileInfo { FileName = GoString.FromDotNetString(name), Size = t.Size, Dir = isDir, ModTimeN = 0, Mode = mode };
+    }
     public static GoString Header_Name(object h) => GoString.FromDotNetString(((GoTarHeader)h).Name);
     public static void Header_SetName(object h, GoString v) => ((GoTarHeader)h).Name = v.ToDotNetString();
     public static GoString Header_Linkname(object h) => GoString.FromDotNetString(((GoTarHeader)h).Linkname);

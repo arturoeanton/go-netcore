@@ -563,6 +563,13 @@ public static class Http
     public static void Client_SetTransport(object c, object? v) { }
     public static void Client_SetCheckRedirect(object c, object? v) { }
     public static void Client_SetJar(object c, object? v) { }
+    // Field reads: Timeout returns the stored duration; the Transport/CheckRedirect/Jar
+    // hooks are not retained by this shim, so they read back as their nil zero value
+    // (code that clones a client and checks `if c.CheckRedirect == nil` takes the default).
+    public static long Client_Timeout(object c) => ((GoHttpClient)c).TimeoutNanos;
+    public static object? Client_CheckRedirect(object c) => null;
+    public static object? Client_Transport(object c) => null;
+    public static object? Client_Jar(object c) => null;
 
     private static string ReqUrl(GoRequest r) =>
         (r.Url.Scheme.Length > 0 ? r.Url.Scheme + "://" + r.Url.Host : "") + (r.Url.Path.Length > 0 ? r.Url.Path : "/") +
@@ -1222,6 +1229,7 @@ public static class Http
     public static object Req_URL(object r) => ((GoRequest)r).Url;
     public static object Req_Body(object r) => ((GoRequest)r).Body;
     public static GoString Req_Host(object r) => GoString.FromDotNetString(((GoRequest)r).Host);
+    public static void Req_SetHost(object r, GoString v) => ((GoRequest)r).Host = v.ToDotNetString();
     public static GoString Req_RemoteAddr(object r) => GoString.FromDotNetString(((GoRequest)r).RemoteAddr);
 }
 

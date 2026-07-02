@@ -19,6 +19,13 @@ public static class Exec
         for (int i = 0; i < args.Len; i++) c.Args.Add(((GoString)args.Data![args.Off + i]!).ToDotNetString());
         return c;
     }
+    // exec.CommandContext(ctx, name, args...): identical to Command; the context governs
+    // cancellation of the child process, which this synchronous shim does not model.
+    public static object CommandContext(object? ctx, GoString name, GoSlice args) => Command(name, args);
+    // exec.LookPath(file): no external tools are resolvable under goclr, so report
+    // not-found — callers that probe for an optional binary (e.g. wasm-opt) skip it.
+    public static object?[] LookPath(GoString file) =>
+        new object?[] { GoString.FromDotNetString(""), new GoError(GoString.FromDotNetString("exec: \"" + file.ToDotNetString() + "\": executable file not found in $PATH")) };
 
     private static GoSlice Bytes(string s)
     {
@@ -46,6 +53,11 @@ public static class Exec
     // Prefork worker control — inert under goclr's single-process model.
     public static object? Cmd_Start(object cmd) => new GoError(GoString.FromDotNetString("exec: prefork not supported under goclr"));
     public static object? Cmd_Wait(object cmd) => null;
+    // Piped subprocess I/O is not modeled (no child process is spawned); these fail loud
+    // so a caller that actually pipes to an external tool gets an honest error, never
+    // silent success. Off the policy-eval path (used only by the WASM optimizer).
+    public static object?[] Cmd_StdinPipe(object cmd) => new object?[] { null, new GoError(GoString.FromDotNetString("exec: StdinPipe not supported under goclr")) };
+    public static object?[] Cmd_StdoutPipe(object cmd) => new object?[] { null, new GoError(GoString.FromDotNetString("exec: StdoutPipe not supported under goclr")) };
     public static object Cmd_Process(object cmd) => ((GoCmd)cmd).Process;
     public static void Cmd_SetStdout(object cmd, object? v) { }
     public static void Cmd_SetStderr(object cmd, object? v) { }
