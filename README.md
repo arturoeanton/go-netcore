@@ -309,6 +309,8 @@ bin/goclr run ./examples/demo_gin       # Gin router on :8080  (/health, /ping, 
 | [`demo_jwt`](examples/demo_jwt/) | `golang-jwt/v5` HS256 sign + verify | yes |
 | [`demo_testify`](examples/demo_testify/) | `testify/assert` under `goclr test` | yes |
 | [`cel_nuget`](examples/cel_nuget/) | Google CEL (`cel-go`) as a C# NuGet — compiled, called from C# | yes (see its `build.sh`) |
+| [`hcl_nuget`](examples/hcl_nuget/) | HashiCorp HCL (`hcl/v2`) as a C# NuGet — compiled, called from C# | yes (see its `build.sh`) |
+| [`opa_nuget`](examples/opa_nuget/) | Open Policy Agent (Rego) as a C# NuGet — compiled, called from C# | yes (see its `build.sh`) |
 
 > **Why `go mod vendor`?** Demos that depend on third-party packages needing a goclr
 > overlay must be **vendored**: the overlays in [`goclr.overlays/`](goclr.overlays/)
@@ -402,6 +404,8 @@ description and a recommended reading order. Highlights:
 - [docs/QUICKSTART.md](docs/QUICKSTART.md) — extended Quick Start + troubleshooting
 - [docs/ROADMAP.md](docs/ROADMAP.md) — milestones and the done/pending checklist
 - [docs/CEL.md](docs/CEL.md) — the CEL milestone: `cel-go` on the CLR + the `Cel.GoCLR` NuGet, honestly
+- [docs/HCL.md](docs/HCL.md) — the HCL milestone: `hashicorp/hcl/v2` on the CLR + the `Hcl.GoCLR` NuGet, honestly
+- [docs/OPA.md](docs/OPA.md) — the OPA milestone: `open-policy-agent/opa` (Rego) on the CLR + the `Opa.GoCLR` NuGet, honestly
 - [docs/LIMITATIONS.md](docs/LIMITATIONS.md) — tracked technical debt, each fails predictably
 - [docs/GAPS.md](docs/GAPS.md) — gap analysis toward a complete product
 - [docs/COVERAGE.md](docs/COVERAGE.md) — per-package stdlib coverage matrix

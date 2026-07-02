@@ -26,7 +26,18 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
    escriben en el campo. Y el ancho de `big.Accuracy` (int8→Int32) en los shims de
    `(*Float).Int`/`.Int64`/`.Copy` (devolvían `long` → `InvalidCastException` al comparar
    con `big.Exact`), con `nil`+Below/Above para ±Inf como en Go. hcl/v2 v2.24.0, cty v1.16.3.
-3. ⬜ OPA/Rego como NuGet — policy engine completo, más grande.
+3. ✅ **OPA/Rego (`open-policy-agent/opa`) como NuGet `Opa.GoCLR`** — el motor de
+   políticas de OPA (scanner+parser Rego, compilador y evaluador topdown) compila con
+   goclr y se evalúa desde C# por un puente JSON. Un policy de autorización evalúa
+   byte-exacto vs `go run` (result-set JSON idéntico); un segundo policy computa un
+   valor (tier de billing), no sólo un bool. Ejemplo en
+   [`examples/opa_nuget`](../examples/opa_nuget/). Cerró cinco semánticas generales de Go
+   (cada una con fixture de conformance): identidad de escalar nombrado en claves de
+   map/slice (`slices.Contains([]tokens.Token,...)`, fixture 782), append de valor
+   nombrado a slice de interfaces (783), conversión slice→puntero-a-array `(*[N]T)(s)`
+   de Go 1.20 (784), identidad de tipo para compuestos sin cambios bajo sustitución
+   genérica (`util.NewPtrSlice[Term]`, 785), y escritura a campo de shim opaco dentro de
+   un método genérico (`ResourceBase[T].Sync`, 786). opa v1.18.2.
 
 ## Orden 2 (nuevo foco, serializado — uno a la vez)
 
