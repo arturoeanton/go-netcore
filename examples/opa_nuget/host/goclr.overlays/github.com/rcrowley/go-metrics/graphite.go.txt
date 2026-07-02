@@ -1,0 +1,30 @@
+// goclr overlay: the Graphite exporter dials a TCP socket (net.DialTCP) to stream
+// metrics, a call the CLR backend does not lower. Metric export is process
+// telemetry, off the policy-eval path, so these entry points become no-ops while
+// the exported GraphiteConfig / Graphite / GraphiteWithConfig / GraphiteOnce
+// surface is preserved.
+package metrics
+
+import (
+	"net"
+	"time"
+)
+
+// GraphiteConfig provides configuration parameters for the Graphite exporter.
+type GraphiteConfig struct {
+	Addr          *net.TCPAddr
+	Registry      Registry
+	FlushInterval time.Duration
+	DurationUnit  time.Duration
+	Prefix        string
+	Percentiles   []float64
+}
+
+// Graphite is a no-op under goclr (see overlay note above).
+func Graphite(r Registry, d time.Duration, prefix string, addr *net.TCPAddr) {}
+
+// GraphiteWithConfig is a no-op under goclr.
+func GraphiteWithConfig(c GraphiteConfig) {}
+
+// GraphiteOnce is a no-op under goclr.
+func GraphiteOnce(c GraphiteConfig) error { return nil }

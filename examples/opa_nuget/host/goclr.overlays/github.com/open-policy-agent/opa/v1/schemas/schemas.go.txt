@@ -1,0 +1,21 @@
+// Copyright 2023 The OPA Authors.  All rights reserved.
+// Use of this source code is governed by an Apache2
+// license that can be found in the LICENSE file.
+
+// goclr overlay: the upstream file embeds schemas/*.json into an embed.FS via
+// //go:embed *.json, a glob embed the CLR backend cannot lower. schemas.FS is
+// read only when type-checking against OPA's built-in authorization-policy schema
+// (internal/compiler/utils.go), which is off the plain rego eval path. This
+// replaces the embed.FS with an empty stand-in exposing the same ReadFile.
+package schemas
+
+import "errors"
+
+type emptyFS struct{}
+
+func (emptyFS) ReadFile(name string) ([]byte, error) {
+	return nil, errors.New("schemas: embedded schemas unavailable in this build")
+}
+
+// FS stands in for the embedded schemas/ directory (empty under goclr).
+var FS = emptyFS{}

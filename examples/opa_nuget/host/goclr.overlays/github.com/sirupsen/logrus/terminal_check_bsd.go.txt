@@ -1,0 +1,11 @@
+// +build darwin dragonfly freebsd netbsd openbsd hurd
+// +build !js
+
+// goclr overlay: logrus probes isTerminal via golang.org/x/sys/unix (IoctlGetTermios),
+// which is architecture-specific assembly the CLR backend cannot lower. Log output
+// under goclr is not a TTY, so this reports false and drops the x/sys/unix import.
+package logrus
+
+func isTerminal(fd int) bool {
+	return false
+}

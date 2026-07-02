@@ -1,0 +1,18 @@
+// goclr overlay: the upstream debug.go samples the Go GC via runtime/debug into
+// package-level metric globals captured inside a sync.Once closure — constructs
+// the CLR backend does not lower (runtime GC internals + closure-captured struct
+// globals). GC metrics are process telemetry, off the policy-eval path, so these
+// public entry points become no-ops. The exported surface (CaptureDebugGCStats,
+// CaptureDebugGCStatsOnce, RegisterDebugGCStats) is preserved.
+package metrics
+
+import "time"
+
+// CaptureDebugGCStats is a no-op under goclr (see overlay note above).
+func CaptureDebugGCStats(r Registry, d time.Duration) {}
+
+// CaptureDebugGCStatsOnce is a no-op under goclr.
+func CaptureDebugGCStatsOnce(r Registry) {}
+
+// RegisterDebugGCStats is a no-op under goclr.
+func RegisterDebugGCStats(r Registry) {}

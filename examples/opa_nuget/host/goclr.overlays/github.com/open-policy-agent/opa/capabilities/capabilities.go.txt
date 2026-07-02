@@ -1,0 +1,31 @@
+// Copyright 2021 The OPA Authors.  All rights reserved.
+// Use of this source code is governed by an Apache2
+// license that can be found in the LICENSE file.
+
+// goclr overlay: the upstream file embeds capabilities/*.json into an embed.FS
+// via //go:embed *.json, a glob embed the CLR backend cannot lower. That FS is
+// read only by LoadCapabilitiesVersion/LoadCapabilitiesVersions (loading a
+// specific historical version by string) — NOT by CapabilitiesForThisVersion,
+// which is the eval path and builds capabilities from the compiled-in Builtins.
+// This replaces the embed.FS with an empty stand-in exposing the same
+// ReadFile/ReadDir surface, so historical-version lookups return "not found"
+// while everything on the eval path is unaffected.
+package capabilities
+
+import (
+	"errors"
+	"io/fs"
+)
+
+type emptyFS struct{}
+
+func (emptyFS) ReadFile(name string) ([]byte, error) {
+	return nil, errors.New("capabilities: embedded versions unavailable in this build")
+}
+
+func (emptyFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	return nil, nil
+}
+
+// FS stands in for the embedded capabilities/ directory (empty under goclr).
+var FS = emptyFS{}

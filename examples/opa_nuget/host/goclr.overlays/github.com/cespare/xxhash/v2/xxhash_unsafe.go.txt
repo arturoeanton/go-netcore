@@ -1,0 +1,17 @@
+//go:build !appengine
+// +build !appengine
+
+// goclr overlay: the upstream file reinterprets a string as []byte through
+// unsafe.Pointer to avoid a copy, which the CLR backend cannot lower. These safe
+// forms do the trivial []byte(s) conversion instead — identical results, one copy.
+package xxhash
+
+// Sum64String computes the 64-bit xxHash digest of s with a zero seed.
+func Sum64String(s string) uint64 {
+	return Sum64([]byte(s))
+}
+
+// WriteString adds more data to d. It always returns len(s), nil.
+func (d *Digest) WriteString(s string) (n int, err error) {
+	return d.Write([]byte(s))
+}

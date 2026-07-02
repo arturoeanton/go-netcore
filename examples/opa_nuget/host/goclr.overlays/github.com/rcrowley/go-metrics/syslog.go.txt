@@ -1,0 +1,14 @@
+// +build !windows
+
+// goclr overlay: the syslog exporter writes to a *syslog.Writer periodically;
+// off the policy-eval path, so this becomes a no-op. The exported Syslog surface
+// is preserved.
+package metrics
+
+import (
+	"log/syslog"
+	"time"
+)
+
+// Syslog is a no-op under goclr (see overlay note above).
+func Syslog(r Registry, d time.Duration, w *syslog.Writer) {}

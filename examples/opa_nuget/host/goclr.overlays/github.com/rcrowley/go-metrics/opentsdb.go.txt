@@ -1,0 +1,25 @@
+// goclr overlay: the OpenTSDB exporter dials a TCP socket (net.DialTCP) to stream
+// metrics, a call the CLR backend does not lower. Off the policy-eval path, so
+// these become no-ops while the exported OpenTSDBConfig / OpenTSDB /
+// OpenTSDBWithConfig surface is preserved.
+package metrics
+
+import (
+	"net"
+	"time"
+)
+
+// OpenTSDBConfig provides configuration parameters for the OpenTSDB exporter.
+type OpenTSDBConfig struct {
+	Addr          *net.TCPAddr
+	Registry      Registry
+	FlushInterval time.Duration
+	DurationUnit  time.Duration
+	Prefix        string
+}
+
+// OpenTSDB is a no-op under goclr (see overlay note above).
+func OpenTSDB(r Registry, d time.Duration, prefix string, addr *net.TCPAddr) {}
+
+// OpenTSDBWithConfig is a no-op under goclr.
+func OpenTSDBWithConfig(c OpenTSDBConfig) {}

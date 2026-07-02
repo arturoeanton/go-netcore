@@ -1,0 +1,19 @@
+// goclr overlay: the upstream runtime.go samples the Go runtime (runtime.ReadMemStats,
+// NumGoroutine, ...) into package-level metric globals captured inside a sync.Once
+// closure — constructs the CLR backend does not lower. Runtime metrics are process
+// telemetry, off the policy-eval path (OPA only uses go-metrics' core Histogram/
+// Sample types), so these public entry points become no-ops. The exported surface
+// (CaptureRuntimeMemStats, CaptureRuntimeMemStatsOnce, RegisterRuntimeMemStats) is
+// preserved.
+package metrics
+
+import "time"
+
+// CaptureRuntimeMemStats is a no-op under goclr (see overlay note above).
+func CaptureRuntimeMemStats(r Registry, d time.Duration) {}
+
+// CaptureRuntimeMemStatsOnce is a no-op under goclr.
+func CaptureRuntimeMemStatsOnce(r Registry) {}
+
+// RegisterRuntimeMemStats is a no-op under goclr.
+func RegisterRuntimeMemStats(r Registry) {}

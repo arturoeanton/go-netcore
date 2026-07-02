@@ -1,0 +1,43 @@
+<!-- The packable Opa.GoCLR library: the C# facade + the goclr-compiled OPA host
+     assembly + the GoCLR runtime, bundled into one NuGet. Consumers just
+     `dotnet add package Opa.GoCLR` and call new OpaPolicy(module).EvalBool(...).
+     Build the host DLLs first (build.sh) so bin/goclr/*.dll exist, then
+     `dotnet pack -c Release`. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Opa.GoCLR</AssemblyName>
+    <RootNamespace>OpaGoClr</RootNamespace>
+
+    <!-- NuGet package metadata. -->
+    <PackageId>Opa.GoCLR</PackageId>
+    <Version>0.1.0-preview</Version>
+    <Authors>arturoeanton</Authors>
+    <Description>Evaluate Open Policy Agent (Rego) policies from C# — the production Go open-policy-agent/opa engine compiled to .NET with goclr. No sidecar, no P/Invoke; the Rego parser, compiler and topdown evaluator run in-process on the CLR.</Description>
+    <PackageTags>opa;rego;open-policy-agent;policy;authorization;authz;goclr</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    <GoclrOut Condition="'$(GoclrOut)' == ''">bin/goclr</GoclrOut>
+  </PropertyGroup>
+
+  <!-- Only the facade compiles into this assembly; Demo.cs is the sample app. -->
+  <ItemGroup>
+    <Compile Remove="Demo.cs" />
+  </ItemGroup>
+
+  <!-- Reference the goclr-compiled host + runtime for the build. -->
+  <ItemGroup>
+    <Reference Include="host"><HintPath>$(GoclrOut)/host.dll</HintPath></Reference>
+    <Reference Include="GoCLR.Runtime"><HintPath>$(GoclrOut)/GoCLR.Runtime.dll</HintPath></Reference>
+    <Reference Include="GoCLR.Stdlib"><HintPath>$(GoclrOut)/GoCLR.Stdlib.dll</HintPath></Reference>
+  </ItemGroup>
+
+  <!-- Ship the compiled Go host + runtime assemblies in the package's lib folder
+       so consumers get them alongside the facade. -->
+  <ItemGroup>
+    <None Include="$(GoclrOut)/host.dll" Pack="true" PackagePath="lib/net8.0/" />
+    <None Include="$(GoclrOut)/GoCLR.Runtime.dll" Pack="true" PackagePath="lib/net8.0/" />
+    <None Include="$(GoclrOut)/GoCLR.Stdlib.dll" Pack="true" PackagePath="lib/net8.0/" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,25 @@
+package fastjson
+
+// goclr overlay: b2s/s2b reinterpret a []byte and string through unsafe.Pointer +
+// reflect.SliceHeader field writes, which the CLR backend does not lower (it
+// supports reading reflect.*Header offsets but not writing them). These safe forms
+// do the trivial conversions — identical results, one copy each.
+
+func b2s(b []byte) string {
+	return string(b)
+}
+
+func s2b(s string) (b []byte) {
+	return []byte(s)
+}
+
+const maxStartEndStringLen = 80
+
+func startEndString(s string) string {
+	if len(s) <= maxStartEndStringLen {
+		return s
+	}
+	start := s[:40]
+	end := s[len(s)-40:]
+	return start + "..." + end
+}
