@@ -607,6 +607,16 @@ public static class Reflect
     }
 
     // --- reflect.StructField field reads (opaque GoStructField handle) ------
+    // reflect.StructField is normally produced by Type.Field(i), but pure-Go code also
+    // BUILDS one via a composite literal (jwx's RegisterProbeField). These give it a zero
+    // value and field setters so `reflect.StructField{Name: …, Tag: …}` populates the handle.
+    public static object NewStructField() => new GoStructField();
+    public static void StructField_SetName(object f, GoString v) => ((GoStructField)f).Name = v.ToDotNetString();
+    public static void StructField_SetTag(object f, GoString v) => ((GoStructField)f).Tag = v.ToDotNetString();
+    public static void StructField_SetType(object f, object? t) { } // Type is not read from a hand-built field
+    public static void StructField_SetAnonymous(object f, bool v) => ((GoStructField)f).Anonymous = v;
+    public static void StructField_SetIndex(object f, GoSlice v) { }
+    public static void StructField_SetPkgPath(object f, GoString v) { }
     public static GoString StructField_Name(object f) => GoString.FromDotNetString(((GoStructField)f).Name);
     public static GoString StructField_Tag(object f) => GoString.FromDotNetString(((GoStructField)f).Tag);
     public static GoString StructField_PkgPath(object f) =>

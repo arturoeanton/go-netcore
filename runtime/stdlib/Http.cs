@@ -565,13 +565,15 @@ public static class Http
     public static object DefaultClient() => new GoHttpClient();
     public static void Client_SetTimeout(object c, long t) => ((GoHttpClient)c).TimeoutNanos = t;
     public static void Client_SetTransport(object c, object? v) { }
-    public static void Client_SetCheckRedirect(object c, object? v) { }
+    public static void Client_SetCheckRedirect(object c, GoClosure? v) { }
     public static void Client_SetJar(object c, object? v) { }
     // Field reads: Timeout returns the stored duration; the Transport/CheckRedirect/Jar
     // hooks are not retained by this shim, so they read back as their nil zero value
     // (code that clones a client and checks `if c.CheckRedirect == nil` takes the default).
     public static long Client_Timeout(object c) => ((GoHttpClient)c).TimeoutNanos;
-    public static object? Client_CheckRedirect(object c) => null;
+    // CheckRedirect is a func field -> GoClosure; the shim never retains one, so it reads
+    // back as a nil closure (code that checks `if c.CheckRedirect == nil` takes the default).
+    public static GoClosure? Client_CheckRedirect(object c) => null;
     public static object? Client_Transport(object c) => null;
     public static object? Client_Jar(object c) => null;
 

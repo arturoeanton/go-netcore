@@ -236,6 +236,15 @@ func (c *lowerCtx) registerReflectMethods(named *types.Named, typeID int) bool {
 				continue
 			}
 			m := c.byFunc[fn]
+			// An instantiated generic type's methods are monomorphized on demand, so
+			// they are not in byFunc — instantiate here so the fallback adapter exists
+			// (the drainMonoTodo pass after this lowers the fresh bodies).
+			if m == nil && named.TypeArgs() != nil && named.TypeArgs().Len() > 0 {
+				cl := &funcLowerer{lowerCtx: c, ok: true}
+				if mm, ok2 := cl.instantiateMethodFor(fn, named); ok2 {
+					m = mm
+				}
+			}
 			if m == nil {
 				continue
 			}
@@ -447,11 +456,18 @@ func (c *lowerCtx) collectDispatchFallbackMethods() {
 	// on the current method count so small reflection-heavy programs (CEL) get the
 	// safety net while huge ones are left to their (working) static dispatch.
 	const fallbackMethodBudget = 30000
-	if len(c.prog.Methods) > fallbackMethodBudget {
-		return
-	}
+	gated := len(c.prog.Methods) > fallbackMethodBudget
 	for named, st := range c.structReg {
 		if _, isIface := named.Underlying().(*types.Interface); isIface {
+			continue
+		}
+		// A huge program (goja) is gated to stay under the CLR's 65535-methods cap AND
+		// does not need the fallback for its NON-generic types (they were in structReg
+		// during the body pass and dispatch statically). But a GENERIC INSTANTIATION is
+		// monomorphized only after that pass, so the isinst switches always miss it —
+		// it needs the fallback adapter regardless of the gate (the missed set is small).
+		isGenericInst := named.TypeArgs() != nil && named.TypeArgs().Len() > 0
+		if gated && !isGenericInst {
 			continue
 		}
 		if !c.implementsAnyDispatched(named) {
@@ -463,6 +479,9 @@ func (c *lowerCtx) collectDispatchFallbackMethods() {
 			}
 			c.bridgeClrLinks[st.Name] = int64(st.Id)
 		}
+	}
+	if gated {
+		return // the named-scalar loop below is all non-generic; skip it when gated
 	}
 	for named, id := range c.namedIds {
 		if _, isIface := named.Underlying().(*types.Interface); isIface {

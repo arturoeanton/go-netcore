@@ -1257,6 +1257,10 @@ var shimFieldSetRegistry = map[string]map[string]shimFunc{
 		"Fragment": {"Url", "URL_SetFragment"}, "User": {"Url", "URL_SetUser"},
 		"Opaque": {"Url", "URL_SetOpaque"},
 	},
+	"reflect.StructField": {
+		"Name": {"Reflect", "StructField_SetName"}, "Tag": {"Reflect", "StructField_SetTag"}, "Type": {"Reflect", "StructField_SetType"},
+		"Anonymous": {"Reflect", "StructField_SetAnonymous"}, "Index": {"Reflect", "StructField_SetIndex"}, "PkgPath": {"Reflect", "StructField_SetPkgPath"},
+	},
 	// Crypto keys assembled field-by-field the way pure-Go code builds them
 	// (jwx, x/crypto): the setters stash the component and rebuild the .NET key lazily.
 	"crypto/ecdsa.PublicKey": {
@@ -1401,6 +1405,7 @@ var opaqueZeroCtor = map[string]shimFunc{
 	"crypto/x509/pkix.Extension":     {"Crypto509", "NewPkixExt"},
 	"crypto/x509.Certificate":        {"Crypto509", "NewCertificate"},
 	"crypto/x509.CertificateRequest": {"Crypto509", "NewCertReq"},
+	"reflect.StructField":            {"Reflect", "NewStructField"},
 	"crypto/ecdsa.PrivateKey":        {"Crypto509", "NewEcdsaPrivateKey"},
 	"crypto/ecdsa.PublicKey":         {"Crypto509", "NewEcdsaPublicKey"},
 	"crypto/rsa.PrivateKey":          {"Crypto509", "NewRsaPrivateKey"},

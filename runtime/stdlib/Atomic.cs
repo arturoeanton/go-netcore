@@ -118,11 +118,12 @@ public static class AtomicInt
     public static long Int_Or(object a, long mask) => System.Threading.Interlocked.Or(ref ((GoAtomicInt)a).V, mask);
 
     public static object NewPointer() => new GoAtomicPtr();
-    // atomic.Pointer[T] stores a *T, represented by a GoPtr cell.
-    public static GoPtr? Ptr_Load(object a) => System.Threading.Volatile.Read(ref ((GoAtomicPtr)a).V) as GoPtr;
-    public static void Ptr_Store(object a, GoPtr? v) => System.Threading.Volatile.Write(ref ((GoAtomicPtr)a).V, v);
-    public static GoPtr? Ptr_Swap(object a, GoPtr? v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicPtr)a).V, v) as GoPtr;
-    public static bool Ptr_CompareAndSwap(object a, GoPtr? old, GoPtr? nw) => System.Object.ReferenceEquals(System.Threading.Interlocked.CompareExchange(ref ((GoAtomicPtr)a).V, nw, old), old);
+    // atomic.Pointer[T] stores a *T. That is a GoPtr for a struct pointee, but an opaque
+    // shim handle (e.g. *big.Int -> GoBigInt) for a shimmed pointee — so the slot is object.
+    public static object? Ptr_Load(object a) => System.Threading.Volatile.Read(ref ((GoAtomicPtr)a).V);
+    public static void Ptr_Store(object a, object? v) => System.Threading.Volatile.Write(ref ((GoAtomicPtr)a).V, v);
+    public static object? Ptr_Swap(object a, object? v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicPtr)a).V, v);
+    public static bool Ptr_CompareAndSwap(object a, object? old, object? nw) => System.Object.ReferenceEquals(System.Threading.Interlocked.CompareExchange(ref ((GoAtomicPtr)a).V, nw, old), old);
 
     public static ulong Uint_Load(object a) => (ulong)System.Threading.Interlocked.Read(ref ((GoAtomicUint)a).V);
     public static void Uint_Store(object a, ulong v) => System.Threading.Interlocked.Exchange(ref ((GoAtomicUint)a).V, (long)v);
