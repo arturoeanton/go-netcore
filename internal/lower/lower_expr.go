@@ -511,8 +511,18 @@ func (l *funcLowerer) binaryExpr(e *ast.BinaryExpr) {
 			l.emitValueEqual(e, opType)
 			return
 		}
-		l.expr(e.X)
-		l.expr(e.Y)
+		if opType.Kind == goir.KObject {
+			// Interface comparison: a concrete operand (err == syscall.EAGAIN,
+			// iface == "x") must be boxed — and typed-box tagged — to be a valid
+			// operand for the value-based IfaceEq. Previously the raw value slipped
+			// through to ceq, which the JIT tolerated (pointer-width compare,
+			// always false); as a call argument it is invalid IL.
+			l.exprCoerced(e.X, goir.TObject)
+			l.exprCoerced(e.Y, goir.TObject)
+		} else {
+			l.expr(e.X)
+			l.expr(e.Y)
+		}
 		l.compare(e.Op, opType)
 		return
 	}
@@ -665,9 +675,23 @@ func (l *funcLowerer) compare(op token.Token, operandType goir.Type) {
 		}
 		return
 	}
-	if operandType.Kind == goir.KPtr || operandType.Kind == goir.KObject {
-		// Reference equality (pointers, interface-vs-nil).
+	if operandType.Kind == goir.KPtr {
+		// Reference equality (pointer identity).
 		l.emit(goir.Op{Code: goir.OpCeq})
+		if op == token.NEQ {
+			l.emit(goir.Op{Code: goir.OpNot})
+		}
+		return
+	}
+	if operandType.Kind == goir.KObject {
+		// Interface equality is Go VALUE equality of the dynamic values (any(5) ==
+		// any(5) is true), not box identity. IfaceEq deep-compares (typed boxes by
+		// id+value, structs field-wise, strings by content) and treats two typed-nil
+		// pointer carriers of the same type as equal; x == nil stays a null check.
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "IfaceEq",
+			Params: []goir.Type{goir.TObject, goir.TObject}, Ret: goir.TBool,
+		}})
 		if op == token.NEQ {
 			l.emit(goir.Op{Code: goir.OpNot})
 		}

@@ -902,7 +902,13 @@ func (l *funcLowerer) switchStmt(s *ast.SwitchStmt) {
 		for _, e := range c.body.List {
 			if hasTag {
 				l.emit(goir.Op{Code: goir.OpLdLoc, Local: tagLocal})
-				l.expr(e)
+				if tagType.Kind == goir.KObject {
+					// An interface-typed tag against a concrete case value: box
+					// (and typed-box tag) the case so IfaceEq gets two objects.
+					l.exprCoerced(e, goir.TObject)
+				} else {
+					l.expr(e)
+				}
 				l.compare(token.EQL, tagType)
 			} else {
 				l.expr(e) // boolean case in a tagless switch

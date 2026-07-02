@@ -78,9 +78,10 @@ func main() {
 	if got := countOp(main, goir.OpCallMethod); got != 1 {
 		t.Errorf("method calls = %d, want 1 (add)", got)
 	}
-	// 3 boxes: two GoString args ("a","b") and the int result of add(2,3).
-	if got := countOp(main, goir.OpBox); got != 3 {
-		t.Errorf("box ops = %d, want 3 (two strings + one int)", got)
+	// 2 direct boxes: the two GoString args ("a","b"). The int result of add(2,3)
+	// boxes through the cached-box extern (Rt.BoxI8), not a raw box opcode.
+	if got := countOp(main, goir.OpBox); got != 2 {
+		t.Errorf("box ops = %d, want 2 (two strings; ints box via Rt.BoxI8)", got)
 	}
 	add := findMethod(prog, "add")
 	if add == nil || add.Ret != goir.TInt64 || len(add.Params) != 2 {

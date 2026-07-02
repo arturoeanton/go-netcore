@@ -22,6 +22,24 @@ func isValueType(t goir.Type) bool {
 // emitBox boxes the value-type value on top of the stack (no-op for object).
 func (l *funcLowerer) emitBox(t goir.Type) {
 	if isValueType(t) {
+		// Small ints and bools box through the runtime's shared-box cache instead
+		// of allocating (boxing is pervasive in the object-boxed value model).
+		// Sharing is safe: boxes are never mutated in place and interface equality
+		// is value-based (Rt.IfaceEq).
+		switch t.Kind {
+		case goir.KInt64, goir.KInt32, goir.KBool:
+			method := "BoxBool"
+			if t.Kind == goir.KInt64 {
+				method = "BoxI8"
+			} else if t.Kind == goir.KInt32 {
+				method = "BoxI4"
+			}
+			l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+				Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: method,
+				Params: []goir.Type{{Kind: t.Kind}}, Ret: goir.TObject,
+			}})
+			return
+		}
 		l.emit(goir.Op{Code: goir.OpBox, BoxTy: t})
 		return
 	}
