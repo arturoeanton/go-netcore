@@ -1168,6 +1168,20 @@ func (l *funcLowerer) conversion(e *ast.CallExpr) goir.Type {
 		l.exprCoerced(e.Args[0], target)
 		return target
 	}
+	// Go 1.20 slice-to-array-pointer conversion (*[N]T)(s): a pointer to the slice's
+	// backing viewed as a fixed-size array (shared storage). goclr represents an array
+	// [N]T as a length-N GoSlice, so build a *[N]T GoPtr aliasing s's first N elements.
+	if target.Kind == goir.KPtr && target.Elem != nil && target.Elem.Kind == goir.KSlice && target.Elem.Array &&
+		!isNilIdent(e.Args[0]) && l.exprType(e.Args[0]).Kind == goir.KSlice {
+		srcT := l.exprType(e.Args[0])
+		l.expr(e.Args[0])
+		l.emit(goir.Op{Code: goir.OpLdcI8, Int: int64(target.Elem.ArrayLen)})
+		l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+			Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "SliceToArrayPtr",
+			Params: []goir.Type{srcT, goir.TInt64}, Ret: target,
+		}})
+		return target
+	}
 	// T(nil) — e.g. []rune(nil), map[K]V(nil) — is the target's zero value. Handle
 	// before exprType(arg), which has no type for the untyped nil.
 	if isNilIdent(e.Args[0]) {

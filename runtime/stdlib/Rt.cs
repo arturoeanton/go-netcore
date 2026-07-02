@@ -347,6 +347,19 @@ public static class Rt
     // resolve through the GoPtr's id exactly as for a non-nil pointer (a nil receiver).
     public static object BoxNilPtr(GoPtr? p, long typeId) => (object?)p ?? GoPtrs.New(null, typeId);
 
+    // Go 1.20 slice-to-array-pointer conversion (*[N]T)(s): a *[N]T aliasing the slice's
+    // first n elements (writes through it are visible in s). The pointee is an array-view
+    // GoSlice (Array-length n) sharing the same backing; a nil slice with n==0 gives a
+    // pointer to an empty array, and n > len(s) panics like Go.
+    public static GoPtr SliceToArrayPtr(GoSlice s, long n)
+    {
+        if (n > s.Len)
+            throw new GoPanicException(GoString.FromDotNetString(
+                $"runtime error: cannot convert slice with length {s.Len} to array or pointer to array with length {n}"));
+        var arr = new GoSlice { Data = s.Data, Off = s.Off, Len = (int)n, Cap = (int)n };
+        return new GoPtr { Value = arr };
+    }
+
     public static GoPtr ElemAddr(GoSlice s, long i)
     {
         if (s.Data == null || i < 0 || i >= s.Len)

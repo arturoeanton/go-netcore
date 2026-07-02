@@ -541,7 +541,12 @@ func (l *funcLowerer) appendCall(e *ast.CallExpr) goir.Type {
 		if nilBoxed(a) {
 			l.emitBoxedZero(*st.Elem)
 		} else {
-			l.emitBoxedElem(a)
+			// emitBoxedElemInto (not emitBoxedElem) so that appending a named value into
+			// an interface-element slice (append([]any, ast.Body{…})) tags its named-type
+			// identity — otherwise the element reads back as its bare underlying type and a
+			// later type switch/%T (ParseBody's `case Body:`) misses it. Matches the
+			// multi-element path above.
+			l.emitBoxedElemInto(a, *st.Elem)
 		}
 		l.emit(goir.Op{Code: goir.OpSliceAppend})
 	}
