@@ -313,6 +313,7 @@ goclr analyze ./... --html -o report.html   # self-contained HTML report
 goclr coverage                     # per-function stdlib coverage matrix
 goclr coverage --gap --json        # machine-readable coverage (gaps only)
 goclr build ./cmd/server -o bin/server.dll
+goclr build -r2r ./cmd/server      # + crossgen2: native ReadyToRun images (goja startup 4s -> 0.09s)
 goclr run ./cmd/server
 goclr test ./pkg                   # compile + run TestXxx on the CLR
 goclr clean                        # remove goclr build artifacts

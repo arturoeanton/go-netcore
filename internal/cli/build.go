@@ -33,6 +33,7 @@ type buildFlags struct {
 	keepTemp      bool
 	noAOT         bool
 	aot           bool
+	r2r           bool
 	trim          bool
 	verbose       bool
 	explain       bool
@@ -51,6 +52,7 @@ func registerBuildFlags(fs *flag.FlagSet) *buildFlags {
 	fs.BoolVar(&b.keepTemp, "keep-temp", false, "keep temporary build artifacts")
 	fs.BoolVar(&b.noAOT, "no-aot", false, "disable AOT")
 	fs.BoolVar(&b.aot, "aot", false, "enable AOT (post-MVP)")
+	fs.BoolVar(&b.r2r, "r2r", false, "precompile to native (ReadyToRun) via crossgen2 — removes first-run JIT cost")
 	fs.BoolVar(&b.trim, "trim", false, "trim unused assemblies")
 	fs.BoolVar(&b.verbose, "verbose", false, "verbose output")
 	fs.BoolVar(&b.explain, "explain", false, "explain compilation decisions")
@@ -159,6 +161,12 @@ func buildToAssemblyMode(patterns []string, bf *buildFlags, out string, tests bo
 	if err := linker.Link(out); err != nil {
 		fmt.Fprintf(os.Stderr, "error GCLR0600: %v\n", err)
 		return 1, out
+	}
+	if bf.r2r {
+		if err := linker.ReadyToRun(out, bf.verbose); err != nil {
+			fmt.Fprintf(os.Stderr, "error GCLR0601: ReadyToRun: %v\n", err)
+			return 1, out
+		}
 	}
 
 	if bf.verbose {
