@@ -23,6 +23,7 @@ Everything below goes deeper.
 | Doc | What it covers |
 | --- | --- |
 | [ROADMAP.md](ROADMAP.md) | Milestones (M0–M8) and the done/pending checklist — what is implemented vs outstanding |
+| [CEL.md](CEL.md) | The CEL milestone: `cel-go` running on the CLR and packaged as the `Cel.GoCLR` C# NuGet — what works, how it was reached, and the honest limits |
 | [GAPS.md](GAPS.md) | Gap analysis to a complete product: per-component state, effort, and the distance to GORM/KrakenD/Fiber/AOT |
 | [LIMITATIONS.md](LIMITATIONS.md) | Known limitations / tracked technical debt — each documented so it fails predictably, not silently |
 | [COVERAGE.md](COVERAGE.md) | Per-package standard-library coverage matrix (from `goclr coverage`) |

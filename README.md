@@ -401,6 +401,7 @@ description and a recommended reading order. Highlights:
 
 - [docs/QUICKSTART.md](docs/QUICKSTART.md) — extended Quick Start + troubleshooting
 - [docs/ROADMAP.md](docs/ROADMAP.md) — milestones and the done/pending checklist
+- [docs/CEL.md](docs/CEL.md) — the CEL milestone: `cel-go` on the CLR + the `Cel.GoCLR` NuGet, honestly
 - [docs/LIMITATIONS.md](docs/LIMITATIONS.md) — tracked technical debt, each fails predictably
 - [docs/GAPS.md](docs/GAPS.md) — gap analysis toward a complete product
 - [docs/COVERAGE.md](docs/COVERAGE.md) — per-package stdlib coverage matrix
