@@ -545,6 +545,14 @@ func (l *funcLowerer) interfaceDispatchCore(emitRecv func(), ifaceMethod *types.
 					l.emit(goir.Op{Code: goir.OpPtrGet})
 					l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
 					l.emitEmbedNav(ctypes[i], recvPath[i], callees[i].Params[0])
+				} else if callees[i].Params[0].Kind != goir.KPtr {
+					// A VALUE-receiver method reached through a pointer implementer — a type
+					// with mixed receivers whose interface value is *T (loader.fileLoader:
+					// value-receiver Filtered/All alongside pointer-receiver WithX). Go
+					// auto-derefs (*p).M() for a value receiver, so deref the GoPtr to the
+					// boxed value the method expects instead of passing the pointer.
+					l.emit(goir.Op{Code: goir.OpPtrGet})
+					l.emit(goir.Op{Code: goir.OpUnbox, BoxTy: ctypes[i]})
 				}
 			}
 		} else if namedId[i] != 0 {
