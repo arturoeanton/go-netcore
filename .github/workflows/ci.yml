@@ -3,53 +3,32 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+# One run per ref: a new push cancels the previous in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   GO_VERSION: "1.26"
   DOTNET_VERSION: "8.0.x"
 
 jobs:
-  lint:
-    name: Lint & format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-      - name: gofmt
-        run: |
-          fmtout=$(gofmt -l internal/ cmd/)
-          if [ -n "$fmtout" ]; then
-            echo "These files are not gofmt-clean:"; echo "$fmtout"; exit 1
-          fi
-      - name: go vet
-        run: go vet ./internal/... ./cmd/...
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.1.6
-
-  test:
-    name: Unit tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-      - name: go build
-        run: go build ./...
-      - name: go test (unit)
-        run: go test ./internal/...
-
-  conformance:
-    name: Conformance (go vs goclr on .NET)
+  ci:
+    # A single linear job: no duplicated checkout/setup across runners, no
+    # third-party lint action (gofmt + go vet inline; golangci-lint stays a
+    # local tool via .golangci.yml). Fails fast: format/vet before builds,
+    # unit tests before the conformance suite.
+    name: lint + unit + conformance
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,25 +38,33 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: gofmt + go vet
+        run: |
+          fmtout=$(gofmt -l internal/ cmd/)
+          if [ -n "$fmtout" ]; then
+            echo "These files are not gofmt-clean:"; echo "$fmtout"; exit 1
+          fi
+          go vet ./internal/... ./cmd/...
+
+      - name: go build + unit tests
+        run: |
+          go build ./...
+          go test ./internal/...
+
       - name: Build .NET runtime + stdlib
         run: |
           dotnet build runtime/dotnet/GoCLR.Runtime.csproj -c Release
           dotnet build runtime/stdlib/GoCLR.Stdlib.csproj -c Release
-      - name: Run conformance suite
-        # The harness writes a per-fixture pass/skip/fail matrix to GITHUB_STEP_SUMMARY,
-        # so the run page shows a visible conformance matrix (published even when a fixture
-        # fails, pinpointing exactly which regressed) rather than a single pass/fail.
+
+      - name: Conformance + harness suites
+        # The harness writes a per-fixture pass/skip/fail matrix to
+        # GITHUB_STEP_SUMMARY, so the run page pinpoints exactly which fixture
+        # regressed rather than a single pass/fail.
         env:
           GOCLR_RUNTIME_DLL: ${{ github.workspace }}/runtime/dotnet/bin/Release/net8.0/GoCLR.Runtime.dll
           GOCLR_STDLIB_DLL: ${{ github.workspace }}/runtime/stdlib/bin/Release/net8.0/GoCLR.Stdlib.dll
-        run: go test -count=1 ./tests/conformance/
-      - name: Run goclr test harness (testing.T on the CLR)
-        env:
-          GOCLR_RUNTIME_DLL: ${{ github.workspace }}/runtime/dotnet/bin/Release/net8.0/GoCLR.Runtime.dll
-          GOCLR_STDLIB_DLL: ${{ github.workspace }}/runtime/stdlib/bin/Release/net8.0/GoCLR.Stdlib.dll
-        run: go test -count=1 ./tests/gotest/
-      - name: Run panic-format check (Go-style uncaught panic)
-        env:
-          GOCLR_RUNTIME_DLL: ${{ github.workspace }}/runtime/dotnet/bin/Release/net8.0/GoCLR.Runtime.dll
-          GOCLR_STDLIB_DLL: ${{ github.workspace }}/runtime/stdlib/bin/Release/net8.0/GoCLR.Stdlib.dll
-        run: go test -count=1 ./tests/panicfmt/
+        run: |
+          go test -count=1 ./tests/conformance/
+          go test -count=1 ./tests/gotest/
+          go test -count=1 ./tests/panicfmt/
