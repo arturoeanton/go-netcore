@@ -1,0 +1,40 @@
+// Copyright 2018, The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// goclr overlay: go-cmp's pointer.go reinterprets a reflect.Value.Pointer() through
+// unsafe.Pointer, which goclr does not lower. reflect.Value.Pointer() already returns
+// a uintptr identity, so this safe rewrite stores that uintptr directly. The Pointer
+// type is used only for go-cmp's cycle detection (pointer identity + type), so a
+// uintptr key is equivalent. go-cmp is pulled into HCL's closure via hclwrite but is
+// not on the decode path.
+
+package value
+
+import (
+	"reflect"
+)
+
+// Pointer is an opaque typed pointer and is guaranteed to be comparable.
+type Pointer struct {
+	p uintptr
+	t reflect.Type
+}
+
+// PointerOf returns a Pointer from v, which must be a
+// reflect.Ptr, reflect.Slice, or reflect.Map.
+func PointerOf(v reflect.Value) Pointer {
+	// reflect.Value.Pointer() is the pointer's identity as a uintptr — sufficient for
+	// go-cmp's cycle detection (it never dereferences it).
+	return Pointer{v.Pointer(), v.Type()}
+}
+
+// IsNil reports whether the pointer is nil.
+func (p Pointer) IsNil() bool {
+	return p.p == 0
+}
+
+// Uintptr returns the pointer as a uintptr.
+func (p Pointer) Uintptr() uintptr {
+	return p.p
+}

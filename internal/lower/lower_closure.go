@@ -251,6 +251,11 @@ func (l *funcLowerer) funcValueCall(e *ast.CallExpr) goir.Type {
 		l.packVariadic(e.Args[nFixed:], *vt.Elem)
 		l.emitBox(vt)
 		l.emit(goir.Op{Code: goir.OpStelemRef})
+	} else if len(e.Args) == 1 && !e.Ellipsis.IsValid() && isMultiTuple(l.pkg.TypesInfo.TypeOf(e.Args[0])) {
+		// f(g()) through a func value: g() already yields an object[] of boxed
+		// results whose count/types match the closure's parameters, so pass it
+		// straight through as the invoke args array (no repacking).
+		l.expr(e.Args[0])
 	} else {
 		l.emit(goir.Op{Code: goir.OpLdcI4, Int: int64(len(e.Args))})
 		l.emit(goir.Op{Code: goir.OpNewObjArray})
@@ -648,4 +653,11 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+// isMultiTuple reports whether t is a multi-value result tuple (a call used as
+// f(g()) where g returns more than one value).
+func isMultiTuple(t types.Type) bool {
+	tup, ok := t.(*types.Tuple)
+	return ok && tup.Len() > 1
 }

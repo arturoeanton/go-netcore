@@ -227,6 +227,20 @@ public static class Reflect
     public static long Type_NumField(object t) { var d = TDesc(t); return d != null ? d.Fields.Count : (Fields(((GoReflectType)t).Sample)?.Length ?? 0); }
     public static object Type_Elem(object t) { var d = TDesc(t); return d != null ? RTypeFromDesc(d.Elem()) : new GoReflectType { Sample = ElemSample(((GoReflectType)t).Sample) }; }
     public static long Type_Len(object t) { var d = TDesc(t); return d != null ? d.ArrayLen : 0; }
+    // reflect.Type.Bits(): the size in bits of a sized numeric type (int8→8 … int64/
+    // float64→64). Panics in Go for a non-sized-numeric kind; here returns 64 as the
+    // widened default (int/uint are 64-bit in goclr).
+    public static long Type_Bits(object t)
+    {
+        var k = (int)Type_Kind(t);
+        switch (k)
+        {
+            case GoKind.Int8: case GoKind.Uint8: return 8;
+            case GoKind.Int16: case GoKind.Uint16: return 16;
+            case GoKind.Int32: case GoKind.Uint32: case GoKind.Float32: return 32;
+            default: return 64;
+        }
+    }
 
     // --- reflect.Value methods (null receiver = the zero reflect.Value) ---
     // The stored value, stripped of any typed-box (GoNamed) wrapper: structural accessors
@@ -359,7 +373,7 @@ public static class Reflect
         var rv = (GoReflectValue)v;
         var ed = rv.Desc?.Elem();
         if (rv.V is GoPtr p)
-            return new GoReflectValue { V = p.Value, Setter = nv => p.Value = nv, Desc = ed };
+            return new GoReflectValue { V = GoPtrs.Get(p), Setter = nv => GoPtrs.Set(p, nv), Desc = ed };
         return new GoReflectValue { V = rv.V, Desc = ed };
     }
 

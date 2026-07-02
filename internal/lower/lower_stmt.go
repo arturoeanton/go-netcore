@@ -988,11 +988,22 @@ func (l *funcLowerer) forStmtCaptured(s *ast.ForStmt, obj types.Object, t goir.T
 	l.mark(end)
 }
 
+// takeSwitchBreak returns the end label a labeled switch/select must use (set by
+// labeledStmt so `break L` targets it), or a fresh label when unlabeled.
+func (l *funcLowerer) takeSwitchBreak() int {
+	if l.pendingSwitchBreak != nil {
+		e := *l.pendingSwitchBreak
+		l.pendingSwitchBreak = nil
+		return e
+	}
+	return l.label()
+}
+
 func (l *funcLowerer) switchStmt(s *ast.SwitchStmt) {
+	end := l.takeSwitchBreak()
 	if s.Init != nil {
 		l.stmt(s.Init)
 	}
-	end := l.label()
 
 	// Evaluate the tag into a local (if present).
 	var tagLocal int
@@ -1027,15 +1038,30 @@ func (l *funcLowerer) switchStmt(s *ast.SwitchStmt) {
 		}
 		for _, e := range c.body.List {
 			if hasTag {
-				l.emit(goir.Op{Code: goir.OpLdLoc, Local: tagLocal})
-				if tagType.Kind == goir.KObject {
+				switch {
+				case tagType.Kind == goir.KObject:
 					// An interface-typed tag against a concrete case value: box
 					// (and typed-box tag) the case so IfaceEq gets two objects.
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: tagLocal})
 					l.exprCoerced(e, goir.TObject)
-				} else {
+					l.compare(token.EQL, tagType)
+				case tagType.Kind == goir.KStruct || tagType.Kind == goir.KSlice:
+					// A struct/array tag (cty.Type: a struct wrapping an interface)
+					// compares by VALUE, not by ceq — box both and call ValueEqual.
+					// compare()'s default would emit ceq on value types (invalid IL).
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: tagLocal})
+					l.emitBox(tagType)
 					l.expr(e)
+					l.emitBox(tagType)
+					l.emit(goir.Op{Code: goir.OpCallExtern, Extern: &goir.Extern{
+						Assembly: shimAssembly, Namespace: shimAssembly, Type: "Rt", Method: "ValueEqual",
+						Params: []goir.Type{goir.TObject, goir.TObject}, Ret: goir.TBool,
+					}})
+				default:
+					l.emit(goir.Op{Code: goir.OpLdLoc, Local: tagLocal})
+					l.expr(e)
+					l.compare(token.EQL, tagType)
 				}
-				l.compare(token.EQL, tagType)
 			} else {
 				l.expr(e) // boolean case in a tagless switch
 			}
@@ -1855,6 +1881,9 @@ func (l *funcLowerer) branchStmt(s *ast.BranchStmt) {
 // first reference so forward gotos (referenced before the label is marked)
 // resolve to the same id.
 func (l *funcLowerer) gotoLabel(name string) int {
+	if l.gotoLabels == nil {
+		l.gotoLabels = map[string]int{}
+	}
 	if id, ok := l.gotoLabels[name]; ok {
 		return id
 	}
@@ -1869,6 +1898,12 @@ func (l *funcLowerer) gotoLabel(name string) int {
 // so `break L` / `continue L` resolve, then hands them to the loop via
 // pendingLoopLabel.
 func (l *funcLowerer) labeledStmt(s *ast.LabeledStmt) {
+	if l.labeledBreaks == nil {
+		l.labeledBreaks = map[string]int{}
+	}
+	if l.labeledContinues == nil {
+		l.labeledContinues = map[string]int{}
+	}
 	// Mark the goto target. Stack is empty at a statement boundary.
 	l.mark(l.gotoLabel(s.Label.Name))
 
@@ -1895,7 +1930,34 @@ func (l *funcLowerer) labeledStmt(s *ast.LabeledStmt) {
 		}
 		return
 	}
+	// A labeled switch / type-switch / select: `break L` exits it. Pre-allocate the
+	// end label, register it as the labeled break, and hand it to the statement via
+	// pendingSwitchBreak (consumed by takeSwitchBreak).
+	if isSwitchLike(s.Stmt) {
+		name := s.Label.Name
+		end := l.label()
+		prevBreak, hadBreak := l.labeledBreaks[name]
+		l.labeledBreaks[name] = end
+		l.pendingSwitchBreak = &end
+		l.stmt(s.Stmt)
+		if hadBreak {
+			l.labeledBreaks[name] = prevBreak
+		} else {
+			delete(l.labeledBreaks, name)
+		}
+		return
+	}
 	l.stmt(s.Stmt)
+}
+
+// isSwitchLike reports whether s is a switch, type-switch or select — the
+// statements a labeled `break L` can target (besides loops).
+func isSwitchLike(s ast.Stmt) bool {
+	switch s.(type) {
+	case *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
+		return true
+	}
+	return false
 }
 
 func (l *funcLowerer) isLoop(s ast.Stmt) bool {

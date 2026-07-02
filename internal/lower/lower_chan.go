@@ -141,6 +141,7 @@ func commChanExpr(comm ast.Stmt) ast.Expr {
 // which returns the chosen case index (and, for a receive, the value/ok). A
 // switch on that index runs the corresponding clause body.
 func (l *funcLowerer) selectStmt(s *ast.SelectStmt) {
+	swBreak := l.takeSwitchBreak()
 	var cases []*ast.CommClause
 	var def *ast.CommClause
 	for _, st := range s.Body.List {
@@ -208,7 +209,7 @@ func (l *funcLowerer) selectStmt(s *ast.SelectStmt) {
 	l.emitUnbox(goir.TInt64)
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: idxLocal})
 
-	end := l.label()
+	end := swBreak
 	l.breaks = append(l.breaks, end) // `break` exits the select
 	for i, cc := range cases {
 		next := l.label()

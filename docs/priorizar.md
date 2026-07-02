@@ -14,7 +14,18 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
    interface por embed-puntero, mutación de método pointer-receiver promovido, library
    mode (`__goclr_init` invocable + invoker registrado en init), y el límite CLR de
    65535 métodos/tipo (cache de closures `__facc`). protobuf pineado a v1.34.2 (purego).
-2. ⬜ HCL (HashiCorp config) como NuGet — candidato #2, evita protobuf/ANTLR.
+2. ✅ **HCL (`hashicorp/hcl/v2`) como NuGet `Hcl.GoCLR`** — el `hcl/v2` de producción
+   (scanner/parser `hclsyntax` + modelo de valores `cty`) compila con goclr y se llama
+   desde C# por un puente JSON. Parseo byte-exacto vs `go run` (atributos, bloques
+   anidados con labels, listas de bloques repetidos, escalares string/bool/int/float por
+   el `big.Float` de cty → JSON con `cty/json`). Ejemplo en
+   [`examples/hcl_nuget`](../examples/hcl_nuget/). Cerró la escritura de vuelta por reflect
+   a un campo de struct: `reflect.Value.Elem` sobre un `GoPtr` leía/escribía `p.Value`
+   directo, salteando los accesores field-alias (`FGet`/`FSet`) y slice-elem (`Arr`/`Idx`)
+   — ahora rutea por `GoPtrs.Get`/`Set`, así `gocty.FromCtyValue`/`hclsimple.Decode` sí
+   escriben en el campo. Y el ancho de `big.Accuracy` (int8→Int32) en los shims de
+   `(*Float).Int`/`.Int64`/`.Copy` (devolvían `long` → `InvalidCastException` al comparar
+   con `big.Exact`), con `nil`+Below/Above para ±Inf como en Go. hcl/v2 v2.24.0, cty v1.16.3.
 3. ⬜ OPA/Rego como NuGet — policy engine completo, más grande.
 
 ## Orden 2 (nuevo foco, serializado — uno a la vez)

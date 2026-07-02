@@ -20,8 +20,47 @@ public static class Big
     // --- big.Float (double-backed) ---
     private static double F(object o) => ((GoBigFloat)o).V;
     public static object NewFloat(double x) => new GoBigFloat { V = x };
+    // big.ParseFloat(s, base, prec, mode) (*Float, int, error): parse a decimal
+    // (base 10) into the double-backed Float. Returns (Float, accuracy=0, err).
+    public static object?[] ParseFloat(GoString s, long bas, ulong prec, int mode)
+    {
+        var str = s.ToDotNetString();
+        if (double.TryParse(str, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v))
+            return new object?[] { new GoBigFloat { V = v }, 0L, null };
+        return new object?[] { new GoBigFloat { V = 0 }, 0L, new GoError(GoString.FromDotNetString("number has no digits")) };
+    }
     public static object FloatZero() => new GoBigFloat { V = 0 };
     public static object Float_SetInt(object z, object x) { ((GoBigFloat)z).V = (double)V(x); return z; }
+    // (*Float).Int64()/Uint64()/Float32() (value, Accuracy): the double truncated to
+    // the target; accuracy 0 (Exact) — the double-backed Float loses big precision.
+    public static object?[] Float_Int64(object z) { double v = F(z); return new object?[] { (long)v, 0 }; }
+    public static object?[] Float_Uint64(object z) { double v = F(z); return new object?[] { (ulong)(v < 0 ? 0 : v), 0 }; }
+    public static object?[] Float_Float32(object z) { double v = F(z); return new object?[] { (float)v, 0 }; }
+    public static object?[] Float_Rat(object z, object? _)
+    {
+        double v = F(z);
+        var r = new GoBigRat();
+        if (v == System.Math.Truncate(v) && !double.IsInfinity(v)) { r.Num = new System.Numerics.BigInteger(v); r.Den = 1; }
+        else { r.Num = new System.Numerics.BigInteger(v * 1e9); r.Den = 1000000000; }
+        return new object?[] { r, 0 };
+    }
+    public static object Float_Sqrt(object z, object x) { ((GoBigFloat)z).V = System.Math.Sqrt(F(x)); return z; }
+    // (*Float).MantExp(mant): the binary exponent; if mant != nil, set mant to the
+    // normalized mantissa in [0.5, 1). Uses frexp semantics on the double.
+    public static long Float_MantExp(object z, object? mant)
+    {
+        double v = F(z);
+        if (v == 0 || double.IsNaN(v) || double.IsInfinity(v)) { if (mant is GoBigFloat gm) gm.V = v; return 0; }
+        int exp = (int)System.Math.Floor(System.Math.Log2(System.Math.Abs(v))) + 1;
+        double m = v / System.Math.Pow(2, exp);
+        if (mant is GoBigFloat gmf) gmf.V = m;
+        return exp;
+    }
+    public static object Float_SetMantExp(object z, object mant, long exp) { ((GoBigFloat)z).V = F(mant) * System.Math.Pow(2, exp); return z; }
+    // (*Float).SetInf(signbit): z = -Inf if signbit else +Inf.
+    public static object Float_SetInf(object z, bool signbit) { ((GoBigFloat)z).V = signbit ? double.NegativeInfinity : double.PositiveInfinity; return z; }
+    // (*Float).Signbit(): whether z is negative (or -0 / -Inf).
+    public static bool Float_Signbit(object z) { double v = F(z); return v < 0 || (v == 0 && double.IsNegative(v)) || double.IsNegativeInfinity(v); }
     public static object Float_Sub(object z, object x, object y) { ((GoBigFloat)z).V = F(x) - F(y); return z; }
     public static long Float_Cmp(object z, object y) => F(z).CompareTo(F(y));
     public static long Float_Sign(object z) => System.Math.Sign(F(z));
@@ -41,9 +80,19 @@ public static class Big
     }
     public static object?[] Float_Int(object z, object? dst)
     {
+        double f = F(z);
+        // Accuracy is int8 (Below=-1, Exact=0, Above=+1) → goclr Int32. Go's
+        // (*Float).Int returns nil for an infinity, with accuracy Below for +Inf and
+        // Above for -Inf; NaN never reaches a well-formed cty number.
+        if (double.IsPositiveInfinity(f)) return new object?[] { null, -1 };
+        if (double.IsNegativeInfinity(f)) return new object?[] { null, 1 };
         var d = dst as GoBigInt ?? new GoBigInt();
-        d.V = new BigInteger(System.Math.Truncate(F(z)));
-        return new object?[] { d, 0L }; // (*Int, Accuracy=Exact)
+        double t = System.Math.Truncate(f);
+        d.V = new BigInteger(t);
+        // Truncation toward zero is exact for whole numbers; otherwise it rounds
+        // toward zero, so a positive fraction lands Below and a negative fraction Above.
+        int acc = t == f ? 0 : (f > 0 ? -1 : 1);
+        return new object?[] { d, acc };
     }
     public static object?[] Float_SetString(object z, GoString s)
     {
@@ -62,7 +111,7 @@ public static class Big
     public static object Float_SetFloat64(object z, double x) { ((GoBigFloat)z).V = x; return z; }
     public static object Float_SetInt64(object z, long x) { ((GoBigFloat)z).V = x; return z; }
     public static object Float_SetUint64(object z, ulong x) { ((GoBigFloat)z).V = x; return z; }
-    public static object?[] Float_Float64(object z) => new object?[] { F(z), 0L }; // (float64, Accuracy=Exact)
+    public static object?[] Float_Float64(object z) => new object?[] { F(z), 0 }; // (float64, Accuracy=Exact)
     public static bool Float_IsInf(object z) => double.IsInfinity(F(z));
     // Precision/mode are not modeled beyond the double backing (53-bit mantissa): SetPrec/
     // SetMode are accepted (return the receiver) and Prec/MinPrec report 53. A computation

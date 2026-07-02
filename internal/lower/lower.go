@@ -1145,6 +1145,10 @@ type funcLowerer struct {
 	labeledBreaks    map[string]int
 	labeledContinues map[string]int
 	pendingLoopLabel *loopLabels
+	// pendingSwitchBreak, when set by labeledStmt for a labeled switch/type-switch/
+	// select, is the pre-allocated end label that statement must use (and that
+	// labeledStmt registered as the labeled break target), so `break L` exits it.
+	pendingSwitchBreak *int
 	// addrTaken holds locals whose address is taken; they are stored as GoPtr
 	// cells. cells maps such a local's index to its pointee (logical) type.
 	addrTaken   map[types.Object]bool

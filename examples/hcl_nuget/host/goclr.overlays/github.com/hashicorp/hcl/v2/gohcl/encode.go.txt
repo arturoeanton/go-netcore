@@ -1,0 +1,11 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
+// goclr overlay: gohcl's encode.go imports hclwrite, which pulls github.com/google/
+// go-cmp into the closure — go-cmp reinterprets reflect.Value internals through
+// unsafe.Pointer, which goclr does not lower. The encode path (EncodeIntoBody /
+// EncodeAsBlock) is HCL *generation*, never reached by Decode. This overlay drops it
+// so the go-cmp/hclwrite subtree leaves the closure entirely. A program that actually
+// needs HCL encoding is out of scope for the decode-focused build.
+
+package gohcl

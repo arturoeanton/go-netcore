@@ -338,11 +338,23 @@ func (l *funcLowerer) instantiateMethodFor(fn *types.Func, recvNamed *types.Name
 	targs := recvNamed.TypeArgs()
 	rtps := orig.Type().(*types.Signature).RecvTypeParams()
 	subst := map[*types.TypeParam]types.Type{}
+	var keyArgs strings.Builder
 	for i := 0; i < rtps.Len() && i < targs.Len(); i++ {
-		subst[rtps.At(i)] = substType(targs.At(i), l.typeSubst)
+		ct := substType(targs.At(i), l.typeSubst)
+		subst[rtps.At(i)] = ct
+		if i > 0 {
+			keyArgs.WriteByte(',')
+		}
+		keyArgs.WriteString(types.TypeString(ct, unqualified))
 	}
 
-	key := types.TypeString(recvNamed, nil) + "." + decl.Name.Name
+	// Key by the SUBSTITUTED type args, not by recvNamed: inside a monomorphized
+	// generic method the receiver type is the template form (Set[T] with T the
+	// method's own type param, identical across instantiations), so keying by it
+	// would alias Set[Path].Values and Set[interface{}].Values to whichever was
+	// instantiated first — the wrong body for the other. The concrete args
+	// (Path vs interface{}) disambiguate.
+	key := recvNamed.Obj().Pkg().Path() + "." + recvNamed.Obj().Name() + "[" + keyArgs.String() + "]." + decl.Name.Name
 	if m, ok := l.monoInsts[key]; ok {
 		return m, true
 	}

@@ -1360,6 +1360,7 @@ func (l *funcLowerer) emitTypeMatch(valLocal int, gt types.Type, t goir.Type, ma
 
 // typeSwitch lowers `switch v := x.(type) { case T: ... }`.
 func (l *funcLowerer) typeSwitch(s *ast.TypeSwitchStmt) {
+	swBreak := l.takeSwitchBreak()
 	if s.Init != nil {
 		l.stmt(s.Init)
 	}
@@ -1382,7 +1383,7 @@ func (l *funcLowerer) typeSwitch(s *ast.TypeSwitchStmt) {
 	l.expr(xExpr)
 	l.emit(goir.Op{Code: goir.OpStLoc, Local: xTmp})
 
-	end := l.label()
+	end := swBreak
 	type clause struct {
 		cc  *ast.CaseClause
 		lbl int

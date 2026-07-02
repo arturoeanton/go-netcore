@@ -218,6 +218,7 @@ var shimRegistry = map[string]map[string]shimFunc{
 	},
 	"math/big": {
 		"NewInt": {"Big", "NewInt"}, "NewFloat": {"Big", "NewFloat"}, "Jacobi": {"Big", "Jacobi"}, "NewRat": {"Big", "NewRat"},
+		"ParseFloat": {"Big", "ParseFloat"},
 	},
 	"path": {
 		"Join": {"Path", "Join"}, "Base": {"Path", "Base"}, "Dir": {"Path", "Dir"},
@@ -1557,7 +1558,7 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"WriteTo": {"Readers", "Reader_WriteTo"}, "UnreadRune": {"Readers", "Reader_UnreadRune"},
 	},
 	"reflect.Type": {
-		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"},
+		"Kind": {"Reflect", "Type_Kind"}, "Name": {"Reflect", "Type_Name"}, "Bits": {"Reflect", "Type_Bits"},
 		"String": {"Reflect", "Type_String"}, "NumField": {"Reflect", "Type_NumField"},
 		"Elem": {"Reflect", "Type_Elem"}, "Key": {"Reflect", "Type_Key"}, "Len": {"Reflect", "Type_Len"},
 		"Field": {"Reflect", "Type_Field"}, "FieldByName": {"Reflect", "Type_FieldByName"}, "NumMethod": {"Reflect", "Type_NumMethod"},
@@ -1858,7 +1859,9 @@ var shimMethodRegistry = map[string]map[string]shimFunc{
 		"Add": {"Big", "Float_Add"}, "Mul": {"Big", "Float_Mul"}, "Quo": {"Big", "Float_Quo"},
 		"Neg": {"Big", "Float_Neg"}, "Abs": {"Big", "Float_Abs"}, "Set": {"Big", "Float_Set"}, "Copy": {"Big", "Float_Copy"},
 		"SetFloat64": {"Big", "Float_SetFloat64"}, "SetInt64": {"Big", "Float_SetInt64"}, "SetUint64": {"Big", "Float_SetUint64"},
-		"Float64": {"Big", "Float_Float64"}, "IsInf": {"Big", "Float_IsInf"},
+		"Float64": {"Big", "Float_Float64"}, "IsInf": {"Big", "Float_IsInf"}, "SetInf": {"Big", "Float_SetInf"}, "Signbit": {"Big", "Float_Signbit"},
+		"Int64": {"Big", "Float_Int64"}, "Uint64": {"Big", "Float_Uint64"}, "Float32": {"Big", "Float_Float32"},
+		"Rat": {"Big", "Float_Rat"}, "Sqrt": {"Big", "Float_Sqrt"}, "MantExp": {"Big", "Float_MantExp"}, "SetMantExp": {"Big", "Float_SetMantExp"},
 		"SetPrec": {"Big", "Float_SetPrec"}, "SetMode": {"Big", "Float_SetMode"}, "Prec": {"Big", "Float_Prec"},
 		"MinPrec": {"Big", "Float_MinPrec"}, "Mode": {"Big", "Float_Mode"}, "Acc": {"Big", "Float_Acc"},
 	},
