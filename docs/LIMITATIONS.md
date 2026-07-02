@@ -458,9 +458,24 @@ registry, all byte-exact; `image.Decode` returns `ErrFormat` since no format dec
 operators, Uniform sources, alpha masks and the blending math). Still deferred (need a
 larger feature or external module):
 
-- **`encoding/gob`** — not implemented (`gob.NewEncoder`/`NewDecoder` are unsupported): the
-  self-describing binary format is a large reflection-driven codec; use `encoding/json` (or
-  `encoding/binary` for fixed layouts) instead.
+- **`encoding/gob`** — implemented as a faithful wire-format port, **byte-identical to
+  `go run`** (fixture 770): framed messages, zigzag signed ints, byte-reversed floats,
+  delta-encoded struct fields with Go's zero-skip rules, and full type-definition
+  messages with Go's exact id-assignment order (structs before their fields;
+  slices/arrays/maps after their elements; ids from 64, process-global) and type-naming
+  rules (named `Name()`, field-path `String()`). Both `Encoder.Encode` and
+  `Decoder.Decode` are driven by a compiler-injected static type descriptor (the runtime
+  erases element types), like `json.Unmarshal`. Supported: bool/int*/uint*/float*/
+  complex/string/[]byte, slices, fixed arrays, maps, nested structs, pointer fields
+  (flattened, nil skipped), named types, multiple `Encode`s per stream, interleaved
+  encode/decode over one buffer, decode field-matching by name with widening, and Go's
+  error wording for the common cases (`EOF`, "decoding into local type *int, received
+  remote type string"). **Not supported (fail with an error, never silently):**
+  interface values (`gob.Register` is accepted as a no-op but encoding an interface
+  value errors), and the `GobEncoder`/`BinaryMarshaler`/`TextMarshaler` custom-method
+  hooks (so `time.Time` inside a gob payload is out). Multi-entry maps encode in .NET
+  map order (Go's is randomized), so only single-entry-map payloads are byte-comparable
+  — round-trips are exact regardless.
 - **`archive/tar`** — a USTAR writer/reader for regular files: `Writer.WriteHeader`/`Write`/
   `Close` and `Reader.Next`/`Read` round-trip the common `Header` fields (`Name`, `Size`, `Mode`,
   `Typeflag`, `ModTime`, `Linkname`, `Uid`/`Gid`, `Uname`/`Gname`), and the writer is
@@ -647,6 +662,26 @@ diagnosable failure that fires only if such a value actually reaches that call s
 an embedded `*bufio.Reader` and is enumerated as an `io.ByteReader` implementer,
 yet never flows into one). If a real program hits the panic, the fix is to register
 that shim type's method as an extern (`shimMethodRegistry`).
+
+## Interface equality (`any == any`) is value-based
+
+`==` between interface-typed operands compares the dynamic VALUES like Go —
+`any(5) == any(5)`, `any("x"+"y") == any("xy")`, struct-in-interface field-wise,
+bool/float/typed-box by value — via `Rt.IfaceEq` (fixture 771). Two typed-nil pointer
+carriers of the same pointee type compare equal (`any((*T)(nil)) == any((*T)(nil))` is
+true); live pointers keep identity semantics; `x == nil` remains a null check (typed-nil
+stays non-nil). Switch statements over an interface tag use the same equality.
+
+Remaining divergences (representation limits, documented):
+
+- **Uncomparable dynamic types don't panic.** `any([]int{1}) == any([]int{1})` should
+  panic ("comparing uncomparable type []int"); goclr's representation cannot
+  distinguish a slice from a fixed array in an interface (arrays are slice-backed and
+  MUST compare element-wise), so slices compare element-wise instead of panicking, and
+  maps compare false.
+- **A method-less named scalar loses its dynamic-type distinction**: `any(5) ==
+  any(MyInt(5))` is true (Go: false) when `MyInt` has no methods — the same typed-box
+  coverage gap as `%T` (a method-less named scalar is stored bare).
 
 ## Typed-nil pointer inside an interface
 

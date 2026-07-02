@@ -328,11 +328,14 @@ Measured, not yet engineered — the levers and their distance:
   ~20 ms. A *large* assembly is JIT-bound: goja (~15 MB) takes ~3.2 s to first output,
   almost entirely first-run JIT of its method set. Tiered compilation (quick-JIT-first) is
   already on by default, so config tuning yields little here.
-- **ReadyToRun (crossgen)** is the realistic lever for large-program startup: precompiling
-  the app + `GoCLR.Runtime`/`GoCLR.Stdlib` to native via `dotnet publish
-  -p:PublishReadyToRun=true` would cut goja's cold JIT. It needs a generated publish project
-  (the current output is loose framework-dependent dlls) — a packaging task, not a compiler
-  change. This is the highest-value next perf step.
+- **ReadyToRun — DONE**: `goclr build -r2r` invokes **crossgen2 directly** on the emitted
+  assembly plus the `GoCLR.Runtime`/`GoCLR.Stdlib` copies (no publish project needed; the
+  hand-written ECMA-335 metadata is accepted by crossgen2 as-is). Measured on the goja
+  demo: **~4.0 s JIT → ~0.09 s R2R (≈44×)**, output byte-identical. crossgen2 is located
+  in the local NuGet cache (`microsoft.netcore.app.crossgen2.<rid>`, any version;
+  override with `GOCLR_CROSSGEN2`) — fetch it once by publishing any project with
+  `-p:PublishReadyToRun=true`. Adds ~10 s to a goja-sized build; the R2R images are
+  larger (goja: 18 MB IL → 76 MB native+IL).
 - **NativeAOT is infeasible without rework.** The shim runtime is reflection-heavy by
   design — `Closures.InvokeShim` (`MethodInfo.Invoke`), the `[GoShim]` attribute scan
   (`GoShim.cs`), `reflect`'s `Value_FieldByName`/`TypeReg`, the callback bridge — all of
@@ -342,7 +345,12 @@ Measured, not yet engineered — the levers and their distance:
 - **Throughput** is bounded by the object-boxed value model (every `any`/interface/slice
   element is a boxed `object`). Typed IL / specialized slices (roadmap "Typed IL, no mass
   boxing") is the lever — a substantial backend change, also the prerequisite that makes the
-  emitted code more AOT/trim-friendly.
+  emitted code more AOT/trim-friendly. **First incremental step landed**: small ints and
+  bools box through a shared-box cache (`Rt.BoxI8/BoxI4/BoxBool` in emitBox; safe because
+  boxes are immutable and interface equality is value-based via `Rt.IfaceEq`), and
+  `[]byte` creation (`GoStrings.ToByteSlice` + the stdlib byte-slice builders) uses the
+  cached byte boxes — measured: a boxing-heavy loop ~43% faster, `[]byte(s)`+hex ~7%,
+  with GC pressure reduced program-wide.
 
 The emitted assembly already links against Release-built runtime/stdlib; the
 runtimeconfig carries a `configProperties` block as the place to tune host options.

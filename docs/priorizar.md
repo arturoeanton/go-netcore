@@ -57,7 +57,7 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 16. 🟡 `time` con zonas locales reales (hoy UTC-only) — media, medio
 17. 🟡 Unicode special-casing completo — media, medio
 18. ✅ `text/template` y `html/template` — media/difícil, alto · tags `0.0.91`–`0.0.97`
-19. ⬜ `encoding/gob` — difícil, medio/alto
+19. ✅ `encoding/gob` — difícil, medio/alto · byte-exact wire format (fixture 770); interfaces/GobEncoder documentados como no soportados
 20. ⬜ `archive/zip` / `archive/tar` — media, medio/alto
 21. 🟡 `crypto/rsa·ecdsa·x509·tls` full (hoy x509/acme bajado, TLS no-op) — difícil, altísimo
 22. ⬜ `net/smtp` — media, medio
@@ -73,10 +73,10 @@ byte-exacta vs `go run`, tests verdes y documentación. Ver [VISION.md](VISION.m
 32. ⬜ WebSocket — media/difícil, alto
 33. ⬜ GORM — difícil, altísimo
 34. ⬜ gRPC — muy difícil, altísimo
-35. ⬜ Typed IL / menos boxing — difícil, alto
+35. 🟡 Typed IL / menos boxing — difícil, alto · primer corte: boxes cacheados int/bool (+43% en loops de boxing) y []byte con byte-boxes compartidos; `any==any` ahora igualdad de VALOR (Rt.IfaceEq, fixture 771)
 36. ⬜ Release optimizations — difícil, alto
 37. ⬜ NativeAOT + trimming — difícil, alto/comercial
-38. ⬜ Startup / warm JIT razonable — media/difícil, alto
+38. ✅ Startup / warm JIT razonable — media/difícil, alto · `goclr build -r2r` (crossgen2): goja 4.0s→0.09s (44x)
 39. ⬜ Incremental cache por módulo — media, alto UX
 40. ⬜ `--emit-il/-ir/-ssa`, `--keep-temp`, `--explain` — media, medio/alto
 41. 🟡 Bundle final más parecido a `go build` — media, alto
