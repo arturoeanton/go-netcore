@@ -818,7 +818,7 @@ func (l *funcLowerer) forStmtCaptured(s *ast.ForStmt, obj types.Object, t goir.T
 	post := l.label()
 	// A labeled captured loop must reuse the labels its labeled-statement registered
 	// so labeled break/continue resolve here (continue lands on the sync point).
-	cont := post
+	var cont int
 	end := l.label()
 	if havePre {
 		cont = pre.post

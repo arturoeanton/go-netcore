@@ -59,7 +59,7 @@ func crossgenOne(cg, fw, refDir, dll string, verbose bool) error {
 	cmd := exec.Command(cg, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("crossgen2 %s: %w\n%s", filepath.Base(dll), err, out)
 	}
 	if err := os.Rename(tmp, dll); err != nil {

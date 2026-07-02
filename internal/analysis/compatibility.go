@@ -292,8 +292,8 @@ func parseGoPos(s string) diagnostics.Position {
 	pos := diagnostics.Position{File: s}
 	if len(parts) >= 3 {
 		pos.File = strings.Join(parts[:len(parts)-2], ":")
-		fmt.Sscanf(parts[len(parts)-2], "%d", &pos.Line)
-		fmt.Sscanf(parts[len(parts)-1], "%d", &pos.Col)
+		_, _ = fmt.Sscanf(parts[len(parts)-2], "%d", &pos.Line)
+		_, _ = fmt.Sscanf(parts[len(parts)-1], "%d", &pos.Col)
 	}
 	return pos
 }

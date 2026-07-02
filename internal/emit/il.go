@@ -100,7 +100,7 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 			b.buf = binary.LittleEndian.AppendUint32(b.buf, math.Float32bits(float32(op.Float)))
 		case goir.OpLdStr:
 			b.u8(0x72)
-			b.u32(0x70000000 | uint32(tok.us[op.Str]))
+			b.u32(0x70000000 | tok.us[op.Str])
 		case goir.OpLdLoc:
 			localOp(0x11, 0x0C, op.Local) // ldloc.s / ldloc
 		case goir.OpStLoc:
@@ -236,7 +236,7 @@ func translateMethod(m *goir.Method, tok tokenSet, localSigTok uint32) []byte {
 				b.u32(tokStrFromLitBytes)
 			} else {
 				b.u8(0x72) // ldstr (System.String)
-				b.u32(0x70000000 | uint32(tok.us[op.Str]))
+				b.u32(0x70000000 | tok.us[op.Str])
 				b.u8(0x28) // call GoStrings.FromLiteral -> GoString
 				b.u32(tokStrFromLit)
 			}
