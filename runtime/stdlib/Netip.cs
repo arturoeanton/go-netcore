@@ -622,12 +622,12 @@ public static class Netip
     private static void SubOne(GoNetipAddr a) { if (a.Lo == 0) a.Hi = unchecked(a.Hi - 1); a.Lo = unchecked(a.Lo - 1); }
     private static GoSlice Zeros(int n) { var d = new object?[n]; for (int i = 0; i < n; i++) d[i] = 0; return new GoSlice { Data = d, Off = 0, Len = n, Cap = n }; }
     private static GoSlice Fill(int n, int v) { var s = Zeros(n); for (int i = 0; i < n; i++) s.Data![i] = v; return s; }
-    private static GoSlice BytesOf(byte[] src, int off, int n) { var d = new object?[n]; for (int i = 0; i < n; i++) d[i] = (int)src[off + i]; return new GoSlice { Data = d, Off = 0, Len = n, Cap = n }; }
+    private static GoSlice BytesOf(byte[] src, int off, int n) { var d = new object?[n]; for (int i = 0; i < n; i++) d[i] = Boxes.I4(src[off + i]); return new GoSlice { Data = d, Off = 0, Len = n, Cap = n }; }
     private static GoSlice Append(GoSlice b, byte[] add)
     {
         int n = b.Len; var d = new object?[n + add.Length];
         for (int i = 0; i < n; i++) d[i] = b.Data![b.Off + i];
-        for (int i = 0; i < add.Length; i++) d[n + i] = (int)add[i];
+        for (int i = 0; i < add.Length; i++) d[n + i] = Boxes.I4(add[i]);
         return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
     }
     private static GoSlice Sub(GoSlice b, int lo, int hi) => new() { Data = b.Data, Off = b.Off + lo, Len = hi - lo, Cap = hi - lo };

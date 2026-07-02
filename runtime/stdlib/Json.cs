@@ -191,7 +191,7 @@ public static class Json
     {
         var b = Encoding.UTF8.GetBytes(s);
         var d = new object?[b.Length];
-        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]);
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
 
@@ -632,7 +632,7 @@ public static class Json
             {
                 var rb = Encoding.UTF8.GetBytes(j.GetRawText());
                 var rd = new object?[rb.Length];
-                for (int i = 0; i < rb.Length; i++) rd[i] = (int)rb[i];
+                for (int i = 0; i < rb.Length; i++) rd[i] = Boxes.I4(rb[i]);
                 return new GoSlice { Data = rd, Off = 0, Len = rb.Length, Cap = rb.Length };
             }
             case "bool": return j.ValueKind is JsonValueKind.True or JsonValueKind.False ? j.GetBoolean() : throw Mismatch(j, desc);
@@ -644,7 +644,7 @@ public static class Json
             {
                 var raw = System.Convert.FromBase64String(j.GetString() ?? "");
                 var d = new object?[raw.Length];
-                for (int i = 0; i < raw.Length; i++) d[i] = (int)raw[i];
+                for (int i = 0; i < raw.Length; i++) d[i] = Boxes.I4(raw[i]);
                 return new GoSlice { Data = d, Off = 0, Len = raw.Length, Cap = raw.Length };
             }
             case "ptr":

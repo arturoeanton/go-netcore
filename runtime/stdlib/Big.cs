@@ -140,7 +140,7 @@ public static class Big
         var extra = System.Text.Encoding.ASCII.GetBytes(Rat_RatString(x).ToDotNetString());
         var d = new object?[b.Len + extra.Length];
         for (int i = 0; i < b.Len; i++) d[i] = b.Data![b.Off + i];
-        for (int i = 0; i < extra.Length; i++) d[b.Len + i] = (int)extra[i];
+        for (int i = 0; i < extra.Length; i++) d[b.Len + i] = Boxes.I4(extra[i]);
         return new object?[] { new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length }, null };
     }
     public static object? Rat_UnmarshalText(object z, GoSlice text)
@@ -531,7 +531,7 @@ public static class Big
         int len = le.Length;
         while (len > 1 && le[len - 1] == 0) len--;
         var d = new object?[len];
-        for (int i = 0; i < len; i++) d[i] = (int)le[len - 1 - i]; // big-endian, boxed as byte (int)
+        for (int i = 0; i < len; i++) d[i] = Boxes.I4(le[len - 1 - i]); // big-endian, boxed as byte (int)
         return new GoSlice { Data = d, Off = 0, Len = len, Cap = len };
     }
     public static GoString Int_Text(object x, long bas)
@@ -609,7 +609,7 @@ public static class Big
     {
         var b = System.Text.Encoding.ASCII.GetBytes(s);
         var d = new object?[b.Length];
-        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]);
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
     private static string StrOfBytes(GoSlice b)
@@ -682,7 +682,7 @@ public static class Big
         var extra = System.Text.Encoding.ASCII.GetBytes(Int_Text(x, base_).ToDotNetString());
         var d = new object?[buf.Len + extra.Length];
         for (int i = 0; i < buf.Len; i++) d[i] = buf.Data![buf.Off + i];
-        for (int i = 0; i < extra.Length; i++) d[buf.Len + i] = (int)extra[i];
+        for (int i = 0; i < extra.Length; i++) d[buf.Len + i] = Boxes.I4(extra[i]);
         return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
     }
     public static object?[] Int_SetString(object z, GoString s, long base_)

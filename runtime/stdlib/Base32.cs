@@ -21,7 +21,7 @@ public static class Base32
     public static object Enc_WithPadding(object e, int pad) => new GoBase32Encoding { Alphabet = ((GoBase32Encoding)e).Alphabet, Padding = pad };
 
     private static byte[] Bytes(GoSlice s) { var b = new byte[s.Len]; for (int i = 0; i < s.Len; i++) b[i] = (byte)System.Convert.ToInt64(s.Data![s.Off + i]); return b; }
-    private static GoSlice Slice(byte[] b) { var d = new object?[b.Length]; for (int i = 0; i < b.Length; i++) d[i] = (int)b[i]; return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length }; }
+    private static GoSlice Slice(byte[] b) { var d = new object?[b.Length]; for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]); return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length }; }
 
     private static string EncodeStr(GoBase32Encoding enc, byte[] bytes)
     {

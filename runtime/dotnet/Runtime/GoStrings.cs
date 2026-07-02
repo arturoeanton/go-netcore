@@ -50,14 +50,9 @@ public static class GoStrings
         return size;
     }
 
-    /// <summary>[]byte(s): a slice of the UTF-8 bytes (each widened to int).</summary>
-    public static GoSlice ToByteSlice(GoString s)
-    {
-        var b = s.Bytes;
-        var data = new object?[b.Length];
-        for (int i = 0; i < b.Length; i++) data[i] = (int)b[i];
-        return new GoSlice { Data = data, Off = 0, Len = b.Length, Cap = b.Length };
-    }
+    /// <summary>[]byte(s): a slice of the UTF-8 bytes (each widened to int, from the
+    /// shared byte-box cache — no per-element allocation).</summary>
+    public static GoSlice ToByteSlice(GoString s) => Boxes.ByteSlice(s.Bytes);
 
     /// <summary>[]rune(s): a slice of the decoded runes.</summary>
     public static GoSlice ToRuneSlice(GoString s)

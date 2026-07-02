@@ -255,7 +255,7 @@ public static class Time
         int n = b.Len;
         var data = new object?[n + by.Length];
         for (int i = 0; i < n; i++) data[i] = b.Data![b.Off + i];
-        for (int i = 0; i < by.Length; i++) data[n + i] = (int)by[i];
+        for (int i = 0; i < by.Length; i++) data[n + i] = Boxes.I4(by[i]);
         return new GoSlice { Data = data, Off = 0, Len = data.Length, Cap = data.Length };
     }
 
@@ -268,14 +268,14 @@ public static class Time
     private static GoSlice BytesOf(byte[] b)
     {
         var d = new object?[b.Length];
-        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]);
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
     private static GoSlice AppendBytes(GoSlice b, byte[] extra)
     {
         var d = new object?[b.Len + extra.Length];
         for (int i = 0; i < b.Len; i++) d[i] = b.Data![b.Off + i];
-        for (int i = 0; i < extra.Length; i++) d[b.Len + i] = (int)extra[i];
+        for (int i = 0; i < extra.Length; i++) d[b.Len + i] = Boxes.I4(extra[i]);
         return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
     }
 

@@ -23,7 +23,7 @@ public static class BytesBuffer
     private static GoSlice ByteSlice(System.Collections.Generic.List<byte> src, int from, int count)
     {
         var d = new object?[count];
-        for (int i = 0; i < count; i++) d[i] = (int)src[from + i];
+        for (int i = 0; i < count; i++) d[i] = Boxes.I4(src[from + i]);
         return new GoSlice { Data = d, Off = 0, Len = count, Cap = count };
     }
     public static object?[] Peek(object b, long n)
@@ -95,7 +95,7 @@ public static class BytesBuffer
         var g = G(b);
         int n = g.B.Count - g.Pos;
         var d = new object?[n];
-        for (int i = 0; i < n; i++) d[i] = (int)g.B[g.Pos + i];
+        for (int i = 0; i < n; i++) d[i] = Boxes.I4(g.B[g.Pos + i]);
         return new GoSlice { Data = d, Off = 0, Len = n, Cap = n };
     }
 
@@ -170,7 +170,7 @@ public static class BytesBuffer
         var g = G(b);
         int take = (int)System.Math.Min(n, g.B.Count - g.Pos);
         var d = new object?[take];
-        for (int i = 0; i < take; i++) d[i] = (int)g.B[g.Pos++];
+        for (int i = 0; i < take; i++) d[i] = Boxes.I4(g.B[g.Pos++]);
         return new GoSlice { Data = d, Off = 0, Len = take, Cap = take };
     }
 

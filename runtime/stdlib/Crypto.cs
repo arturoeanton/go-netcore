@@ -142,7 +142,7 @@ public static partial class Crypto
         b.Add((byte)(s.Squeezed >> 24)); b.Add((byte)(s.Squeezed >> 16)); b.Add((byte)(s.Squeezed >> 8)); b.Add((byte)s.Squeezed);
         b.AddRange(s.Input);
         var d = new object?[b.Count];
-        for (int i = 0; i < b.Count; i++) d[i] = (int)b[i];
+        for (int i = 0; i < b.Count; i++) d[i] = Boxes.I4(b[i]);
         return new object?[] { new GoSlice { Data = d, Off = 0, Len = b.Count, Cap = b.Count }, null };
     }
     public static object? Shake_UnmarshalBinary(object sh, GoSlice data)
@@ -182,7 +182,7 @@ public static partial class Crypto
         int pn = prefix.Data == null ? 0 : prefix.Len;
         var d = new object?[pn + b.Length];
         for (int i = 0; i < pn; i++) d[i] = prefix.Data![prefix.Off + i];
-        for (int i = 0; i < b.Length; i++) d[pn + i] = (int)b[i];
+        for (int i = 0; i < b.Length; i++) d[pn + i] = Boxes.I4(b[i]);
         return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
     }
 

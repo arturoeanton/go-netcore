@@ -25,7 +25,7 @@ public static class Unsafe
         var all = s.Bytes;
         long m = System.Math.Min(n < 0 ? 0 : n, all.Length);
         var data = new object?[m];
-        for (int i = 0; i < m; i++) data[i] = (int)all[i];
+        for (int i = 0; i < m; i++) data[i] = Boxes.I4(all[i]);
         return new GoSlice { Data = data, Off = 0, Len = (int)m, Cap = (int)m };
     }
 }

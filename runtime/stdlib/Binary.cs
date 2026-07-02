@@ -54,7 +54,7 @@ public static class Binary
     private static GoSlice AppendBytes(GoSlice buf, System.Collections.Generic.List<byte> add)
     {
         var d = new object?[add.Count];
-        for (int i = 0; i < add.Count; i++) d[i] = (int)add[i];
+        for (int i = 0; i < add.Count; i++) d[i] = Boxes.I4(add[i]);
         return Rt.AppendSlice(buf, new GoSlice { Data = d, Off = 0, Len = add.Count, Cap = add.Count });
     }
     public static GoSlice AppendUvarint(GoSlice buf, ulong x)

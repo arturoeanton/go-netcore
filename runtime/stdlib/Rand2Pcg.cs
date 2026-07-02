@@ -56,7 +56,7 @@ public static partial class Rand2
     }
     private static void PutBE(byte[] b, int o, ulong v) { for (int i = 0; i < 8; i++) b[o + i] = (byte)(v >> (56 - 8 * i)); }
     private static ulong GetBE(byte[] b, int o) { ulong v = 0; for (int i = 0; i < 8; i++) v = (v << 8) | b[o + i]; return v; }
-    private static GoSlice Bytes(byte[] b) { var d = new object?[b.Length]; for (int i = 0; i < b.Length; i++) d[i] = (int)b[i]; return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length }; }
+    private static GoSlice Bytes(byte[] b) { var d = new object?[b.Length]; for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]); return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length }; }
     private static byte[] Raw(GoSlice s) { var b = new byte[s.Len]; for (int i = 0; i < s.Len; i++) b[i] = (byte)System.Convert.ToInt64(s.Data![s.Off + i]); return b; }
 
     public static object?[] PCG_MarshalBinary(object po) => new object?[] { Bytes(PcgBytes((GoPCG)po)), null };

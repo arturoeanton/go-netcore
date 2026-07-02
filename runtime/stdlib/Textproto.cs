@@ -16,7 +16,8 @@ public sealed class GoTextprotoError : IGoError
 {
     public long Code;
     public string Msg = "";
-    public GoString Error() => GoString.FromDotNetString(Code.ToString("D3") + " " + Msg);
+    // Go 1.26.4 quotes the message: fmt.Sprintf("%03d %q", e.Code, e.Msg).
+    public GoString Error() => GoString.FromDotNetString(Code.ToString("D3") + " " + Strconv.Quote(GoString.FromDotNetString(Msg)).ToDotNetString());
 }
 
 /// <summary>The io.WriteCloser from (*Writer).DotWriter: dot-encodes written lines (escapes a
@@ -62,7 +63,7 @@ public static class Textproto
     private static object?[] ToBytes(byte[] b)
     {
         var d = new object?[b.Length];
-        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]);
         return d;
     }
 
@@ -123,7 +124,7 @@ public static class Textproto
     internal static GoSlice RawSlice(byte[] b)
     {
         var d = new object?[b.Length];
-        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]);
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
 

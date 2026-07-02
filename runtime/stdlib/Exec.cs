@@ -24,7 +24,7 @@ public static class Exec
     {
         var b = System.Text.Encoding.UTF8.GetBytes(s);
         var d = new object?[b.Length];
-        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]);
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
 

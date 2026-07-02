@@ -137,7 +137,7 @@ public static class Bufio
         var e = Fill(b, want);
         int got = System.Math.Min(want, Avail(b));
         var data = new object?[got];
-        for (int i = 0; i < got; i++) data[i] = (int)b.Buf[b.Pos + i];
+        for (int i = 0; i < got; i++) data[i] = Boxes.I4(b.Buf[b.Pos + i]);
         var slice = new GoSlice { Data = data, Off = 0, Len = got, Cap = got };
         return new object?[] { slice, got < want ? (e ?? Io.EOFSentinel) : null };
     }
@@ -169,7 +169,7 @@ public static class Bufio
         int avail = Avail(b);
         int take = avail < 4 ? avail : 4;
         var data = new object?[take];
-        for (int i = 0; i < take; i++) data[i] = (int)b.Buf[b.Pos + i];
+        for (int i = 0; i < take; i++) data[i] = Boxes.I4(b.Buf[b.Pos + i]);
         var rs = Utf8.DecodeRune(new GoSlice { Data = data, Off = 0, Len = take, Cap = take });
         int size = (int)System.Convert.ToInt64(rs[1] ?? 0L);
         if (size == 0) size = 1; // empty handled above; guard
@@ -196,7 +196,7 @@ public static class Bufio
         b.LastRuneSize = -1;
         var (bytes, err) = ReadUntil(b, (byte)delim);
         var data = new object?[bytes.Length];
-        for (int i = 0; i < bytes.Length; i++) data[i] = (int)bytes[i];
+        for (int i = 0; i < bytes.Length; i++) data[i] = Boxes.I4(bytes[i]);
         return new object?[] { new GoSlice { Data = data, Off = 0, Len = bytes.Length, Cap = bytes.Length }, err };
     }
 
@@ -217,7 +217,7 @@ public static class Bufio
             err = null; // a full line was read
         }
         var data = new object?[n];
-        for (int i = 0; i < n; i++) data[i] = (int)bytes[i];
+        for (int i = 0; i < n; i++) data[i] = Boxes.I4(bytes[i]);
         return new object?[] { new GoSlice { Data = data, Off = 0, Len = n, Cap = n }, false, err };
     }
 
@@ -261,7 +261,7 @@ public static class Bufio
     {
         var (bytes, err) = ReadUntil(AsReader(br), (byte)delim);
         var data = new object?[bytes.Length];
-        for (int i = 0; i < bytes.Length; i++) data[i] = (int)bytes[i];
+        for (int i = 0; i < bytes.Length; i++) data[i] = Boxes.I4(bytes[i]);
         return new object?[] { new GoSlice { Data = data, Off = 0, Len = bytes.Length, Cap = bytes.Length }, err };
     }
     private static (byte[], object?) ReadUntil(GoBufReader b, byte delim)
@@ -440,7 +440,7 @@ public static class Bufio
     {
         var c = ((GoScanner)so).Cur;
         var d = new object?[c.Length];
-        for (int i = 0; i < c.Length; i++) d[i] = (int)c[i];
+        for (int i = 0; i < c.Length; i++) d[i] = Boxes.I4(c[i]);
         return new GoSlice { Data = d, Off = 0, Len = c.Length, Cap = c.Length };
     }
 
@@ -457,7 +457,7 @@ public static class Bufio
         {
             int n = s.Data.Length - s.Pos;
             var d = new object?[n];
-            for (int i = 0; i < n; i++) d[i] = (int)s.Data[s.Pos + i];
+            for (int i = 0; i < n; i++) d[i] = Boxes.I4(s.Data[s.Pos + i]);
             var data = new GoSlice { Data = d, Off = 0, Len = n, Cap = n };
             if (GoRuntime.InvokeArgs(s.Split!, data, true) is not object?[] res || res.Length == 0) return false;
             long advance = System.Convert.ToInt64(res[0] ?? 0L);

@@ -536,7 +536,7 @@ public static class Crypto509
     private static GoSlice Bytes(byte[] b)
     {
         var d = new object?[b.Length];
-        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]);
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
     private static string Str(object? o) => o is GoString g ? g.ToDotNetString() : (o?.ToString() ?? "");

@@ -56,7 +56,7 @@ public static class Utf8
     {
         var rune = System.Text.Rune.IsValid(r) ? new System.Text.Rune(r) : System.Text.Rune.ReplacementChar;
         var bytes = Encoding.UTF8.GetBytes(rune.ToString());
-        for (int i = 0; i < bytes.Length && i < p.Len; i++) p.Data[p.Off + i] = (int)bytes[i];
+        for (int i = 0; i < bytes.Length && i < p.Len; i++) p.Data[p.Off + i] = Boxes.I4(bytes[i]);
         return bytes.Length;
     }
 
@@ -66,7 +66,7 @@ public static class Utf8
         var rune = System.Text.Rune.IsValid(r) ? new System.Text.Rune(r) : System.Text.Rune.ReplacementChar;
         var bytes = Encoding.UTF8.GetBytes(rune.ToString());
         var add = new object?[bytes.Length];
-        for (int i = 0; i < bytes.Length; i++) add[i] = (int)bytes[i];
+        for (int i = 0; i < bytes.Length; i++) add[i] = Boxes.I4(bytes[i]);
         return Rt.AppendSlice(p, new GoSlice { Data = add, Off = 0, Len = bytes.Length, Cap = bytes.Length });
     }
 

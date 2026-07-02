@@ -65,7 +65,7 @@ public static class Base64
     private static GoSlice Slice(byte[] b)
     {
         var d = new object?[b.Length];
-        for (int i = 0; i < b.Length; i++) d[i] = (int)b[i];
+        for (int i = 0; i < b.Length; i++) d[i] = Boxes.I4(b[i]);
         return new GoSlice { Data = d, Off = 0, Len = b.Length, Cap = b.Length };
     }
     internal static GoSlice ToSlice(byte[] b) => Slice(b);
@@ -165,7 +165,7 @@ public static class Base64
     {
         var d = new object?[dst.Len + extra.Length];
         for (int i = 0; i < dst.Len; i++) d[i] = dst.Data![dst.Off + i];
-        for (int i = 0; i < extra.Length; i++) d[dst.Len + i] = (int)extra[i];
+        for (int i = 0; i < extra.Length; i++) d[dst.Len + i] = Boxes.I4(extra[i]);
         return new GoSlice { Data = d, Off = 0, Len = d.Length, Cap = d.Length };
     }
 

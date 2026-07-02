@@ -375,7 +375,7 @@ public static class Regexp
     private static Regex Re(object r) => ((GoRegexp)r).Re;
     private static byte[] Bytes(GoSlice b) { var x = new byte[b.Len]; for (int i = 0; i < b.Len; i++) x[i] = (byte)System.Convert.ToInt64(b.Data![b.Off + i]); return x; }
     private static string Str(GoSlice b) => GoString.FromBytes(Bytes(b)).ToDotNetString();
-    private static GoSlice ByteSliceOf(string s) { var by = System.Text.Encoding.UTF8.GetBytes(s); var d = new object?[by.Length]; for (int i = 0; i < by.Length; i++) d[i] = (int)by[i]; return new GoSlice { Data = d, Off = 0, Len = by.Length, Cap = by.Length }; }
+    private static GoSlice ByteSliceOf(string s) { var by = System.Text.Encoding.UTF8.GetBytes(s); var d = new object?[by.Length]; for (int i = 0; i < by.Length; i++) d[i] = Boxes.I4(by[i]); return new GoSlice { Data = d, Off = 0, Len = by.Length, Cap = by.Length }; }
     private static int BOff(string s, int charIdx) => System.Text.Encoding.UTF8.GetByteCount(s.Substring(0, charIdx));
     private static GoSlice IntSlice(System.Collections.Generic.List<long> xs) { var d = new object?[xs.Count]; for (int i = 0; i < xs.Count; i++) d[i] = xs[i]; return new GoSlice { Data = d, Off = 0, Len = xs.Count, Cap = xs.Count }; }
     private static GoSlice SlicesOf(System.Collections.Generic.List<GoSlice> ss) { var d = new object?[ss.Count]; for (int i = 0; i < ss.Count; i++) d[i] = ss[i]; return new GoSlice { Data = d, Off = 0, Len = ss.Count, Cap = ss.Count }; }

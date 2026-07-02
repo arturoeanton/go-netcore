@@ -67,7 +67,7 @@ public static partial class Strconv
         int n = dst.Len;
         var d = new object?[n + by.Length];
         for (int k = 0; k < n; k++) d[k] = dst.Data![dst.Off + k];
-        for (int k = 0; k < by.Length; k++) d[n + k] = (int)by[k];
+        for (int k = 0; k < by.Length; k++) d[n + k] = Boxes.I4(by[k]);
         return new GoSlice { Data = d, Off = 0, Len = n + by.Length, Cap = n + by.Length };
     }
     public static GoSlice AppendUint(GoSlice dst, ulong i, long b) => AppendStr(dst, ToBaseU(i, (int)b));

@@ -132,6 +132,42 @@ public static class Rt
     /// this only matters for a map field the CLR zero-initialized to a bare null.</summary>
     public static object BoxMap(object? m) => m ?? new GoMap();
 
+    /// <summary>Interface equality (any == any): Go compares the dynamic VALUES for
+    /// value dynamic types — any(5) == any(5) is true, strings by content, structs
+    /// field-wise, typed boxes by id + value — while REFERENCE dynamic types (errors,
+    /// maps, channels, closures, shim handles) keep identity semantics, exactly like
+    /// Go's pointer equality (errors.New("x") != errors.New("x")). Two typed-nil
+    /// pointer carriers of the same pointee type are equal (Go: (*T)(nil) ==
+    /// (*T)(nil)); live pointers keep identity. x == nil stays a null check.</summary>
+    public static bool IfaceEq(object? a, object? b)
+    {
+        if (a == null || b == null) return ReferenceEquals(a, b);
+        if (ReferenceEquals(a, b)) return true;
+        if (a is GoPtr pa && b is GoPtr pb)
+        {
+            bool nilA = pa.Value == null && pa.Arr == null && pa.FGet == null;
+            bool nilB = pb.Value == null && pb.Arr == null && pb.FGet == null;
+            return nilA && nilB && pa.TypeId == pb.TypeId;
+        }
+        var t = a.GetType();
+        if (t != b.GetType()) return false;
+        // Value dynamic types compare by value.
+        if (a is GoString || t.IsValueType) return ValueEqual(a, b); // boxed scalars, GoString, emitted structs, slice-backed arrays
+        if (a is GoNamed na && b is GoNamed nb) return na.TypeId == nb.TypeId && IfaceEq(na.Value, nb.Value);
+        if (a is GoComplex ca && b is GoComplex cb) return ca.Re == cb.Re && ca.Im == cb.Im;
+        // Distinct reference objects (GoError, GoMap, GoChan, GoClosure, shim handles):
+        // identity, like Go's pointer equality.
+        return false;
+    }
+
+    // ---- cached boxes: interface boxing of small ints/bools reuses shared immutable
+    // boxes instead of allocating (boxed values are never mutated in place, and
+    // equality is value-based via IfaceEq, so sharing is unobservable). The caches
+    // live in GoCLR.Runtime.Boxes so runtime-side byte-slice creation shares them.
+    public static object BoxI8(long v) => Boxes.I8(v);
+    public static object BoxI4(int v) => Boxes.I4(v);
+    public static object BoxBool(bool b) => Boxes.Bool(b);
+
     /// <summary>Go value equality (==) for structs and fixed arrays: compares fields
     /// and elements recursively, matching Go's element-wise semantics rather than the
     /// reference identity of the boxed runtime objects.</summary>
@@ -196,7 +232,7 @@ public static class Rt
         if (dst.Data == null) return 0;
         byte[] b = src.Bytes;
         int n = System.Math.Min(dst.Len, b.Length);
-        for (int i = 0; i < n; i++) dst.Data[dst.Off + i] = (int)b[i];
+        for (int i = 0; i < n; i++) dst.Data[dst.Off + i] = Boxes.I4(b[i]);
         return n;
     }
 
@@ -310,7 +346,7 @@ public static class Rt
         int m = bytes.Length;
         if (m == 0) return s;
         var add = new object?[m];
-        for (int i = 0; i < m; i++) add[i] = (int)bytes[i];
+        for (int i = 0; i < m; i++) add[i] = Boxes.I4(bytes[i]);
         return GoSlices.AppendN(s, add, m);
     }
 

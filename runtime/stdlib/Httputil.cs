@@ -29,7 +29,7 @@ public static class Httputil
         }
         var bytes = Encoding.UTF8.GetBytes(sb.ToString());
         var d = new object?[bytes.Length];
-        for (int i = 0; i < bytes.Length; i++) d[i] = (int)bytes[i];
+        for (int i = 0; i < bytes.Length; i++) d[i] = Boxes.I4(bytes[i]);
         return new object?[] { new GoSlice { Data = d, Off = 0, Len = bytes.Length, Cap = bytes.Length }, null };
     }
 }

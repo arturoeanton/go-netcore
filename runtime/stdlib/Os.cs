@@ -248,7 +248,7 @@ public static class Os
     private static GoSlice BytesOf(GoString s)
     {
         var by = s.Bytes; var d = new object?[by.Length];
-        for (int i = 0; i < by.Length; i++) d[i] = (int)by[i];
+        for (int i = 0; i < by.Length; i++) d[i] = Boxes.I4(by[i]);
         return new GoSlice { Data = d, Off = 0, Len = by.Length, Cap = by.Length };
     }
 
@@ -683,7 +683,7 @@ public static class Os
         {
             var bytes = System.IO.File.ReadAllBytes(name.ToDotNetString());
             var d = new object?[bytes.Length];
-            for (int i = 0; i < bytes.Length; i++) d[i] = (int)bytes[i];
+            for (int i = 0; i < bytes.Length; i++) d[i] = Boxes.I4(bytes[i]);
             return new object?[] { new GoSlice { Data = d, Off = 0, Len = bytes.Length, Cap = bytes.Length }, null };
         }
         catch (System.Exception ex)

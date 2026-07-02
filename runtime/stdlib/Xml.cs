@@ -436,7 +436,7 @@ public static partial class Xml
     {
         var by = Encoding.UTF8.GetBytes(s);
         var d = new object?[by.Length];
-        for (int i = 0; i < by.Length; i++) d[i] = (int)by[i];
+        for (int i = 0; i < by.Length; i++) d[i] = Boxes.I4(by[i]);
         return new GoSlice { Data = d, Off = 0, Len = by.Length, Cap = by.Length };
     }
 }
